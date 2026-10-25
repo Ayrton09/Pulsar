@@ -10,7 +10,9 @@
     "lastSeen": "마지막 확인",
     "address": "주소",
     "currentCertificateExpires": "현재 인증서 만료",
-    "expires": "만료"
+    "expires": "만료",
+    "installed": "설치됨",
+    "latest": "최신"
   },
   "serverOutOfMemory": {
     "title": "{server}의 메모리가 부족합니다",
@@ -56,6 +58,19 @@
     "title": "노드 {node}의 디스크 공간이 부족합니다",
     "text": "디스크가 가득 차면 업데이트, 백업, 게임 서버 자체가 실패합니다. 공간을 확보하거나 오래된 백업을 삭제하세요.",
     "drive": "{total} 중 {free} 사용 가능 ({percent} %)"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server}에 게임 업데이트가 있습니다",
+    "text": "게임의 새 빌드가 나왔습니다. 편할 때 서버 페이지에서 업데이트하세요.",
+    "installs": "게임의 새 빌드가 나왔습니다. 서버의 게임 업데이트 설정에 따라 Pulsar가 자동으로 설치합니다."
+  },
+  "gameUpdateInstalled": {
+    "title": "{server}을(를) 업데이트했습니다",
+    "text": "Pulsar가 게임 업데이트를 자동으로 설치했습니다."
+  },
+  "gameUpdateFailed": {
+    "title": "{server}의 자동 업데이트에 실패했습니다",
+    "text": "Pulsar가 게임 업데이트를 설치하지 못했습니다. 서버가 실행 중이었다면 다시 시작했습니다. 콘솔을 확인하세요."
   },
   "publicIpCertificateFailed": {
     "title": "공인 IP 인증서를 갱신하지 못했습니다",

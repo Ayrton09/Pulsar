@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "project-zomboid",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "name": "Project Zomboid",
   "description": "Project Zomboid dedicated server, installed anonymously with SteamCMD (about 7 GB), run with the Java runtime it ships. Its world and settings live in the zomboid folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -172,5 +172,6 @@
   "backup": {
     "include": ["zomboid/Saves/**", "zomboid/Server/**", "zomboid/db/**"],
     "save": { "commands": ["save"], "waitSeconds": 10 }
-  }
+  },
+  "commands": { "broadcast": "servermsg \"{{message}}\"" }
 }

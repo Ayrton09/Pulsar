@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "l4d2",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Left 4 Dead 2",
   "description": "Left 4 Dead 2 dedicated server (srcds), installed anonymously with SteamCMD (about 10 GB).",
   "authors": ["Pulsar contributors"],
@@ -116,5 +116,6 @@
   "backup": {
     "include": ["left4dead2/cfg/**", "left4dead2/addons/**"],
     "exclude": ["**/*.log", "**/*.dmp", "left4dead2/addons/workshop/**"]
-  }
+  },
+  "commands": { "broadcast": "say {{message}}" }
 }

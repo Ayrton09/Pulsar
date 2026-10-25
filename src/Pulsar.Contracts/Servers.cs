@@ -127,3 +127,18 @@ public sealed record OperationProgress(Guid OperationId, string Stage, double? P
 /// <param name="Result">What a successful operation produced (a <see cref="BackupResult"/>); null for most operations and older agents.</param>
 public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, OperationOutcome Outcome, string? ErrorCode, string? Message,
     CommandResult? Result = null);
+
+/// <summary>
+/// What an update check found (<see cref="CheckGameUpdateCommand"/>). Builds are the game's own names for what is
+/// installed: a Steam build id, a Minecraft version. Not sent again: the panel asks again later.
+/// </summary>
+/// <param name="Installed">What the server has; null when it cannot be told.</param>
+/// <param name="Latest">What its publisher offers for the version or branch the server follows; null when unknown.</param>
+/// <param name="Available">An update would bring something the server does not have; null when the check failed.</param>
+/// <param name="ErrorCode">Why the check failed (<c>steamcmd.*</c>, <c>minecraft.*</c>); null when it did not.</param>
+public sealed record GameUpdateCheck(Guid ServerId, string? Installed, string? Latest, bool? Available, string? ErrorCode, string? Message,
+    DateTimeOffset At)
+{
+    public const int MaxBuildLength = 64;
+    public const int MaxMessageLength = 300;
+}

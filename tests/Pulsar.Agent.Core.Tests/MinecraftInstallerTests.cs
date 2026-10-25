@@ -133,6 +133,54 @@ public sealed class MinecraftInstallerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "java", "bin", "java.exe")));
     }
 
+    [Fact]
+    public async Task AnUpdateCheckComparesTheInstalledServerWithMojangs()
+    {
+        var before = await CheckAsync("latest");
+        Assert.Equal(new GameBuild(null, "26.3", true), before);
+
+        await InstallAsync("latest");
+        Assert.Equal($"26.3\n{Sha1(_jar)}\n", File.ReadAllText(Path.Combine(_root, ".pulsar", "minecraft-version.txt")));
+        _http.Requested.Clear();
+
+        Assert.Equal(new GameBuild("26.3", "26.3", false), await CheckAsync("latest"));
+        Assert.DoesNotContain(Jar, _http.Requested); // nothing downloaded: the checksum Mojang lists is compared
+    }
+
+    [Fact]
+    public async Task AServerJarThatIsNotTheRecordedOneIsNotNamed()
+    {
+        await InstallAsync("26.3");
+        // A new release came out: the installed version keeps its name while its file is the one recorded.
+        var newer = Encoding.UTF8.GetBytes("the 26.4 server jar");
+        var details = Json(new { downloads = new { server = new { url = Jar, sha1 = Sha1(newer), size = newer.Length } } });
+        _http.Routes[Details] = () => Ok(details);
+        _http.Routes[Manifest] = () => Ok(Json(new
+        {
+            latest = new { release = "26.4" },
+            versions = new[] { new { id = "26.4", type = "release", url = Details, sha1 = Sha1(details) } },
+        }));
+        Assert.Equal(new GameBuild("26.3", "26.4", true), await CheckAsync("latest"));
+
+        // Replaced by hand (or by the server's account): what it is cannot be told.
+        File.WriteAllText(Path.Combine(_root, "server.jar"), "a modded jar");
+        Assert.Equal(new GameBuild(null, "26.4", true), await CheckAsync("latest"));
+    }
+
+    [Fact]
+    public async Task ACheckThatCannotReachMojangFails()
+    {
+        _http.Routes.Remove(Manifest);
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => CheckAsync("latest"));
+
+        Assert.StartsWith("minecraft.", error.Code, StringComparison.Ordinal);
+    }
+
+    private Task<GameBuild> CheckAsync(string version) =>
+        new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.CheckAsync(_root, version,
+            TestContext.Current.CancellationToken);
+
     private Task InstallAsync(string version) =>
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.InstallAsync(_root, version, (stage, _) =>
         {

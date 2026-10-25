@@ -31,6 +31,12 @@ public enum NotificationEvent
     /// <summary>A drive of a node (game servers or backups) is nearly full.</summary>
     NodeDiskLow,
 
+    /// <summary>A server's game has an update (Pulsar 1.0.9); also when an automatic update installed it.</summary>
+    GameUpdateAvailable,
+
+    /// <summary>An automatic game update failed (Pulsar 1.0.9).</summary>
+    GameUpdateFailed,
+
     /// <summary>
     /// The panel's public IP certificate (Let's Encrypt) could not be renewed, is close to expiry, or was renewed again
     /// after failing.

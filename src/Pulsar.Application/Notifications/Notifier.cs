@@ -30,6 +30,20 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
         ForServerAsync(server, NotificationEvent.ScheduledTaskFailed, taskName,
             (language, facts, link) => NotificationTexts.ScheduledTaskFailed(language, facts, taskName, error, link), cancellationToken);
 
+    /// <param name="installs">The server installs it by itself (told in the message).</param>
+    public Task GameUpdateAvailableAsync(Server server, string? installed, string latest, bool installs, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateAvailable, $"game_update:{latest}",
+            (language, facts, link) => NotificationTexts.GameUpdateAvailable(language, facts, installed, latest, installs, link), cancellationToken);
+
+    /// <summary>Told to the channels that are told of updates (the same event).</summary>
+    public Task GameUpdateInstalledAsync(Server server, string? latest, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateAvailable, $"game_update_installed:{latest}",
+            (language, facts, link) => NotificationTexts.GameUpdateInstalled(language, facts, latest, link), cancellationToken);
+
+    public Task GameUpdateFailedAsync(Server server, string? latest, string? error, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateFailed, $"game_update:{latest}",
+            (language, facts, link) => NotificationTexts.GameUpdateFailed(language, facts, latest, error, link), cancellationToken);
+
     public Task NodeOfflineAsync(Node node, DateTimeOffset lastSeen, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(node);

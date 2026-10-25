@@ -55,6 +55,28 @@ export const publicIpCertificateOff: Schemas['PublicIpCertificateResponse'] = {
   lastErrorAt: null,
 };
 
+/** A game whose updates cannot be checked: what tests about something else get. */
+export const noGameUpdates: Schemas['GameUpdateView'] = {
+  policy: 'notify',
+  whenEmpty: false,
+  warningMinutes: 0,
+  warningMessage: 'Restarting in {time} for a game update',
+  supported: false,
+  canWaitForEmpty: false,
+  canWarn: false,
+  installed: null,
+  latest: null,
+  available: null,
+  checkedAt: null,
+  checkErrorCode: null,
+  checkError: null,
+  checking: false,
+  nextCheckAt: null,
+  pending: false,
+  playersOnline: null,
+  running: null,
+};
+
 export const adminUser: Schemas['CurrentUserResponse'] = {
   id: '0192f1a0-0000-7000-8000-000000000001',
   userName: 'admin',
@@ -78,28 +100,30 @@ export function fakeApi(routes: Record<string, Handler>) {
     const key = `${request.method} ${url.pathname}`;
     // Server and node pages show a usage history, and the nodes page the reusable enrollment tokens; tests about
     // something else get empty ones (and the account page no panel certificate, as over plain HTTP, and no SSH keys,
-    // and the game artwork on, the panel's default, and no newer release of Pulsar).
+    // and the game artwork on, the panel's default, and no newer release of Pulsar, and games whose updates are not checked).
     const handler =
       routes[key] ??
       (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
         ? () => json(emptyHistory(url.searchParams.get('range')))
-        : key === 'GET /api/v1/enrollment-tokens'
-          ? () => json([])
-          : key === 'GET /api/v1/sftp'
-            ? () => json(sftpOff)
-            : key === 'GET /api/v1/sftp/settings'
-              ? () => json({ ...sftpOff, publicHost: null, listening: false })
-              : key === 'GET /api/v1/public-ip-certificate'
-                ? () => json(publicIpCertificateOff)
-                : key === 'GET /api/v1/panel/certificate'
-                  ? () => problem(404, 'panel.certificate_unavailable')
-                  : key === 'GET /api/v1/appearance'
-                    ? () => json({ steamArtwork: true })
-                    : key === 'GET /api/v1/account/ssh-keys'
-                      ? () => json([])
-                      : key === 'GET /api/v1/updates'
-                        ? () => json(noUpdates)
-                        : undefined);
+        : request.method === 'GET' && /^\/api\/v1\/servers\/[^/]+\/game-updates$/.test(url.pathname)
+          ? () => json(noGameUpdates)
+          : key === 'GET /api/v1/enrollment-tokens'
+            ? () => json([])
+            : key === 'GET /api/v1/sftp'
+              ? () => json(sftpOff)
+              : key === 'GET /api/v1/sftp/settings'
+                ? () => json({ ...sftpOff, publicHost: null, listening: false })
+                : key === 'GET /api/v1/public-ip-certificate'
+                  ? () => json(publicIpCertificateOff)
+                  : key === 'GET /api/v1/panel/certificate'
+                    ? () => problem(404, 'panel.certificate_unavailable')
+                    : key === 'GET /api/v1/appearance'
+                      ? () => json({ steamArtwork: true })
+                      : key === 'GET /api/v1/account/ssh-keys'
+                        ? () => json([])
+                        : key === 'GET /api/v1/updates'
+                          ? () => json(noUpdates)
+                          : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

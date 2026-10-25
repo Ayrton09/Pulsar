@@ -27,7 +27,8 @@ public sealed record GameManifest(
     IReadOnlyList<ConfigFileDefinition>? ConfigFiles = null,
     BackupDefinition? Backup = null,
     QueryDefinition? Query = null,
-    IReadOnlyList<AddonDefinition>? Addons = null)
+    IReadOnlyList<AddonDefinition>? Addons = null,
+    CommandsDefinition? Commands = null)
 {
     /// <summary>Optional editor hint (<c>"$schema"</c>); ignored.</summary>
     [JsonPropertyName("$schema")]
@@ -41,6 +42,18 @@ public sealed record GameManifest(
 
     public IReadOnlyList<AddonDefinition> AddonList => Addons ?? [];
 }
+
+/// <summary>
+/// Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console (its input or
+/// RCON, as the console section says).
+/// </summary>
+/// <param name="Broadcast">
+/// Tells everyone playing a message, with <c>{{message}}</c> where the message goes (<c>say {{message}}</c>): the warnings
+/// before an automatic update or a scheduled restart. The panel keeps letters, digits, spaces and <c>. , ! ? : ' ( ) -</c>
+/// of a message and drops anything else, so it can never end the command or start another.
+/// </param>
+/// <param name="MessageSpaces">What stands for a space in the message, for a game whose command takes a single word (Palworld's).</param>
+public sealed record CommandsDefinition(string? Broadcast = null, string? MessageSpaces = null);
 
 /// <summary>What a node should have for the game; shown when creating a server, not enforced.</summary>
 public sealed record RequirementsDefinition(int? MinDiskGb = null, int? MinMemoryMb = null);

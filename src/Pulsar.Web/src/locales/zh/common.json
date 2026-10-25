@@ -378,7 +378,11 @@
         "database_deleted": "删除了数据库",
         "database_password_rotated": "更改了数据库密码",
         "database_password_viewed": "查看了数据库密码",
-        "steam_account_changed": "更改了服务器的 Steam 账户"
+        "steam_account_changed": "更改了服务器的 Steam 账户",
+        "game_updates_changed": "更改了服务器跟随游戏更新的方式",
+        "game_update_check_requested": "请求检查游戏更新",
+        "game_update_started": "开始了游戏更新",
+        "game_update_cancelled": "取消了游戏更新"
       },
       "template": {
         "imported": "导入了游戏模板"
@@ -582,7 +586,12 @@
       "spec_mismatch": "该节点的代理拒绝了此更改：它无法更改服务器的短 ID 或游戏。",
       "record_unreadable": "该节点无法读取此服务器的记录：{{detail}}",
       "domain_controller": "该节点是域控制器：Pulsar 无法在其上创建服务器的 Windows 账户。",
-      "invalid_servers_root": "该节点的服务器文件夹无效：{{detail}}"
+      "invalid_servers_root": "该节点的服务器文件夹无效：{{detail}}",
+      "game_updates_invalid": "更新可以关闭、通知或安装，最多提前 60 分钟通知。",
+      "game_updates_unsupported": "无法检查此游戏的更新。",
+      "when_empty_unsupported": "Pulsar 无法知道谁在玩这个游戏，因此不能等到没有人在玩。",
+      "game_updates_forbidden": "自动安装更新需要更新、停止和启动服务器的权限（要通知玩家还需要发送控制台命令的权限）。",
+      "update_check_unsupported": "此节点的代理无法检查游戏更新：请在该节点上更新 Pulsar。"
     },
     "console": {
       "invalid_input": "命令必须是单行内容，且不含控制字符（如制表符）。",
@@ -655,7 +664,14 @@
       "interrupted": "面板在运行结束前已停止。",
       "not_running": "服务器未在运行。",
       "unreadable": "该任务的计划（cron 表达式或时区）已无法读取：请编辑后再运行。",
-      "error": "面板无法运行该任务；详情见其日志。"
+      "error": "面板无法运行该任务；详情见其日志。",
+      "steps_invalid": "一个任务有 1 到 32 个步骤：命令和消息为一行，等待从 1 秒到 1 天。",
+      "sequence_running": "服务器上已有另一个多步骤任务或自动更新在运行。",
+      "sequence_over": "它已不在运行。",
+      "step_timed_out": "服务器没有及时到达该状态。",
+      "step_interfered": "服务器没有按步骤的要求执行。",
+      "start_failed": "服务器没有启动。",
+      "cancelled": "已被用户取消。"
     },
     "notifications": {
       "not_found": "该通知渠道不存在。",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "计划任务失败",
       "nodeOffline": "节点离线（及恢复在线）",
       "nodeDiskLow": "节点磁盘空间不足",
-      "publicIpCertificate": "公网 IP 证书未续期或即将到期"
+      "publicIpCertificate": "公网 IP 证书未续期或即将到期",
+      "gameUpdateAvailable": "有游戏更新（及已安装）",
+      "gameUpdateFailed": "游戏自动更新失败"
     },
     "servers": "服务器",
     "allServers": "所有服务器",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "游戏更新",
+    "status": {
+      "off": "不检查",
+      "available": "有可用更新",
+      "upToDate": "已是最新",
+      "unknown": "尚未检查"
+    },
+    "installed": "已安装",
+    "latest": "最新",
+    "unknownBuild": "未知",
+    "checkFailed": "上次检查失败：{{error}}",
+    "running": "更新中：第 {{step}}/{{steps}} 步（{{what}}）",
+    "steps": {
+      "command": "发送命令",
+      "broadcast": "通知玩家",
+      "wait": "等待",
+      "stop": "停止服务器",
+      "start": "启动服务器",
+      "restart": "重启服务器",
+      "backup": "备份",
+      "update": "更新游戏"
+    },
+    "waitingForPlayers": "更新会等到没有人在玩（当前在线：{{players}}）。",
+    "waiting": "服务器一空闲就开始更新。",
+    "lastRun": {
+      "failed": "上次自动更新失败：{{error}}",
+      "cancelled": "上次自动更新已取消。"
+    },
+    "notChecked": "此游戏的更新不会自动检查。",
+    "checkedAt": "检查于 {{when}}",
+    "neverChecked": "尚未检查。",
+    "checking": "检查中…",
+    "checkNow": "立即检查",
+    "installNow": "更新并重启",
+    "installConfirm": "现在更新 {{name}}？会先通知玩家，然后停止服务器、更新，若之前在运行则重新启动。",
+    "cancel": "取消更新",
+    "skip": "跳过此更新",
+    "cancelConfirm": "停止这次自动更新？已在进行的游戏更新会继续。",
+    "policies": {
+      "off": "不做任何事（从不检查）",
+      "notify": "通知我（检查并显示）",
+      "install": "自动安装（通知、停止、更新、重启）"
+    },
+    "settings": {
+      "title": "游戏更新",
+      "hint": "Pulsar 每 15 分钟向 Steam（或 Mojang）询问游戏是否有更新，和其他面板一样。",
+      "policy": "游戏有更新时",
+      "whenEmpty": "等到没有人在玩",
+      "noQuery": "Pulsar 无法知道谁在玩这个游戏，因此不能等到没有人在玩。",
+      "warningMinutes": "提前通知玩家（分钟）",
+      "warningMessage": "发给玩家的消息",
+      "warningMessageHint": "{time} 会替换为剩余时间（5 min、1 min、10 s）。只发送字母、数字、空格和 . , ! ? : ' ( ) -",
+      "noBroadcast": "此游戏没有给玩家发消息的命令，因此不会通知他们。",
+      "saved": "已保存。",
+      "invalid": "0 到 60。"
+    },
+    "notBefore": "下一次自动更新最早可在 {{when}} 开始（每小时最多一次）。"
   }
 }

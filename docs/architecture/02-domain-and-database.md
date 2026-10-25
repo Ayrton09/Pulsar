@@ -19,7 +19,8 @@
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
 | Steam accounts | **SteamAccount** | Accounts SteamCMD signs in with for servers whose game needs one (Phase 13); a server points at one or none. |
 | Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
-| Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
+| Scheduling | **ScheduledTask**, ScheduledTaskRun, **ServerSequence** | Typed action + cron + IANA time zone; sequences of steps the panel moves on (1.0.9). |
+| Game updates | **GameUpdateWatch** | How a server follows its game's updates and what the last check found (1.0.9). |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
 | Metric history | ServerMetricBucket, NodeMetricBucket | Usage per minute and per hour, written by the panel from the samples agents send (Phase 13). |
@@ -612,6 +613,56 @@ CREATE TABLE scheduled_task_runs (
 CREATE INDEX ix_task_runs_task ON scheduled_task_runs (task_id, started_at DESC);
 CREATE INDEX ix_task_runs_running ON scheduled_task_runs (started_at) WHERE status = 'running';
 -- The last 100 runs of each task are kept.
+
+-- 1.0.9: steps done one after the other on a server (an automatic game update; doc 05).
+CREATE TABLE server_sequences (
+    id                      uuid PRIMARY KEY,
+    server_id               uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    origin                  text NOT NULL CHECK (origin IN ('schedule','game_update')),
+    name                    varchar(128) NOT NULL,      -- who acts in the audit log
+    steps                   jsonb NOT NULL,             -- [{"kind":"broadcast","text":"…"},{"kind":"wait","seconds":50},{"kind":"stop"},…]
+    step_index              integer NOT NULL,
+    step_begun              boolean NOT NULL,           -- the step acted and waits for its outcome
+    step_started_at         timestamptz,
+    wake_at                 timestamptz NOT NULL,       -- when the runner looks at it again
+    operation_id            uuid REFERENCES operations(id) ON DELETE SET NULL,
+    observed_state_sequence bigint,                     -- the server's state as the step began
+    observed_state_at       timestamptz,
+    was_running             boolean NOT NULL,
+    status                  text NOT NULL CHECK (status IN ('running','succeeded','failed','cancelled')),
+    error_code              varchar(64),
+    message                 varchar(1024),
+    created_at              timestamptz NOT NULL,
+    cancelled_at            timestamptz,                -- a user cancelled it: the steps that always run still do
+    finished_at             timestamptz
+);
+CREATE INDEX ix_server_sequences_due ON server_sequences (wake_at) WHERE status = 'running';
+CREATE UNIQUE INDEX ix_server_sequences_running ON server_sequences (server_id) WHERE status = 'running';
+-- The last 20 that ended are kept per server.
+
+-- ===================== Game updates (1.0.9) =====================
+CREATE TABLE game_update_watches (
+    server_id          uuid PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+    policy             text NOT NULL CHECK (policy IN ('off','notify','install')),
+    when_empty         boolean NOT NULL,
+    warning_minutes    integer NOT NULL CHECK (warning_minutes BETWEEN 0 AND 60),
+    warning_message    varchar(100),                -- with {time}; NULL: the default
+    installed          varchar(64),                 -- a Steam build id, a Minecraft version
+    latest             varchar(64),
+    available          boolean,
+    checked_at         timestamptz,
+    check_error_code   varchar(64),
+    check_error        varchar(300),
+    check_requested_at timestamptz,                 -- stored before the node is asked: an answer nobody asked for is dropped
+    next_check_at      timestamptz NOT NULL,
+    notified_latest    varchar(64),
+    notified_at        timestamptz,                 -- at most one notification an hour
+    attempted_latest   varchar(64),                 -- a build is installed by itself once
+    sequence_id        uuid REFERENCES server_sequences(id) ON DELETE SET NULL,
+    auto_updated_at    timestamptz,                 -- automatic updates start at most once an hour
+    updated_at         timestamptz NOT NULL
+);
+-- Made the first time a server is installed (or its settings saved); checked and notified by default.
 
 -- ===================== Notifications (Phase 10) =====================
 CREATE TABLE notification_channels (

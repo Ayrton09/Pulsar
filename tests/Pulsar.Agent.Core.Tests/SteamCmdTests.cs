@@ -919,6 +919,159 @@ public sealed class SteamCmdRunnerTests : IDisposable
         Assert.Contains("3", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TheLatestBuildIsAskedAnonymouslyAndKeptOutOfTheConsole()
+    {
+        var cache = Path.Combine(_root, "server", ".pulsar", "steamcmd", "appcache", "appinfo.vdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
+        File.WriteAllText(cache, "stale");
+        _processes.OnStarted = (process, _) =>
+        {
+            Assert.False(File.Exists(cache)); // SteamCMD asks Steam again instead of printing what it cached
+            process.Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n") + "\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        var build = await runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken);
+
+        Assert.Equal("20476133", build);
+        var spec = Assert.Single(_processes.Specs);
+        Assert.Equal(["+@ShutdownOnFailedCommand", "1", "+@NoPromptForPassword", "1", "+login", "anonymous", "+app_info_update", "1",
+            "+app_info_print", "896660", "+quit"], spec.Arguments);
+        Assert.Equal(ProcessIdentity.Account("pulsar_abcd2345"), spec.Identity);
+        Assert.Equal("bootstrapper", File.ReadAllText(Path.Combine(_root, "server", ".pulsar", "steamcmd", "steamcmd.exe")));
+    }
+
+    [Fact]
+    public async Task ABranchIsAskedByName()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n"));
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        Assert.Equal("20500001", await runner.LatestBuildAsync(Query() with { Branch = "public-test" }, TestContext.Current.CancellationToken));
+        var missing = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.LatestBuildAsync(Query() with { Branch = "experimental" }, TestContext.Current.CancellationToken));
+        Assert.Equal("steamcmd.no_build", missing.Code);
+        Assert.Contains("'experimental'", missing.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACopyThatUpdatedItselfIsRunAgain()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Specs.Count == 1)
+            {
+                process.Print("[  0%] Checking for available updates...\r\n[----] Verifying installation...\r\n");
+                process.Exit(7);
+                return;
+            }
+
+            process.Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n"));
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        Assert.Equal("20476133", await runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+        Assert.Equal(2, _processes.Specs.Count);
+    }
+
+    [Fact]
+    public async Task AFailedSignInIsTheChecksFailure()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("Connecting anonymously to Steam Public...FAILED (Rate Limit Exceeded)\r\n");
+            process.Exit(5);
+        };
+        using var runner = Runner();
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() => runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.rate_limited", failed.Code);
+    }
+
+    [Fact]
+    public async Task NoCheckWhileTheServersSteamCmdInstalls()
+    {
+        var installing = new TaskCompletionSource();
+        _processes.OnStarted = (process, spec) =>
+        {
+            if (spec.Arguments.Contains("+app_update"))
+            {
+                installing.TrySetResult();
+                return; // still installing
+            }
+
+            process.Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n"));
+            process.Exit(0);
+        };
+        using var runner = Runner();
+        var job = Job();
+        var install = runner.RunAsync(job, Report, TestContext.Current.CancellationToken);
+        await installing.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        var busy = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.LatestBuildAsync(Query() with { ServerId = job.ServerId }, TestContext.Current.CancellationToken));
+        Assert.Equal("steamcmd.busy", busy.Code);
+        // Another server's check runs meanwhile.
+        Assert.Equal("20476133", await runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+
+        _processes.Started[0].Print("Success! App '232330' fully installed.\r\n");
+        _processes.Started[0].Exit(0);
+        await install;
+    }
+
+    [Fact]
+    public async Task AnInstallWaitsForACheckOfTheSameServer()
+    {
+        var checking = new TaskCompletionSource();
+        _processes.OnStarted = (process, spec) =>
+        {
+            if (spec.Arguments.Contains("+app_info_print"))
+            {
+                checking.TrySetResult();
+                return; // the check is still running
+            }
+
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+        var job = Job();
+        var check = runner.LatestBuildAsync(Query() with { ServerId = job.ServerId }, TestContext.Current.CancellationToken);
+        await checking.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        var install = runner.RunAsync(job, Report, TestContext.Current.CancellationToken);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        Assert.Single(_processes.Specs);
+        Assert.False(install.IsCompleted);
+
+        _processes.Started[0].Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n"));
+        _processes.Started[0].Exit(0);
+        Assert.Equal("20476133", await check);
+        await install;
+        Assert.Equal(2, _processes.Specs.Count);
+    }
+
+    [Fact]
+    public async Task ACheckThatTakesTooLongIsAbandoned()
+    {
+        _processes.OnStarted = (_, _) => { }; // never exits
+        using var runner = new SteamCmdRunner(_processes, _source, new DirectServerFiles(), new DirectServerFileManager(), _logins,
+            new SteamCmdOptions { CheckTimeout = TimeSpan.FromMilliseconds(200) }, TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() => runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.timed_out", failed.Code);
+        Assert.Equal(1, _processes.Last.TerminatedWith);
+    }
+
     private string CachedLogin => Path.Combine(_root, "server", ".pulsar", "steamcmd", "config", "config.vdf");
 
     /// <summary>The login the agent keeps for the account, while its password is still hunter2-password.</summary>
@@ -930,6 +1083,9 @@ public sealed class SteamCmdRunnerTests : IDisposable
         NullLogger<SteamCmdRunner>.Instance);
 
     private SteamCmdJob Job() => new(Guid.NewGuid(), Path.Combine(_root, "server"), ProcessIdentity.Account("pulsar_abcd2345"), 232330, null, null, false);
+
+    private SteamBuildQuery Query() => new(Guid.NewGuid(), Path.Combine(_root, "server"), ProcessIdentity.Account("pulsar_abcd2345"), 896660,
+        SteamBuilds.PublicBranch);
 
     private Task Report(string stage, double? percent)
     {

@@ -1,7 +1,7 @@
 namespace Pulsar.Manifests;
 
 /// <summary>
-/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7 or 1.0.8): they refuse such a
+/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7, 1.0.8 or 1.0.9): they refuse such a
 /// manifest, so the panel gives it only to agents that announce they read it.
 /// </summary>
 public static class ManifestFeatures
@@ -32,6 +32,13 @@ public static class ManifestFeatures
     {
         ArgumentNullException.ThrowIfNull(manifest);
         return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<MinecraftBedrockStep>().Any();
+    }
+
+    /// <summary>The console commands of Pulsar 1.0.9 (<see cref="GameManifest.Commands"/>).</summary>
+    public static bool UsesCommands(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Commands is not null;
     }
 
     private static IEnumerable<ArgumentCondition> Conditions(IEnumerable<ArgumentTemplate> arguments) =>

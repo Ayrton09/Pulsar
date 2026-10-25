@@ -129,6 +129,38 @@ public sealed class MinecraftBedrockInstallerTests : IDisposable
         Assert.Equal("bedrock.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync("latest"))).Code);
     }
 
+    [Fact]
+    public async Task AnUpdateCheckComparesTheRecordedVersionWithMojangsLatest()
+    {
+        Assert.Equal(new GameBuild(null, "1.26.52.3", true), await CheckAsync("latest"));
+
+        await InstallAsync("latest");
+        _http.Requested.Clear();
+        Assert.Equal(new GameBuild("1.26.52.3", "1.26.52.3", false), await CheckAsync("latest"));
+        Assert.DoesNotContain(Latest, _http.Requested); // nothing downloaded
+
+        _http.Routes[Links] = () => Ok(LinksTo("https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.60.1.zip"));
+        Assert.Equal(new GameBuild("1.26.52.3", "1.26.60.1", true), await CheckAsync("latest"));
+        // A chosen version is what an update installs: Mojang is not asked.
+        _http.Requested.Clear();
+        Assert.Equal(new GameBuild("1.26.52.3", "1.26.52.3", false), await CheckAsync("1.26.52.3"));
+        Assert.Empty(_http.Requested);
+    }
+
+    [Fact]
+    public async Task ACheckThatCannotReachMojangFails()
+    {
+        _http.Routes.Remove(Links);
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => CheckAsync("latest"));
+
+        Assert.StartsWith("bedrock.", error.Code, StringComparison.Ordinal);
+    }
+
+    private Task<GameBuild> CheckAsync(string version) =>
+        new MinecraftBedrockInstaller(new DirectServerFiles(), _http, _signatures) { StallTimeout = TimeSpan.FromSeconds(5) }.CheckAsync(_root, version,
+            TestContext.Current.CancellationToken);
+
     private Task InstallAsync(string version) =>
         new MinecraftBedrockInstaller(new DirectServerFiles(), _http, _signatures) { StallTimeout = TimeSpan.FromSeconds(5) }.InstallAsync(_root, version,
             (stage, _) =>

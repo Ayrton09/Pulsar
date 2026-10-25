@@ -267,6 +267,14 @@ The agent downloads only from `api.github.com`, `github.com` and GitHub's asset 
 
 Bundled: `cs2` has Metamod:Source and CounterStrikeSharp (with its .NET runtime); `rust` has Oxide (uMod) and Carbon, which exclude each other. *Implemented in Phase 12.*
 
+### Commands
+
+```json
+"commands": { "broadcast": "say {{message}}" }
+```
+
+Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console like typed ones (over RCON when the console uses it). `broadcast` tells everyone playing a message, with `{{message}}` where it goes, once, and no other placeholder: the warnings before an automatic game update (doc 05). The panel keeps only letters, digits, spaces and `. , ! ? : ' ( ) -` of a message, on one line, at most 128 characters: what a console reads as more than text (Source's `;` ends a command and starts another, Unturned's `/` starts an argument, a quote ends one, a line break sends the line) never gets through. `messageSpaces` (`_`, `-` or `.`) stands for the spaces of a game whose command takes a single word (Palworld's `Broadcast`). A manifest with `commands` goes only to agents of 1.0.9 or newer (`manifest.commands`), which read it. Bundled: `say {{message}}` for CS2, CS:S, TF2, L4D2, Minecraft and Minecraft: Bedrock Edition; `say "{{message}}"` for Rust and 7 Days to Die; `ServerChat` for ARK: Survival Ascended, `servermsg "…"` for Project Zomboid, `Say` for Unturned, `announce` for V Rising and `Broadcast` with underscores for Palworld (from the games' and hosting providers' documentation; not every one was run). Games whose console takes no commands (Valheim, Enshrouded, Sons of the Forest, Arma Reforger) have none, and SCP: Secret Laboratory's LocalAdmin syntax for Remote Admin commands was not confirmed, so it has none yet. Later versions add the players' commands (kick, ban, whitelist).
+
 ### Reserved for later versions
 
 Additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.

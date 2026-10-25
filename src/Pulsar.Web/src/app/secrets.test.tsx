@@ -214,6 +214,7 @@ describe('one-time secrets', () => {
         templateName: 'Rust',
         templateKey: 'rust',
         gameAddress: null,
+        gameUpdateAvailable: false,
         installState: 'installed',
         runtimeState: 'offline',
         desiredState: 'stopped',

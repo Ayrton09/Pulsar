@@ -132,6 +132,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         var manifest = Manifest(m =>
         {
             m["key"] = "css-json";
+            m.Remove("commands"); // only the JSON files tell the agents apart here
             m["configFiles"] = JsonNode.Parse("""
                 [{ "path": "cstrike/cfg/pulsar.json", "format": "json", "mode": "patch", "set": { "/server/name": "{{var.hostname}}", "/server/slots": "{{var.maxPlayers}}" } }]
                 """);
@@ -173,9 +174,10 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         // An agent before 1.0.8, or one that cannot check Microsoft's signature, would fail its install.
         foreach (var (name, capabilities, refused) in new[]
         {
-            ("bedrock-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats }, true),
+            ("bedrock-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
+                AgentCapabilities.ManifestCommands }, true),
             ("bedrock-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
-                AgentCapabilities.MinecraftBedrock }, false),
+                AgentCapabilities.MinecraftBedrock, AgentCapabilities.ManifestCommands }, false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);
@@ -185,6 +187,33 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
 
             using var response = await admin.PostAsync("/api/v1/servers",
                 new CreateServerRequest(node.Node.Id, template.Id, "Bedrock", null, new Dictionary<string, string?> { ["eula"] = "accepted" }));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task AGameWithCommandsForItsPlayersGoesOnlyToAgentsThatReadThem()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "css");
+
+        // An agent before 1.0.9 refuses a manifest with a "commands" section at the start.
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("commands-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats }, true),
+            ("commands-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
+                AgentCapabilities.ManifestCommands }, false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "Commands", null));
 
             var body = await response.Content.ReadAsStringAsync(Ct);
             Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));

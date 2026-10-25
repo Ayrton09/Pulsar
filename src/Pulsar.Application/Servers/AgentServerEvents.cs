@@ -143,6 +143,11 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 }
 
                 LogOperationCompleted(completed.OperationId, outcome.Operation.Type, outcome.Operation.Status, completed.ErrorCode);
+                if (outcome.Operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate && outcome.Operation.ServerId is { } updated)
+                {
+                    await CheckUpdatesSoonAsync(updated, cancellationToken);
+                }
+
                 return outcome.FollowUp;
             }
             catch (DbUpdateConcurrencyException) when (attempt < 2)
@@ -155,6 +160,24 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 {
                     await transaction.DisposeAsync();
                 }
+            }
+        }
+    }
+
+    /// <summary>What an install or update left is checked for game updates at the next pass (best effort: a check comes anyway).</summary>
+    private async Task CheckUpdatesSoonAsync(ServerId id, CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+        if (await db.GameUpdateWatches.SingleOrDefaultAsync(w => w.ServerId == id, cancellationToken) is { Policy: not GameUpdatePolicy.Off } watch)
+        {
+            watch.CheckSoon(clock.GetUtcNow());
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
             }
         }
     }

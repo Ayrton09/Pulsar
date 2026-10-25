@@ -74,6 +74,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
 
+    public DbSet<ServerSequence> ServerSequences => Set<ServerSequence>();
+
+    public DbSet<GameUpdateWatch> GameUpdateWatches => Set<GameUpdateWatch>();
+
     public DbSet<BackupStorage> BackupStorages => Set<BackupStorage>();
 
     public DbSet<SteamAccount> SteamAccounts => Set<SteamAccount>();
@@ -104,6 +108,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<BackupId>().HaveConversion<BackupIdConverter>();
         configurationBuilder.Properties<ScheduledTaskId>().HaveConversion<ScheduledTaskIdConverter>();
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
+        configurationBuilder.Properties<ServerSequenceId>().HaveConversion<ServerSequenceIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
         configurationBuilder.Properties<SshKeyId>().HaveConversion<SshKeyIdConverter>();

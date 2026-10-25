@@ -378,7 +378,11 @@
         "database_deleted": "Datenbank gelöscht",
         "database_password_rotated": "Passwort einer Datenbank geändert",
         "database_password_viewed": "Passwort einer Datenbank angezeigt",
-        "steam_account_changed": "Steam-Konto eines Servers geändert"
+        "steam_account_changed": "Steam-Konto eines Servers geändert",
+        "game_updates_changed": "Hat geändert, wie ein Server Spiel-Updates folgt",
+        "game_update_check_requested": "Hat eine Prüfung auf ein Spiel-Update angefordert",
+        "game_update_started": "Hat ein Spiel-Update gestartet",
+        "game_update_cancelled": "Hat ein Spiel-Update abgebrochen"
       },
       "template": {
         "imported": "Spielvorlage importiert"
@@ -582,7 +586,12 @@
       "spec_mismatch": "Der Agent des Nodes hat die Änderung abgelehnt: Er kann weder die Kurz-ID noch das Spiel eines Servers ändern.",
       "record_unreadable": "Der Node konnte den Datensatz dieses Servers nicht lesen: {{detail}}",
       "domain_controller": "Der Node ist ein Domänencontroller: Pulsar kann dort das Windows-Konto des Servers nicht erstellen.",
-      "invalid_servers_root": "Der Serverordner des Nodes ist ungültig: {{detail}}"
+      "invalid_servers_root": "Der Serverordner des Nodes ist ungültig: {{detail}}",
+      "game_updates_invalid": "Updates sind aus, werden gemeldet oder installiert, mit bis zu 60 Minuten Vorwarnung.",
+      "game_updates_unsupported": "Die Updates dieses Spiels können nicht geprüft werden.",
+      "when_empty_unsupported": "Pulsar kann nicht erkennen, wer dieses Spiel spielt, und kann daher nicht warten, bis niemand spielt.",
+      "game_updates_forbidden": "Updates von selbst zu installieren braucht die Rechte, den Server zu aktualisieren, zu stoppen und zu starten (und Konsolenbefehle zu senden, um die Spieler zu warnen).",
+      "update_check_unsupported": "Der Agent dieses Knotens kann keine Spiel-Updates prüfen: Aktualisiere Pulsar darauf."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -655,7 +664,14 @@
       "interrupted": "Das Panel wurde beendet, bevor die Ausführung zu Ende war.",
       "not_running": "Der Server lief nicht.",
       "unreadable": "Der Zeitplan der Aufgabe (ihr Cron-Ausdruck oder ihre Zeitzone) kann nicht mehr gelesen werden: Bearbeiten Sie ihn, um die Aufgabe wieder auszuführen.",
-      "error": "Das Panel konnte die Aufgabe nicht ausführen; Details stehen in seinem Protokoll."
+      "error": "Das Panel konnte die Aufgabe nicht ausführen; Details stehen in seinem Protokoll.",
+      "steps_invalid": "Eine Aufgabe hat 1 bis 32 Schritte: Befehle und Nachrichten sind eine Zeile, Wartezeiten dauern 1 Sekunde bis einen Tag.",
+      "sequence_running": "Auf dem Server läuft schon eine Aufgabe mit mehreren Schritten oder ein automatisches Update.",
+      "sequence_over": "Sie läuft nicht mehr.",
+      "step_timed_out": "Der Server hat es nicht rechtzeitig geschafft.",
+      "step_interfered": "Der Server hat nicht getan, was der Schritt verlangt hat.",
+      "start_failed": "Der Server ist nicht gestartet.",
+      "cancelled": "Von einem Benutzer abgebrochen."
     },
     "notifications": {
       "not_found": "Dieser Benachrichtigungskanal existiert nicht.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Geplante Aufgabe fehlgeschlagen",
       "nodeOffline": "Node offline (und wieder online)",
       "nodeDiskLow": "Wenig Speicherplatz auf dem Node",
-      "publicIpCertificate": "Zertifikat für die öffentliche IP nicht erneuert oder läuft bald ab"
+      "publicIpCertificate": "Zertifikat für die öffentliche IP nicht erneuert oder läuft bald ab",
+      "gameUpdateAvailable": "Spiel-Update verfügbar (und installiert)",
+      "gameUpdateFailed": "Automatisches Spiel-Update fehlgeschlagen"
     },
     "servers": "Server",
     "allServers": "Alle Server",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "Spiel-Updates",
+    "status": {
+      "off": "Nicht geprüft",
+      "available": "Update verfügbar",
+      "upToDate": "Aktuell",
+      "unknown": "Noch nicht geprüft"
+    },
+    "installed": "Installiert",
+    "latest": "Neueste",
+    "unknownBuild": "unbekannt",
+    "checkFailed": "Die letzte Prüfung ist fehlgeschlagen: {{error}}",
+    "running": "Update läuft: Schritt {{step}} von {{steps}} ({{what}})",
+    "steps": {
+      "command": "sendet einen Befehl",
+      "broadcast": "warnt die Spieler",
+      "wait": "wartet",
+      "stop": "stoppt den Server",
+      "start": "startet den Server",
+      "restart": "startet den Server neu",
+      "backup": "erstellt ein Backup",
+      "update": "aktualisiert das Spiel"
+    },
+    "waitingForPlayers": "Das Update wartet, bis niemand spielt (jetzt online: {{players}}).",
+    "waiting": "Das Update beginnt, sobald der Server frei ist.",
+    "lastRun": {
+      "failed": "Das letzte automatische Update ist fehlgeschlagen: {{error}}",
+      "cancelled": "Das letzte automatische Update wurde abgebrochen."
+    },
+    "notChecked": "Die Updates dieses Spiels werden nicht von selbst geprüft.",
+    "checkedAt": "Geprüft {{when}}",
+    "neverChecked": "Noch nicht geprüft.",
+    "checking": "Prüfe…",
+    "checkNow": "Jetzt prüfen",
+    "installNow": "Aktualisieren und neu starten",
+    "installConfirm": "{{name}} jetzt aktualisieren? Die Spieler werden gewarnt, der Server stoppt, aktualisiert und startet wieder, falls er lief.",
+    "cancel": "Update abbrechen",
+    "skip": "Dieses Update überspringen",
+    "cancelConfirm": "Dieses automatische Update anhalten? Ein bereits laufendes Spiel-Update läuft weiter.",
+    "policies": {
+      "off": "Nichts tun (nie geprüft)",
+      "notify": "Bescheid geben (prüfen und anzeigen)",
+      "install": "Installieren (warnen, stoppen, aktualisieren, neu starten)"
+    },
+    "settings": {
+      "title": "Spiel-Updates",
+      "hint": "Pulsar fragt Steam (oder Mojang) alle 15 Minuten, ob das Spiel ein Update hat, wie andere Panels.",
+      "policy": "Wenn das Spiel ein Update hat",
+      "whenEmpty": "Warten, bis niemand spielt",
+      "noQuery": "Pulsar kann nicht erkennen, wer dieses Spiel spielt, und kann daher nicht warten, bis niemand spielt.",
+      "warningMinutes": "Spieler warnen (Minuten vorher)",
+      "warningMessage": "Was die Spieler lesen",
+      "warningMessageHint": "{time} wird zur verbleibenden Zeit (5 min, 1 min, 10 s). Gesendet werden nur Buchstaben, Ziffern, Leerzeichen und . , ! ? : ' ( ) -",
+      "noBroadcast": "Dieses Spiel hat keinen Befehl für Nachrichten an die Spieler, sie werden daher nicht gewarnt.",
+      "saved": "Gespeichert.",
+      "invalid": "Von 0 bis 60."
+    },
+    "notBefore": "Das nächste automatische Update kann um {{when}} beginnen (höchstens eines pro Stunde)."
   }
 }

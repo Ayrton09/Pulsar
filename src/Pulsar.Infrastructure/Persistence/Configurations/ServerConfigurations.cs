@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
 
@@ -237,3 +238,34 @@ internal sealed class SftpSettingsConfiguration : IEntityTypeConfiguration<SftpS
         builder.Property<uint>("Version").IsRowVersion();
     }
 }
+
+internal sealed class GameUpdateWatchConfiguration : IEntityTypeConfiguration<GameUpdateWatch>
+{
+    public void Configure(EntityTypeBuilder<GameUpdateWatch> builder)
+    {
+        builder.ToTable("game_update_watches", t =>
+        {
+            t.HasCheckConstraint("ck_game_update_watches_policy", SnakeCaseEnum<GameUpdatePolicy>.CheckConstraint("policy"));
+            t.HasCheckConstraint("ck_game_update_watches_warning_minutes", $"warning_minutes BETWEEN 0 AND {GameUpdateWatch.MaxWarningMinutes}");
+        });
+
+        builder.HasKey(w => w.ServerId);
+        builder.Property(w => w.ServerId).ValueGeneratedNever();
+        builder.Property(w => w.Policy).HasConversion<SnakeCaseEnumConverter<GameUpdatePolicy>>();
+        builder.Property(w => w.WarningMessage).HasMaxLength(GameUpdateWatch.MaxWarningMessageLength);
+        builder.Property(w => w.Installed).HasMaxLength(GameUpdateWatch.MaxBuildLength);
+        builder.Property(w => w.Latest).HasMaxLength(GameUpdateWatch.MaxBuildLength);
+        builder.Property(w => w.NotifiedLatest).HasMaxLength(GameUpdateWatch.MaxBuildLength);
+        builder.Property(w => w.AttemptedLatest).HasMaxLength(GameUpdateWatch.MaxBuildLength);
+        builder.Property(w => w.CheckErrorCode).HasMaxLength(GameUpdateWatch.MaxErrorCodeLength);
+        builder.Property(w => w.CheckError).HasMaxLength(GameUpdateWatch.MaxMessageLength);
+        builder.Ignore(w => w.AutoUpdateDue);
+        // Checks (the pass, the node's answer) and users (settings) can race: the loser reads it again.
+        builder.Property<uint>("Version").IsRowVersion();
+        builder.HasIndex(w => w.NextCheckAt).HasFilter("policy <> 'off'").HasDatabaseName("ix_game_update_watches_due");
+
+        builder.HasOne<Server>().WithOne().HasForeignKey<GameUpdateWatch>(w => w.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ServerSequence>().WithMany().HasForeignKey(w => w.SequenceId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+

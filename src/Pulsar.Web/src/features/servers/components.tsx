@@ -70,6 +70,12 @@ export function NodeDisconnectedBadge() {
   return <Badge tone="danger">{t('servers.nodeDisconnected')}</Badge>;
 }
 
+/** The last check found an update of the server's game (Pulsar 1.0.9). */
+export function GameUpdateBadge() {
+  const { t } = useTranslation();
+  return <Badge tone="accent">{t('gameUpdates.status.available')}</Badge>;
+}
+
 /** Why the server is in its state, when that needs explaining (a crash, a refused start, a timeout). */
 export function StateReason({
   server,

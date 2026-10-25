@@ -378,7 +378,11 @@
         "database_deleted": "データベースを削除",
         "database_password_rotated": "データベースのパスワードを変更",
         "database_password_viewed": "データベースのパスワードを表示",
-        "steam_account_changed": "サーバーのSteamアカウントを変更"
+        "steam_account_changed": "サーバーのSteamアカウントを変更",
+        "game_updates_changed": "サーバーのゲームアップデートの扱いを変更",
+        "game_update_check_requested": "ゲームのアップデート確認を依頼",
+        "game_update_started": "ゲームのアップデートを開始",
+        "game_update_cancelled": "ゲームのアップデートをキャンセル"
       },
       "template": {
         "imported": "ゲームテンプレートをインポート"
@@ -582,7 +586,12 @@
       "spec_mismatch": "ノードのエージェントが変更を拒否しました。サーバーの短縮IDやゲームは変更できません。",
       "record_unreadable": "ノードがこのサーバーの記録を読み取れませんでした: {{detail}}",
       "domain_controller": "このノードはドメインコントローラーです。PulsarはそこにサーバーのWindowsアカウントを作成できません。",
-      "invalid_servers_root": "ノードのサーバーフォルダーが正しくありません: {{detail}}"
+      "invalid_servers_root": "ノードのサーバーフォルダーが正しくありません: {{detail}}",
+      "game_updates_invalid": "アップデートはオフ、通知、インストールのいずれかで、通知は最大 60 分前までです。",
+      "game_updates_unsupported": "このゲームのアップデートは確認できません。",
+      "when_empty_unsupported": "Pulsar はこのゲームのプレイヤーを把握できないため、誰もいなくなるまで待てません。",
+      "game_updates_forbidden": "アップデートを自動でインストールするには、サーバーの更新・停止・起動の権限（プレイヤーへの通知にはコンソールコマンドの送信権限も）が必要です。",
+      "update_check_unsupported": "このノードのエージェントはゲームのアップデートを確認できません。Pulsar を更新してください。"
     },
     "console": {
       "invalid_input": "コマンドは、制御文字(タブなど)を含まない1行で入力してください。",
@@ -655,7 +664,14 @@
       "interrupted": "実行が終了する前にパネルが停止しました。",
       "not_running": "サーバーが稼働していませんでした。",
       "unreadable": "タスクのスケジュール(cron式またはタイムゾーン)を読み取れなくなりました。編集して再び実行できるようにしてください。",
-      "error": "パネルがタスクを実行できませんでした。詳細はパネルのログを確認してください。"
+      "error": "パネルがタスクを実行できませんでした。詳細はパネルのログを確認してください。",
+      "steps_invalid": "タスクのステップは 1〜32 個です。コマンドとメッセージは 1 行、待機は 1 秒〜1 日です。",
+      "sequence_running": "このサーバーでは別の複数ステップのタスクまたは自動アップデートが実行中です。",
+      "sequence_over": "すでに実行されていません。",
+      "step_timed_out": "サーバーが時間内にその状態になりませんでした。",
+      "step_interfered": "サーバーがステップの指示どおりに動きませんでした。",
+      "start_failed": "サーバーが起動しませんでした。",
+      "cancelled": "ユーザーがキャンセルしました。"
     },
     "notifications": {
       "not_found": "その通知チャンネルは存在しません。",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "スケジュールタスクの失敗",
       "nodeOffline": "ノードのオフライン(および復帰)",
       "nodeDiskLow": "ノードのディスク残量不足",
-      "publicIpCertificate": "パブリックIP証明書の更新失敗または期限切れ間近"
+      "publicIpCertificate": "パブリックIP証明書の更新失敗または期限切れ間近",
+      "gameUpdateAvailable": "ゲームのアップデートあり（およびインストール済み）",
+      "gameUpdateFailed": "ゲームの自動アップデートに失敗"
     },
     "servers": "サーバー",
     "allServers": "すべてのサーバー",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "ゲームのアップデート",
+    "status": {
+      "off": "確認しない",
+      "available": "アップデートあり",
+      "upToDate": "最新",
+      "unknown": "未確認"
+    },
+    "installed": "インストール済み",
+    "latest": "最新",
+    "unknownBuild": "不明",
+    "checkFailed": "前回の確認に失敗しました: {{error}}",
+    "running": "更新中: ステップ {{step}}/{{steps}}（{{what}}）",
+    "steps": {
+      "command": "コマンドを送信中",
+      "broadcast": "プレイヤーに通知中",
+      "wait": "待機中",
+      "stop": "サーバーを停止中",
+      "start": "サーバーを起動中",
+      "restart": "サーバーを再起動中",
+      "backup": "バックアップ中",
+      "update": "ゲームを更新中"
+    },
+    "waitingForPlayers": "誰もプレイしていなくなるまでアップデートを待ちます（現在オンライン: {{players}}）。",
+    "waiting": "サーバーが空き次第アップデートを始めます。",
+    "lastRun": {
+      "failed": "前回の自動アップデートに失敗しました: {{error}}",
+      "cancelled": "前回の自動アップデートはキャンセルされました。"
+    },
+    "notChecked": "このゲームのアップデートは自動では確認されません。",
+    "checkedAt": "{{when}} に確認",
+    "neverChecked": "まだ確認していません。",
+    "checking": "確認中…",
+    "checkNow": "今すぐ確認",
+    "installNow": "更新して再起動",
+    "installConfirm": "{{name}} を今すぐ更新しますか？プレイヤーに通知し、サーバーを停止して更新し、起動していた場合は再び起動します。",
+    "cancel": "アップデートをキャンセル",
+    "skip": "このアップデートをスキップ",
+    "cancelConfirm": "この自動アップデートを止めますか？すでに進行中のゲーム更新は続きます。",
+    "policies": {
+      "off": "何もしない（確認しない）",
+      "notify": "知らせる（確認して表示）",
+      "install": "インストールする（通知・停止・更新・再起動）"
+    },
+    "settings": {
+      "title": "ゲームのアップデート",
+      "hint": "Pulsar は 15 分ごとに Steam（または Mojang）にゲームのアップデートがあるか確認します。",
+      "policy": "ゲームにアップデートがあるとき",
+      "whenEmpty": "誰もプレイしていなくなるまで待つ",
+      "noQuery": "Pulsar はこのゲームのプレイヤーを把握できないため、誰もいなくなるまで待てません。",
+      "warningMinutes": "プレイヤーへの通知（何分前）",
+      "warningMessage": "プレイヤーへのメッセージ",
+      "warningMessageHint": "{time} は残り時間（5 min、1 min、10 s）になります。送信されるのは文字、数字、空白と . , ! ? : ' ( ) - のみです。",
+      "noBroadcast": "このゲームにはプレイヤーにメッセージを送るコマンドがないため、通知されません。",
+      "saved": "保存しました。",
+      "invalid": "0〜60 の範囲です。"
+    },
+    "notBefore": "次の自動アップデートは {{when}} から開始できます（1 時間に 1 回まで）。"
   }
 }

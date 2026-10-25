@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "tf2",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Team Fortress 2",
   "description": "Team Fortress 2 dedicated server (srcds, the 64-bit one), installed anonymously with SteamCMD (about 15 GB).",
   "authors": ["Pulsar contributors"],
@@ -143,5 +143,6 @@
   "backup": {
     "include": ["tf/cfg/**", "tf/addons/**", "tf/custom/**"],
     "exclude": ["**/*.log", "**/*.dmp"]
-  }
+  },
+  "commands": { "broadcast": "say {{message}}" }
 }

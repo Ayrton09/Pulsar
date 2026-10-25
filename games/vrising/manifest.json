@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "vrising",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "V Rising",
   "description": "V Rising dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the save-data folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -199,5 +199,6 @@
   "backup": {
     "include": ["save-data/**"],
     "exclude": ["**/*.log"]
-  }
+  },
+  "commands": { "broadcast": "announce {{message}}" }
 }

@@ -57,6 +57,7 @@ import { PowerButtons } from './PowerButtons';
 import { AddressChip } from './ServerCard';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { failureReason, serverActions } from './serverStatus';
+import { GameUpdatesCard } from '../gameUpdates/GameUpdates';
 
 const allTabs = [
   'overview',
@@ -176,6 +177,7 @@ function ServerView({ id }: { id: string }) {
           <>
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <OverviewCard details={details.data} />
+              <GameUpdatesCard details={details.data} />
               {server.runtimeState === 'running' && metrics?.query && <PlayersCard query={metrics.query} />}
               <OperationsCard operations={details.data.recentOperations} />
             </div>

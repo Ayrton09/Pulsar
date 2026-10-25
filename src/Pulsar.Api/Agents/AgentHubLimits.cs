@@ -28,6 +28,7 @@ internal sealed partial class AgentHubLimits(TimeProvider clock, ILogger<AgentHu
             [nameof(IAgentHub.ServerStateChanged)] = (50, 500),
             [nameof(IAgentHub.TransferCompleted)] = (50, 200),
             [nameof(IAgentHub.UpdateReport)] = (0.2, 10),
+            [nameof(IAgentHub.GameUpdateChecked)] = (5, 50),
         }.ToFrozenDictionary(StringComparer.Ordinal);
 
     private static readonly TimeSpan s_logInterval = TimeSpan.FromMinutes(1);

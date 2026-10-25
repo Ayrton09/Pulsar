@@ -64,7 +64,9 @@ public static class DependencyInjection
         services.AddSingleton<IDatabaseHostClient, MySqlDatabaseHostClient>();
         services.AddScoped<IRowLocks, RowLocks>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
+        services.AddScoped<IServerSequenceClaims, ServerSequenceClaims>();
         services.AddHostedService<SchedulerService>();
+        services.AddHostedService<SequenceService>();
 
         services.AddSingleton<INotificationSecretProtector, DataProtectionNotificationSecretProtector>();
         services.AddScoped<INotificationClaims, NotificationClaims>();

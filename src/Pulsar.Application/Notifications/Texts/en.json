@@ -10,7 +10,9 @@
     "lastSeen": "Last seen",
     "address": "Address",
     "currentCertificateExpires": "The current certificate expires",
-    "expires": "Expires"
+    "expires": "Expires",
+    "installed": "Installed",
+    "latest": "Latest"
   },
   "serverOutOfMemory": {
     "title": "{server} ran out of memory",
@@ -56,6 +58,19 @@
     "title": "Node {node} is running out of disk space",
     "text": "A full drive breaks updates, backups and the game servers themselves. Free some space or delete old backups.",
     "drive": "{free} free of {total} ({percent} %)"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} has a game update",
+    "text": "A newer build of its game is out. Update it from its page when it suits you.",
+    "installs": "A newer build of its game is out. Pulsar installs it by itself, as the server's game updates are set."
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} was updated",
+    "text": "Pulsar installed its game's update by itself."
+  },
+  "gameUpdateFailed": {
+    "title": "The automatic update of {server} failed",
+    "text": "Pulsar could not install its game's update. The server was started again if it was running. Check its console."
   },
   "publicIpCertificateFailed": {
     "title": "The public IP certificate could not be renewed",

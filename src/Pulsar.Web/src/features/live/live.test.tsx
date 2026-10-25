@@ -38,6 +38,7 @@ const server: Schemas['ServerSummary'] = {
   templateName: 'Pulsar test server',
   templateKey: 'pulsar-test',
   gameAddress: null,
+  gameUpdateAvailable: false,
   installState: 'installed',
   runtimeState: 'running',
   desiredState: 'running',

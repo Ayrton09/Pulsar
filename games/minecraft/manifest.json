@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "name": "Minecraft: Java Edition",
   "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang, with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version.",
   "authors": ["Pulsar contributors"],
@@ -154,5 +154,6 @@
   "backup": {
     "include": ["world/**", "world_nether/**", "world_the_end/**", "server.properties", "*.json"],
     "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
-  }
+  },
+  "commands": { "broadcast": "say {{message}}" }
 }

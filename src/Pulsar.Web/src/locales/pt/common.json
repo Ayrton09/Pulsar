@@ -378,7 +378,11 @@
         "database_deleted": "Excluiu um banco de dados",
         "database_password_rotated": "Alterou a senha de um banco de dados",
         "database_password_viewed": "Viu a senha de um banco de dados",
-        "steam_account_changed": "Alterou a conta Steam de um servidor"
+        "steam_account_changed": "Alterou a conta Steam de um servidor",
+        "game_updates_changed": "Mudou como um servidor segue as atualizações do jogo",
+        "game_update_check_requested": "Pediu para verificar uma atualização do jogo",
+        "game_update_started": "Iniciou uma atualização do jogo",
+        "game_update_cancelled": "Cancelou uma atualização do jogo"
       },
       "template": {
         "imported": "Importou um modelo de jogo"
@@ -582,7 +586,12 @@
       "spec_mismatch": "O agente do nó recusou a alteração: ele não pode mudar o ID curto nem o jogo de um servidor.",
       "record_unreadable": "O nó não conseguiu ler o registro deste servidor: {{detail}}",
       "domain_controller": "O nó é um controlador de domínio: o Pulsar não pode criar ali a conta do Windows do servidor.",
-      "invalid_servers_root": "A pasta de servidores do nó não é válida: {{detail}}"
+      "invalid_servers_root": "A pasta de servidores do nó não é válida: {{detail}}",
+      "game_updates_invalid": "As atualizações ficam desligadas, avisadas ou instaladas, com até 60 minutos de aviso.",
+      "game_updates_unsupported": "As atualizações deste jogo não podem ser verificadas.",
+      "when_empty_unsupported": "O Pulsar não consegue saber quem joga este jogo, então não pode esperar até ninguém estar jogando.",
+      "game_updates_forbidden": "Instalar atualizações sozinhas exige as permissões para atualizar, parar e iniciar o servidor (e para enviar comandos de console, para avisar os jogadores).",
+      "update_check_unsupported": "O agente deste nó não consegue verificar atualizações do jogo: atualize o Pulsar nele."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -655,7 +664,14 @@
       "interrupted": "O painel parou antes de a execução terminar.",
       "not_running": "O servidor não estava em execução.",
       "unreadable": "O agendamento da tarefa (sua expressão cron ou fuso horário) não pode mais ser lido: edite-o para executá-la novamente.",
-      "error": "O painel não conseguiu executar a tarefa; o log dele tem os detalhes."
+      "error": "O painel não conseguiu executar a tarefa; o log dele tem os detalhes.",
+      "steps_invalid": "Uma tarefa tem de 1 a 32 passos: comandos e mensagens têm uma linha, esperas duram de 1 segundo a um dia.",
+      "sequence_running": "Outra tarefa de vários passos ou uma atualização automática está rodando no servidor.",
+      "sequence_over": "Já não está rodando.",
+      "step_timed_out": "O servidor não chegou lá a tempo.",
+      "step_interfered": "O servidor não fez o que o passo pediu.",
+      "start_failed": "O servidor não iniciou.",
+      "cancelled": "Cancelada por um usuário."
     },
     "notifications": {
       "not_found": "Esse canal de notificação não existe.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Tarefa agendada falhou",
       "nodeOffline": "Nó offline (e de volta online)",
       "nodeDiskLow": "Pouco espaço em disco no nó",
-      "publicIpCertificate": "Certificado de IP público não renovado ou prestes a expirar"
+      "publicIpCertificate": "Certificado de IP público não renovado ou prestes a expirar",
+      "gameUpdateAvailable": "Atualização do jogo disponível (e instalada)",
+      "gameUpdateFailed": "Falha na atualização automática do jogo"
     },
     "servers": "Servidores",
     "allServers": "Todos os servidores",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "Atualizações do jogo",
+    "status": {
+      "off": "Não verificado",
+      "available": "Atualização disponível",
+      "upToDate": "Em dia",
+      "unknown": "Ainda não verificado"
+    },
+    "installed": "Instalado",
+    "latest": "Mais recente",
+    "unknownBuild": "desconhecido",
+    "checkFailed": "A última verificação falhou: {{error}}",
+    "running": "Atualizando: passo {{step}} de {{steps}} ({{what}})",
+    "steps": {
+      "command": "enviando um comando",
+      "broadcast": "avisando os jogadores",
+      "wait": "esperando",
+      "stop": "parando o servidor",
+      "start": "iniciando o servidor",
+      "restart": "reiniciando o servidor",
+      "backup": "fazendo um backup",
+      "update": "atualizando o jogo"
+    },
+    "waitingForPlayers": "A atualização espera até ninguém estar jogando (online agora: {{players}}).",
+    "waiting": "A atualização começa assim que o servidor ficar livre.",
+    "lastRun": {
+      "failed": "A última atualização automática falhou: {{error}}",
+      "cancelled": "A última atualização automática foi cancelada."
+    },
+    "notChecked": "As atualizações deste jogo não são verificadas sozinhas.",
+    "checkedAt": "Verificado {{when}}",
+    "neverChecked": "Ainda não verificado.",
+    "checking": "Verificando…",
+    "checkNow": "Verificar agora",
+    "installNow": "Atualizar e reiniciar",
+    "installConfirm": "Atualizar {{name}} agora? Os jogadores são avisados, o servidor para, atualiza e inicia de novo se estava ligado.",
+    "cancel": "Cancelar a atualização",
+    "skip": "Pular esta atualização",
+    "cancelConfirm": "Parar esta atualização automática? Uma atualização do jogo já em andamento continua.",
+    "policies": {
+      "off": "Não fazer nada (nunca verificado)",
+      "notify": "Avisar (verificar e mostrar)",
+      "install": "Instalar (avisar, parar, atualizar, iniciar de novo)"
+    },
+    "settings": {
+      "title": "Atualizações do jogo",
+      "hint": "O Pulsar pergunta à Steam (ou à Mojang) a cada 15 minutos se o jogo tem uma atualização, como outros painéis.",
+      "policy": "Quando o jogo tem uma atualização",
+      "whenEmpty": "Esperar até ninguém estar jogando",
+      "noQuery": "O Pulsar não consegue saber quem joga este jogo, então não pode esperar até ninguém estar jogando.",
+      "warningMinutes": "Avisar os jogadores (minutos antes)",
+      "warningMessage": "O que os jogadores recebem",
+      "warningMessageHint": "{time} vira o tempo que falta (5 min, 1 min, 10 s). Só são enviados letras, números, espaços e . , ! ? : ' ( ) -",
+      "noBroadcast": "Este jogo não tem um comando para mandar mensagens aos jogadores, então eles não são avisados.",
+      "saved": "Salvo.",
+      "invalid": "De 0 a 60."
+    },
+    "notBefore": "A próxima atualização automática pode começar às {{when}} (no máximo uma por hora)."
   }
 }

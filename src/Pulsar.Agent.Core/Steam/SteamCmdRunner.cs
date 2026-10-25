@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Files;
@@ -31,6 +32,12 @@ public sealed class SteamCmdOptions
 
     /// <summary>Runs that only update SteamCMD itself (exit code 7) allowed before giving up.</summary>
     public int MaxSelfUpdates { get; set; } = 2;
+
+    /// <summary>Update checks running at the same time on the node (each one signs in to Steam).</summary>
+    public int MaxConcurrentChecks { get; set; } = 2;
+
+    /// <summary>A check of the latest build that takes longer than this is abandoned.</summary>
+    public TimeSpan CheckTimeout { get; set; } = TimeSpan.FromMinutes(3);
 }
 
 /// <summary>An app to install or update in a server directory.</summary>
@@ -40,6 +47,10 @@ public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdenti
 {
     public override string ToString() => $"SteamCmdJob {{ ServerId = {ServerId}, AppId = {AppId}, Login = {Login?.UserName ?? "anonymous"} }}";
 }
+
+/// <summary>An app whose latest build on a branch a server's SteamCMD asks Steam for.</summary>
+/// <param name="Branch">The branch the server follows (<see cref="SteamBuilds.PublicBranch"/> without a beta).</param>
+public sealed record SteamBuildQuery(Guid ServerId, string ServerRoot, ProcessIdentity Identity, int AppId, string Branch);
 
 /// <summary>
 /// Runs SteamCMD for a server (docs/architecture/06, "SteamCMD"). Each server has its own copy in its directory and
@@ -70,17 +81,26 @@ public sealed partial class SteamCmdRunner(
     private const string WorkingDirectory = ".pulsar/steamcmd";
     private const int SelfUpdateExitCode = 7;
 
+    // Output of app_info_print kept at most: the app's info is tens of kilobytes; SteamCMD's own lines come before it.
+    private const int MaxAppInfoLength = 4 * 1024 * 1024;
+
     private readonly SemaphoreSlim _slots = new(Math.Max(1, options.MaxConcurrentRuns));
+    private readonly SemaphoreSlim _checkSlots = new(Math.Max(1, options.MaxConcurrentChecks));
     private readonly Dictionary<Guid, SemaphoreSlim> _accounts = [];
+    private readonly Dictionary<Guid, SemaphoreSlim> _copies = []; // server → its SteamCMD copy, used by one run at a time
 
     public void Dispose()
     {
         _slots.Dispose();
-        lock (_accounts)
+        _checkSlots.Dispose();
+        foreach (var locks in (Dictionary<Guid, SemaphoreSlim>[])[_accounts, _copies])
         {
-            foreach (var account in _accounts.Values)
+            lock (locks)
             {
-                account.Dispose();
+                foreach (var semaphore in locks.Values)
+                {
+                    semaphore.Dispose();
+                }
             }
         }
     }
@@ -104,7 +124,7 @@ public sealed partial class SteamCmdRunner(
         CheckLogin(job.Login);
         await progress(InstallStages.Queued, null);
         // The account first, then a slot: a run waiting for its account holds no slot another account could use.
-        var account = job.Login is { } owner ? AccountLock(owner.AccountId) : null;
+        var account = job.Login is { } owner ? Lock(_accounts, owner.AccountId) : null;
         if (account is not null)
         {
             await account.WaitAsync(cancellationToken);
@@ -112,19 +132,166 @@ public sealed partial class SteamCmdRunner(
 
         try
         {
-            await _slots.WaitAsync(cancellationToken);
+            // An update check may be using the server's copy: it is over in a minute or two.
+            var copy = Lock(_copies, job.ServerId);
+            await copy.WaitAsync(cancellationToken);
             try
             {
-                await RunJobAsync(job, progress, console, cancellationToken);
+                await _slots.WaitAsync(cancellationToken);
+                try
+                {
+                    await RunJobAsync(job, progress, console, cancellationToken);
+                }
+                finally
+                {
+                    _slots.Release();
+                }
             }
             finally
             {
-                _slots.Release();
+                copy.Release();
             }
         }
         finally
         {
             account?.Release();
+        }
+    }
+
+    /// <summary>
+    /// The latest build Steam offers on the query's branch (an update check, Pulsar 1.0.9): the server's SteamCMD signs in
+    /// anonymously and prints the app's info (<c>app_info_print</c>), as WindowsGSM and LinuxGSM ask. It runs as the
+    /// server's account, while the game runs or not, and its output stays out of the console. What it prints comes from a
+    /// copy the server's account controls: it decides only whether this server shows an update.
+    /// </summary>
+    /// <exception cref="GameProcessException">
+    /// <c>steamcmd.busy</c> while an install or update of the server uses its SteamCMD; <c>steamcmd.no_build</c> when
+    /// Steam's answer names no build for the branch; another <c>steamcmd.*</c> code when SteamCMD fails.
+    /// </exception>
+    public async Task<string> LatestBuildAsync(SteamBuildQuery query, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var copy = Lock(_copies, query.ServerId);
+        if (!await copy.WaitAsync(TimeSpan.Zero, cancellationToken))
+        {
+            throw new GameProcessException("steamcmd.busy", "SteamCMD is installing or updating this server.");
+        }
+
+        try
+        {
+            await _checkSlots.WaitAsync(cancellationToken);
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(options.CheckTimeout);
+                try
+                {
+                    return await CheckAsync(query, timeout.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new GameProcessException("steamcmd.timed_out",
+                        $"SteamCMD did not answer within {options.CheckTimeout.TotalMinutes:0} minutes.");
+                }
+            }
+            finally
+            {
+                _checkSlots.Release();
+            }
+        }
+        finally
+        {
+            copy.Release();
+        }
+    }
+
+    private async Task<string> CheckAsync(SteamBuildQuery query, CancellationToken cancellationToken)
+    {
+        await PrepareCopyAsync(new SteamCmdJob(query.ServerId, query.ServerRoot, query.Identity, query.AppId, null, null, false), cancellationToken);
+        // SteamCMD may print the app info it cached instead of asking again (LinuxGSM removes it too).
+        files.Delete(query.ServerRoot, WorkingDirectory + "/appcache/appinfo.vdf");
+        string[] arguments =
+        [
+            "+@ShutdownOnFailedCommand", "1",
+            "+@NoPromptForPassword", "1",
+            "+login", "anonymous",
+            "+app_info_update", "1",
+            "+app_info_print", query.AppId.ToString(CultureInfo.InvariantCulture),
+            "+quit",
+        ];
+        for (var selfUpdates = 0; ; selfUpdates++)
+        {
+            var (exitCode, text) = await PrintAsync(query, arguments, cancellationToken);
+            if (SteamBuilds.Latest(text, query.AppId, query.Branch) is { } build)
+            {
+                LogLatestBuild(query.ServerId, query.AppId, query.Branch, build);
+                return build;
+            }
+
+            if (exitCode == SelfUpdateExitCode && selfUpdates < options.MaxSelfUpdates)
+            {
+                LogSelfUpdated(query.ServerId);
+                continue; // a new copy updated itself first and printed nothing else
+            }
+
+            if (text.Split('\n').Select(SteamCmdOutput.Parse).OfType<SteamCmdLine.Failure>().FirstOrDefault() is { } failure)
+            {
+                throw new GameProcessException(SteamCmdOutput.Classify(failure.Message).Code, failure.Message);
+            }
+
+            LogNoBuild(query.ServerId, query.AppId, query.Branch, exitCode);
+            throw new GameProcessException("steamcmd.no_build", exitCode == 0
+                ? $"Steam's answer names no build of app {query.AppId.ToString(CultureInfo.InvariantCulture)} on the branch '{query.Branch}'."
+                : $"SteamCMD exited with code {exitCode.ToString(CultureInfo.InvariantCulture)} without the app's info.");
+        }
+    }
+
+    /// <summary>Runs the server's SteamCMD with <paramref name="arguments"/>; its exit code and what it printed (bounded).</summary>
+    private async Task<(int ExitCode, string Text)> PrintAsync(SteamBuildQuery query, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        var spec = new ProcessLaunchSpec(query.ServerId, query.ServerRoot, Executable, arguments, WorkingDirectory, new Dictionary<string, string>(),
+            ConsoleMode.Pty, ConsoleEncoding.Utf8, query.Identity);
+        var process = await processes.StartAsync(spec, cancellationToken);
+        var printed = new StringBuilder();
+        var lines = new ConsoleLines();
+        // A pseudo console's output ends only when it is closed (disposing the process): read it alongside.
+        var pump = Task.Run(async () =>
+        {
+            await foreach (var chunk in process.Output.ReadAllAsync(CancellationToken.None))
+            {
+                foreach (var line in lines.Add(chunk.Text).Where(l => printed.Length + l.Length < MaxAppInfoLength))
+                {
+                    printed.Append(line).Append('\n');
+                }
+            }
+        }, CancellationToken.None);
+        try
+        {
+            var exitCode = await process.Exited.WaitAsync(cancellationToken);
+            await process.DisposeAsync();
+            await pump;
+            return (exitCode, printed.Append(lines.PendingText).ToString());
+        }
+        catch (OperationCanceledException)
+        {
+            process.TerminateTree(1);
+            await process.DisposeAsync();
+            await pump;
+            throw;
+        }
+    }
+
+    private static SemaphoreSlim Lock(Dictionary<Guid, SemaphoreSlim> locks, Guid id)
+    {
+        lock (locks)
+        {
+            if (!locks.TryGetValue(id, out var semaphore))
+            {
+                semaphore = new SemaphoreSlim(1, 1);
+                locks.Add(id, semaphore);
+            }
+
+            return semaphore;
         }
     }
 
@@ -211,20 +378,6 @@ public sealed partial class SteamCmdRunner(
             console?.Note(string.Create(CultureInfo.InvariantCulture,
                 $"{ForConsole(job, message)} Trying again in {delay.TotalSeconds:0} s (attempt {attempts + 1} of {options.MaxAttempts})"), clock.GetUtcNow());
             await Task.Delay(delay, clock, cancellationToken);
-        }
-    }
-
-    private SemaphoreSlim AccountLock(Guid accountId)
-    {
-        lock (_accounts)
-        {
-            if (!_accounts.TryGetValue(accountId, out var semaphore))
-            {
-                semaphore = new SemaphoreSlim(1, 1);
-                _accounts.Add(accountId, semaphore);
-            }
-
-            return semaphore;
         }
     }
 
@@ -685,4 +838,11 @@ public sealed partial class SteamCmdRunner(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD for app {AppId} cancelled")]
     private partial void LogCancelled(Guid serverId, int appId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Server {ServerId}: Steam offers build {Build} of app {AppId} on branch {Branch}")]
+    private partial void LogLatestBuild(Guid serverId, int appId, string branch, string build);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: SteamCMD printed no build of app {AppId} on branch {Branch} (exit code {ExitCode})")]
+    private partial void LogNoBuild(Guid serverId, int appId, string branch, int exitCode);
 }

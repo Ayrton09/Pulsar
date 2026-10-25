@@ -209,6 +209,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddSingleton<ConsoleMirrors>();
         services.AddSingleton<BrowserConnections>();
         services.AddSingleton<LiveMetrics>();
+        services.Replace(ServiceDescriptor.Singleton<IServerPlayers, LivePlayers>());
         services.Replace(ServiceDescriptor.Singleton<IRealtimeNotifier, PanelNotifier>());
         services.AddSingleton<AgentConnectionRegistry>();
         services.AddSingleton<IAgentConnections>(sp => sp.GetRequiredService<AgentConnectionRegistry>());

@@ -62,6 +62,24 @@ public static class ServerErrors
 
     public static DomainError UpdateUnsupported { get; } = new("server.update_unsupported", "This game has no update steps.");
 
+    public static DomainError GameUpdatesInvalid { get; } = new("server.game_updates_invalid",
+        $"Game updates are off, notified or installed, with at most {GameUpdateWatch.MaxWarningMinutes} minutes of warning.");
+
+    /// <summary>The game's updates come from something no node can ask (a download of a fixed file, say).</summary>
+    public static DomainError GameUpdatesUnsupported { get; } =
+        new("server.game_updates_unsupported", "This game's updates cannot be checked.");
+
+    /// <summary>Waiting until nobody plays needs to know who plays: the game's query.</summary>
+    public static DomainError WhenEmptyUnsupported { get; } =
+        new("server.when_empty_unsupported", "Pulsar cannot tell who plays this game, so it cannot wait until nobody does.");
+
+    public static DomainError GameUpdatesForbidden { get; } = new("server.game_updates_forbidden",
+        "Installing updates by themselves needs the permissions to update, stop and start the server (and to send console commands, to warn the players).");
+
+    /// <summary>The node's agent does not check for game updates (older than Pulsar 1.0.9).</summary>
+    public static DomainError GameUpdateCheckUnsupported { get; } =
+        new("server.update_check_unsupported", "This node's agent cannot check for game updates: update Pulsar on it.");
+
     public static DomainError NoFreeAllocation { get; } =
         new("server.no_free_allocation", "The node has no free allocation for one of the game's ports: add allocations to the node.");
 

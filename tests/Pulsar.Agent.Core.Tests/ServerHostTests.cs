@@ -123,6 +123,23 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task UpdatesAreCheckedOnlyForGamesWhoseUpdateStepsCanTell()
+    {
+        var plain = Stored("abcd2345");
+        var steam = Stored("efgh6789", Manifest.Replace("\"readiness\":",
+            "\"update\": { \"steps\": [ { \"type\": \"steamcmd\", \"appId\": 896660 } ] }, \"readiness\":", StringComparison.Ordinal));
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var unsupported = await host.ExecuteAsync(Envelope(new CheckGameUpdateCommand(plain), null));
+        Assert.Equal((AckStatus.Rejected, "server.update_check_unsupported"), (unsupported.Status, unsupported.ErrorCode));
+        Assert.Equal("server.unknown", (await host.ExecuteAsync(Envelope(new CheckGameUpdateCommand(Guid.NewGuid()), null))).ErrorCode);
+        // Answered at once: the check reports what it found later.
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CheckGameUpdateCommand(steam), null))).Status);
+        Assert.Contains(AgentCapabilities.CheckGameUpdate, host.Capabilities);
+    }
+
+    [Fact]
     public async Task ADeleteThatFailedIsFinishedByItsRetry()
     {
         var serverId = Stored("abcd2345");

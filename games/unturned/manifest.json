@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "unturned",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Unturned",
   "description": "Unturned dedicated server, installed anonymously with SteamCMD. Its settings and world live in Servers/pulsar of the server folder; to be listed on the internet it needs a game server login token.",
   "authors": ["Pulsar contributors"],
@@ -97,5 +97,6 @@
   "backup": {
     "include": ["Servers/pulsar/**"],
     "exclude": ["**/*.log"]
-  }
+  },
+  "commands": { "broadcast": "Say {{message}}" }
 }

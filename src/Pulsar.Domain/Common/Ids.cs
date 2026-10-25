@@ -81,6 +81,13 @@ public readonly record struct ScheduledRunId(Guid Value)
     public override string ToString() => Value.ToString();
 }
 
+public readonly record struct ServerSequenceId(Guid Value)
+{
+    public static ServerSequenceId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
 public readonly record struct ApiKeyId(Guid Value)
 {
     public override string ToString() => Value.ToString();

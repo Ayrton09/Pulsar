@@ -31,6 +31,9 @@ public interface IAgentHub
     /// installer wrote and the agent sends again after each Hello until a newer one replaces it.
     /// </summary>
     Task UpdateReport(UpdateReport report);
+
+    /// <summary>What a check for game updates found (<see cref="CheckGameUpdateCommand"/>). Not sent again.</summary>
+    Task GameUpdateChecked(GameUpdateCheck check);
 }
 
 /// <summary>Methods the panel calls on a connected agent (SignalR client results).</summary>

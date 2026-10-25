@@ -101,6 +101,7 @@ public sealed partial class ServerHost(
     private readonly ConcurrentDictionary<Guid, Server> _servers = new();
     private readonly ConcurrentDictionary<Guid, RunningOperation> _operations = new(); // server → operation in flight
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellations = new(); // operation → its cancellation
+    private readonly ConcurrentDictionary<Guid, bool> _checks = new(); // servers whose update check is in flight
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
     private readonly CancellationTokenSource _endingOperations = new(); // the agent stops: operations end first
@@ -134,6 +135,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.KillServer;
             yield return AgentCapabilities.DeleteServer;
             yield return AgentCapabilities.UpdateServer;
+            yield return AgentCapabilities.CheckGameUpdate;
             yield return AgentCapabilities.ApplyServerSpec;
             yield return AgentCapabilities.CancelOperation;
             yield return AgentCapabilities.ConsoleInput;
@@ -156,6 +158,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.RemoveAddon;
             yield return AgentCapabilities.GameSettings;
             yield return AgentCapabilities.MoreConfigFormats;
+            yield return AgentCapabilities.ManifestCommands;
             // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
             if (installOptions.CodeSignatures is not null)
             {
@@ -622,6 +625,7 @@ public sealed partial class ServerHost(
             InstallServerCommand install => Install(envelope, install),
             DeleteServerCommand delete => Delete(envelope, delete),
             UpdateServerCommand update => Update(envelope, update),
+            CheckGameUpdateCommand check => CheckGameUpdate(envelope, check),
             InstallAddonCommand install => InstallAddon(envelope, install),
             RemoveAddonCommand remove => RemoveAddon(envelope, remove),
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
@@ -833,6 +837,98 @@ public sealed partial class ServerHost(
         _servers.TryGetValue(command.ServerId, out var server) && server.Manifest.Update is null
             ? Rejected(envelope, "server.update_unsupported", "This game has no update steps.")
             : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null, update: true, command.Login);
+
+    /// <summary>
+    /// Checks whether the game has an update (Pulsar 1.0.9): answered at once, what it found reported when known (asking
+    /// Steam takes longer than an ack may). Each update step that can tell is asked: the server's SteamCMD for the latest
+    /// build of its app on its branch, Mojang for Minecraft. Not while an operation keeps the server's files changing.
+    /// </summary>
+    private CommandAck CheckGameUpdate(CommandEnvelope envelope, CheckGameUpdateCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var steps = server.Manifest.Update?.Steps.Where(InstallSteps.IsCheckable).ToList() ?? [];
+        if (steps.Count == 0)
+        {
+            return Rejected(envelope, "server.update_check_unsupported", "This game's updates cannot be checked.");
+        }
+
+        if (Exclusive(command.ServerId))
+        {
+            return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is running on this server.");
+        }
+
+        if (!_checks.TryAdd(command.ServerId, true))
+        {
+            return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, "A check is already running.");
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var check = await CheckGameUpdateAsync(server, steps, _stopping.Token);
+                LogUpdateChecked(command.ServerId, check.Installed, check.Latest, check.Available, check.ErrorCode);
+                await panel.SendAsync(nameof(IAgentHub.GameUpdateChecked), check, _stopping.Token);
+            }
+            catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+            {
+                // The agent stops: the panel asks again later.
+            }
+            finally
+            {
+                _checks.TryRemove(command.ServerId, out _);
+            }
+        }, CancellationToken.None);
+        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+    }
+
+    private async Task<GameUpdateCheck> CheckGameUpdateAsync(Server server, IReadOnlyList<InstallStep> steps, CancellationToken cancellationToken)
+    {
+        var serverId = server.Supervisor.ServerId;
+        try
+        {
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
+            var builds = new List<GameBuild>();
+            foreach (var step in steps)
+            {
+                if (step is SteamCmdStep steam)
+                {
+                    var latest = await steamCmd.LatestBuildAsync(new SteamBuildQuery(serverId, provisioned.Directory, provisioned.Identity, steam.AppId,
+                        steam.Beta ?? SteamBuilds.PublicBranch), cancellationToken);
+                    var installed = SteamBuilds.Installed(files, provisioned.Directory, steam.AppId);
+                    builds.Add(new GameBuild(installed, latest, installed != latest));
+                }
+                else if (await installSteps.CheckAsync(step, provisioned.Directory, variables, cancellationToken) is { } build)
+                {
+                    builds.Add(build);
+                }
+            }
+
+            // A game of two apps names both builds.
+            var installedBuilds = builds.Select(b => b.Installed).ToList();
+            return new GameUpdateCheck(serverId, installedBuilds.Contains(null) ? null : Build(string.Join(" + ", installedBuilds)),
+                Build(string.Join(" + ", builds.Select(b => b.Latest))), builds.Any(b => b.Available), null, null, clock.GetUtcNow());
+        }
+        catch (GameProcessException ex)
+        {
+            return new GameUpdateCheck(serverId, null, null, null, ex.Code, Cut(ex.Message), clock.GetUtcNow());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The node's paths stay in its log: whoever sees the server sees the message.
+            LogUpdateCheckFailed(ex, serverId);
+            return new GameUpdateCheck(serverId, null, null, null, "update_check.failed", "The server's files could not be read.", clock.GetUtcNow());
+        }
+
+        static string Build(string text) => text.Length <= GameUpdateCheck.MaxBuildLength ? text : text[..GameUpdateCheck.MaxBuildLength];
+
+        static string Cut(string text) => text.Length <= GameUpdateCheck.MaxMessageLength ? text : text[..GameUpdateCheck.MaxMessageLength];
+    }
 
     private AddonInstaller Addons => new(files, installOptions.HttpHandler);
 
@@ -1774,4 +1870,11 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} on server {ServerId} failed")]
     private partial void LogOperationFailed(Exception exception, Guid operationId, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the update check could not read the server's files")]
+    private partial void LogUpdateCheckFailed(Exception exception, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Server {ServerId}: update check found {Installed} installed, {Latest} offered, update available {Available} {ErrorCode}")]
+    private partial void LogUpdateChecked(Guid serverId, string? installed, string? latest, bool? available, string? errorCode);
 }

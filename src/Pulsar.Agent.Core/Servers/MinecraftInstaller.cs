@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Steam;
+using Pulsar.Contracts;
 using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Servers;
@@ -26,6 +27,12 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
 
     /// <summary>The runtime's release and the files it installed, so an update replaces exactly those.</summary>
     private const string JavaMarker = JavaDirectory + "/pulsar-java.txt";
+
+    /// <summary>The version of <see cref="ServerJar"/> and its SHA-1, as installed (Pulsar 1.0.9): what an update check names.</summary>
+    public const string VersionMarker = ".pulsar/minecraft-version.txt";
+
+    // A server.jar is tens of megabytes: a larger file is not Mojang's, and is not hashed.
+    private const long MaximumJarSize = 1024L * 1024 * 1024;
 
     private const long MaximumExtracted = 2L * 1024 * 1024 * 1024;
     private const int MaximumEntries = 20_000;
@@ -70,6 +77,11 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
                 files.Write(serverDirectory, ServerJar, jar);
             }
 
+            using (var marker = new MemoryStream(Encoding.UTF8.GetBytes($"{id}\n{server.Sha1!.ToLowerInvariant()}\n")))
+            {
+                files.Write(serverDirectory, VersionMarker, marker);
+            }
+
             await InstallJavaAsync(client, serverDirectory, details.JavaVersion?.MajorVersion ?? 8,
                 percent => progress(InstallStages.Downloading, 50 + percent / 2), cancellationToken);
         }
@@ -79,6 +91,76 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
             throw Failed("minecraft.download_failed", $"Minecraft could not be installed: {ex.Message}", ex);
         }
     }
+
+    /// <summary>
+    /// Whether an update would change <see cref="ServerJar"/> (an update check, Pulsar 1.0.9): Mojang's checksum of the
+    /// version the server follows (the latest release, or the one chosen) against the installed file's. The installed
+    /// version is named when the file is that version or the one the installer recorded.
+    /// </summary>
+    /// <exception cref="GameProcessException">With a <c>minecraft.*</c> code.</exception>
+    public async Task<GameBuild> CheckAsync(string serverDirectory, string? version, CancellationToken cancellationToken)
+    {
+        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        var client = new VerifiedDownloader(http, s_hosts, "minecraft", "Minecraft or Java") { StallTimeout = StallTimeout };
+        try
+        {
+            var versions = await GetJsonAsync<VersionManifest>(client, VersionManifestUrl, sha1: null, cancellationToken);
+            var id = string.IsNullOrEmpty(version) || version == MinecraftServerStep.Latest ? versions.Latest?.Release : version;
+            var entry = versions.Versions?.FirstOrDefault(v => v.Id == id && v.Url is not null)
+                ?? throw Failed("minecraft.unknown_version", $"Mojang does not list a Minecraft version '{id}'.");
+            var sha1 = entry.Sha1 ?? throw Failed("minecraft.no_checksum", $"Mojang lists no checksum for Minecraft {id}.");
+            var details = await GetJsonAsync<VersionDetails>(client, Https(entry.Url!), sha1, cancellationToken);
+            var latest = details.Downloads?.Server?.Sha1 ?? throw Failed("minecraft.no_server", $"Minecraft {id} has no dedicated server download.");
+            var installed = await JarSha1Async(serverDirectory, cancellationToken);
+            var same = installed is not null && string.Equals(installed, latest, StringComparison.OrdinalIgnoreCase);
+            return new GameBuild(same ? id : RecordedVersion(serverDirectory, installed), id!, !same);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw Failed("minecraft.check_failed", $"Mojang's latest Minecraft server could not be looked up: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>The installed server.jar's SHA-1 (lowercase hex); null when there is none, or it is far larger than Mojang's.</summary>
+    private async Task<string?> JarSha1Async(string serverDirectory, CancellationToken cancellationToken)
+    {
+        await using var jar = files.OpenRead(serverDirectory, ServerJar);
+        if (jar is null || jar.Length > MaximumJarSize)
+        {
+            return null;
+        }
+
+        // SHA-1 is the only checksum Mojang lists.
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await jar.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            hash.AppendData(buffer, 0, read);
+        }
+
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    /// <summary>The version the installer recorded, when the installed server.jar is still the file it wrote; null otherwise.</summary>
+    private string? RecordedVersion(string serverDirectory, string? sha1)
+    {
+        using var stream = files.OpenRead(serverDirectory, VersionMarker);
+        // The server's account can write it: anything but a version and a checksum counts as none.
+        if (sha1 is null || stream is null || stream.Length > 256)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var lines = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return lines.Length == 2 && lines[1] == sha1 && lines[0].Length <= GameUpdateCheck.MaxBuildLength && lines[0].All(IsVersionCharacter)
+            ? lines[0]
+            : null;
+    }
+
+    private static bool IsVersionCharacter(char c) => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or ' ';
 
     private async Task InstallJavaAsync(VerifiedDownloader client, string serverDirectory, int major, Func<double, Task> progress,
         CancellationToken cancellationToken)

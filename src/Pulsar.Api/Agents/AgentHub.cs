@@ -304,6 +304,21 @@ internal sealed partial class AgentHub(
         await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(nodeId, report, CancellationToken.None);
     }
 
+    /// <summary>What a node's check for game updates found (Pulsar 1.0.9): kept on the server's watch, a new update notified.</summary>
+    public async Task GameUpdateChecked(GameUpdateCheck check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+        if (RegisteredNode() is not { } nodeId)
+        {
+            return;
+        }
+
+        await using var scope = scopes.CreateAsyncScope();
+        // Before anything resolves the request context: what it starts is audited as the game updates.
+        scope.ServiceProvider.GetRequiredService<RequestContextOverride>().Context = new SystemRequestContext(GameUpdates.ActorName);
+        await scope.ServiceProvider.GetRequiredService<GameUpdates>().ReportedAsync(nodeId, check, CancellationToken.None);
+    }
+
     /// <summary>Usage of the node's running servers: kept for pages that open later, and pushed to the ones watching.</summary>
     public async Task Metrics(MetricsBatch batch)
     {

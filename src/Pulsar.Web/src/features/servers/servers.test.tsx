@@ -47,6 +47,7 @@ const installedOffline: Schemas['ServerSummary'] = {
   templateName: 'Pulsar test server',
   templateKey: 'pulsar-test',
   gameAddress: null,
+  gameUpdateAvailable: false,
   installState: 'installed',
   runtimeState: 'offline',
   desiredState: 'stopped',
@@ -474,6 +475,7 @@ describe('server cards', () => {
       ...installedOffline,
       templateKey: 'valheim',
       gameAddress: { ipAddress: '192.168.1.50', port: 2456 },
+      gameUpdateAvailable: false,
     };
     const everywhere = { ...running, gameAddress: { ipAddress: '0.0.0.0', port: 28015 } };
     fakeApi({

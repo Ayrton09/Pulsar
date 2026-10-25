@@ -148,6 +148,7 @@ try
     api.MapWorkshopEndpoints();
     api.MapDatabaseEndpoints();
     api.MapServerScheduleEndpoints();
+    api.MapGameUpdateEndpoints();
     api.MapNotificationEndpoints();
     api.MapSftpEndpoints();
     api.MapAppearanceEndpoints();

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Pulsar.Domain.Scheduling;
@@ -67,3 +68,44 @@ internal sealed class ScheduledTaskRunConfiguration : IEntityTypeConfiguration<S
         builder.HasOne<Operation>().WithMany().HasForeignKey(r => r.OperationId).OnDelete(DeleteBehavior.SetNull);
     }
 }
+
+internal sealed class ServerSequenceConfiguration : IEntityTypeConfiguration<ServerSequence>
+{
+    private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
+    };
+
+    public void Configure(EntityTypeBuilder<ServerSequence> builder)
+    {
+        builder.ToTable("server_sequences", t =>
+        {
+            t.HasCheckConstraint("ck_server_sequences_status", SnakeCaseEnum<SequenceStatus>.CheckConstraint("status"));
+            t.HasCheckConstraint("ck_server_sequences_origin", SnakeCaseEnum<SequenceOrigin>.CheckConstraint("origin"));
+        });
+
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Origin).HasConversion<SnakeCaseEnumConverter<SequenceOrigin>>();
+        builder.Property(s => s.Status).HasConversion<SnakeCaseEnumConverter<SequenceStatus>>();
+        builder.Property(s => s.Name).HasMaxLength(ServerSequence.MaxNameLength);
+        builder.Property(s => s.ErrorCode).HasMaxLength(ServerSequence.MaxErrorCodeLength);
+        builder.Property(s => s.Message).HasMaxLength(ServerSequence.MaxMessageLength);
+        builder.Property(s => s.Steps).HasColumnType("jsonb").HasConversion(
+            steps => JsonSerializer.Serialize(steps, s_json),
+            json => JsonSerializer.Deserialize<List<SequenceStep>>(json, s_json) ?? new List<SequenceStep>(),
+            new ValueComparer<IReadOnlyList<SequenceStep>>((a, b) => a!.SequenceEqual(b!), steps => steps.Aggregate(0, (hash, step) => HashCode.Combine(hash, step)),
+                steps => steps.ToList()));
+        // The runner (moving it on) and users (cancelling it) can race: the loser reads it again.
+        builder.Property<uint>("Version").IsRowVersion();
+        builder.HasIndex(s => s.WakeAt).HasFilter("status = 'running'").HasDatabaseName("ix_server_sequences_due");
+        // At most one runs on a server (the start checks it with the server's row locked; this keeps it so).
+        builder.HasIndex(s => s.ServerId).IsUnique().HasFilter("status = 'running'").HasDatabaseName("ix_server_sequences_running");
+        builder.HasIndex(s => new { s.ServerId, s.CreatedAt });
+
+        builder.HasOne<Server>().WithMany().HasForeignKey(s => s.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Operation>().WithMany().HasForeignKey(s => s.OperationId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+

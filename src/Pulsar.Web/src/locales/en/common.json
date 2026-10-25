@@ -378,7 +378,11 @@
         "database_deleted": "Deleted a database",
         "database_password_rotated": "Changed a database's password",
         "database_password_viewed": "Viewed a database's password",
-        "steam_account_changed": "Changed a server's Steam account"
+        "steam_account_changed": "Changed a server's Steam account",
+        "game_updates_changed": "Changed how a server follows game updates",
+        "game_update_check_requested": "Asked to check for a game update",
+        "game_update_started": "Started a game update",
+        "game_update_cancelled": "Cancelled a game update"
       },
       "template": {
         "imported": "Imported a game template"
@@ -582,7 +586,12 @@
       "spec_mismatch": "The node's agent refused the change: it cannot change a server's short id or game.",
       "record_unreadable": "The node could not read this server's record: {{detail}}",
       "domain_controller": "The node is a domain controller: Pulsar cannot create the server's Windows account there.",
-      "invalid_servers_root": "The node's servers folder is not valid: {{detail}}"
+      "invalid_servers_root": "The node's servers folder is not valid: {{detail}}",
+      "game_updates_invalid": "Game updates are off, notified or installed, with up to 60 minutes of warning.",
+      "game_updates_unsupported": "This game's updates cannot be checked.",
+      "when_empty_unsupported": "Pulsar cannot tell who plays this game, so it cannot wait until nobody does.",
+      "game_updates_forbidden": "Installing updates by themselves needs the permissions to update, stop and start the server (and to send console commands, to warn the players).",
+      "update_check_unsupported": "This node's agent cannot check for game updates: update Pulsar on it."
     },
     "console": {
       "invalid_input": "A command is one line without control characters (such as tabs).",
@@ -655,7 +664,14 @@
       "interrupted": "The panel stopped before the run ended.",
       "not_running": "The server was not running.",
       "unreadable": "The task's schedule (its cron expression or time zone) can no longer be read: edit it to run it again.",
-      "error": "The panel could not run the task; its log has the details."
+      "error": "The panel could not run the task; its log has the details.",
+      "steps_invalid": "A task has 1 to 32 steps: commands and messages are one line, waits last 1 second to a day.",
+      "sequence_running": "Another task of several steps or an automatic update is running on the server.",
+      "sequence_over": "It is no longer running.",
+      "step_timed_out": "The server did not get there in time.",
+      "step_interfered": "The server did not do what the step asked.",
+      "start_failed": "The server did not start.",
+      "cancelled": "Cancelled by a user."
     },
     "notifications": {
       "not_found": "That notification channel does not exist.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Scheduled task failed",
       "nodeOffline": "Node offline (and back online)",
       "nodeDiskLow": "Node low on disk",
-      "publicIpCertificate": "Public IP certificate not renewed or about to expire"
+      "publicIpCertificate": "Public IP certificate not renewed or about to expire",
+      "gameUpdateAvailable": "Game update available (and installed)",
+      "gameUpdateFailed": "Automatic game update failed"
     },
     "servers": "Servers",
     "allServers": "All servers",
@@ -2112,5 +2130,64 @@
       "rolled_back": "Put back",
       "failed": "Failed"
     }
+  },
+  "gameUpdates": {
+    "title": "Game updates",
+    "status": {
+      "off": "Not checked",
+      "available": "Update available",
+      "upToDate": "Up to date",
+      "unknown": "Not checked yet"
+    },
+    "installed": "Installed",
+    "latest": "Latest",
+    "unknownBuild": "unknown",
+    "checkFailed": "The last check failed: {{error}}",
+    "running": "Updating: step {{step}} of {{steps}} ({{what}})",
+    "steps": {
+      "command": "sending a command",
+      "broadcast": "warning the players",
+      "wait": "waiting",
+      "stop": "stopping the server",
+      "start": "starting the server",
+      "restart": "restarting the server",
+      "backup": "taking a backup",
+      "update": "updating the game"
+    },
+    "waitingForPlayers": "The update waits until nobody plays (online now: {{players}}).",
+    "waiting": "The update starts as soon as the server is free.",
+    "lastRun": {
+      "failed": "The last automatic update failed: {{error}}",
+      "cancelled": "The last automatic update was cancelled."
+    },
+    "notChecked": "This game's updates are not checked by themselves.",
+    "checkedAt": "Checked {{when}}",
+    "neverChecked": "Not checked yet.",
+    "checking": "Checking…",
+    "checkNow": "Check now",
+    "installNow": "Update and restart",
+    "installConfirm": "Update {{name}} now? The players are warned, the server stops, updates and starts again if it was running.",
+    "cancel": "Cancel the update",
+    "skip": "Skip this update",
+    "cancelConfirm": "Stop this automatic update? A game update already under way goes on.",
+    "policies": {
+      "off": "Do nothing (never checked)",
+      "notify": "Tell me (check and show it)",
+      "install": "Install it (warn, stop, update, start again)"
+    },
+    "settings": {
+      "title": "Game updates",
+      "hint": "Pulsar asks Steam (or Mojang) every 15 minutes whether the game has an update, as other panels do.",
+      "policy": "When the game has an update",
+      "whenEmpty": "Wait until nobody plays",
+      "noQuery": "Pulsar cannot tell who plays this game, so it cannot wait until nobody does.",
+      "warningMinutes": "Warn the players (minutes before)",
+      "warningMessage": "What the players are told",
+      "warningMessageHint": "{time} becomes the time left (5 min, 1 min, 10 s). Only letters, digits, spaces and . , ! ? : ' ( ) - are sent.",
+      "noBroadcast": "This game has no command to message its players, so they are not warned.",
+      "saved": "Saved.",
+      "invalid": "From 0 to 60."
+    },
+    "notBefore": "The next automatic update can start at {{when}} (one an hour at most)."
   }
 }

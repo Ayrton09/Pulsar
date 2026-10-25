@@ -64,7 +64,11 @@ public static class DependencyInjection
         services.AddScoped<RequestContextOverride>();
         services.AddSingleton<ScheduleSignal>();
         services.AddSingleton<Scheduler>();
+        services.AddSingleton<SequenceSignal>();
+        services.AddSingleton<ServerSequences>();
         services.AddScoped<ServerSchedules>();
+        services.AddScoped<GameUpdates>();
+        services.TryAddSingleton<IServerPlayers, NoServerPlayers>();
         services.AddScoped<Notifier>();
         services.AddScoped<NotificationManagement>();
         services.AddSingleton<NotificationSignal>();

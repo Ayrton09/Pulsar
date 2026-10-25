@@ -101,6 +101,10 @@ Then:
    every start. Mark `reinstallAfterUpdate` when the game's updates overwrite it. Naming a repository means trusting its
    authors with code that runs as the game server.
 
+### Messages to the players
+
+If the game's console has a command that tells everyone playing a message, give it in `commands.broadcast` with `{{message}}` where the message goes (`"commands": { "broadcast": "say {{message}}" }`): the panel uses it to warn the players before an automatic update. It cleans each message first (letters, digits, spaces and `. , ! ? : ' ( ) -`), so the template does not need to quote anything for safety; quote it only if the game needs quotes to take several words. A game whose command takes one word gets `"messageSpaces": "_"`. Check it on a running server from the console tab before you send the manifest.
+
 ## Check it
 
 1. `dotnet test --project tests/Pulsar.Manifests.Tests` loads every manifest under `games/` and fails on any error:

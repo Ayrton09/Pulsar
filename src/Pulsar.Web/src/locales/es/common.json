@@ -378,7 +378,11 @@
         "database_deleted": "Borró una base de datos",
         "database_password_rotated": "Cambió la contraseña de una base de datos",
         "database_password_viewed": "Vio la contraseña de una base de datos",
-        "steam_account_changed": "Cambió la cuenta de Steam de un servidor"
+        "steam_account_changed": "Cambió la cuenta de Steam de un servidor",
+        "game_updates_changed": "Cambió cómo un servidor sigue las actualizaciones del juego",
+        "game_update_check_requested": "Pidió revisar si hay una actualización del juego",
+        "game_update_started": "Inició una actualización del juego",
+        "game_update_cancelled": "Canceló una actualización del juego"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -582,7 +586,12 @@
       "spec_mismatch": "El agente del nodo rechazó el cambio: no puede cambiar el id corto ni el juego de un servidor.",
       "record_unreadable": "El nodo no pudo leer el registro de este servidor: {{detail}}",
       "domain_controller": "El nodo es un controlador de dominio: Pulsar no puede crear ahí la cuenta de Windows del servidor.",
-      "invalid_servers_root": "La carpeta de servidores del nodo no es válida: {{detail}}"
+      "invalid_servers_root": "La carpeta de servidores del nodo no es válida: {{detail}}",
+      "game_updates_invalid": "Las actualizaciones se apagan, se avisan o se instalan, con hasta 60 minutos de aviso.",
+      "game_updates_unsupported": "Las actualizaciones de este juego no se pueden revisar.",
+      "when_empty_unsupported": "Pulsar no puede saber quién juega a este juego, así que no puede esperar a que no juegue nadie.",
+      "game_updates_forbidden": "Instalar actualizaciones solas necesita los permisos para actualizar, detener e iniciar el servidor (y para enviar comandos de consola, para avisar a los jugadores).",
+      "update_check_unsupported": "El agente de este nodo no puede revisar actualizaciones del juego: actualizá Pulsar en ese nodo."
     },
     "console": {
       "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones).",
@@ -655,7 +664,14 @@
       "interrupted": "El panel se detuvo antes de que terminara la ejecución.",
       "not_running": "El servidor no estaba en marcha.",
       "unreadable": "El panel ya no puede leer el horario de la tarea (su expresión cron o su zona horaria): editala para que vuelva a ejecutarse.",
-      "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles."
+      "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles.",
+      "steps_invalid": "Una tarea tiene de 1 a 32 pasos: los comandos y mensajes son de una línea, las esperas duran de 1 segundo a un día.",
+      "sequence_running": "En el servidor ya corre otra tarea de varios pasos o una actualización automática.",
+      "sequence_over": "Ya no está corriendo.",
+      "step_timed_out": "El servidor no llegó a tiempo.",
+      "step_interfered": "El servidor no hizo lo que pidió el paso.",
+      "start_failed": "El servidor no inició.",
+      "cancelled": "La canceló un usuario."
     },
     "notifications": {
       "not_found": "Ese canal de notificaciones no existe.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Falló una tarea programada",
       "nodeOffline": "Nodo desconectado (y cuando vuelve)",
       "nodeDiskLow": "Nodo con poco disco",
-      "publicIpCertificate": "Certificado de la IP pública sin renovar o por vencer"
+      "publicIpCertificate": "Certificado de la IP pública sin renovar o por vencer",
+      "gameUpdateAvailable": "Actualización del juego disponible (e instalada)",
+      "gameUpdateFailed": "Falló una actualización automática del juego"
     },
     "servers": "Servidores",
     "allServers": "Todos los servidores",
@@ -4253,7 +4271,7 @@
         },
         "serverName": {
           "label": "Nombre del servidor",
-          "description": "Como lo ven los jugadores en la lista de servidores. Las etiquetas de color del juego (<color=red>…</color>) funcionan."
+          "description": "Como lo ven los jugadores en la lista de servidores. Acepta el texto enriquecido del juego: <color=#FF8800>…</color>, <b>…</b>, <i>…</i>, <size=60>…</size>."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "Actualizaciones del juego",
+    "status": {
+      "off": "Sin revisar",
+      "available": "Actualización disponible",
+      "upToDate": "Al día",
+      "unknown": "Todavía sin revisar"
+    },
+    "installed": "Instalado",
+    "latest": "Último",
+    "unknownBuild": "desconocido",
+    "checkFailed": "Falló la última revisión: {{error}}",
+    "running": "Actualizando: paso {{step}} de {{steps}} ({{what}})",
+    "steps": {
+      "command": "enviando un comando",
+      "broadcast": "avisando a los jugadores",
+      "wait": "esperando",
+      "stop": "deteniendo el servidor",
+      "start": "iniciando el servidor",
+      "restart": "reiniciando el servidor",
+      "backup": "haciendo un backup",
+      "update": "actualizando el juego"
+    },
+    "waitingForPlayers": "La actualización espera a que no juegue nadie (conectados ahora: {{players}}).",
+    "waiting": "La actualización empieza apenas el servidor quede libre.",
+    "lastRun": {
+      "failed": "Falló la última actualización automática: {{error}}",
+      "cancelled": "Se canceló la última actualización automática."
+    },
+    "notChecked": "Las actualizaciones de este juego no se revisan solas.",
+    "checkedAt": "Revisado {{when}}",
+    "neverChecked": "Todavía sin revisar.",
+    "checking": "Revisando…",
+    "checkNow": "Revisar ahora",
+    "installNow": "Actualizar y reiniciar",
+    "installConfirm": "¿Actualizar {{name}} ahora? Se avisa a los jugadores, el servidor se detiene, se actualiza y vuelve a iniciar si estaba encendido.",
+    "cancel": "Cancelar la actualización",
+    "skip": "Saltear esta actualización",
+    "cancelConfirm": "¿Frenar esta actualización automática? Si el juego ya se está actualizando, eso sigue.",
+    "policies": {
+      "off": "No hacer nada (nunca se revisa)",
+      "notify": "Avisarme (revisar y mostrarla)",
+      "install": "Instalarla (avisar, detener, actualizar, volver a iniciar)"
+    },
+    "settings": {
+      "title": "Actualizaciones del juego",
+      "hint": "Pulsar le pregunta a Steam (o a Mojang) cada 15 minutos si el juego tiene una actualización, como hacen otros paneles.",
+      "policy": "Cuando el juego tiene una actualización",
+      "whenEmpty": "Esperar a que no juegue nadie",
+      "noQuery": "Pulsar no puede saber quién juega a este juego, así que no puede esperar a que no juegue nadie.",
+      "warningMinutes": "Avisar a los jugadores (minutos antes)",
+      "warningMessage": "Qué se les dice a los jugadores",
+      "warningMessageHint": "{time} se cambia por el tiempo que falta (5 min, 1 min, 10 s). Solo se envían letras, números, espacios y . , ! ? : ' ( ) -",
+      "noBroadcast": "Este juego no tiene un comando para mandarles mensajes a los jugadores, así que no se les avisa.",
+      "saved": "Guardado.",
+      "invalid": "De 0 a 60."
+    },
+    "notBefore": "La próxima actualización automática puede empezar a las {{when}} (una por hora como máximo)."
   }
 }

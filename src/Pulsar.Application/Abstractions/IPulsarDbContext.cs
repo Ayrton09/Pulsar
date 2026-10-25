@@ -72,6 +72,10 @@ public interface IPulsarDbContext
 
     DbSet<ScheduledTaskRun> ScheduledTaskRuns { get; }
 
+    DbSet<ServerSequence> ServerSequences { get; }
+
+    DbSet<GameUpdateWatch> GameUpdateWatches { get; }
+
     DbSet<BackupStorage> BackupStorages { get; }
 
     DbSet<SteamAccount> SteamAccounts { get; }

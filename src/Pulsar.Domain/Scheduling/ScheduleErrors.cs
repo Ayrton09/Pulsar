@@ -42,6 +42,26 @@ public static class ScheduleErrors
     /// <summary>The task runs only while the server does, and it did not.</summary>
     public static DomainError NotRunning { get; } = new("schedules.not_running", "The server was not running.");
 
+    public static DomainError StepsInvalid { get; } = new("schedules.steps_invalid",
+        $"A task has 1 to {ServerSequence.MaxSteps} steps: commands and messages are one line, waits last 1 second to a day.");
+
+    /// <summary>Another sequence of steps (a task's, an automatic update's) is running on the server.</summary>
+    public static DomainError SequenceRunning { get; } =
+        new("schedules.sequence_running", "Another task of several steps or an automatic update is running on the server.");
+
+    public static DomainError SequenceOver { get; } = new("schedules.sequence_over", "It is no longer running.");
+
+    public static DomainError Cancelled { get; } = new("schedules.cancelled", "Cancelled by a user.");
+
+    /// <summary>A step waited longer than it may for the server (to stop, to be running).</summary>
+    public static DomainError StepTimedOut { get; } = new("schedules.step_timed_out", "The server did not get there in time.");
+
+    /// <summary>The server stopped (failed to start, crashed, was stopped) while a step waited for it to run.</summary>
+    public static DomainError StartFailed { get; } = new("schedules.start_failed", "The server did not start.");
+
+    /// <summary>The server was started again or stopped by someone else while a step waited for it.</summary>
+    public static DomainError StepInterfered { get; } = new("schedules.step_interfered", "The server did not do what the step asked.");
+
     /// <summary>A schedule valid when saved that this panel cannot read (a later time zone database or cron library).</summary>
     public static DomainError Unreadable { get; } =
         new("schedules.unreadable", "The task's schedule (its cron expression or time zone) can no longer be read: edit it to run it again.");

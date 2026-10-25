@@ -10,7 +10,9 @@
     "lastSeen": "最終確認",
     "address": "アドレス",
     "currentCertificateExpires": "現在の証明書の有効期限",
-    "expires": "有効期限"
+    "expires": "有効期限",
+    "installed": "インストール済み",
+    "latest": "最新"
   },
   "serverOutOfMemory": {
     "title": "{server} のメモリが不足しました",
@@ -56,6 +58,19 @@
     "title": "ノード {node} のディスク容量が不足しています",
     "text": "ディスクがいっぱいになると、アップデート、バックアップ、ゲームサーバー自体が失敗します。空き容量を確保するか、古いバックアップを削除してください。",
     "drive": "{total} 中 {free} 空き（{percent} %）"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} にゲームのアップデートがあります",
+    "text": "ゲームの新しいビルドが出ました。都合のよいときにサーバーのページから更新してください。",
+    "installs": "ゲームの新しいビルドが出ました。サーバーのゲームアップデート設定どおり、Pulsar が自動でインストールします。"
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} を更新しました",
+    "text": "Pulsar がゲームのアップデートを自動でインストールしました。"
+  },
+  "gameUpdateFailed": {
+    "title": "{server} の自動アップデートに失敗しました",
+    "text": "Pulsar はゲームのアップデートをインストールできませんでした。サーバーが起動していた場合は再起動しました。コンソールを確認してください。"
   },
   "publicIpCertificateFailed": {
     "title": "パブリック IP の証明書を更新できませんでした",

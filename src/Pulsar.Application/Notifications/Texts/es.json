@@ -10,7 +10,9 @@
     "lastSeen": "Visto por última vez",
     "address": "Dirección",
     "currentCertificateExpires": "El certificado actual vence",
-    "expires": "Vence"
+    "expires": "Vence",
+    "installed": "Instalado",
+    "latest": "Último"
   },
   "serverOutOfMemory": {
     "title": "{server} se quedó sin memoria",
@@ -56,6 +58,19 @@
     "title": "Al nodo {node} le queda poco espacio en disco",
     "text": "Con el disco lleno fallan las actualizaciones, los backups y los mismos servidores. Liberá espacio o borrá backups viejos.",
     "drive": "{free} libres de {total} ({percent} %)"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} tiene una actualización del juego",
+    "text": "Salió una versión más nueva de su juego. Actualizalo desde su página cuando te convenga.",
+    "installs": "Salió una versión más nueva de su juego. Pulsar la instala solo, como están configuradas las actualizaciones del servidor."
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} se actualizó",
+    "text": "Pulsar instaló solo la actualización de su juego."
+  },
+  "gameUpdateFailed": {
+    "title": "Falló la actualización automática de {server}",
+    "text": "Pulsar no pudo instalar la actualización de su juego. Si el servidor estaba encendido, se volvió a iniciar. Revisá su consola."
   },
   "publicIpCertificateFailed": {
     "title": "No se pudo renovar el certificado de la IP pública",

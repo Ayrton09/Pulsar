@@ -39,8 +39,14 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     /// <summary>When set, SteamCMD runs stop half way until it completes (to see progress, or cancel).</summary>
     public TaskCompletionSource? SteamCmdGate { get; set; }
 
-    /// <summary>Started SteamCMD runs.</summary>
-    public int SteamCmdRuns => _started.Count(p => p.IsSteamCmd);
+    /// <summary>Started SteamCMD runs that install or update (not the update checks, which come by themselves).</summary>
+    public int SteamCmdRuns => _started.Count(p => p.IsSteamCmd && p.Arguments.Contains("+app_update"));
+
+    /// <summary>Update checks SteamCMD ran (<c>+app_info_print</c>).</summary>
+    public int SteamCmdChecks => _started.Count(p => p.IsSteamCmd && p.Arguments.Contains("+app_info_print"));
+
+    /// <summary>The build a scripted Steam offers per app on its public branch: what an install writes, what a check finds.</summary>
+    public ConcurrentDictionary<string, string> LatestBuilds { get; } = new() { ["232330"] = "1000", ["730"] = "2000" };
 
     /// <summary>
     /// The Steam Guard code a scripted Steam asks for when an account signs in with its password; null asks for none. A
@@ -96,18 +102,41 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     private async Task PlaySteamCmdAsync(ScriptedProcess process, ProcessLaunchSpec spec)
     {
         process.IsSteamCmd = true;
+        var arguments = spec.Arguments.ToList();
+        if (arguments.IndexOf("+app_info_print") is >= 0 and var print)
+        {
+            // An update check: anonymous, the app's info as SteamCMD prints it (not counted among the sign-ins of installs).
+            var asked = arguments[print + 1];
+            process.Print("Connecting anonymously to Steam Public...OK\r\n");
+            process.Print($"AppID : {asked}, change number : 1/0, last change : Sun Oct 25 12:00:00 2026\r\n");
+            if (LatestBuilds.TryGetValue(asked, out var latest))
+            {
+                process.Print($"\"{asked}\"\r\n{{\r\n\t\"depots\"\r\n\t{{\r\n\t\t\"branches\"\r\n\t\t{{\r\n\t\t\t\"public\"\r\n\t\t\t{{\r\n" +
+                    $"\t\t\t\t\"buildid\"\t\t\"{latest}\"\r\n\t\t\t}}\r\n\t\t}}\r\n\t}}\r\n}}\r\n");
+            }
+
+            process.Exit(0);
+            return;
+        }
+
         if (!await SignInAsync(process, spec))
         {
             return;
         }
 
-        var app = spec.Arguments[spec.Arguments.ToList().IndexOf("+app_update") + 1];
+        var app = spec.Arguments[arguments.IndexOf("+app_update") + 1];
         if (AppExecutables.TryGetValue(app, out var executable))
         {
             var path = Path.Combine(spec.ServerRoot, executable);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await File.WriteAllTextAsync(path, $"app {app}");
         }
+
+        // What SteamCMD keeps of what it installed: the build an update check compares.
+        var appManifest = Path.Combine(spec.ServerRoot, "steamapps", $"appmanifest_{app}.acf");
+        Directory.CreateDirectory(Path.GetDirectoryName(appManifest)!);
+        await File.WriteAllTextAsync(appManifest,
+            $"\"AppState\"\n{{\n\t\"appid\"\t\t\"{app}\"\n\t\"buildid\"\t\t\"{LatestBuilds.GetValueOrDefault(app, "1")}\"\n}}\n");
 
         process.Print(" Update state (0x61) downloading, progress: 45.00 (450 / 1000)\r\n");
         if (SteamCmdGate is { } gate)

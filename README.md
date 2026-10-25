@@ -57,6 +57,8 @@ best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk 
 - One-click mod frameworks: Metamod:Source and CounterStrikeSharp for CS2, Oxide (uMod) and Carbon for Rust; Steam
   Workshop items where the game uses them.
 - Scheduled tasks: start, stop, restart, back up, update or send a console command, in your time zone.
+- Game updates checked every 15 minutes with Steam (or Mojang): shown, notified, or installed by themselves, warning
+  the players first and, if you want, only when nobody plays.
 - Notifications to Discord or email when a server crashes or fails to start, a backup or a scheduled task fails, or a
   node goes offline or runs low on disk.
 - A REST API (OpenAPI) with API keys limited to the permissions you choose.

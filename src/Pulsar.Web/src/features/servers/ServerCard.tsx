@@ -10,7 +10,7 @@ import { useArtworkShown } from '../games/api';
 import { GameArt } from '../games/GameArt';
 import { useServerMetrics } from '../live/hooks';
 import type { ServerSummary } from './api';
-import { NodeDisconnectedBadge, ServerStatusPill, StateReason } from './components';
+import { GameUpdateBadge, NodeDisconnectedBadge, ServerStatusPill, StateReason } from './components';
 import { PowerButtons } from './PowerButtons';
 
 /**
@@ -39,6 +39,11 @@ export function ServerCard({ server, headingLevel = 2 }: { server: ServerSummary
           {!server.nodeConnected && (
             <span className="rounded-full bg-black/70 backdrop-blur-sm">
               <NodeDisconnectedBadge />
+            </span>
+          )}
+          {server.gameUpdateAvailable && (
+            <span className="rounded-full bg-black/70 backdrop-blur-sm">
+              <GameUpdateBadge />
             </span>
           )}
         </div>
@@ -152,6 +157,7 @@ export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary;
           </Heading>
           <ServerStatusPill server={server} />
           {!server.nodeConnected && <NodeDisconnectedBadge />}
+          {server.gameUpdateAvailable && <GameUpdateBadge />}
         </div>
         <p className="truncate text-xs text-muted">
           {server.templateName} · {server.nodeName}

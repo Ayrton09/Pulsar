@@ -10,7 +10,9 @@
     "lastSeen": "最后在线",
     "address": "地址",
     "currentCertificateExpires": "当前证书到期时间",
-    "expires": "到期时间"
+    "expires": "到期时间",
+    "installed": "已安装",
+    "latest": "最新"
   },
   "serverOutOfMemory": {
     "title": "{server} 内存不足",
@@ -56,6 +58,19 @@
     "title": "节点 {node} 磁盘空间不足",
     "text": "磁盘已满会导致更新、备份以及游戏服务器本身失败。请释放空间或删除旧备份。",
     "drive": "共 {total}，可用 {free}（{percent} %）"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} 有游戏更新",
+    "text": "游戏有了更新的版本。方便时在服务器页面更新它。",
+    "installs": "游戏有了更新的版本。按照服务器的游戏更新设置，Pulsar 会自动安装。"
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} 已更新",
+    "text": "Pulsar 已自动安装游戏更新。"
+  },
+  "gameUpdateFailed": {
+    "title": "{server} 的自动更新失败",
+    "text": "Pulsar 无法安装游戏更新。如果服务器之前在运行，已重新启动。请查看其控制台。"
   },
   "publicIpCertificateFailed": {
     "title": "公网 IP 证书续期失败",

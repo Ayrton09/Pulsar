@@ -62,10 +62,13 @@ public sealed class TestDatabase : IAsyncDisposable
                 await command.ExecuteNonQueryAsync();
                 return;
             }
-            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege && attempt < 10)
+            catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.InsufficientPrivilege or PostgresErrorCodes.ObjectInUse && attempt < 10)
             {
                 // FORCE also tries to terminate an autovacuum worker busy with the database, which a role without
-                // pg_signal_backend may not do ("permission denied to terminate process"); the worker finishes soon.
+                // pg_signal_backend may not do ("permission denied to terminate process"); the worker finishes soon. A
+                // connection opened while the others were being terminated (a background pass of the panel that was
+                // still ending) leaves it in use: it is gone a moment later.
+                NpgsqlConnection.ClearAllPools();
                 await Task.Delay(TimeSpan.FromMilliseconds(500));
             }
         }

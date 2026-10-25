@@ -378,7 +378,11 @@
         "database_deleted": "Ha eliminato un database",
         "database_password_rotated": "Ha cambiato la password di un database",
         "database_password_viewed": "Ha visualizzato la password di un database",
-        "steam_account_changed": "Ha cambiato l'account Steam di un server"
+        "steam_account_changed": "Ha cambiato l'account Steam di un server",
+        "game_updates_changed": "Ha cambiato come un server segue gli aggiornamenti del gioco",
+        "game_update_check_requested": "Ha chiesto di controllare un aggiornamento del gioco",
+        "game_update_started": "Ha avviato un aggiornamento del gioco",
+        "game_update_cancelled": "Ha annullato un aggiornamento del gioco"
       },
       "template": {
         "imported": "Ha importato un modello di gioco"
@@ -582,7 +586,12 @@
       "spec_mismatch": "L'agent del nodo ha rifiutato la modifica: non può cambiare l'ID breve o il gioco di un server.",
       "record_unreadable": "Il nodo non ha potuto leggere il record di questo server: {{detail}}",
       "domain_controller": "Il nodo è un domain controller: Pulsar non può creare lì l'account Windows del server.",
-      "invalid_servers_root": "La cartella dei server del nodo non è valida: {{detail}}"
+      "invalid_servers_root": "La cartella dei server del nodo non è valida: {{detail}}",
+      "game_updates_invalid": "Gli aggiornamenti sono spenti, segnalati o installati, con fino a 60 minuti di preavviso.",
+      "game_updates_unsupported": "Gli aggiornamenti di questo gioco non possono essere controllati.",
+      "when_empty_unsupported": "Pulsar non può sapere chi gioca a questo gioco, quindi non può aspettare che non giochi nessuno.",
+      "game_updates_forbidden": "Installare gli aggiornamenti da soli richiede i permessi per aggiornare, fermare e avviare il server (e per inviare comandi di console, per avvisare i giocatori).",
+      "update_check_unsupported": "L'agente di questo nodo non può controllare gli aggiornamenti del gioco: aggiorna Pulsar su quel nodo."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -655,7 +664,14 @@
       "interrupted": "Il pannello si è arrestato prima della fine dell'esecuzione.",
       "not_running": "Il server non era in esecuzione.",
       "unreadable": "La pianificazione dell'attività (l'espressione cron o il fuso orario) non può più essere letta: modificarla per eseguirla di nuovo.",
-      "error": "Il pannello non ha potuto eseguire l'attività; i dettagli sono nel suo log."
+      "error": "Il pannello non ha potuto eseguire l'attività; i dettagli sono nel suo log.",
+      "steps_invalid": "Un'attività ha da 1 a 32 passi: comandi e messaggi sono di una riga, le attese durano da 1 secondo a un giorno.",
+      "sequence_running": "Sul server è già in corso un'altra attività a più passi o un aggiornamento automatico.",
+      "sequence_over": "Non è più in corso.",
+      "step_timed_out": "Il server non ci è arrivato in tempo.",
+      "step_interfered": "Il server non ha fatto ciò che il passo chiedeva.",
+      "start_failed": "Il server non si è avviato.",
+      "cancelled": "Annullato da un utente."
     },
     "notifications": {
       "not_found": "Questo canale di notifica non esiste.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Attività pianificata non riuscita",
       "nodeOffline": "Nodo offline (e di nuovo online)",
       "nodeDiskLow": "Disco del nodo quasi pieno",
-      "publicIpCertificate": "Certificato per IP pubblico non rinnovato o in scadenza"
+      "publicIpCertificate": "Certificato per IP pubblico non rinnovato o in scadenza",
+      "gameUpdateAvailable": "Aggiornamento del gioco disponibile (e installato)",
+      "gameUpdateFailed": "Aggiornamento automatico del gioco non riuscito"
     },
     "servers": "Server",
     "allServers": "Tutti i server",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "Aggiornamenti del gioco",
+    "status": {
+      "off": "Non controllato",
+      "available": "Aggiornamento disponibile",
+      "upToDate": "Aggiornato",
+      "unknown": "Non ancora controllato"
+    },
+    "installed": "Installata",
+    "latest": "Più recente",
+    "unknownBuild": "sconosciuta",
+    "checkFailed": "L'ultimo controllo non è riuscito: {{error}}",
+    "running": "Aggiornamento: passo {{step}} di {{steps}} ({{what}})",
+    "steps": {
+      "command": "invio di un comando",
+      "broadcast": "avviso ai giocatori",
+      "wait": "attesa",
+      "stop": "arresto del server",
+      "start": "avvio del server",
+      "restart": "riavvio del server",
+      "backup": "backup",
+      "update": "aggiornamento del gioco"
+    },
+    "waitingForPlayers": "L'aggiornamento aspetta che non giochi nessuno (online ora: {{players}}).",
+    "waiting": "L'aggiornamento parte appena il server è libero.",
+    "lastRun": {
+      "failed": "L'ultimo aggiornamento automatico non è riuscito: {{error}}",
+      "cancelled": "L'ultimo aggiornamento automatico è stato annullato."
+    },
+    "notChecked": "Gli aggiornamenti di questo gioco non vengono controllati da soli.",
+    "checkedAt": "Controllato {{when}}",
+    "neverChecked": "Non ancora controllato.",
+    "checking": "Controllo…",
+    "checkNow": "Controlla ora",
+    "installNow": "Aggiorna e riavvia",
+    "installConfirm": "Aggiornare {{name}} ora? I giocatori vengono avvisati, il server si ferma, si aggiorna e riparte se era acceso.",
+    "cancel": "Annulla l'aggiornamento",
+    "skip": "Salta questo aggiornamento",
+    "cancelConfirm": "Fermare questo aggiornamento automatico? Un aggiornamento del gioco già in corso continua.",
+    "policies": {
+      "off": "Non fare nulla (mai controllato)",
+      "notify": "Avvisami (controlla e mostralo)",
+      "install": "Installalo (avvisa, ferma, aggiorna, riavvia)"
+    },
+    "settings": {
+      "title": "Aggiornamenti del gioco",
+      "hint": "Pulsar chiede a Steam (o a Mojang) ogni 15 minuti se il gioco ha un aggiornamento, come altri pannelli.",
+      "policy": "Quando il gioco ha un aggiornamento",
+      "whenEmpty": "Aspetta che non giochi nessuno",
+      "noQuery": "Pulsar non può sapere chi gioca a questo gioco, quindi non può aspettare che non giochi nessuno.",
+      "warningMinutes": "Avvisa i giocatori (minuti prima)",
+      "warningMessage": "Cosa ricevono i giocatori",
+      "warningMessageHint": "{time} diventa il tempo rimasto (5 min, 1 min, 10 s). Si inviano solo lettere, cifre, spazi e . , ! ? : ' ( ) -",
+      "noBroadcast": "Questo gioco non ha un comando per scrivere ai giocatori, quindi non vengono avvisati.",
+      "saved": "Salvato.",
+      "invalid": "Da 0 a 60."
+    },
+    "notBefore": "Il prossimo aggiornamento automatico può iniziare alle {{when}} (al massimo uno all'ora)."
   }
 }

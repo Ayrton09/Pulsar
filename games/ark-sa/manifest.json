@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ark-sa",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "name": "ARK: Survival Ascended",
   "description": "ARK: Survival Ascended dedicated server, installed anonymously with SteamCMD (about 12 GB). Dedicated servers are for personal, non-commercial use unless you have a licence from its publisher; read this game's README.",
   "authors": ["Pulsar contributors"],
@@ -181,5 +181,6 @@
     "include": ["ShooterGame/Saved/SavedArks/**", "ShooterGame/Saved/Config/WindowsServer/*.ini"],
     "exclude": ["**/*.log"],
     "save": { "commands": ["SaveWorld"], "waitSeconds": 10 }
-  }
+  },
+  "commands": { "broadcast": "ServerChat {{message}}" }
 }

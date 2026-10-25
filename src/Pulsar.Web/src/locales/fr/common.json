@@ -378,7 +378,11 @@
         "database_deleted": "Suppression d'une base de données",
         "database_password_rotated": "Modification du mot de passe d'une base de données",
         "database_password_viewed": "Consultation du mot de passe d'une base de données",
-        "steam_account_changed": "Modification du compte Steam d'un serveur"
+        "steam_account_changed": "Modification du compte Steam d'un serveur",
+        "game_updates_changed": "A changé la façon dont un serveur suit les mises à jour du jeu",
+        "game_update_check_requested": "A demandé de vérifier une mise à jour du jeu",
+        "game_update_started": "A lancé une mise à jour du jeu",
+        "game_update_cancelled": "A annulé une mise à jour du jeu"
       },
       "template": {
         "imported": "Importation d'un modèle de jeu"
@@ -582,7 +586,12 @@
       "spec_mismatch": "L'agent du nœud a refusé la modification : il ne peut pas changer l'identifiant court ni le jeu d'un serveur.",
       "record_unreadable": "Le nœud n'a pas pu lire l'enregistrement de ce serveur : {{detail}}",
       "domain_controller": "Le nœud est un contrôleur de domaine : Pulsar ne peut pas y créer le compte Windows du serveur.",
-      "invalid_servers_root": "Le dossier des serveurs du nœud n'est pas valide : {{detail}}"
+      "invalid_servers_root": "Le dossier des serveurs du nœud n'est pas valide : {{detail}}",
+      "game_updates_invalid": "Les mises à jour sont désactivées, signalées ou installées, avec jusqu'à 60 minutes d'avertissement.",
+      "game_updates_unsupported": "Les mises à jour de ce jeu ne peuvent pas être vérifiées.",
+      "when_empty_unsupported": "Pulsar ne peut pas savoir qui joue à ce jeu, il ne peut donc pas attendre que personne ne joue.",
+      "game_updates_forbidden": "Installer les mises à jour d'elles-mêmes demande les permissions de mettre à jour, arrêter et démarrer le serveur (et d'envoyer des commandes de console, pour avertir les joueurs).",
+      "update_check_unsupported": "L'agent de ce nœud ne peut pas vérifier les mises à jour du jeu : mettez Pulsar à jour sur ce nœud."
     },
     "console": {
       "invalid_input": "Une commande tient sur une seule ligne, sans caractères de contrôle (comme les tabulations).",
@@ -655,7 +664,14 @@
       "interrupted": "Le panneau s'est arrêté avant la fin de l'exécution.",
       "not_running": "Le serveur n'était pas en marche.",
       "unreadable": "La planification de la tâche (son expression cron ou son fuseau horaire) n'est plus lisible : modifiez-la pour la relancer.",
-      "error": "Le panneau n'a pas pu exécuter la tâche ; son journal donne les détails."
+      "error": "Le panneau n'a pas pu exécuter la tâche ; son journal donne les détails.",
+      "steps_invalid": "Une tâche a de 1 à 32 étapes : commandes et messages tiennent sur une ligne, les attentes durent de 1 seconde à un jour.",
+      "sequence_running": "Une autre tâche de plusieurs étapes ou une mise à jour automatique est en cours sur le serveur.",
+      "sequence_over": "Elle n'est plus en cours.",
+      "step_timed_out": "Le serveur n'y est pas arrivé à temps.",
+      "step_interfered": "Le serveur n'a pas fait ce que l'étape demandait.",
+      "start_failed": "Le serveur n'a pas démarré.",
+      "cancelled": "Annulée par un utilisateur."
     },
     "notifications": {
       "not_found": "Ce canal de notification n'existe pas.",
@@ -1704,7 +1720,9 @@
       "scheduledTaskFailed": "Échec d'une tâche planifiée",
       "nodeOffline": "Nœud hors ligne (et de nouveau en ligne)",
       "nodeDiskLow": "Nœud manquant d'espace disque",
-      "publicIpCertificate": "Certificat d'IP publique non renouvelé ou sur le point d'expirer"
+      "publicIpCertificate": "Certificat d'IP publique non renouvelé ou sur le point d'expirer",
+      "gameUpdateAvailable": "Mise à jour du jeu disponible (et installée)",
+      "gameUpdateFailed": "Échec d'une mise à jour automatique du jeu"
     },
     "servers": "Serveurs",
     "allServers": "Tous les serveurs",
@@ -5450,5 +5468,64 @@
         }
       }
     }
+  },
+  "gameUpdates": {
+    "title": "Mises à jour du jeu",
+    "status": {
+      "off": "Non vérifié",
+      "available": "Mise à jour disponible",
+      "upToDate": "À jour",
+      "unknown": "Pas encore vérifié"
+    },
+    "installed": "Installée",
+    "latest": "Dernière",
+    "unknownBuild": "inconnue",
+    "checkFailed": "La dernière vérification a échoué : {{error}}",
+    "running": "Mise à jour : étape {{step}} sur {{steps}} ({{what}})",
+    "steps": {
+      "command": "envoi d'une commande",
+      "broadcast": "avertissement des joueurs",
+      "wait": "attente",
+      "stop": "arrêt du serveur",
+      "start": "démarrage du serveur",
+      "restart": "redémarrage du serveur",
+      "backup": "sauvegarde",
+      "update": "mise à jour du jeu"
+    },
+    "waitingForPlayers": "La mise à jour attend que personne ne joue (en ligne : {{players}}).",
+    "waiting": "La mise à jour commence dès que le serveur est libre.",
+    "lastRun": {
+      "failed": "La dernière mise à jour automatique a échoué : {{error}}",
+      "cancelled": "La dernière mise à jour automatique a été annulée."
+    },
+    "notChecked": "Les mises à jour de ce jeu ne sont pas vérifiées d'elles-mêmes.",
+    "checkedAt": "Vérifié {{when}}",
+    "neverChecked": "Pas encore vérifié.",
+    "checking": "Vérification…",
+    "checkNow": "Vérifier maintenant",
+    "installNow": "Mettre à jour et redémarrer",
+    "installConfirm": "Mettre à jour {{name}} maintenant ? Les joueurs sont avertis, le serveur s'arrête, se met à jour et redémarre s'il tournait.",
+    "cancel": "Annuler la mise à jour",
+    "skip": "Ignorer cette mise à jour",
+    "cancelConfirm": "Arrêter cette mise à jour automatique ? Une mise à jour du jeu déjà en cours continue.",
+    "policies": {
+      "off": "Ne rien faire (jamais vérifié)",
+      "notify": "Me prévenir (vérifier et l'afficher)",
+      "install": "L'installer (avertir, arrêter, mettre à jour, redémarrer)"
+    },
+    "settings": {
+      "title": "Mises à jour du jeu",
+      "hint": "Pulsar demande à Steam (ou à Mojang) toutes les 15 minutes si le jeu a une mise à jour, comme d'autres panneaux.",
+      "policy": "Quand le jeu a une mise à jour",
+      "whenEmpty": "Attendre que personne ne joue",
+      "noQuery": "Pulsar ne peut pas savoir qui joue à ce jeu, il ne peut donc pas attendre que personne ne joue.",
+      "warningMinutes": "Avertir les joueurs (minutes avant)",
+      "warningMessage": "Ce que les joueurs reçoivent",
+      "warningMessageHint": "{time} devient le temps restant (5 min, 1 min, 10 s). Seuls les lettres, chiffres, espaces et . , ! ? : ' ( ) - sont envoyés.",
+      "noBroadcast": "Ce jeu n'a pas de commande pour écrire aux joueurs : ils ne sont pas avertis.",
+      "saved": "Enregistré.",
+      "invalid": "De 0 à 60."
+    },
+    "notBefore": "La prochaine mise à jour automatique peut commencer à {{when}} (une par heure au plus)."
   }
 }

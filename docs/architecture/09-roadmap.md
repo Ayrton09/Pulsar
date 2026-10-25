@@ -454,6 +454,26 @@ More game options where a new patch format is needed (1.0.8 added every option o
 
 Minecraft: Bedrock Edition beyond what 1.0.8 does: its player count (the RakNet ping went away with NetherNet, and NetherNet's status, if any, is not documented), and firewall rules for the UDP range set in its UDP ports option (Pulsar's rules cover allocated ports only).
 
+## 1.0.9 — What other panels have (2026-10-25, at the user's request)
+
+A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen points, done in this order, each one checked before the next (the Linux agent stays post-v1):
+
+1. **Game updates** · *done*: checks against Steam and Mojang, shown and notified, installed by themselves as a sequence (warn, stop, update, start again; when nobody plays if asked). Doc 05, "Implementation (1.0.9)"; doc 03, "Game update checks".
+2. Scheduled tasks of several steps, with conditions (only if empty, only if an update is available) and warnings.
+3. Minecraft server types (Paper, Purpur, Fabric, Forge, NeoForge), plugins and modpacks (Modrinth, CurseForge).
+4. Player actions from the Players card: kick, ban, whitelist, operator.
+5. Compressing and extracting archives in the file manager.
+6. More games (Space Engineers, Conan Exiles, DayZ, Don't Starve Together, Terraria, Squad, Insurgency: Sandstorm, Soulmask, Icarus, Abiotic Factor, Euro Truck Simulator 2, Killing Floor 2…).
+7. More mod sources: Thunderstore, CurseForge for ARK, Bohemia's workshop, uMod plugins.
+8. Choosing a game's Steam branch or version.
+9. Moving a server to another node, cloning it, changing its game.
+10. Restoring single files from a backup.
+11. More notifications: CPU or memory high for a while, a server back online.
+12. Signing in with Discord, Google or an OIDC provider.
+13. A light theme and a better phone layout.
+14. Actions on several servers at once.
+15. Hosting: quotas per user, users creating their servers within them, suspending servers, billing integration.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

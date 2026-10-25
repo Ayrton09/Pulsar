@@ -10,7 +10,9 @@
     "lastSeen": "Vu pour la dernière fois",
     "address": "Adresse",
     "currentCertificateExpires": "Le certificat actuel expire",
-    "expires": "Expire"
+    "expires": "Expire",
+    "installed": "Installée",
+    "latest": "Dernière"
   },
   "serverOutOfMemory": {
     "title": "{server} n'a plus de mémoire",
@@ -56,6 +58,19 @@
     "title": "Le nœud {node} manque d'espace disque",
     "text": "Un disque plein fait échouer les mises à jour, les sauvegardes et les serveurs de jeu eux-mêmes. Libérez de l'espace ou supprimez d'anciennes sauvegardes.",
     "drive": "{free} libres sur {total} ({percent} %)"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} a une mise à jour du jeu",
+    "text": "Une version plus récente de son jeu est sortie. Mettez-le à jour depuis sa page quand cela vous convient.",
+    "installs": "Une version plus récente de son jeu est sortie. Pulsar l'installe tout seul, comme le prévoient les mises à jour du serveur."
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} a été mis à jour",
+    "text": "Pulsar a installé tout seul la mise à jour de son jeu."
+  },
+  "gameUpdateFailed": {
+    "title": "La mise à jour automatique de {server} a échoué",
+    "text": "Pulsar n'a pas pu installer la mise à jour de son jeu. Le serveur a été redémarré s'il tournait. Consultez sa console."
   },
   "publicIpCertificateFailed": {
     "title": "Le certificat de l'IP publique n'a pas pu être renouvelé",

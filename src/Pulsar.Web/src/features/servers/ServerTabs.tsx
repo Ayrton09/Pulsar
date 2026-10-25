@@ -25,6 +25,7 @@ import { checkPorts, chosenPorts, parsePort, portsReady, type TemplatePort } fro
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
+import { GameUpdateSettingsCard } from '../gameUpdates/GameUpdates';
 
 /** Operations whose work the server's console shows as it runs (what SteamCMD prints, among others). */
 const shownInConsole = new Set(['serverInstall', 'serverUpdate', 'addonInstall', 'addonRemove']);
@@ -119,6 +120,7 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
     <div className="space-y-6">
       {settings.isError && <Alert>{t('servers.stale', { error: errorMessage(t, settings.error) })}</Alert>}
       <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
+      <GameUpdateSettingsCard details={details} />
       <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
       <SteamAccountCard key={details.steam?.accountId ?? 'anonymous'} details={details} />
     </div>

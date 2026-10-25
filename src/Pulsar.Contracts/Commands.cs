@@ -34,6 +34,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(KillServerCommand), KillServerCommand.Type)]
 [JsonDerivedType(typeof(DeleteServerCommand), DeleteServerCommand.Type)]
 [JsonDerivedType(typeof(UpdateServerCommand), UpdateServerCommand.Type)]
+[JsonDerivedType(typeof(CheckGameUpdateCommand), CheckGameUpdateCommand.Type)]
 [JsonDerivedType(typeof(ApplyServerSpecCommand), ApplyServerSpecCommand.Type)]
 [JsonDerivedType(typeof(CancelOperationCommand), CancelOperationCommand.Type)]
 [JsonDerivedType(typeof(SendConsoleInputCommand), SendConsoleInputCommand.Type)]
@@ -174,6 +175,15 @@ public sealed record DeleteServerCommand(Guid ServerId) : AgentCommand
 public sealed record UpdateServerCommand(Guid ServerId, bool Validate, SteamLogin? Login = null) : AgentCommand
 {
     public const string Type = "server.update";
+}
+
+/// <summary>
+/// Checks whether the game has an update (Pulsar 1.0.9): the agent answers at once and reports what it found with
+/// <see cref="IAgentHub.GameUpdateChecked"/>, since asking Steam through SteamCMD takes longer than an ack may.
+/// </summary>
+public sealed record CheckGameUpdateCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.update_check";
 }
 
 /// <summary>
@@ -552,6 +562,9 @@ public static class AgentCapabilities
     public const string KillServer = KillServerCommand.Type;
     public const string DeleteServer = DeleteServerCommand.Type;
     public const string UpdateServer = UpdateServerCommand.Type;
+
+    /// <summary>The agent checks for game updates (<see cref="CheckGameUpdateCommand"/>) and reports them (<see cref="IAgentHub.GameUpdateChecked"/>).</summary>
+    public const string CheckGameUpdate = CheckGameUpdateCommand.Type;
     public const string ApplyServerSpec = ApplyServerSpecCommand.Type;
     public const string CancelOperation = CancelOperationCommand.Type;
     public const string ConsoleInput = SendConsoleInputCommand.Type;
@@ -608,6 +621,12 @@ public static class AgentCapabilities
     /// Not a command: the agent installs Minecraft: Bedrock Edition (Pulsar 1.0.8); an older one refuses manifests that do.
     /// </summary>
     public const string MinecraftBedrock = "manifest.minecraft_bedrock";
+
+    /// <summary>
+    /// Not a command: the agent reads manifests with console commands for the players (Pulsar 1.0.9,
+    /// <c>commands</c>); an older one refuses them.
+    /// </summary>
+    public const string ManifestCommands = "manifest.commands";
 
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
@@ -667,6 +686,7 @@ public static class AgentCapabilities
         KillServerCommand => KillServer,
         DeleteServerCommand => DeleteServer,
         UpdateServerCommand => UpdateServer,
+        CheckGameUpdateCommand => CheckGameUpdate,
         ApplyServerSpecCommand => ApplyServerSpec,
         CancelOperationCommand => CancelOperation,
         SendConsoleInputCommand => ConsoleInput,

@@ -121,6 +121,30 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
         }
     }
 
+    /// <summary>
+    /// Whether an update would install another version (an update check, Pulsar 1.0.9): the version the server follows
+    /// (Mojang's latest, or the one chosen) against the one this installer recorded.
+    /// </summary>
+    /// <exception cref="GameProcessException">With a <c>bedrock.*</c> code.</exception>
+    public async Task<GameBuild> CheckAsync(string serverDirectory, string? version, CancellationToken cancellationToken)
+    {
+        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        var client = new VerifiedDownloader(http, s_hosts, "bedrock", "the Minecraft Bedrock server") { StallTimeout = StallTimeout };
+        try
+        {
+            var latest = string.IsNullOrEmpty(version) || version == MinecraftBedrockStep.Latest
+                ? VersionOf(await LatestAsync(client, cancellationToken))!
+                : VersionOf(AddressOf(version))!;
+            var installed = ReadMarker(serverDirectory);
+            return new GameBuild(installed, latest, installed != latest);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw Failed("bedrock.check_failed", $"Mojang's latest Minecraft Bedrock server could not be looked up: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>Where Mojang serves a version's Windows build.</summary>
     public static Uri AddressOf(string version) => VersionPattern().IsMatch(version)
         ? new Uri($"https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-{version}.zip")

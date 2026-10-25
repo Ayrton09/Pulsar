@@ -144,7 +144,25 @@ public static partial class ManifestValidator
         }
 
         ValidateAddons(manifest.AddonList, Error);
+        if (manifest.Commands is { } commands)
+        {
+            ValidateCommands(commands, Error);
+        }
+
         return errors;
+    }
+
+    private static void ValidateCommands(CommandsDefinition commands, Action<string, string> error)
+    {
+        if (commands.Broadcast is { } broadcast && (!IsCommand(broadcast) || !GameCommands.HasOnlyMessage(broadcast)))
+        {
+            error("commands.broadcast", "A single line of up to 256 characters with {{message}} once, and no other placeholder.");
+        }
+
+        if (commands.MessageSpaces is { } spaces && spaces is not ("_" or "-" or "."))
+        {
+            error("commands.messageSpaces", "One of _ - .");
+        }
     }
 
     private static void ValidateAddons(IReadOnlyList<AddonDefinition> addons, Action<string, string> error)

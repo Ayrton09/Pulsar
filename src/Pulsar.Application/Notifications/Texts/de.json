@@ -10,7 +10,9 @@
     "lastSeen": "Zuletzt gesehen",
     "address": "Adresse",
     "currentCertificateExpires": "Das aktuelle Zertifikat läuft ab",
-    "expires": "Läuft ab"
+    "expires": "Läuft ab",
+    "installed": "Installiert",
+    "latest": "Neueste"
   },
   "serverOutOfMemory": {
     "title": "{server} hat keinen Speicher mehr",
@@ -56,6 +58,19 @@
     "title": "Auf Node {node} wird der Speicherplatz knapp",
     "text": "Ein volles Laufwerk lässt Updates, Backups und die Spielserver selbst scheitern. Geben Sie Speicher frei oder löschen Sie alte Backups.",
     "drive": "{free} von {total} frei ({percent} %)"
+  },
+  "gameUpdateAvailable": {
+    "title": "{server} hat ein Spiel-Update",
+    "text": "Eine neuere Version des Spiels ist erschienen. Aktualisiere es auf seiner Seite, wann es dir passt.",
+    "installs": "Eine neuere Version des Spiels ist erschienen. Pulsar installiert sie selbst, wie die Spiel-Updates des Servers eingestellt sind."
+  },
+  "gameUpdateInstalled": {
+    "title": "{server} wurde aktualisiert",
+    "text": "Pulsar hat das Update des Spiels selbst installiert."
+  },
+  "gameUpdateFailed": {
+    "title": "Das automatische Update von {server} ist fehlgeschlagen",
+    "text": "Pulsar konnte das Update des Spiels nicht installieren. Der Server wurde wieder gestartet, falls er lief. Sieh in seine Konsole."
   },
   "publicIpCertificateFailed": {
     "title": "Das Zertifikat der öffentlichen IP konnte nicht erneuert werden",

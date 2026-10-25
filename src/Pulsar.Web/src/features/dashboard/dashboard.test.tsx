@@ -24,6 +24,7 @@ const server = (
   templateName: 'Pulsar test server',
   templateKey: 'pulsar-test',
   gameAddress: null,
+  gameUpdateAvailable: false,
   installState: 'installed',
   runtimeState: 'running',
   desiredState: 'running',

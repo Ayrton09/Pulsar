@@ -45,6 +45,20 @@ public static partial class NotificationTexts
             NotificationSeverity.Error,
             ServerFields(language, server, (Text(language, "fields.task"), taskName), (Text(language, "fields.error"), error)), link);
 
+    public static NotificationMessage GameUpdateAvailable(string language, ServerFacts server, string? installed, string latest, bool installs,
+        string? link) =>
+        new(Text(language, "gameUpdateAvailable.title", ("server", server.Name)),
+            Text(language, installs ? "gameUpdateAvailable.installs" : "gameUpdateAvailable.text"), NotificationSeverity.Warning,
+            ServerFields(language, server, (Text(language, "fields.installed"), installed), (Text(language, "fields.latest"), latest)), link);
+
+    public static NotificationMessage GameUpdateInstalled(string language, ServerFacts server, string? latest, string? link) =>
+        new(Text(language, "gameUpdateInstalled.title", ("server", server.Name)), Text(language, "gameUpdateInstalled.text"),
+            NotificationSeverity.Recovered, ServerFields(language, server, (Text(language, "fields.latest"), latest)), link);
+
+    public static NotificationMessage GameUpdateFailed(string language, ServerFacts server, string? latest, string? error, string? link) =>
+        new(Text(language, "gameUpdateFailed.title", ("server", server.Name)), Text(language, "gameUpdateFailed.text"), NotificationSeverity.Error,
+            ServerFields(language, server, (Text(language, "fields.latest"), latest), (Text(language, "fields.error"), error)), link);
+
     public static NotificationMessage NodeOffline(string language, string nodeName, DateTimeOffset since, string? link) =>
         new(Text(language, "nodeOffline.title", ("node", nodeName)), Text(language, "nodeOffline.text"), NotificationSeverity.Warning,
             [new(Text(language, "fields.node"), nodeName), new(Text(language, "fields.lastSeen"), Moment(since))], link);

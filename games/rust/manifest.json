@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "rust",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "name": "Rust",
   "description": "Rust dedicated server, installed anonymously with SteamCMD (about 6 GB). Generating a new map takes several minutes and a lot of memory.",
   "authors": ["Pulsar contributors"],
@@ -150,5 +150,6 @@
       "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$", "tag": "production_build" },
       "reinstallAfterUpdate": true,
       "conflicts": ["oxide"] }
-  ]
+  ],
+  "commands": { "broadcast": "say \"{{message}}\"" }
 }

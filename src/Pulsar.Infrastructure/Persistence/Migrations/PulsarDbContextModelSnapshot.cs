@@ -1548,7 +1548,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notification_deliveries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'node_disk_low', 'node_offline', 'public_ip_certificate', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
+                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'game_update_available', 'game_update_failed', 'node_disk_low', 'node_offline', 'public_ip_certificate', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
 
                             t.HasCheckConstraint("ck_notification_deliveries_status", "status IN ('failed', 'pending', 'sent')");
                         });
@@ -1785,6 +1785,123 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_scheduled_task_runs_occurrences", "occurrences >= 1");
 
                             t.HasCheckConstraint("ck_scheduled_task_runs_status", "status IN ('failed', 'running', 'skipped', 'succeeded')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ServerSequence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("error_code");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("ObservedStateAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_state_at");
+
+                    b.Property<long?>("ObservedStateSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("observed_state_sequence");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("origin");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<bool>("StepBegun")
+                        .HasColumnType("boolean")
+                        .HasColumnName("step_begun");
+
+                    b.Property<int>("StepIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("step_index");
+
+                    b.Property<DateTimeOffset?>("StepStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("step_started_at");
+
+                    b.Property<string>("Steps")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("steps");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("WakeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("wake_at");
+
+                    b.Property<bool>("WasRunning")
+                        .HasColumnType("boolean")
+                        .HasColumnName("was_running");
+
+                    b.HasKey("Id")
+                        .HasName("pk_server_sequences");
+
+                    b.HasIndex("OperationId")
+                        .HasDatabaseName("ix_server_sequences_operation_id");
+
+                    b.HasIndex("ServerId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_server_sequences_running")
+                        .HasFilter("status = 'running'");
+
+                    b.HasIndex("WakeAt")
+                        .HasDatabaseName("ix_server_sequences_due")
+                        .HasFilter("status = 'running'");
+
+                    b.HasIndex("ServerId", "CreatedAt")
+                        .HasDatabaseName("ix_server_sequences_server_id_created_at");
+
+                    b.ToTable("server_sequences", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule')");
+
+                            t.HasCheckConstraint("ck_server_sequences_status", "status IN ('cancelled', 'failed', 'running', 'succeeded')");
                         });
                 });
 
@@ -2067,6 +2184,116 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("game_templates", null, t =>
                         {
                             t.HasCheckConstraint("ck_game_templates_source", "source IN ('bundled', 'imported')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.GameUpdateWatch", b =>
+                {
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("AttemptedLatest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("attempted_latest");
+
+                    b.Property<DateTimeOffset?>("AutoUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("auto_updated_at");
+
+                    b.Property<bool?>("Available")
+                        .HasColumnType("boolean")
+                        .HasColumnName("available");
+
+                    b.Property<string>("CheckError")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("check_error");
+
+                    b.Property<string>("CheckErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("check_error_code");
+
+                    b.Property<DateTimeOffset?>("CheckRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("check_requested_at");
+
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_at");
+
+                    b.Property<string>("Installed")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("installed");
+
+                    b.Property<string>("Latest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("latest");
+
+                    b.Property<DateTimeOffset>("NextCheckAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_check_at");
+
+                    b.Property<DateTimeOffset?>("NotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("notified_at");
+
+                    b.Property<string>("NotifiedLatest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("notified_latest");
+
+                    b.Property<string>("Policy")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("policy");
+
+                    b.Property<Guid?>("SequenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sequence_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("WarningMessage")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("warning_message");
+
+                    b.Property<int>("WarningMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("warning_minutes");
+
+                    b.Property<bool>("WhenEmpty")
+                        .HasColumnType("boolean")
+                        .HasColumnName("when_empty");
+
+                    b.HasKey("ServerId")
+                        .HasName("pk_game_update_watches");
+
+                    b.HasIndex("NextCheckAt")
+                        .HasDatabaseName("ix_game_update_watches_due")
+                        .HasFilter("policy <> 'off'");
+
+                    b.HasIndex("SequenceId")
+                        .HasDatabaseName("ix_game_update_watches_sequence_id");
+
+                    b.ToTable("game_update_watches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_game_update_watches_policy", "policy IN ('install', 'notify', 'off')");
+
+                            t.HasCheckConstraint("ck_game_update_watches_warning_minutes", "warning_minutes BETWEEN 0 AND 60");
                         });
                 });
 
@@ -3095,6 +3322,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_scheduled_task_runs_scheduled_tasks_task_id");
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ServerSequence", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Operation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_server_sequences_operations_operation_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_sequences_servers_server_id");
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Servers.Backup", b =>
                 {
                     b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
@@ -3128,6 +3371,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasForeignKey("StorageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_backups_backup_storages_storage_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.GameUpdateWatch", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Scheduling.ServerSequence", null)
+                        .WithMany()
+                        .HasForeignKey("SequenceId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_game_update_watches_server_sequences_sequence_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithOne()
+                        .HasForeignKey("Pulsar.Domain.Servers.GameUpdateWatch", "ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_game_update_watches_servers_server_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.Operation", b =>

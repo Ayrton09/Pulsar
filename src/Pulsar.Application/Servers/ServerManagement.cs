@@ -46,7 +46,8 @@ public sealed record ServerSummary(
     OperationView? ActiveOperation,
     DateTimeOffset CreatedAt,
     string TemplateKey,
-    ServerAddressView? GameAddress);
+    ServerAddressView? GameAddress,
+    bool GameUpdateAvailable = false);
 
 /// <summary>Where players connect: the allocation of the server's <c>game</c> port (0.0.0.0 when it listens on every address).</summary>
 public sealed record ServerAddressView(string IpAddress, int Port);
@@ -702,12 +703,13 @@ public sealed partial class ServerManagement(
 
     /// <summary>
     /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
-    /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8.
+    /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players 1.0.9.
     /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
         && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
-        && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock));
+        && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
+        && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;
@@ -1038,11 +1040,17 @@ public sealed partial class ServerManagement(
             .Where(a => a.ServerId != null && serverIds.Contains(a.ServerId.Value) && a.PortName == GamePortName)
             .ToDictionaryAsync(a => a.ServerId!.Value, a => new ServerAddressView(a.IpAddress, a.Port), cancellationToken);
         var operations = await db.Operations.AsNoTracking().Where(o => operationIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id, cancellationToken);
+        // The last check found an update (a server whose updates are off shows none).
+        var updatable = (await db.GameUpdateWatches.AsNoTracking()
+                .Where(w => serverIds.Contains(w.ServerId) && w.Policy != GameUpdatePolicy.Off && w.Available == true)
+                .Select(w => w.ServerId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
         return [.. servers.Select(s => new ServerSummary(s.Id.Value, s.ShortId, s.Name, s.NodeId.Value, nodes.GetValueOrDefault(s.NodeId) ?? "",
             Connection(s.NodeId) is not null, s.TemplateId.Value, templates.GetValueOrDefault(s.TemplateId)?.Name ?? "", s.InstallState, s.RuntimeState,
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
-            templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id)))];
+            templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id)))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

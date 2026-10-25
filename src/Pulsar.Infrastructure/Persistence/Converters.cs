@@ -25,6 +25,8 @@ internal sealed class ScheduledTaskIdConverter() : ValueConverter<ScheduledTaskI
 
 internal sealed class ScheduledRunIdConverter() : ValueConverter<ScheduledRunId, Guid>(id => id.Value, value => new ScheduledRunId(value));
 
+internal sealed class ServerSequenceIdConverter() : ValueConverter<ServerSequenceId, Guid>(id => id.Value, value => new ServerSequenceId(value));
+
 internal sealed class ApiKeyIdConverter() : ValueConverter<ApiKeyId, Guid>(id => id.Value, value => new ApiKeyId(value));
 
 internal sealed class SshKeyIdConverter() : ValueConverter<SshKeyId, Guid>(id => id.Value, value => new SshKeyId(value));

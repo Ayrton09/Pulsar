@@ -74,6 +74,31 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
         await Task.Run(() => Run(step, serverDirectory), cancellationToken);
     }
 
+    /// <summary>Whether an update check can ask what the step would install: SteamCMD's and Minecraft's (Pulsar 1.0.9).</summary>
+    public static bool IsCheckable(InstallStep step) => step is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep;
+
+    /// <summary>
+    /// Whether one of Minecraft's steps would install something new (an update check, Pulsar 1.0.9); null for a step it
+    /// cannot ask (SteamCMD's are asked through <see cref="Steam.SteamCmdRunner"/>).
+    /// </summary>
+    /// <param name="variables">The server's variable values, defaults included.</param>
+    /// <exception cref="GameProcessException">The publisher could not be asked.</exception>
+    public async Task<GameBuild?> CheckAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        ArgumentNullException.ThrowIfNull(variables);
+        return step switch
+        {
+            MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler)
+                .CheckAsync(serverDirectory, minecraft.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
+            // A check downloads nothing, so it has no signature to verify.
+            MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures ?? Unsigned.Instance)
+                .CheckAsync(serverDirectory, bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
+            _ => null,
+        };
+    }
+
     /// <summary>What a step that is not a SteamCMD step does, for the server's console.</summary>
     public static string Describe(InstallStep step, IReadOnlyDictionary<string, string?> variables)
     {
@@ -198,4 +223,18 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
             files.Write(serverDirectory, $"{destination}/{relative}", content);
         }
     }
+}
+
+/// <summary>What an update check found for one install step (Pulsar 1.0.9).</summary>
+/// <param name="Installed">What the server has (a Steam build id, a Minecraft version); null when it cannot be told.</param>
+/// <param name="Latest">What the step would install now.</param>
+/// <param name="Available">The step would install something the server does not have.</param>
+public sealed record GameBuild(string? Installed, string Latest, bool Available);
+
+/// <summary>Vouches for nothing: for code that downloads no executable.</summary>
+internal sealed class Unsigned : ICodeSignatures
+{
+    public static Unsigned Instance { get; } = new();
+
+    public bool IsSignedBy(string path, string organization) => false;
 }

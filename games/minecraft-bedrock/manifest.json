@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft-bedrock",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Minecraft: Bedrock Edition",
   "description": "Minecraft: Bedrock Edition's dedicated server, downloaded from Mojang (its program signed by Microsoft). Players on Windows, consoles and phones join with the same version of the game.",
   "authors": ["Pulsar contributors"],
@@ -124,5 +124,6 @@
   "backup": {
     "include": ["worlds/**", "server.properties", "allowlist.json", "permissions.json"],
     "save": { "commands": ["save hold"], "confirmation": "Saving\\.\\.\\.", "timeoutSeconds": 60, "resume": ["save resume"] }
-  }
+  },
+  "commands": { "broadcast": "say {{message}}" }
 }

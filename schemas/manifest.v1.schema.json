@@ -33,7 +33,8 @@
         "stop": { "$ref": "#/$defs/StopDefinition" },
         "backup": { "$ref": "#/$defs/BackupDefinition" },
         "query": { "$ref": "#/$defs/QueryDefinition" },
-        "addons": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/AddonDefinition" }, "description": "Mods the game supports, installed on request." }
+        "addons": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/AddonDefinition" }, "description": "Mods the game supports, installed on request." },
+        "commands": { "$ref": "#/$defs/CommandsDefinition" }
       }
     },
     "AddonDefinition": {
@@ -311,6 +312,15 @@
       "properties": {
         "protocol": { "enum": ["a2s", "minecraft"], "description": "a2s: Valve's server queries over UDP (Source and most Steam games); minecraft: the Server List Ping over TCP." },
         "port": { "type": "string", "description": "Name of a required port with the protocol's transport (UDP for a2s, TCP for minecraft)." }
+      }
+    },
+    "CommandsDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console or RCON.",
+      "properties": {
+        "broadcast": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{message\\}\\}[^\\u0000-\\u001f]*$", "description": "Tells everyone playing a message: {{message}} stands for it (say {{message}}). The panel keeps only letters, digits, spaces and . , ! ? : ' ( ) - of a message." },
+        "messageSpaces": { "enum": ["_", "-", "."], "description": "What stands for a space in the message, for a game whose command takes one word." }
       }
     },
     "ConfigFileDefinition": {

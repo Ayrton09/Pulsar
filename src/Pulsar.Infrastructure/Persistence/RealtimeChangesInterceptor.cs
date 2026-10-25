@@ -126,6 +126,12 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
                 case ScheduledTaskRun run:
                     changes.Servers.Add(run.ServerId);
                     break;
+                case ServerSequence sequence:
+                    changes.Servers.Add(sequence.ServerId);
+                    break;
+                case GameUpdateWatch watch:
+                    changes.Servers.Add(watch.ServerId);
+                    break;
                 case NodeAllocation allocation:
                     changes.Nodes.Add(allocation.NodeId);
                     if (allocation.ServerId is { } holder)

@@ -45,6 +45,7 @@ function details(
       templateName: 'DayZ',
       templateKey: 'dayz',
       gameAddress: null,
+      gameUpdateAvailable: false,
       installState: 'failed',
       runtimeState: 'offline',
       desiredState: 'stopped',

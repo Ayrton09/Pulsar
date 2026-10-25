@@ -19,6 +19,8 @@ export const notificationEvents: NotificationEvent[] = [
   'scheduledTaskFailed',
   'nodeOffline',
   'nodeDiskLow',
+  'gameUpdateAvailable',
+  'gameUpdateFailed',
   'publicIpCertificate',
 ];
 
