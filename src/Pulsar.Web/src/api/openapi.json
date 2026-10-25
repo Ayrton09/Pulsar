@@ -11123,6 +11123,95 @@
         }
       }
     },
+    "/api/v1/servers/{id}/schedules/{taskId}/cancel": {
+      "post": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledRunView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servers/{id}/schedules/{taskId}/runs": {
       "get": {
         "tags": [
@@ -16704,6 +16793,25 @@
           }
         }
       },
+      "ScheduleAbilities": {
+        "required": [
+          "canBroadcast",
+          "knowsPlayers",
+          "updatesChecked"
+        ],
+        "type": "object",
+        "properties": {
+          "canBroadcast": {
+            "type": "boolean"
+          },
+          "knowsPlayers": {
+            "type": "boolean"
+          },
+          "updatesChecked": {
+            "type": "boolean"
+          }
+        }
+      },
       "ScheduledAction": {
         "enum": [
           "start",
@@ -16711,7 +16819,8 @@
           "restart",
           "backup",
           "update",
-          "consoleCommand"
+          "consoleCommand",
+          "sequence"
         ]
       },
       "ScheduledRunList": {
@@ -16794,12 +16903,44 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "sequenceId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "step": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "steps": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "stepKind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SequenceStepKind"
+              }
+            ]
           }
         }
       },
       "ScheduledTaskList": {
         "required": [
-          "tasks"
+          "tasks",
+          "abilities"
         ],
         "type": "object",
         "properties": {
@@ -16808,6 +16949,9 @@
             "items": {
               "$ref": "#/components/schemas/ScheduledTaskView"
             }
+          },
+          "abilities": {
+            "$ref": "#/components/schemas/ScheduleAbilities"
           }
         }
       },
@@ -16858,6 +17002,24 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "steps": {
+            "maxItems": 32,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SequenceStepRequest"
+            }
+          },
+          "onlyIfEmpty": {
+            "type": "boolean",
+            "default": false
+          },
+          "onlyIfUpdateAvailable": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -16870,7 +17032,10 @@
           "action",
           "command",
           "validate",
+          "steps",
           "onlyIfRunning",
+          "onlyIfEmpty",
+          "onlyIfUpdateAvailable",
           "enabled",
           "nextRunAt",
           "lastRunAt",
@@ -16905,7 +17070,22 @@
           "validate": {
             "type": "boolean"
           },
+          "steps": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SequenceStep"
+            }
+          },
           "onlyIfRunning": {
+            "type": "boolean"
+          },
+          "onlyIfEmpty": {
+            "type": "boolean"
+          },
+          "onlyIfUpdateAvailable": {
             "type": "boolean"
           },
           "enabled": {
@@ -16987,6 +17167,40 @@
           "cancelled"
         ]
       },
+      "SequenceStep": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SequenceStepKind"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "validate": {
+            "type": "boolean",
+            "default": false
+          },
+          "onlyIfWasRunning": {
+            "type": "boolean",
+            "default": false
+          },
+          "always": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "SequenceStepKind": {
         "enum": [
           "command",
@@ -16996,9 +17210,46 @@
           "start",
           "restart",
           "backup",
-          "update",
-          null
+          "update"
         ]
+      },
+      "SequenceStepRequest": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SequenceStepKind"
+          },
+          "text": {
+            "maxLength": 512,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "seconds": {
+            "maximum": 86400,
+            "minimum": 0,
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "validate": {
+            "type": "boolean",
+            "default": false
+          },
+          "onlyIfWasRunning": {
+            "type": "boolean",
+            "default": false
+          },
+          "always": {
+            "type": "boolean",
+            "default": false
+          }
+        }
       },
       "ServerAddressView": {
         "required": [

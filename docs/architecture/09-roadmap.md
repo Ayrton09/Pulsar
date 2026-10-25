@@ -459,7 +459,7 @@ Minecraft: Bedrock Edition beyond what 1.0.8 does: its player count (the RakNet 
 A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen points, done in this order, each one checked before the next (the Linux agent stays post-v1):
 
 1. **Game updates** · *done*: checks against Steam and Mojang, shown and notified, installed by themselves as a sequence (warn, stop, update, start again; when nobody plays if asked). Doc 05, "Implementation (1.0.9)"; doc 03, "Game update checks".
-2. Scheduled tasks of several steps, with conditions (only if empty, only if an update is available) and warnings.
+2. **Scheduled tasks of several steps** · *done*: steps one after the other (message the players, command, wait, stop, start, restart, back up, update) with presets, conditions (only while running, only when nobody plays, only when a game update is out), cancel. Doc 05, "Implementation (1.0.9): scheduled tasks of several steps"; doc 07, "Schedules".
 3. Minecraft server types (Paper, Purpur, Fabric, Forge, NeoForge), plugins and modpacks (Modrinth, CurseForge).
 4. Player actions from the Players card: kick, ban, whitelist, operator.
 5. Compressing and extracting archives in the file manager.

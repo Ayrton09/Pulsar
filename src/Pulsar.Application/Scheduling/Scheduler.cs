@@ -41,6 +41,7 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
         {
             var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
             await FailInterruptedAsync(db, now, cancellationToken);
+            await EndSequencedAsync(db, scope.ServiceProvider.GetRequiredService<Notifier>(), now, cancellationToken);
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             taken = [.. await scope.ServiceProvider.GetRequiredService<IScheduledTaskClaims>().LockDueAsync(now, BatchSize, cancellationToken)];
@@ -167,10 +168,9 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
             return;
         }
 
-        var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
-        if ((task.OnlyIfRunning || task.Action == ScheduledAction.ConsoleCommand) && !running)
+        if (await UnmetAsync(services, db, task, server, cancellationToken) is { } unmet)
         {
-            run.Skipped(ScheduleErrors.NotRunning, clock.GetUtcNow());
+            run.Skipped(unmet, clock.GetUtcNow());
             return;
         }
 
@@ -197,9 +197,156 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
                 var update = await servers.RequestUpdateAsync(server.Id, task.Payload.Validate, OperationRequester.Schedule, cancellationToken);
                 await DispatchedAsync(db, run, update.IsSuccess ? update.Value.Operation.Id.Value : null, update.Error, cancellationToken);
                 break;
+            case ScheduledAction.Sequence:
+                await SequenceAsync(services, db, task, run, server, cancellationToken);
+                break;
             default:
                 throw new InvalidOperationException($"Unknown scheduled action {task.Action}.");
         }
+    }
+
+    /// <summary>The condition of the task that does not hold now, if one does not.</summary>
+    private static async Task<DomainError?> UnmetAsync(IServiceProvider services, IPulsarDbContext db, ScheduledTask task, Server server,
+        CancellationToken cancellationToken)
+    {
+        var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
+        if ((task.OnlyIfRunning || task.Action == ScheduledAction.ConsoleCommand) && !running)
+        {
+            return ScheduleErrors.NotRunning;
+        }
+
+        // A server that does not run is empty; one that does says who plays through its game's query.
+        if (task.OnlyIfEmpty && running)
+        {
+            switch (services.GetRequiredService<IServerPlayers>().Online(server.Id))
+            {
+                case null:
+                    return ScheduleErrors.PlayersUnknown;
+                case > 0:
+                    return ScheduleErrors.NotEmpty;
+            }
+        }
+
+        if (task.OnlyIfUpdateAvailable)
+        {
+            var watch = await db.GameUpdateWatches.AsNoTracking().SingleOrDefaultAsync(w => w.ServerId == server.Id, cancellationToken);
+            if (watch?.Policy == GameUpdatePolicy.Off)
+            {
+                return ScheduleErrors.UpdateChecksOff;
+            }
+
+            if (watch?.Available != true)
+            {
+                return ScheduleErrors.NoUpdate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A task of several steps: its sequence starts, and the run goes on until it ends (<see cref="SequenceEndedAsync"/>).
+    /// Skipped while another one runs on the server (an earlier run of it, an automatic update).
+    /// </summary>
+    private async Task SequenceAsync(IServiceProvider services, IPulsarDbContext db, ScheduledTask task, ScheduledTaskRun run, Server server,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var started = await ServerSequences.StartAsync(db, services.GetRequiredService<IRowLocks>(), server, SequenceOrigin.Schedule, task.Name,
+            task.Payload.Steps ?? [], clock.GetUtcNow(), cancellationToken);
+        if (!started.IsSuccess)
+        {
+            if (started.Error == ScheduleErrors.SequenceRunning)
+            {
+                run.Skipped(ScheduleErrors.SequenceRunning, clock.GetUtcNow());
+            }
+            else
+            {
+                run.Failed(started.Error!.Code, started.Error.Message, clock.GetUtcNow());
+            }
+
+            return; // recorded once the transaction is rolled back
+        }
+
+        // Both at once: a run never points at steps that were not stored, nor steps at no run.
+        run.Sequenced(started.Value.Id);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        services.GetRequiredService<SequenceSignal>().Notify();
+    }
+
+    /// <summary>A sequence ended: the run of the task that started it takes its outcome (a failure is notified).</summary>
+    public async Task SequenceEndedAsync(ServerSequence sequence, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        if (sequence.Origin != SequenceOrigin.Schedule || sequence.Status == SequenceStatus.Running)
+        {
+            return;
+        }
+
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        try
+        {
+            await EndAsync(db, scope.ServiceProvider.GetRequiredService<Notifier>(), sequence, clock.GetUtcNow(), cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Its task was deleted meanwhile (or the next pass ended it already).
+        }
+    }
+
+    /// <summary>The run of <paramref name="sequence"/>, if it is still running, takes its outcome (not saved).</summary>
+    private static async Task EndAsync(IPulsarDbContext db, Notifier notifier, ServerSequence sequence, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var run = await db.ScheduledTaskRuns.SingleOrDefaultAsync(r => r.SequenceId == sequence.Id && r.Status == ScheduledRunStatus.Running,
+            cancellationToken);
+        if (run is null)
+        {
+            return;
+        }
+
+        run.SequenceEnded(sequence.Status, sequence.ErrorCode, sequence.Message, now);
+        if (run.Status == ScheduledRunStatus.Failed
+            && await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == sequence.ServerId, cancellationToken) is { } server)
+        {
+            await notifier.ScheduledTaskFailedAsync(server, sequence.Name, run.Message ?? run.ErrorCode, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Runs whose steps ended without the run hearing of it (a panel that stopped in between) take their outcome now.
+    /// Those whose steps are gone (deleted with their server) are ended by <see cref="FailInterruptedAsync"/>.
+    /// </summary>
+    private static async Task EndSequencedAsync(IPulsarDbContext db, Notifier notifier, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var ended = await db.ServerSequences.AsNoTracking()
+            .Where(s => s.Status != SequenceStatus.Running
+                && db.ScheduledTaskRuns.Any(r => r.SequenceId == s.Id && r.Status == ScheduledRunStatus.Running))
+            .Take(BatchSize)
+            .ToListAsync(cancellationToken);
+        if (ended.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var sequence in ended)
+        {
+            await EndAsync(db, notifier, sequence, now, cancellationToken);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another pass (or the runner's own hook) got there first.
+        }
+
+        db.ChangeTracker.Clear();
     }
 
     private void Acknowledged(ScheduledTaskRun run, Result<AgentCommandResult> result)
@@ -239,12 +386,15 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
         }
     }
 
-    /// <summary>Runs a stopped panel left behind (taken, never ended) fail: nobody will end them.</summary>
+    /// <summary>
+    /// Runs a stopped panel left behind (taken, never ended) fail: nobody will end them. A run of several steps ends with
+    /// them, however long they take.
+    /// </summary>
     private static Task<int> FailInterruptedAsync(IPulsarDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var before = now - InterruptedAfter;
         return db.ScheduledTaskRuns
-            .Where(r => r.Status == ScheduledRunStatus.Running && r.StartedAt < before)
+            .Where(r => r.Status == ScheduledRunStatus.Running && r.StartedAt < before && r.SequenceId == null)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(r => r.Status, ScheduledRunStatus.Failed)
                 .SetProperty(r => r.ErrorCode, ScheduleErrors.Interrupted.Code)

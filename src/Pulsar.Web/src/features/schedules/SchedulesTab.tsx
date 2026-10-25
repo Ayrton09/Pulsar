@@ -13,29 +13,48 @@ import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import {
+  useCancelSchedule,
   useDeleteSchedule,
   useRunSchedule,
   useSaveSchedule,
   useScheduleRuns,
   useSchedulePreview,
   useSchedules,
+  type ScheduleAbilities,
   type ScheduledAction,
   type ScheduledRunView,
   type ScheduledTaskView,
+  type SequenceStepKind,
 } from './api';
 import { browserTimeZone, fromCron, HOUR_INTERVALS, timeOfDay, timeZones, toCron, type ScheduleKind } from './cron';
+import {
+  fromDraft,
+  MAX_COMMAND_LENGTH,
+  presetsFor,
+  presetSteps,
+  stepError,
+  stepKinds,
+  stepPermissions,
+  toDraft,
+  type Preset,
+  type StepDraft,
+} from './steps';
+import { StepsEditor } from './StepsEditor';
 
 const MAX_NAME_LENGTH = 128;
-const MAX_COMMAND_LENGTH = 512;
 
-/** Each action and the permission a user needs to schedule it (the panel checks it too). */
-const actionPermissions: Record<ScheduledAction, string> = {
+/**
+ * Each action and the permission a user needs to schedule it (the panel checks it too); a task of several steps needs
+ * those of its steps.
+ */
+const actionPermissions: Record<ScheduledAction, string | null> = {
   restart: Permission.ServerRestart,
   start: Permission.ServerStart,
   stop: Permission.ServerStop,
   backup: Permission.ServerBackupsCreate,
   update: Permission.ServerInstall,
   consoleCommand: Permission.ServerConsoleWrite,
+  sequence: null,
 };
 
 const runTones = {
@@ -55,13 +74,22 @@ export function SchedulesTab({ details }: { details: ServerDetails }) {
   const { server } = details;
   const schedules = useSchedules(server.id);
   const run = useRunSchedule(server.id);
+  const cancel = useCancelSchedule(server.id);
   const remove = useDeleteSchedule(server.id);
   const [editing, setEditing] = useState<ScheduledTaskView | 'new' | null>(null);
   const [history, setHistory] = useState<ScheduledTaskView | null>(null);
   const canEdit = canOnServer(me, server, Permission.ServerSchedulesEdit);
+  const may = (permission: string | null) => permission === null || canOnServer(me, server, permission);
+  const kinds = stepKinds.filter((kind) => may(stepPermissions[kind]));
   const allowed = (Object.keys(actionPermissions) as ScheduledAction[]).filter((action) =>
-    canOnServer(me, server, actionPermissions[action]),
+    // Several steps, when the user may do more than wait.
+    action === 'sequence' ? kinds.some((kind) => kind !== 'wait') : may(actionPermissions[action]),
   );
+  // A task is the user's to change, run or cancel when they may do all it does.
+  const mayDo = (task: ScheduledTaskView) =>
+    task.action === 'sequence'
+      ? (task.steps ?? []).every((step) => may(stepPermissions[step.kind]))
+      : may(actionPermissions[task.action]);
 
   if (schedules.isPending) {
     return <Spinner label={t('common.loading')} />;
@@ -71,9 +99,11 @@ export function SchedulesTab({ details }: { details: ServerDetails }) {
     return <Alert>{errorMessage(t, schedules.error)}</Alert>;
   }
 
-  const error = run.error ?? remove.error;
+  const error = run.error ?? cancel.error ?? remove.error;
   const deleteTask = (task: ScheduledTaskView) =>
     window.confirm(t('schedules.deleteConfirm', { name: task.name })) && remove.mutate(task.id);
+  const cancelRun = (task: ScheduledTaskView) =>
+    window.confirm(t('schedules.cancelConfirm', { name: task.name })) && cancel.mutate(task.id);
 
   return (
     <div className="space-y-6">
@@ -104,11 +134,14 @@ export function SchedulesTab({ details }: { details: ServerDetails }) {
               <TaskRow
                 key={task.id}
                 task={task}
-                canEdit={canEdit && allowed.includes(task.action)}
+                canEdit={canEdit && mayDo(task)}
                 pending={
-                  (run.isPending && run.variables === task.id) || (remove.isPending && remove.variables === task.id)
+                  (run.isPending && run.variables === task.id) ||
+                  (cancel.isPending && cancel.variables === task.id) ||
+                  (remove.isPending && remove.variables === task.id)
                 }
                 onRun={() => run.mutate(task.id)}
+                onCancel={() => cancelRun(task)}
                 onEdit={() => setEditing(task)}
                 onHistory={() => setHistory(task)}
                 onDelete={() => deleteTask(task)}
@@ -124,6 +157,8 @@ export function SchedulesTab({ details }: { details: ServerDetails }) {
           serverId={server.id}
           task={editing === 'new' ? null : editing}
           actions={allowed}
+          kinds={kinds.filter((kind) => kind !== 'broadcast' || schedules.data.abilities.canBroadcast)}
+          abilities={schedules.data.abilities}
           onDone={() => setEditing(null)}
         />
       )}
@@ -138,15 +173,18 @@ interface TaskRowProps {
   showDelete: boolean;
   pending: boolean;
   onRun: () => void;
+  onCancel: () => void;
   onEdit: () => void;
   onHistory: () => void;
   onDelete: () => void;
 }
 
-function TaskRow({ task, canEdit, showDelete, pending, onRun, onEdit, onHistory, onDelete }: TaskRowProps) {
+function TaskRow({ task, canEdit, showDelete, pending, onRun, onCancel, onEdit, onHistory, onDelete }: TaskRowProps) {
   const { t, i18n } = useTranslation();
   const formatDate = useFormatDate();
   const when = describeSchedule(t, i18n.language, task.cron, task.timeZone);
+  // Steps still going can be cancelled.
+  const cancellable = task.lastRun?.status === 'running' && task.lastRun.sequenceId != null;
   return (
     <tr>
       <Td className="max-w-md">
@@ -176,7 +214,18 @@ function TaskRow({ task, canEdit, showDelete, pending, onRun, onEdit, onHistory,
       </Td>
       <Td className="text-right whitespace-nowrap">
         <span className="inline-flex flex-wrap justify-end gap-1">
-          {canEdit && (
+          {canEdit && cancellable && (
+            <Button
+              variant="dangerSubtle"
+              size="sm"
+              disabled={pending}
+              aria-label={t('schedules.cancelRunNamed', { name: task.name })}
+              onClick={onCancel}
+            >
+              {t('schedules.cancelRun')}
+            </Button>
+          )}
+          {canEdit && !cancellable && (
             <Button
               variant="ghost"
               size="sm"
@@ -223,16 +272,32 @@ function TaskRow({ task, canEdit, showDelete, pending, onRun, onEdit, onHistory,
   );
 }
 
-/** "Restart, only while running", "Console: say hello", "Update, verifying every file". */
+/**
+ * "Restart · only while running", "Console: say hello", "Update the game · verifying every file", "7 steps: message →
+ * wait → … → restart · only when nobody plays".
+ */
 function describeAction(t: TFunction, task: ScheduledTaskView): string {
-  const action = t(`schedules.actions.${task.action}`);
-  if (task.action === 'consoleCommand') {
-    return t('schedules.commandSummary', { command: task.command ?? '' });
-  }
+  const steps = (task.steps ?? []).map((step) => t(`schedules.stepNames.${step.kind}`));
+  const parts = [
+    task.action === 'consoleCommand'
+      ? t('schedules.commandSummary', { command: task.command ?? '' })
+      : task.action === 'sequence'
+        ? t('schedules.stepsSummary', { count: steps.length, steps: steps.join(' → ') })
+        : t(`schedules.actions.${task.action}`),
+  ];
   if (task.action === 'update' && task.validate) {
-    return `${action} · ${t('schedules.validate')}`;
+    parts.push(t('schedules.validate'));
   }
-  return task.onlyIfRunning ? `${action} · ${t('schedules.onlyIfRunningShort')}` : action;
+  if (task.onlyIfRunning) {
+    parts.push(t('schedules.onlyIfRunningShort'));
+  }
+  if (task.onlyIfEmpty) {
+    parts.push(t('schedules.onlyIfEmptyShort'));
+  }
+  if (task.onlyIfUpdateAvailable) {
+    parts.push(t('schedules.onlyIfUpdateAvailableShort'));
+  }
+  return parts.join(' · ');
 }
 
 /** "Every day at 04:00", plus the task's time zone when it is not the browser's. */
@@ -252,8 +317,15 @@ function describeSchedule(t: TFunction, language: string, cron: string, timeZone
   return timeZone === browserTimeZone() ? text : `${text} (${timeZone})`;
 }
 
-/** Why a run did not do its action, in the UI language. */
+/** Why a run did not do its action, or which of its steps it is doing, in the UI language. */
 function runDetail(t: TFunction, run: ScheduledRunView): string | null {
+  if (run.status === 'running' && run.step != null && run.steps != null && run.stepKind != null) {
+    return t('schedules.stepProgress', {
+      step: run.step + 1,
+      count: run.steps,
+      what: t(`gameUpdates.steps.${run.stepKind}`),
+    });
+  }
   if (run.errorCode === 'schedules.missed') {
     return t('schedules.missed', { count: run.occurrences });
   }
@@ -287,17 +359,23 @@ interface TaskDialogProps {
   serverId: string;
   task: ScheduledTaskView | null;
   actions: ScheduledAction[];
+  /** The steps the user may add. */
+  kinds: SequenceStepKind[];
+  abilities: ScheduleAbilities;
   onDone: () => void;
 }
 
-function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
+function TaskDialog({ serverId, task, actions, kinds, abilities, onDone }: TaskDialogProps) {
   const { t, i18n } = useTranslation();
   const save = useSaveSchedule(serverId);
   const [name, setName] = useState(task?.name ?? '');
   const [action, setAction] = useState<ScheduledAction>(task?.action ?? actions[0] ?? 'restart');
   const [command, setCommand] = useState(task?.command ?? '');
   const [validate, setValidate] = useState(task?.validate ?? false);
+  const [steps, setSteps] = useState<StepDraft[]>(() => (task?.steps ?? []).map(toDraft));
   const [onlyIfRunning, setOnlyIfRunning] = useState(task?.onlyIfRunning ?? false);
+  const [onlyIfEmpty, setOnlyIfEmpty] = useState(task?.onlyIfEmpty ?? false);
+  const [onlyIfUpdateAvailable, setOnlyIfUpdateAvailable] = useState(task?.onlyIfUpdateAvailable ?? false);
   const [enabled, setEnabled] = useState(task?.enabled ?? true);
   const [schedule, setSchedule] = useState<ScheduleKind>(
     task ? fromCron(task.cron) : { kind: 'daily', hour: 4, minute: 0 },
@@ -306,16 +384,41 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
   const zones = useMemo(() => timeZones(timeZone), [timeZone]);
   const cron = toCron(schedule);
   const preview = useSchedulePreview(serverId, cron, timeZone);
-  const canWaitForRunning = action === 'restart' || action === 'backup';
+  const canWaitForRunning = action === 'restart' || action === 'backup' || action === 'sequence';
+  // Shown when the game allows them, or when the task has them already (so they can be turned off).
+  const canWaitForEmpty = action !== 'start' && action !== 'consoleCommand' && (abilities.knowsPlayers || onlyIfEmpty);
+  const canWaitForUpdate =
+    (action === 'update' || action === 'sequence') && (abilities.updatesChecked || onlyIfUpdateAvailable);
   const nameInvalid = name.trim() === '' || name.trim().length > MAX_NAME_LENGTH;
   const commandInvalid =
     action === 'consoleCommand' && (command.trim() === '' || command.trim().length > MAX_COMMAND_LENGTH);
+  const stepsInvalid = action === 'sequence' && (steps.length === 0 || steps.some((step) => stepError(t, step)));
+  const presets = presetsFor((kind) => kinds.includes(kind));
   const [submitted, setSubmitted] = useState(false);
+
+  const applyPreset = (preset: Preset) => {
+    setSteps(presetSteps(t, preset, abilities.canBroadcast && kinds.includes('broadcast')));
+    if (preset === 'restart') {
+      setOnlyIfRunning(true);
+    } else if (abilities.updatesChecked) {
+      setOnlyIfUpdateAvailable(true);
+    }
+    if (name.trim() === '') {
+      setName(t(preset === 'restart' ? 'schedules.presets.restartName' : 'schedules.presets.updateName'));
+    }
+  };
+  const changeAction = (next: ScheduledAction) => {
+    setAction(next);
+    // Several steps start as a restart with warnings: an example to change.
+    if (next === 'sequence' && steps.length === 0 && presets.includes('restart')) {
+      setSteps(presetSteps(t, 'restart', abilities.canBroadcast && kinds.includes('broadcast')));
+    }
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
-    if (nameInvalid || commandInvalid) {
+    if (nameInvalid || commandInvalid || stepsInvalid) {
       return;
     }
     save.mutate(
@@ -330,6 +433,9 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
           validate: action === 'update' && validate,
           onlyIfRunning: canWaitForRunning && onlyIfRunning,
           enabled,
+          steps: action === 'sequence' ? steps.map(fromDraft) : null,
+          onlyIfEmpty: canWaitForEmpty && onlyIfEmpty,
+          onlyIfUpdateAvailable: canWaitForUpdate && onlyIfUpdateAvailable,
         },
       },
       { onSuccess: onDone },
@@ -343,6 +449,7 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
       open
       onOpenChange={(open) => !open && onDone()}
       title={task ? t('schedules.editTitle', { name: task.name }) : t('schedules.createTitle')}
+      size={action === 'sequence' ? 'lg' : 'md'}
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
         <Field
@@ -360,7 +467,7 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
         </Field>
         <Field label={t('schedules.action')}>
           {(control) => (
-            <Select {...control} value={action} onChange={(e) => setAction(e.target.value as ScheduledAction)}>
+            <Select {...control} value={action} onChange={(e) => changeAction(e.target.value as ScheduledAction)}>
               {actions.map((a) => (
                 <option key={a} value={a}>
                   {t(`schedules.actions.${a}`)}
@@ -394,11 +501,51 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
           />
         )}
         {action === 'update' && <p className="text-sm text-muted">{t('schedules.updateHint')}</p>}
+        {action === 'sequence' && (
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-medium">{t('schedules.steps')}</legend>
+            <p className="text-sm text-muted">{t('schedules.stepsHint')}</p>
+            {presets.length > 0 && (
+              <Field label={t('schedules.presets.label')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value=""
+                    onChange={(e) => e.target.value !== '' && applyPreset(e.target.value as Preset)}
+                  >
+                    <option value="">{t('schedules.presets.choose')}</option>
+                    {presets.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {t(`schedules.presets.${preset}`)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+            <StepsEditor steps={steps} onChange={setSteps} kinds={kinds} showErrors={submitted} />
+            {submitted && steps.length === 0 && <p className="text-sm text-danger">{t('schedules.stepsRequired')}</p>}
+          </fieldset>
+        )}
         {canWaitForRunning && (
           <Checkbox
             label={t('schedules.onlyIfRunning')}
             checked={onlyIfRunning}
             onChange={(e) => setOnlyIfRunning(e.target.checked)}
+          />
+        )}
+        {canWaitForEmpty && (
+          <Checkbox
+            label={t('schedules.onlyIfEmpty')}
+            checked={onlyIfEmpty}
+            onChange={(e) => setOnlyIfEmpty(e.target.checked)}
+          />
+        )}
+        {canWaitForUpdate && (
+          <Checkbox
+            label={t('schedules.onlyIfUpdateAvailable')}
+            checked={onlyIfUpdateAvailable}
+            onChange={(e) => setOnlyIfUpdateAvailable(e.target.checked)}
           />
         )}
 

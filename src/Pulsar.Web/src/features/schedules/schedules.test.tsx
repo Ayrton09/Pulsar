@@ -24,6 +24,10 @@ const manager = {
   ],
 };
 const viewer = { ...adminUser, permissions: ['server.view', 'server.schedules.view'] };
+const operator = {
+  ...adminUser,
+  permissions: [...manager.permissions, 'server.console.write', 'server.stop', 'server.start', 'server.install'],
+};
 
 const details: Schemas['ServerDetails'] = {
   server: {
@@ -84,7 +88,10 @@ function task(changes: Partial<Schemas['ScheduledTaskView']> = {}): Schemas['Sch
     action: 'restart',
     command: null,
     validate: false,
+    steps: null,
     onlyIfRunning: false,
+    onlyIfEmpty: false,
+    onlyIfUpdateAvailable: false,
     enabled: true,
     nextRunAt: '2026-10-04T07:00:00Z',
     lastRunAt: '2026-10-03T07:00:00Z',
@@ -95,7 +102,10 @@ function task(changes: Partial<Schemas['ScheduledTaskView']> = {}): Schemas['Sch
   };
 }
 
+const abilities: Schemas['ScheduleAbilities'] = { canBroadcast: true, knowsPlayers: true, updatesChecked: true };
+
 const tasks: Schemas['ScheduledTaskList'] = {
+  abilities,
   tasks: [
     task(),
     task({
@@ -181,7 +191,7 @@ describe('schedules tab', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
-      [`GET ${schedulesPath}`]: () => json({ tasks: [] }),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [], abilities }),
       [`GET ${schedulesPath}/preview`]: (request) => {
         const query = new URL(request.url).searchParams;
         previews.push(`${query.get('cron')} @ ${query.get('timeZone')}`);
@@ -224,6 +234,9 @@ describe('schedules tab', () => {
         validate: false,
         onlyIfRunning: true,
         enabled: true,
+        steps: null,
+        onlyIfEmpty: false,
+        onlyIfUpdateAvailable: false,
       },
     ]);
     expect(previews).toContain('30 5 * * * @ Europe/Madrid');
@@ -237,7 +250,7 @@ describe('schedules tab', () => {
         permissions: [...manager.permissions, 'server.console.write'],
       }),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
-      [`GET ${schedulesPath}`]: () => json({ tasks: [] }),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [], abilities }),
       [`GET ${schedulesPath}/preview`]: () => json(preview),
       [`POST ${schedulesPath}`]: async (request) => {
         saved.push(await request.json());
@@ -265,7 +278,7 @@ describe('schedules tab', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
-      [`GET ${schedulesPath}`]: () => json({ tasks: [task({ cron: '30 5 * * 1-5' })] }),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [task({ cron: '30 5 * * 1-5' })], abilities }),
       [`GET ${schedulesPath}/preview`]: (request) =>
         new URL(request.url).searchParams.get('cron') === '30 5 * * 1-5'
           ? json(preview)
@@ -291,7 +304,7 @@ describe('schedules tab', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
-      [`GET ${schedulesPath}`]: () => json({ tasks: [task({ timeZone: 'Pulsar/Nowhere' })] }),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [task({ timeZone: 'Pulsar/Nowhere' })], abilities }),
       [`GET ${schedulesPath}/preview`]: () => json(preview),
     });
     renderAt(`/servers/${serverId}?tab=schedules`);
@@ -312,7 +325,7 @@ describe('schedules tab', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
-      [`GET ${schedulesPath}`]: () => json({ tasks: [task()] }),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [task()], abilities }),
       [`POST ${schedulesPath}/${taskId}/run`]: () => {
         ran.push('run');
         return json(run());
@@ -335,6 +348,170 @@ describe('schedules tab', () => {
     expect(await within(dialog).findByText('The server was not running.')).toBeInTheDocument();
     expect(within(dialog).getByText('Failed')).toBeInTheDocument();
     expect(within(dialog).getAllByText('Done')).toHaveLength(1);
+  });
+
+  it('builds a task of several steps from a preset and sends its steps in order', async () => {
+    const saved: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [], abilities }),
+      [`GET ${schedulesPath}/preview`]: () => json(preview),
+      [`POST ${schedulesPath}`]: async (request) => {
+        saved.push(await request.json());
+        return json(task(), 201);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=schedules`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New scheduled task' });
+    // Several steps start as a restart with warnings.
+    await user.selectOptions(within(dialog).getByLabelText('Action'), 'sequence');
+    expect(within(dialog).getByLabelText('Step 1')).toHaveValue('broadcast');
+    expect(within(dialog).getAllByLabelText('Message')[0]).toHaveValue('Restarting in 5 min');
+    expect(within(dialog).getByLabelText('Step 7')).toHaveValue('restart');
+
+    await user.selectOptions(within(dialog).getByLabelText('Start from a preset'), 'update');
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Game update');
+    expect(within(dialog).getByLabelText('Only when a game update is available')).toBeChecked();
+    expect(within(dialog).getAllByLabelText('Message')[2]).toHaveValue('Restarting in 10 s for a game update');
+    expect(within(dialog).getByLabelText('Step 9')).toHaveValue('start');
+
+    // The first warning goes, the update verifies every file, and a last message is added (empty: refused until written).
+    await user.click(within(dialog).getByRole('button', { name: 'Remove step 1' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove step 1' }));
+    await user.click(within(dialog).getByLabelText('Verify every file'));
+    await user.click(within(dialog).getByRole('button', { name: 'Add a step' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Move step 8 up' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText('A message of 1 to 128 characters.')).toBeInTheDocument();
+    expect(saved).toHaveLength(0);
+    const last = within(dialog).getAllByLabelText('Message').at(-1);
+    expect(last).toHaveValue('');
+    await user.type(last as HTMLElement, 'Back soon');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(saved).toHaveLength(1));
+    const step = (kind: string, changes: object = {}) => ({
+      kind,
+      text: null,
+      seconds: 0,
+      validate: false,
+      onlyIfWasRunning: false,
+      always: false,
+      ...changes,
+    });
+    expect(saved[0]).toMatchObject({
+      name: 'Game update',
+      action: 'sequence',
+      onlyIfUpdateAvailable: true,
+      onlyIfEmpty: false,
+      steps: [
+        step('broadcast', { text: 'Restarting in 1 min for a game update' }),
+        step('wait', { seconds: 50 }),
+        step('broadcast', { text: 'Restarting in 10 s for a game update' }),
+        step('wait', { seconds: 10 }),
+        step('stop'),
+        step('update', { validate: true }),
+        step('broadcast', { text: 'Back soon' }),
+        step('start', { onlyIfWasRunning: true, always: true }),
+      ],
+    });
+  });
+
+  it('shows the step a run is doing and cancels it', async () => {
+    const cancelled: string[] = [];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const steps: Schemas['SequenceStep'][] = [
+      {
+        kind: 'broadcast',
+        text: 'Restarting in 5 min',
+        seconds: 0,
+        validate: false,
+        onlyIfWasRunning: false,
+        always: false,
+      },
+      { kind: 'wait', text: null, seconds: 300, validate: false, onlyIfWasRunning: false, always: false },
+      { kind: 'restart', text: null, seconds: 0, validate: false, onlyIfWasRunning: false, always: false },
+    ];
+    const running = run({
+      status: 'running',
+      finishedAt: null,
+      sequenceId: '0192f1a0-0000-7000-8000-0000000000b1',
+      step: 1,
+      steps: 3,
+      stepKind: 'wait',
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET ${schedulesPath}`]: () =>
+        json({
+          abilities,
+          tasks: [
+            task({ name: 'Restart with warnings', action: 'sequence', steps, onlyIfEmpty: true, lastRun: running }),
+          ],
+        }),
+      [`POST ${schedulesPath}/${taskId}/cancel`]: () => {
+        cancelled.push('cancel');
+        return json(running);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=schedules`);
+
+    await screen.findByRole('table', { name: 'Scheduled tasks' });
+    expect(row('Restart with warnings')).toHaveTextContent(
+      '3 steps: message → wait → restart · only when nobody plays',
+    );
+    expect(row('Restart with warnings')).toHaveTextContent('Step 2 of 3 (waiting)');
+    expect(screen.queryByRole('button', { name: 'Run Restart with warnings now' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel what Restart with warnings is doing' }));
+    await waitFor(() => expect(cancelled).toEqual(['cancel']));
+  });
+
+  it('offers only the steps and conditions the user and the game allow', async () => {
+    const steps: Schemas['SequenceStep'][] = [
+      { kind: 'broadcast', text: 'Restarting', seconds: 0, validate: false, onlyIfWasRunning: false, always: false },
+      { kind: 'restart', text: null, seconds: 0, validate: false, onlyIfWasRunning: false, always: false },
+    ];
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET ${schedulesPath}`]: () =>
+        json({
+          abilities: { canBroadcast: true, knowsPlayers: false, updatesChecked: false },
+          tasks: [task({ name: 'Restart with warnings', action: 'sequence', steps })],
+        }),
+      [`GET ${schedulesPath}/preview`]: () => json(preview),
+    });
+    renderAt(`/servers/${serverId}?tab=schedules`);
+    const user = userEvent.setup();
+
+    // Messaging the players needs the console: this user may not change the task that does.
+    await screen.findByRole('table', { name: 'Scheduled tasks' });
+    expect(screen.queryByRole('button', { name: 'Edit Restart with warnings' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'New task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New scheduled task' });
+    await user.selectOptions(within(dialog).getByLabelText('Action'), 'sequence');
+    // No warnings in the preset, and no step that needs what the user may not do.
+    expect(within(dialog).getByLabelText('Step 1')).toHaveValue('restart');
+    expect(within(dialog).queryByLabelText('Step 2')).not.toBeInTheDocument();
+    const kinds = within(within(dialog).getByLabelText('Step 1'))
+      .getAllByRole('option')
+      .map((o) => o.textContent);
+    expect(kinds).toEqual(['Wait', 'Restart the server', 'Back up']);
+    expect(
+      within(within(dialog).getByLabelText('Start from a preset'))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Choose a preset…', 'Restart with warnings (5 min, 1 min, 10 s)']);
+    // The game does not say who plays, and its updates are not checked.
+    expect(within(dialog).getByLabelText('Only while the server is running')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Only when nobody is playing')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Only when a game update is available')).not.toBeInTheDocument();
   });
 
   it('shows only what a viewer may do', async () => {

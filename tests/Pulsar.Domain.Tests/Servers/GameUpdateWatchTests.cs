@@ -21,6 +21,24 @@ public sealed class GameUpdateWatchTests
     }
 
     [Fact]
+    public void AnInstallOrUpdateLeavesTheUpdateUnknownUntilTheNextCheck()
+    {
+        var watch = GameUpdateWatch.Create(ServerId.New(), s_now);
+        watch.Change(GameUpdatePolicy.Install, false, 0, null, s_now);
+        watch.Asked(s_now);
+        watch.Checked("100", "200", true, null, null, s_now);
+        Assert.True(watch.AutoUpdateDue);
+
+        // Updated by hand (or by a scheduled task): no automatic update starts for what was just installed.
+        watch.FilesChanged(s_now.AddMinutes(3));
+
+        Assert.Null(watch.Available);
+        Assert.False(watch.AutoUpdateDue);
+        Assert.True(watch.CheckDue(s_now.AddMinutes(3)));
+        Assert.Equal("100", watch.Installed); // until the check says otherwise
+    }
+
+    [Fact]
     public void ANodeThatDoesNotAnswerIsAskedAgainLater()
     {
         var watch = GameUpdateWatch.Create(ServerId.New(), s_now);

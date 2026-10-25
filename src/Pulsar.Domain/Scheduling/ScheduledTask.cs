@@ -13,12 +13,27 @@ public enum ScheduledAction
     Backup,
     Update,
     ConsoleCommand,
+
+    /// <summary>Several steps one after the other (warn the players, wait, restart), run as a <see cref="ServerSequence"/>.</summary>
+    Sequence,
 }
 
-/// <summary>What some actions need: the console command to send, whether an update verifies every file.</summary>
-public sealed record ScheduledActionPayload(string? Command = null, bool Validate = false)
+/// <summary>
+/// What some actions need: the console command to send, whether an update verifies every file, the steps of a task of
+/// several steps.
+/// </summary>
+public sealed record ScheduledActionPayload(string? Command = null, bool Validate = false, IReadOnlyList<SequenceStep>? Steps = null)
 {
     public static ScheduledActionPayload None { get; } = new();
+}
+
+/// <summary>What must hold when a run comes for it to act; a run that finds otherwise is skipped, with the reason.</summary>
+/// <param name="OnlyIfRunning">The server is running (restarts, backups, tasks of several steps).</param>
+/// <param name="OnlyIfEmpty">Nobody plays, as the game's query says (a stopped server is empty).</param>
+/// <param name="OnlyIfUpdateAvailable">The game update checks found an update (updates, tasks of several steps).</param>
+public sealed record ScheduledConditions(bool OnlyIfRunning = false, bool OnlyIfEmpty = false, bool OnlyIfUpdateAvailable = false)
+{
+    public static ScheduledConditions None { get; } = new();
 }
 
 /// <summary>
@@ -86,8 +101,16 @@ public sealed class ScheduledTask
 
     public ScheduledActionPayload Payload { get; private set; }
 
-    /// <summary>Restarts and backups can be skipped while the server is not running.</summary>
+    /// <summary>Restarts, backups and tasks of several steps can be skipped while the server is not running.</summary>
     public bool OnlyIfRunning { get; private set; }
+
+    /// <summary>Skipped while someone plays (or nobody can tell).</summary>
+    public bool OnlyIfEmpty { get; private set; }
+
+    /// <summary>Skipped unless the game update checks found an update.</summary>
+    public bool OnlyIfUpdateAvailable { get; private set; }
+
+    public ScheduledConditions Conditions => new(OnlyIfRunning, OnlyIfEmpty, OnlyIfUpdateAvailable);
 
     public bool IsEnabled { get; private set; }
 
@@ -103,19 +126,25 @@ public sealed class ScheduledTask
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public static Result<ScheduledTask> Create(Server server, string name, string cron, string timeZone, ScheduledAction action,
-        ScheduledActionPayload payload, bool onlyIfRunning, bool enabled, UserId? createdBy, DateTimeOffset now)
+        ScheduledActionPayload payload, ScheduledConditions conditions, bool enabled, UserId? createdBy, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(server);
         var task = new ScheduledTask(server.Id, createdBy, now);
-        var set = task.Change(name, cron, timeZone, action, payload, onlyIfRunning, enabled, now);
+        var set = task.Change(name, cron, timeZone, action, payload, conditions, enabled, now);
         return set.IsSuccess ? task : set.Error!;
     }
 
     /// <summary>Replaces the task's definition; the next run is computed again from <paramref name="now"/>.</summary>
-    public Result Change(string name, string cron, string timeZone, ScheduledAction action, ScheduledActionPayload payload, bool onlyIfRunning,
+    public Result Change(string name, string cron, string timeZone, ScheduledAction action, ScheduledActionPayload payload, ScheduledConditions conditions,
         bool enabled, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(payload);
+        ArgumentNullException.ThrowIfNull(conditions);
+        if (!Enum.IsDefined(action))
+        {
+            return ScheduleErrors.ActionInvalid;
+        }
+
         var trimmed = name?.Trim() ?? string.Empty;
         if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
         {
@@ -139,14 +168,33 @@ public sealed class ScheduledTask
             return ScheduleErrors.NeverRuns;
         }
 
-        if (action == ScheduledAction.Backup && Closer(expression, zone, now, MinBackupInterval))
+        var steps = action == ScheduledAction.Sequence ? Normalized(payload.Steps) : null;
+        if (action == ScheduledAction.Sequence && steps is null)
+        {
+            return ScheduleErrors.StepsInvalid;
+        }
+
+        // A task backs up once a run: two backups a few seconds apart would only fill the node's drive.
+        var backups = action == ScheduledAction.Backup ? 1 : steps?.Count(s => s.Kind == SequenceStepKind.Backup) ?? 0;
+        if (backups > 1 || (backups == 1 && Closer(expression, zone, now, MinBackupInterval)))
         {
             return ScheduleErrors.BackupTooOften;
         }
 
-        if (onlyIfRunning && action is not (ScheduledAction.Restart or ScheduledAction.Backup))
+        if (conditions.OnlyIfRunning && action is not (ScheduledAction.Restart or ScheduledAction.Backup or ScheduledAction.Sequence))
         {
             return ScheduleErrors.OnlyIfRunningUnsupported;
+        }
+
+        // Starting a stopped server and console commands (sent only while it runs) disturb nobody.
+        if (conditions.OnlyIfEmpty && action is ScheduledAction.Start or ScheduledAction.ConsoleCommand)
+        {
+            return ScheduleErrors.OnlyIfEmptyUnsupported;
+        }
+
+        if (conditions.OnlyIfUpdateAvailable && action is not (ScheduledAction.Update or ScheduledAction.Sequence))
+        {
+            return ScheduleErrors.OnlyIfUpdateUnsupported;
         }
 
         var command = payload.Command?.Trim();
@@ -164,9 +212,12 @@ public sealed class ScheduledTask
         {
             ScheduledAction.ConsoleCommand => new ScheduledActionPayload(command),
             ScheduledAction.Update => new ScheduledActionPayload(Validate: payload.Validate),
+            ScheduledAction.Sequence => new ScheduledActionPayload(Steps: steps),
             _ => ScheduledActionPayload.None,
         };
-        OnlyIfRunning = onlyIfRunning;
+        OnlyIfRunning = conditions.OnlyIfRunning;
+        OnlyIfEmpty = conditions.OnlyIfEmpty;
+        OnlyIfUpdateAvailable = conditions.OnlyIfUpdateAvailable;
         IsEnabled = enabled;
         _expression = expression;
         _zone = zone;
@@ -255,6 +306,27 @@ public sealed class ScheduledTask
         }
 
         return occurrences.Count == 0 ? ScheduleErrors.NeverRuns : occurrences.ToArray();
+    }
+
+    /// <summary>
+    /// The steps as stored: each one keeps only what its kind uses, its text trimmed. Null when there are none, too many,
+    /// or one is not valid.
+    /// </summary>
+    private static List<SequenceStep>? Normalized(IReadOnlyList<SequenceStep>? steps)
+    {
+        if (steps is null || steps.Count is 0 or > ServerSequence.MaxSteps || steps.Any(s => s is null || !ServerSequence.IsValid(s)))
+        {
+            return null;
+        }
+
+        return [.. steps.Select(s => s.Kind switch
+        {
+            SequenceStepKind.Command or SequenceStepKind.Broadcast => new SequenceStep(s.Kind, s.Text!.Trim(), Always: s.Always),
+            SequenceStepKind.Wait => new SequenceStep(s.Kind, Seconds: s.Seconds, Always: s.Always),
+            SequenceStepKind.Update => new SequenceStep(s.Kind, Validate: s.Validate, Always: s.Always),
+            SequenceStepKind.Start or SequenceStepKind.Restart => new SequenceStep(s.Kind, OnlyIfWasRunning: s.OnlyIfWasRunning, Always: s.Always),
+            _ => new SequenceStep(s.Kind, Always: s.Always),
+        })];
     }
 
     private bool TrySchedule([NotNullWhen(true)] out CronExpression? expression, [NotNullWhen(true)] out TimeZoneInfo? zone)

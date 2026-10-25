@@ -131,11 +131,11 @@ public sealed class ScheduledTaskTests
     [InlineData("0 */6 * * *", true)]
     public void ScheduledBackupsAreAtLeastFifteenMinutesApart(string cron, bool allowed)
     {
-        var backup = ScheduledTask.Create(Server(), "Backup", cron, "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, false, true, null, s_now);
+        var backup = ScheduledTask.Create(Server(), "Backup", cron, "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now);
 
         Assert.Equal(allowed ? null : ScheduleErrors.BackupTooOften, backup.Error);
         // Other actions run as often as the schedule says.
-        Assert.True(ScheduledTask.Create(Server(), "Restart", cron, "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, false, true, null, s_now)
+        Assert.True(ScheduledTask.Create(Server(), "Restart", cron, "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now)
             .IsSuccess);
     }
 
@@ -145,7 +145,7 @@ public sealed class ScheduledTaskTests
         var task = Create("*/5 * * * *", "UTC").Value;
 
         Assert.Equal(ScheduleErrors.BackupTooOften,
-            task.Change("Backup", "*/5 * * * *", "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, false, true, s_now).Error);
+            task.Change("Backup", "*/5 * * * *", "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, ScheduledConditions.None, true, s_now).Error);
         Assert.Equal(ScheduledAction.Restart, task.Action);
     }
 
@@ -164,13 +164,13 @@ public sealed class ScheduledTaskTests
     {
         var task = Daily("0 4 * * *", BuenosAires);
 
-        Assert.True(task.Change("Nightly restart", "0 4 * * *", BuenosAires, ScheduledAction.Restart, ScheduledActionPayload.None, false,
+        Assert.True(task.Change("Nightly restart", "0 4 * * *", BuenosAires, ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None,
             enabled: false, s_now).IsSuccess);
         Assert.Null(task.NextRunAt);
         Assert.Empty(task.Due(s_now + TimeSpan.FromDays(5)));
 
         var later = s_now + TimeSpan.FromDays(5);
-        Assert.True(task.Change("Nightly restart", "0 4 * * *", BuenosAires, ScheduledAction.Restart, ScheduledActionPayload.None, false,
+        Assert.True(task.Change("Nightly restart", "0 4 * * *", BuenosAires, ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None,
             enabled: true, later).IsSuccess);
         Assert.Equal(new DateTimeOffset(2026, 10, 9, 7, 0, 0, TimeSpan.Zero), task.NextRunAt);
         Assert.Empty(task.Due(later));
@@ -181,7 +181,7 @@ public sealed class ScheduledTaskTests
     {
         var task = Daily("0 4 * * *", BuenosAires);
 
-        Assert.True(task.Change("Nightly restart", "30 6 * * 1", "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, false, true, s_now)
+        Assert.True(task.Change("Nightly restart", "30 6 * * 1", "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None, true, s_now)
             .IsSuccess);
 
         Assert.Equal(new DateTimeOffset(2026, 10, 5, 6, 30, 0, TimeSpan.Zero), task.NextRunAt);
@@ -239,33 +239,169 @@ public sealed class ScheduledTaskTests
     [InlineData("two\nlines")]
     public void NamesAreOneLine(string name) =>
         Assert.Equal(ScheduleErrors.NameInvalid, ScheduledTask.Create(Server(), name, "0 4 * * *", "UTC", ScheduledAction.Restart,
-            ScheduledActionPayload.None, false, true, null, s_now).Error);
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now).Error);
 
     [Theory]
     [InlineData(ScheduledAction.Start)]
     [InlineData(ScheduledAction.Stop)]
     [InlineData(ScheduledAction.Update)]
     [InlineData(ScheduledAction.ConsoleCommand)]
-    public void OnlyRestartsAndBackupsCanDependOnTheServerRunning(ScheduledAction action)
+    public void OnlyRestartsBackupsAndStepsCanDependOnTheServerRunning(ScheduledAction action)
     {
         var payload = action == ScheduledAction.ConsoleCommand ? new ScheduledActionPayload("say hi") : ScheduledActionPayload.None;
         Assert.Equal(ScheduleErrors.OnlyIfRunningUnsupported,
-            ScheduledTask.Create(Server(), "Task", "0 4 * * *", "UTC", action, payload, onlyIfRunning: true, true, null, s_now).Error);
+            ScheduledTask.Create(Server(), "Task", "0 4 * * *", "UTC", action, payload, new ScheduledConditions(OnlyIfRunning: true), true, null, s_now).Error);
     }
 
     [Fact]
     public void ConsoleCommandsNeedACommandAndOtherActionsDropIt()
     {
         Assert.Equal(ScheduleErrors.CommandRequired, ScheduledTask.Create(Server(), "Say", "0 4 * * *", "UTC", ScheduledAction.ConsoleCommand,
-            ScheduledActionPayload.None, false, true, null, s_now).Error);
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now).Error);
 
         var restart = ScheduledTask.Create(Server(), "Restart", "0 4 * * *", "UTC", ScheduledAction.Restart, new ScheduledActionPayload("say hi", true),
-            false, true, null, s_now).Value;
+            ScheduledConditions.None, true, null, s_now).Value;
         Assert.Equal(ScheduledActionPayload.None, restart.Payload);
 
         var update = ScheduledTask.Create(Server(), "Update", "0 4 * * *", "UTC", ScheduledAction.Update, new ScheduledActionPayload("say hi", true),
-            false, true, null, s_now).Value;
+            ScheduledConditions.None, true, null, s_now).Value;
         Assert.Equal(new ScheduledActionPayload(null, true), update.Payload);
+    }
+
+    [Fact]
+    public void ATaskOfSeveralStepsKeepsWhatEachStepUses()
+    {
+        var task = Steps([
+            new SequenceStep(SequenceStepKind.Broadcast, "  Restarting in 5 min  ", Seconds: 9, Validate: true),
+            new SequenceStep(SequenceStepKind.Wait, "ignored", Seconds: 240, OnlyIfWasRunning: true),
+            new SequenceStep(SequenceStepKind.Command, "save-all", Always: true),
+            new SequenceStep(SequenceStepKind.Stop, "ignored", Seconds: 5),
+            new SequenceStep(SequenceStepKind.Update, Validate: true, OnlyIfWasRunning: true),
+            new SequenceStep(SequenceStepKind.Start, "ignored", OnlyIfWasRunning: true, Always: true),
+        ]).Value;
+
+        Assert.Equal(ScheduledAction.Sequence, task.Action);
+        Assert.Null(task.Payload.Command);
+        Assert.Equal(
+        [
+            new SequenceStep(SequenceStepKind.Broadcast, "Restarting in 5 min"),
+            new SequenceStep(SequenceStepKind.Wait, Seconds: 240),
+            new SequenceStep(SequenceStepKind.Command, "save-all", Always: true),
+            new SequenceStep(SequenceStepKind.Stop),
+            new SequenceStep(SequenceStepKind.Update, Validate: true),
+            new SequenceStep(SequenceStepKind.Start, OnlyIfWasRunning: true, Always: true),
+        ], task.Payload.Steps!);
+
+        // Other actions keep no steps.
+        var restart = ScheduledTask.Create(Server(), "Restart", "0 4 * * *", "UTC", ScheduledAction.Restart,
+            new ScheduledActionPayload(Steps: [new SequenceStep(SequenceStepKind.Stop)]), ScheduledConditions.None, true, null, s_now).Value;
+        Assert.Null(restart.Payload.Steps);
+    }
+
+    public static TheoryData<SequenceStep[]> InvalidSteps => new()
+    {
+        Array.Empty<SequenceStep>(),
+        Enumerable.Repeat(new SequenceStep(SequenceStepKind.Restart), ServerSequence.MaxSteps + 1).ToArray(),
+        new[] { new SequenceStep(SequenceStepKind.Wait) },
+        new[] { new SequenceStep(SequenceStepKind.Wait, Seconds: SequenceStep.MaxWaitSeconds + 1) },
+        new[] { new SequenceStep(SequenceStepKind.Command, "  ") },
+        new[] { new SequenceStep(SequenceStepKind.Command, "say a\nquit") },
+        new[] { new SequenceStep(SequenceStepKind.Command, new string('a', SequenceStep.MaxTextLength + 1)) },
+        new[] { new SequenceStep(SequenceStepKind.Broadcast, new string('a', SequenceStep.MaxMessageLength + 1)) },
+        new[] { new SequenceStep((SequenceStepKind)42) },
+        new SequenceStep[] { null! },
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidSteps))]
+    public void ATaskOfSeveralStepsNeedsValidOnes(SequenceStep[] steps)
+    {
+        Assert.Equal(ScheduleErrors.StepsInvalid, Steps(steps).Error);
+        Assert.Equal(ScheduleErrors.StepsInvalid, Steps(null).Error);
+    }
+
+    [Fact]
+    public void ATaskOfSeveralStepsHasAtMostTheMostStepsAndBroadcastsTheLongestMessage()
+    {
+        Assert.True(Steps([.. Enumerable.Repeat(new SequenceStep(SequenceStepKind.Restart), ServerSequence.MaxSteps)]).IsSuccess);
+        Assert.True(Steps([new SequenceStep(SequenceStepKind.Broadcast, new string('a', SequenceStep.MaxMessageLength))]).IsSuccess);
+        Assert.True(Steps([new SequenceStep(SequenceStepKind.Wait, Seconds: SequenceStep.MaxWaitSeconds)]).IsSuccess);
+    }
+
+    [Fact]
+    public void ABackupStepIsAsFarApartAsScheduledBackups()
+    {
+        Assert.Equal(ScheduleErrors.BackupTooOften,
+            Steps([new SequenceStep(SequenceStepKind.Broadcast, "Backing up"), new SequenceStep(SequenceStepKind.Backup)], "*/5 * * * *").Error);
+        Assert.True(Steps([new SequenceStep(SequenceStepKind.Restart)], "*/5 * * * *").IsSuccess);
+        Assert.True(Steps([new SequenceStep(SequenceStepKind.Backup)], "*/15 * * * *").IsSuccess);
+        // One backup a run: not a burst of them seconds apart.
+        Assert.Equal(ScheduleErrors.BackupTooOften, Steps([new SequenceStep(SequenceStepKind.Backup), new SequenceStep(SequenceStepKind.Wait, Seconds: 1),
+            new SequenceStep(SequenceStepKind.Backup)], "0 4 * * *").Error);
+    }
+
+    [Fact]
+    public void AnActionThePanelDoesNotKnowIsRefused()
+    {
+        Assert.Equal(ScheduleErrors.ActionInvalid, ScheduledTask.Create(Server(), "Task", "0 4 * * *", "UTC", (ScheduledAction)99,
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now).Error);
+    }
+
+    [Theory]
+    [InlineData(ScheduledAction.Start, false, false)]
+    [InlineData(ScheduledAction.ConsoleCommand, false, false)]
+    [InlineData(ScheduledAction.Stop, true, false)]
+    [InlineData(ScheduledAction.Restart, true, false)]
+    [InlineData(ScheduledAction.Backup, true, false)]
+    [InlineData(ScheduledAction.Update, true, true)]
+    [InlineData(ScheduledAction.Sequence, true, true)]
+    public void ConditionsDependOnTheAction(ScheduledAction action, bool mayWaitForEmpty, bool mayWaitForUpdate)
+    {
+        var payload = action switch
+        {
+            ScheduledAction.ConsoleCommand => new ScheduledActionPayload("say hi"),
+            ScheduledAction.Sequence => new ScheduledActionPayload(Steps: [new SequenceStep(SequenceStepKind.Restart)]),
+            _ => ScheduledActionPayload.None,
+        };
+        Result<ScheduledTask> With(ScheduledConditions conditions) =>
+            ScheduledTask.Create(Server(), "Task", "0 4 * * *", "UTC", action, payload, conditions, true, null, s_now);
+
+        var empty = With(new ScheduledConditions(OnlyIfEmpty: true));
+        Assert.Equal(mayWaitForEmpty ? null : ScheduleErrors.OnlyIfEmptyUnsupported, empty.Error);
+        Assert.Equal(mayWaitForEmpty, empty.IsSuccess && empty.Value.OnlyIfEmpty);
+
+        var update = With(new ScheduledConditions(OnlyIfUpdateAvailable: true));
+        Assert.Equal(mayWaitForUpdate ? null : ScheduleErrors.OnlyIfUpdateUnsupported, update.Error);
+        Assert.Equal(mayWaitForUpdate, update.IsSuccess && update.Value.OnlyIfUpdateAvailable);
+
+        if (action == ScheduledAction.Sequence)
+        {
+            var all = With(new ScheduledConditions(true, true, true)).Value;
+            Assert.Equal(new ScheduledConditions(true, true, true), all.Conditions);
+        }
+    }
+
+    [Theory]
+    [InlineData(SequenceStatus.Succeeded, ScheduledRunStatus.Succeeded, null)]
+    [InlineData(SequenceStatus.Failed, ScheduledRunStatus.Failed, "server.busy")]
+    [InlineData(SequenceStatus.Cancelled, ScheduledRunStatus.Skipped, "schedules.cancelled")]
+    public void ARunOfSeveralStepsTakesTheirOutcome(SequenceStatus ended, ScheduledRunStatus status, string? code)
+    {
+        var run = Steps([new SequenceStep(SequenceStepKind.Restart)]).Value.RunNow(s_now);
+        var sequence = ServerSequenceId.New();
+        run.Sequenced(sequence);
+
+        run.SequenceEnded(SequenceStatus.Running, null, null, s_now.AddMinutes(1));
+        Assert.Equal(ScheduledRunStatus.Running, run.Status); // still going
+
+        run.SequenceEnded(ended, ended == SequenceStatus.Failed ? "server.busy" : null, "detail", s_now.AddMinutes(5));
+        Assert.Equal(status, run.Status);
+        Assert.Equal(code, run.ErrorCode);
+        Assert.Equal(sequence, run.SequenceId);
+        Assert.Equal(s_now.AddMinutes(5), run.FinishedAt);
+
+        run.SequenceEnded(SequenceStatus.Failed, "late", null, s_now.AddMinutes(9));
+        Assert.Equal(status, run.Status); // once
     }
 
     [Fact]
@@ -283,11 +419,15 @@ public sealed class ScheduledTaskTests
     }
 
     private static ScheduledTask Daily(string cron, string zone, DateTimeOffset? now = null) =>
-        ScheduledTask.Create(Server(), "Nightly restart", cron, zone, ScheduledAction.Restart, ScheduledActionPayload.None, false, true, null,
+        ScheduledTask.Create(Server(), "Nightly restart", cron, zone, ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None, true, null,
             now ?? s_now).Value;
 
+    private static Result<ScheduledTask> Steps(IReadOnlyList<SequenceStep>? steps, string cron = "0 4 * * *") =>
+        ScheduledTask.Create(Server(), "Steps", cron, "UTC", ScheduledAction.Sequence, new ScheduledActionPayload(Steps: steps), ScheduledConditions.None,
+            true, null, s_now);
+
     private static Result<ScheduledTask> Create(string cron, string zone) =>
-        ScheduledTask.Create(Server(), "Task", cron, zone, ScheduledAction.Restart, ScheduledActionPayload.None, false, true, null, s_now);
+        ScheduledTask.Create(Server(), "Task", cron, zone, ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None, true, null, s_now);
 
     private static Server Server() =>
         Domain.Servers.Server.Create(NodeId.New(), TemplateId.New(), "Server", null, Domain.Servers.Server.NewShortId(), s_now).Value;

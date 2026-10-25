@@ -164,13 +164,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         }
     }
 
-    /// <summary>What an install or update left is checked for game updates at the next pass (best effort: a check comes anyway).</summary>
+    /// <summary>
+    /// What an install or update left is checked for game updates at the next pass, and no update is offered until then
+    /// (best effort: a check comes anyway).
+    /// </summary>
     private async Task CheckUpdatesSoonAsync(ServerId id, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
-        if (await db.GameUpdateWatches.SingleOrDefaultAsync(w => w.ServerId == id, cancellationToken) is { Policy: not GameUpdatePolicy.Off } watch)
+        if (await db.GameUpdateWatches.SingleOrDefaultAsync(w => w.ServerId == id, cancellationToken) is { } watch)
         {
-            watch.CheckSoon(clock.GetUtcNow());
+            watch.FilesChanged(clock.GetUtcNow());
             try
             {
                 await db.SaveChangesAsync(cancellationToken);

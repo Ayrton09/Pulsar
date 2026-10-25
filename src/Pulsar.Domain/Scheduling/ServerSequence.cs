@@ -37,6 +37,10 @@ public sealed record SequenceStep(SequenceStepKind Kind, string? Text = null, in
     bool Always = false)
 {
     public const int MaxTextLength = 512;
+
+    /// <summary>What a game's broadcast command carries (Pulsar.Manifests' GameCommands cuts there too).</summary>
+    public const int MaxMessageLength = 128;
+
     public const int MaxWaitSeconds = 24 * 60 * 60;
 }
 
@@ -167,8 +171,8 @@ public sealed class ServerSequence
         var text = step.Text?.Trim();
         return step.Kind switch
         {
-            SequenceStepKind.Command or SequenceStepKind.Broadcast =>
-                !string.IsNullOrEmpty(text) && text.Length <= SequenceStep.MaxTextLength && !text.Any(char.IsControl),
+            SequenceStepKind.Command or SequenceStepKind.Broadcast => !string.IsNullOrEmpty(text) && !text.Any(char.IsControl)
+                && text.Length <= (step.Kind == SequenceStepKind.Command ? SequenceStep.MaxTextLength : SequenceStep.MaxMessageLength),
             SequenceStepKind.Wait => step.Seconds is > 0 and <= SequenceStep.MaxWaitSeconds,
             _ => Enum.IsDefined(step.Kind),
         };

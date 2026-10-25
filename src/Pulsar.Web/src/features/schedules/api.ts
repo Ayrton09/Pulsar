@@ -7,6 +7,10 @@ export type ScheduledTaskView = Schemas['ScheduledTaskView'];
 export type ScheduledRunView = Schemas['ScheduledRunView'];
 export type ScheduledTaskRequest = Schemas['ScheduledTaskRequest'];
 export type ScheduledAction = Schemas['ScheduledAction'];
+export type ScheduleAbilities = Schemas['ScheduleAbilities'];
+export type SequenceStep = Schemas['SequenceStep'];
+export type SequenceStepKind = Schemas['SequenceStepKind'];
+export type SequenceStepRequest = Schemas['SequenceStepRequest'];
 
 /** Under the server's keys: the live channel refreshes them whenever a task or one of its runs changes. */
 export const scheduleKeys = {
@@ -82,6 +86,18 @@ export function useDeleteSchedule(serverId: string) {
   return useMutation({
     mutationFn: (taskId: string) =>
       unwrap(api.DELETE('/api/v1/servers/{id}/schedules/{taskId}', { params: { path: { id: serverId, taskId } } })),
+    onSettled: changed,
+  });
+}
+
+/** Cancels the steps a task's run is doing (those that always run, like starting the server again, still do). */
+export function useCancelSchedule(serverId: string) {
+  const changed = useSchedulesChanged(serverId);
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      unwrap(
+        api.POST('/api/v1/servers/{id}/schedules/{taskId}/cancel', { params: { path: { id: serverId, taskId } } }),
+      ),
     onSettled: changed,
   });
 }

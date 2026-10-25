@@ -244,23 +244,8 @@ public sealed class GameUpdateTests(PulsarApiFactory factory) : IClassFixture<Pu
         return server;
     }
 
-    /// <summary>Has the node asked (a check due now, sent by the next pass) and waits until what it found matches.</summary>
-    private async Task<GameUpdateView> CheckedAsync(PanelClient admin, Guid server, Func<GameUpdateView, bool> found, bool ask = true)
-    {
-        if (ask)
-        {
-            await DueNowAsync(server);
-        }
-
-        GameUpdateView? view = null;
-        await InProcessAgent.EventuallyAsync(async () =>
-        {
-            await PassAsync();
-            view = await GetAsync(admin, server);
-            return view.CheckedAt is not null && !view.Checking && found(view);
-        }, () => $"checked (last: {view?.Installed} {view?.Latest} {view?.Available} {view?.CheckErrorCode})");
-        return view!;
-    }
+    private Task<GameUpdateView> CheckedAsync(PanelClient admin, Guid server, Func<GameUpdateView, bool> found, bool ask = true) =>
+        SequenceDriver.CheckedAsync(factory, admin, server, found, ask);
 
     /// <summary>Moves the sequence on (its waits pass at once) until the automatic update ended.</summary>
     private async Task<GameUpdateView> FinishedAsync(PanelClient admin, Guid server)
@@ -279,73 +264,11 @@ public sealed class GameUpdateTests(PulsarApiFactory factory) : IClassFixture<Pu
         return view!;
     }
 
-    private async Task PassAsync()
-    {
-        await using var scope = factory.Services.CreateAsyncScope();
-        scope.ServiceProvider.GetRequiredService<RequestContextOverride>().Context = new SystemRequestContext(GameUpdates.ActorName);
-        await scope.ServiceProvider.GetRequiredService<GameUpdates>().RunDueAsync(DateTimeOffset.UtcNow, Ct);
-    }
+    private Task PassAsync() => SequenceDriver.GameUpdatesPassAsync(factory);
 
-    /// <summary>
-    /// A pass of the game updates and of the sequences, their waits and polls cut short. On the real clock: a pass on a
-    /// later one would take sequences the panel's own runner holds (their lease is that clock's).
-    /// </summary>
-    private async Task DriveAsync()
-    {
-        await PassAsync();
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
-            var now = DateTimeOffset.UtcNow;
-            // A wait, or a step looking again at the server or its operation; not one a runner holds (its lease is minutes long).
-            foreach (var waiting in (await db.ServerSequences.Where(q => q.Status == SequenceStatus.Running && q.StepBegun && q.WakeAt > now)
-                         .ToListAsync(Ct)).Where(q => q.Current?.Kind == SequenceStepKind.Wait || q.WakeAt - now <= ServerSequences.PollInterval))
-            {
-                waiting.WaitUntil(now);
-            }
+    private Task DriveAsync() => SequenceDriver.DriveAsync(factory);
 
-            try
-            {
-                await db.SaveChangesAsync(Ct);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                // The runner moved it meanwhile.
-            }
-        }
-
-        await factory.Services.GetRequiredService<ServerSequences>().RunDueAsync(DateTimeOffset.UtcNow, Ct);
-    }
-
-    /// <summary>The server's next check is due now (as after an update, or 15 minutes later): the next pass asks its node.</summary>
-    private async Task DueNowAsync(Guid server)
-    {
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
-        for (var attempt = 0; ; attempt++)
-        {
-            if (await db.GameUpdateWatches.SingleOrDefaultAsync(w => w.ServerId == new ServerId(server), Ct) is not { } watch)
-            {
-                await PassAsync(); // a pass makes the watches of servers that have none, due now
-                continue;
-            }
-
-            watch.CheckSoon(DateTimeOffset.UtcNow);
-            try
-            {
-                await db.SaveChangesAsync(Ct);
-                return;
-            }
-            catch (DbUpdateConcurrencyException) when (attempt < 5)
-            {
-                db.ChangeTracker.Clear();
-            }
-        }
-    }
-
-    private static async Task<GameUpdateView> GetAsync(PanelClient client, Guid server) =>
-        (await client.Http.GetFromJsonAsync<GameUpdateView>(new Uri($"/api/v1/servers/{server}/game-updates", UriKind.Relative), AccessScenario.Json,
-            Ct))!;
+    private static Task<GameUpdateView> GetAsync(PanelClient client, Guid server) => SequenceDriver.GameUpdatesAsync(client, server);
 
     private static async Task<List<ServerSummary>> ServersAsync(PanelClient client) =>
         (await client.Http.GetFromJsonAsync<List<ServerSummary>>(new Uri("/api/v1/servers", UriKind.Relative), AccessScenario.Json, Ct))!;

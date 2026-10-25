@@ -12,7 +12,10 @@ using Pulsar.Manifests;
 
 namespace Pulsar.Application.Scheduling;
 
-/// <summary>What a user sets on a task. <paramref name="Command"/> is for console commands, <paramref name="Validate"/> for updates.</summary>
+/// <summary>
+/// What a user sets on a task. <paramref name="Command"/> is for console commands, <paramref name="Validate"/> for updates,
+/// <paramref name="Steps"/> for tasks of several steps.
+/// </summary>
 public sealed record ScheduledTaskDefinition(
     string Name,
     string Cron,
@@ -21,10 +24,17 @@ public sealed record ScheduledTaskDefinition(
     string? Command,
     bool Validate,
     bool OnlyIfRunning,
-    bool Enabled);
+    bool Enabled,
+    IReadOnlyList<SequenceStep>? Steps = null,
+    bool OnlyIfEmpty = false,
+    bool OnlyIfUpdateAvailable = false);
 
 /// <param name="Status">For an action that started an operation (backup, update), the operation's outcome.</param>
 /// <param name="Occurrences">How many occurrences the run stands for (more than one for runs missed together).</param>
+/// <param name="SequenceId">The steps of a task of several steps, which the run follows.</param>
+/// <param name="Step">While those steps run: the one being done, from 0.</param>
+/// <param name="Steps">While those steps run: how many there are.</param>
+/// <param name="StepKind">While those steps run: what the one being done does.</param>
 public sealed record ScheduledRunView(
     Guid Id,
     DateTimeOffset ScheduledFor,
@@ -34,9 +44,19 @@ public sealed record ScheduledRunView(
     int Occurrences,
     string? ErrorCode,
     string? Message,
-    Guid? OperationId);
+    Guid? OperationId,
+    Guid? SequenceId = null,
+    int? Step = null,
+    int? Steps = null,
+    SequenceStepKind? StepKind = null);
 
-public sealed record ScheduledTaskList(IReadOnlyList<ScheduledTaskView> Tasks);
+/// <summary>What the server's game allows a task to do, for the editor.</summary>
+/// <param name="CanBroadcast">The game has a command to message its players.</param>
+/// <param name="KnowsPlayers">The game says who plays (its query): a task can wait for nobody playing.</param>
+/// <param name="UpdatesChecked">The server's game updates are checked: a task can wait for one.</param>
+public sealed record ScheduleAbilities(bool CanBroadcast, bool KnowsPlayers, bool UpdatesChecked);
+
+public sealed record ScheduledTaskList(IReadOnlyList<ScheduledTaskView> Tasks, ScheduleAbilities Abilities);
 
 public sealed record ScheduledRunList(IReadOnlyList<ScheduledRunView> Runs);
 
@@ -51,7 +71,10 @@ public sealed record ScheduledTaskView(
     ScheduledAction Action,
     string? Command,
     bool Validate,
+    IReadOnlyList<SequenceStep>? Steps,
     bool OnlyIfRunning,
+    bool OnlyIfEmpty,
+    bool OnlyIfUpdateAvailable,
     bool Enabled,
     DateTimeOffset? NextRunAt,
     DateTimeOffset? LastRunAt,
@@ -62,11 +85,14 @@ public sealed record ScheduledTaskView(
 /// <summary>
 /// A server's scheduled tasks (ADR-0010; docs/architecture/07, "Schedules"). Scheduling an action needs the right to do
 /// it, besides <c>server.schedules.edit</c>: a task acts as the schedule later, so it cannot do what its author could not.
+/// A task of several steps needs the right to do each of them.
 /// </summary>
 public sealed class ServerSchedules(
     IPulsarDbContext db,
     Scheduler scheduler,
     ScheduleSignal signal,
+    SequenceSignal sequences,
+    ServerManagement servers,
     IPermissionEvaluator permissions,
     IRowLocks locks,
     IAuditLog audit,
@@ -78,7 +104,8 @@ public sealed class ServerSchedules(
 
     public async Task<Result<ScheduledTaskList>> ListAsync(ServerId id, CancellationToken cancellationToken)
     {
-        if (!await db.Servers.AnyAsync(s => s.Id == id, cancellationToken))
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
         {
             return ServerErrors.NotFound;
         }
@@ -92,7 +119,10 @@ public sealed class ServerSchedules(
             .ToListAsync(cancellationToken);
         var views = await ViewsAsync(lastRuns, cancellationToken);
         var lastRun = lastRuns.Zip(views).ToDictionary(p => p.First.TaskId, p => p.Second);
-        return new ScheduledTaskList([.. tasks.Select(t => View(t, lastRun.GetValueOrDefault(t.Id)))]);
+        var manifest = await ManifestAsync(server, cancellationToken);
+        var abilities = new ScheduleAbilities(manifest.Commands?.Broadcast is not null, manifest.Query is not null,
+            await UpdatesCheckedAsync(server, manifest, cancellationToken));
+        return new ScheduledTaskList([.. tasks.Select(t => View(t, lastRun.GetValueOrDefault(t.Id)))], abilities);
     }
 
     public async Task<Result<ScheduledRunList>> RunsAsync(ServerId id, ScheduledTaskId taskId, int limit, CancellationToken cancellationToken)
@@ -133,7 +163,7 @@ public sealed class ServerSchedules(
         }
 
         var created = ScheduledTask.Create(server, definition.Name, definition.Cron, definition.TimeZone, definition.Action, Payload(definition),
-            definition.OnlyIfRunning, definition.Enabled, request.UserId, clock.GetUtcNow());
+            Conditions(definition), definition.Enabled, request.UserId, clock.GetUtcNow());
         if (!created.IsSuccess)
         {
             return created.Error!;
@@ -160,12 +190,12 @@ public sealed class ServerSchedules(
         }
 
         // Changing a task needs the right to do what it did, and what it will do.
-        if (await CheckAsync(server, definition, task.Action, cancellationToken) is { IsSuccess: false } check)
+        if (await CheckAsync(server, definition, task, cancellationToken) is { IsSuccess: false } check)
         {
             return check.Error!;
         }
 
-        var changed = task.Change(definition.Name, definition.Cron, definition.TimeZone, definition.Action, Payload(definition), definition.OnlyIfRunning,
+        var changed = task.Change(definition.Name, definition.Cron, definition.TimeZone, definition.Action, Payload(definition), Conditions(definition),
             definition.Enabled, clock.GetUtcNow());
         if (!changed.IsSuccess)
         {
@@ -181,7 +211,7 @@ public sealed class ServerSchedules(
         {
             // The scheduler took a run meanwhile: apply the change to the fresh task.
             await db.Entry(task).ReloadAsync(cancellationToken);
-            task.Change(definition.Name, definition.Cron, definition.TimeZone, definition.Action, Payload(definition), definition.OnlyIfRunning,
+            task.Change(definition.Name, definition.Cron, definition.TimeZone, definition.Action, Payload(definition), Conditions(definition),
                 definition.Enabled, clock.GetUtcNow());
             await db.SaveChangesAsync(cancellationToken);
         }
@@ -229,7 +259,7 @@ public sealed class ServerSchedules(
             return server is null ? ServerErrors.NotFound : ScheduleErrors.NotFound;
         }
 
-        if (!await MayDoAsync(server, task.Action, cancellationToken))
+        if (!await MayDoAsync(server, task, cancellationToken))
         {
             return ScheduleErrors.Forbidden;
         }
@@ -254,6 +284,82 @@ public sealed class ServerSchedules(
         return (await ViewsAsync([run], cancellationToken))[0];
     }
 
+    /// <summary>
+    /// Cancels the steps the task's running run is doing: what is left of them is not done, an operation they started (a
+    /// backup, an update) is cancelled, and the steps that always run still do (the start that puts the server back). Needs
+    /// the rights to run the task.
+    /// </summary>
+    public async Task<Result<ScheduledRunView>> CancelAsync(ServerId id, ScheduledTaskId taskId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        var task = server is null ? null : await db.ScheduledTasks.AsNoTracking().SingleOrDefaultAsync(t => t.Id == taskId && t.ServerId == id, cancellationToken);
+        if (server is null || task is null)
+        {
+            return server is null ? ServerErrors.NotFound : ScheduleErrors.NotFound;
+        }
+
+        if (!await MayDoAsync(server, task, cancellationToken))
+        {
+            return ScheduleErrors.Forbidden;
+        }
+
+        // The runner saves the steps as it moves them on: a cancel that lost the race is made again on what is stored.
+        for (var tries = 1; ; tries++)
+        {
+            db.ChangeTracker.Clear();
+            var run = await db.ScheduledTaskRuns
+                .Where(r => r.TaskId == taskId && r.Status == ScheduledRunStatus.Running && r.SequenceId != null)
+                .OrderByDescending(r => r.StartedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            var sequence = run?.SequenceId is { } running
+                ? await db.ServerSequences.SingleOrDefaultAsync(s => s.Id == running, cancellationToken)
+                : null;
+            var now = clock.GetUtcNow();
+            var operation = sequence?.OperationId;
+            if (run is null || sequence is null)
+            {
+                return ScheduleErrors.SequenceOver;
+            }
+
+            // The steps running are those of the task when it began: the task may have been changed since.
+            if (!await MayDoAsync(server, ScheduledAction.Sequence, sequence.Steps, cancellationToken))
+            {
+                return ScheduleErrors.Forbidden;
+            }
+
+            if (!sequence.Cancel(now).IsSuccess)
+            {
+                return ScheduleErrors.SequenceOver;
+            }
+
+            if (sequence.Status != SequenceStatus.Running)
+            {
+                run.SequenceEnded(sequence.Status, sequence.ErrorCode, sequence.Message, now); // nothing left that always runs
+            }
+
+            audit.Record(AuditActions.Server.ScheduleRunCancelled, metadata: new { task = task.Id.Value, task.Name, run = run.Id.Value })
+                .WithServer(server.Id, server.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (tries < 4)
+            {
+                continue;
+            }
+
+            if (operation is { } inFlight && await db.Operations.AsNoTracking()
+                    .AnyAsync(o => o.Id == inFlight && (o.Status == OperationStatus.Queued || o.Status == OperationStatus.Running), cancellationToken))
+            {
+                // What the steps started: the steps that always run wait for it to end.
+                await servers.CancelOperationAsync(server.Id, inFlight.Value, cancellationToken);
+            }
+
+            sequences.Notify();
+            return (await ViewsAsync([run], cancellationToken))[0];
+        }
+    }
+
     /// <summary>The next occurrences of a schedule (shown while editing it).</summary>
     public async Task<Result<SchedulePreview>> PreviewAsync(ServerId id, string cron, string timeZone, CancellationToken cancellationToken)
     {
@@ -266,8 +372,8 @@ public sealed class ServerSchedules(
         return occurrences.IsSuccess ? new SchedulePreview(occurrences.Value) : occurrences.Error!;
     }
 
-    /// <summary>The permission the action needs when a user does it.</summary>
-    public static string PermissionFor(ScheduledAction action) => action switch
+    /// <summary>The permission the action needs when a user does it; a task of several steps needs those of its steps.</summary>
+    public static string? PermissionFor(ScheduledAction action) => action switch
     {
         ScheduledAction.Start => Permissions.Server.Start,
         ScheduledAction.Stop => Permissions.Server.Stop,
@@ -275,21 +381,67 @@ public sealed class ServerSchedules(
         ScheduledAction.Backup => Permissions.Server.BackupsCreate,
         ScheduledAction.Update => Permissions.Server.Install,
         ScheduledAction.ConsoleCommand => Permissions.Server.ConsoleWrite,
+        ScheduledAction.Sequence => null,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
-    private async Task<Result> CheckAsync(Server server, ScheduledTaskDefinition definition, ScheduledAction? current, CancellationToken cancellationToken)
+    /// <summary>The permission a step needs when a user does what it does; none for a wait.</summary>
+    public static string? PermissionFor(SequenceStepKind kind) => kind switch
     {
-        if (!await MayDoAsync(server, definition.Action, cancellationToken) || current is { } was && !await MayDoAsync(server, was, cancellationToken))
+        SequenceStepKind.Command or SequenceStepKind.Broadcast => Permissions.Server.ConsoleWrite,
+        SequenceStepKind.Stop => Permissions.Server.Stop,
+        SequenceStepKind.Start => Permissions.Server.Start,
+        SequenceStepKind.Restart => Permissions.Server.Restart,
+        SequenceStepKind.Backup => Permissions.Server.BackupsCreate,
+        SequenceStepKind.Update => Permissions.Server.Install,
+        SequenceStepKind.Wait => null,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
+
+    /// <summary>Every permission doing the action (each of its steps) needs.</summary>
+    public static IReadOnlySet<string> PermissionsFor(ScheduledAction action, IReadOnlyList<SequenceStep>? steps) =>
+        action == ScheduledAction.Sequence
+            ? (steps ?? []).Where(s => s is not null).Select(s => PermissionFor(s.Kind)).OfType<string>().ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal) { PermissionFor(action)! };
+
+    private async Task<Result> CheckAsync(Server server, ScheduledTaskDefinition definition, ScheduledTask? current, CancellationToken cancellationToken)
+    {
+        // Values the API reads as numbers too: refused before anything looks up what they need.
+        if (!Enum.IsDefined(definition.Action))
+        {
+            return ScheduleErrors.ActionInvalid;
+        }
+
+        if (definition.Action == ScheduledAction.Sequence && definition.Steps?.Any(s => s is not null && !Enum.IsDefined(s.Kind)) == true)
+        {
+            return ScheduleErrors.StepsInvalid;
+        }
+
+        if (!await MayDoAsync(server, definition.Action, definition.Steps, cancellationToken)
+            || current is not null && !await MayDoAsync(server, current, cancellationToken))
         {
             return ScheduleErrors.Forbidden;
         }
 
-        if (definition.Action == ScheduledAction.ConsoleCommand && definition.Command is { } command)
+        var sequence = definition.Action == ScheduledAction.Sequence;
+        IReadOnlyList<string> commands = definition.Action == ScheduledAction.ConsoleCommand
+            ? definition.Command is { } single ? [single] : []
+            : sequence
+                ? [.. (definition.Steps ?? []).Where(s => s is { Kind: SequenceStepKind.Command, Text: not null }).Select(s => s.Text!)]
+                : [];
+        var broadcasts = sequence && (definition.Steps ?? []).Any(s => s is { Kind: SequenceStepKind.Broadcast });
+        var waitsForEmpty = definition.OnlyIfEmpty && definition.Action is not (ScheduledAction.Start or ScheduledAction.ConsoleCommand);
+        var waitsForUpdate = definition.OnlyIfUpdateAvailable && definition.Action is ScheduledAction.Update or ScheduledAction.Sequence;
+        if (commands.Count == 0 && !broadcasts && !waitsForEmpty && !waitsForUpdate)
+        {
+            return Result.Success();
+        }
+
+        var manifest = await ManifestAsync(server, cancellationToken);
+        var prefixes = manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.SensitiveCommandPrefixes ?? [];
+        foreach (var command in commands)
         {
             // A command that sets a secret would be kept in clear and shown to whoever sees the schedule.
-            var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
-            var prefixes = ServerSpecs.Parse(template).Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.SensitiveCommandPrefixes ?? [];
             if (ConsoleCommands.Redact(command, prefixes) != command)
             {
                 return ScheduleErrors.CommandSensitive;
@@ -297,16 +449,57 @@ public sealed class ServerSchedules(
 
             if (!Contracts.ConsoleInput.IsValid(command.Trim()))
             {
-                return ScheduleErrors.CommandRequired;
+                return sequence ? ScheduleErrors.StepsInvalid : ScheduleErrors.CommandRequired;
             }
+        }
+
+        if (broadcasts && manifest.Commands?.Broadcast is null)
+        {
+            return ScheduleErrors.BroadcastUnsupported;
+        }
+
+        if (waitsForEmpty && manifest.Query is null)
+        {
+            return ScheduleErrors.PlayersNotReported;
+        }
+
+        if (waitsForUpdate && !await UpdatesCheckedAsync(server, manifest, cancellationToken))
+        {
+            return ScheduleErrors.UpdateChecksUnavailable;
         }
 
         return Result.Success();
     }
 
-    private async Task<bool> MayDoAsync(Server server, ScheduledAction action, CancellationToken cancellationToken) =>
-        request.UserId is { } user
-        && await permissions.HasAsync(user, PermissionFor(action), AccessTarget.ForServer(server.Id, server.NodeId), cancellationToken);
+    /// <summary>The server's game updates are checked: its game can be, and the checks are on (a server without settings has them on).</summary>
+    private async Task<bool> UpdatesCheckedAsync(Server server, GameManifest manifest, CancellationToken cancellationToken) =>
+        GameUpdates.IsCheckable(manifest)
+        && !await db.GameUpdateWatches.AnyAsync(w => w.ServerId == server.Id && w.Policy == GameUpdatePolicy.Off, cancellationToken);
+
+    private Task<bool> MayDoAsync(Server server, ScheduledTask task, CancellationToken cancellationToken) =>
+        MayDoAsync(server, task.Action, task.Payload.Steps, cancellationToken);
+
+    private async Task<bool> MayDoAsync(Server server, ScheduledAction action, IReadOnlyList<SequenceStep>? steps, CancellationToken cancellationToken)
+    {
+        if (request.UserId is not { } user)
+        {
+            return false;
+        }
+
+        var target = AccessTarget.ForServer(server.Id, server.NodeId);
+        foreach (var permission in PermissionsFor(action, steps))
+        {
+            if (!await permissions.HasAsync(user, permission, target, cancellationToken))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task<GameManifest> ManifestAsync(Server server, CancellationToken cancellationToken) =>
+        ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
 
     private async Task<DomainError> NotFoundAsync(ServerId id, CancellationToken cancellationToken) =>
         await db.Servers.AnyAsync(s => s.Id == id, cancellationToken) ? ScheduleErrors.NotFound : ServerErrors.NotFound;
@@ -315,18 +508,35 @@ public sealed class ServerSchedules(
         await ViewsAsync(await db.ScheduledTaskRuns.AsNoTracking().Where(r => r.TaskId == taskId).OrderByDescending(r => r.StartedAt).Take(1)
             .ToListAsync(cancellationToken), cancellationToken);
 
-    /// <summary>Runs as shown: an action that started an operation takes the operation's outcome.</summary>
+    /// <summary>
+    /// Runs as shown: an action that started an operation takes the operation's outcome; a run of several steps that
+    /// goes on says which one is being done.
+    /// </summary>
     private async Task<IReadOnlyList<ScheduledRunView>> ViewsAsync(IReadOnlyList<ScheduledTaskRun> runs, CancellationToken cancellationToken)
     {
         var operationIds = runs.Where(r => r.OperationId is not null).Select(r => r.OperationId!.Value).ToList();
         var operations = operationIds.Count == 0
             ? []
             : await db.Operations.AsNoTracking().Where(o => operationIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id, cancellationToken);
-        return [.. runs.Select(run => run.OperationId is { } op && operations.TryGetValue(op, out var operation) ? View(run, operation) : View(run))];
+        var sequenceIds = runs.Where(r => r.SequenceId is not null && r.Status == ScheduledRunStatus.Running).Select(r => r.SequenceId!.Value).ToList();
+        var sequences = sequenceIds.Count == 0
+            ? []
+            : await db.ServerSequences.AsNoTracking().Where(s => sequenceIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, cancellationToken);
+        return [.. runs.Select(run => run.OperationId is { } op && operations.TryGetValue(op, out var operation)
+            ? View(run, operation)
+            : run.SequenceId is { } steps && sequences.TryGetValue(steps, out var sequence) ? View(run, sequence) : View(run))];
     }
 
     private static ScheduledRunView View(ScheduledTaskRun run) =>
-        new(run.Id.Value, run.ScheduledFor, run.StartedAt, run.FinishedAt, run.Status, run.Occurrences, run.ErrorCode, run.Message, run.OperationId?.Value);
+        new(run.Id.Value, run.ScheduledFor, run.StartedAt, run.FinishedAt, run.Status, run.Occurrences, run.ErrorCode, run.Message, run.OperationId?.Value,
+            run.SequenceId?.Value);
+
+    private static ScheduledRunView View(ScheduledTaskRun run, ServerSequence sequence) => View(run) with
+    {
+        Step = sequence.Status == SequenceStatus.Running ? Math.Min(sequence.StepIndex, sequence.Steps.Count - 1) : null,
+        Steps = sequence.Status == SequenceStatus.Running ? sequence.Steps.Count : null,
+        StepKind = sequence.Current?.Kind,
+    };
 
     private static ScheduledRunView View(ScheduledTaskRun run, Operation operation) => operation.Status switch
     {
@@ -341,10 +551,14 @@ public sealed class ServerSchedules(
     };
 
     private static ScheduledTaskView View(ScheduledTask task, ScheduledRunView? lastRun) =>
-        new(task.Id.Value, task.Name, task.CronExpression, task.TimeZone, task.Action, task.Payload.Command, task.Payload.Validate, task.OnlyIfRunning,
-            task.IsEnabled, task.NextRunAt, task.LastRunAt, lastRun, task.CreatedAt, task.UpdatedAt);
+        new(task.Id.Value, task.Name, task.CronExpression, task.TimeZone, task.Action, task.Payload.Command, task.Payload.Validate, task.Payload.Steps,
+            task.OnlyIfRunning, task.OnlyIfEmpty, task.OnlyIfUpdateAvailable, task.IsEnabled, task.NextRunAt, task.LastRunAt, lastRun, task.CreatedAt,
+            task.UpdatedAt);
 
-    private static ScheduledActionPayload Payload(ScheduledTaskDefinition definition) => new(definition.Command, definition.Validate);
+    private static ScheduledActionPayload Payload(ScheduledTaskDefinition definition) => new(definition.Command, definition.Validate, definition.Steps);
+
+    private static ScheduledConditions Conditions(ScheduledTaskDefinition definition) =>
+        new(definition.OnlyIfRunning, definition.OnlyIfEmpty, definition.OnlyIfUpdateAvailable);
 
     private static object Audited(ScheduledTask task) => new
     {
@@ -354,6 +568,12 @@ public sealed class ServerSchedules(
         timeZone = task.TimeZone,
         action = task.Action.ToString(),
         command = task.Payload.Command,
+        // What each step does, and the commands they send (the messages are cleaned when sent).
+        steps = task.Payload.Steps?.Select(s => s.Kind.ToString()).ToArray(),
+        commands = task.Payload.Steps?.Where(s => s.Kind == SequenceStepKind.Command).Select(s => s.Text).ToArray(),
+        onlyIfRunning = task.OnlyIfRunning,
+        onlyIfEmpty = task.OnlyIfEmpty,
+        onlyIfUpdateAvailable = task.OnlyIfUpdateAvailable,
         enabled = task.IsEnabled,
     };
 }

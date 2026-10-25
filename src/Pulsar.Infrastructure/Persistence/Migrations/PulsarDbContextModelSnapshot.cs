@@ -1670,9 +1670,17 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("next_run_at");
 
+                    b.Property<bool>("OnlyIfEmpty")
+                        .HasColumnType("boolean")
+                        .HasColumnName("only_if_empty");
+
                     b.Property<bool>("OnlyIfRunning")
                         .HasColumnType("boolean")
                         .HasColumnName("only_if_running");
+
+                    b.Property<bool>("OnlyIfUpdateAvailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("only_if_update_available");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -1714,7 +1722,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("scheduled_tasks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_scheduled_tasks_action_type", "action_type IN ('backup', 'console_command', 'restart', 'start', 'stop', 'update')");
+                            t.HasCheckConstraint("ck_scheduled_tasks_action_type", "action_type IN ('backup', 'console_command', 'restart', 'sequence', 'start', 'stop', 'update')");
                         });
                 });
 
@@ -1750,6 +1758,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_for");
 
+                    b.Property<Guid?>("SequenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sequence_id");
+
                     b.Property<Guid>("ServerId")
                         .HasColumnType("uuid")
                         .HasColumnName("server_id");
@@ -1772,6 +1784,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OperationId")
                         .HasDatabaseName("ix_scheduled_task_runs_operation_id");
+
+                    b.HasIndex("SequenceId")
+                        .HasDatabaseName("ix_scheduled_task_runs_sequence_id");
 
                     b.HasIndex("StartedAt")
                         .HasDatabaseName("ix_task_runs_running")
@@ -3313,6 +3328,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_scheduled_task_runs_operations_operation_id");
+
+                    b.HasOne("Pulsar.Domain.Scheduling.ServerSequence", null)
+                        .WithMany()
+                        .HasForeignKey("SequenceId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scheduled_task_runs_server_sequences_sequence_id");
 
                     b.HasOne("Pulsar.Domain.Scheduling.ScheduledTask", null)
                         .WithMany()

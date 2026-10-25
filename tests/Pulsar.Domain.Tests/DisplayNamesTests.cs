@@ -33,7 +33,7 @@ public sealed class DisplayNamesTests
         Assert.Equal(ScheduleErrors.NameInvalid, CreateSchedule(name).Error);
         var schedule = CreateSchedule("Nightly").Value;
         Assert.Equal(ScheduleErrors.NameInvalid,
-            schedule.Change(name, "0 4 * * *", "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, false, true, s_now).Error);
+            schedule.Change(name, "0 4 * * *", "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, ScheduledConditions.None, true, s_now).Error);
         Assert.Equal(AccessErrors.ApiKeyNameInvalid, ApiKey.Create(UserId.New(), name, null, null, s_now).Error);
     }
 
@@ -65,5 +65,5 @@ public sealed class DisplayNamesTests
 
     private static Result<ScheduledTask> CreateSchedule(string name) =>
         ScheduledTask.Create(CreateServer("Server").Value, name, "0 4 * * *", "UTC", ScheduledAction.Restart, ScheduledActionPayload.None,
-            false, true, null, s_now);
+            ScheduledConditions.None, true, null, s_now);
 }

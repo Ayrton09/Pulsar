@@ -102,6 +102,7 @@ public static class AuditActions
         public const string ScheduleChanged = "server.schedule_changed";
         public const string ScheduleDeleted = "server.schedule_deleted";
         public const string ScheduleRunRequested = "server.schedule_run_requested";
+        public const string ScheduleRunCancelled = "server.schedule_run_cancelled";
         public const string GameUpdatesChanged = "server.game_updates_changed";
         public const string GameUpdateCheckRequested = "server.game_update_check_requested";
         public const string GameUpdateStarted = "server.game_update_started";

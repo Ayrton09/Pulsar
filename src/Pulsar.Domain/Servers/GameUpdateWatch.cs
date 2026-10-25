@@ -176,6 +176,16 @@ public sealed class GameUpdateWatch
         UpdatedAt = now;
     }
 
+    /// <summary>
+    /// An install or an update changed the server's files: whether an update is available is unknown until the next check,
+    /// which comes now (an automatic update would otherwise start again for what was just installed).
+    /// </summary>
+    public void FilesChanged(DateTimeOffset now)
+    {
+        Available = null;
+        CheckSoon(now);
+    }
+
     /// <summary>Whether the node was asked and has not answered yet: an answer nobody asked for is not taken.</summary>
     public bool AwaitsAnswer => CheckRequestedAt is not null;
 

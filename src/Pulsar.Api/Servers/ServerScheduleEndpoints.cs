@@ -13,7 +13,10 @@ namespace Pulsar.Api.Servers;
 /// <param name="TimeZone">IANA id (e.g. Europe/Madrid): the schedule follows its daylight saving time.</param>
 /// <param name="Command">The console command (console command tasks only).</param>
 /// <param name="Validate">Whether an update verifies every file (update tasks only).</param>
-/// <param name="OnlyIfRunning">Skip the run while the server is not running (restarts and backups only).</param>
+/// <param name="OnlyIfRunning">Skip the run while the server is not running (restarts, backups and tasks of several steps).</param>
+/// <param name="Steps">What a task of several steps does, in order (those tasks only).</param>
+/// <param name="OnlyIfEmpty">Skip the run while someone plays, or nobody can tell (not for starts and console commands; the game needs a query).</param>
+/// <param name="OnlyIfUpdateAvailable">Skip the run unless the game update checks found an update (updates and tasks of several steps).</param>
 public sealed record ScheduledTaskRequest(
     [property: Required, StringLength(ScheduledTask.MaxNameLength)] string Name,
     [property: Required, StringLength(ScheduledTask.MaxCronLength)] string Cron,
@@ -22,14 +25,37 @@ public sealed record ScheduledTaskRequest(
     [property: StringLength(ScheduledTask.MaxCommandLength)] string? Command,
     bool Validate,
     bool OnlyIfRunning,
-    bool Enabled)
+    bool Enabled,
+    [property: MaxLength(ServerSequence.MaxSteps)] IReadOnlyList<SequenceStepRequest>? Steps = null,
+    bool OnlyIfEmpty = false,
+    bool OnlyIfUpdateAvailable = false)
 {
-    internal ScheduledTaskDefinition ToDefinition() => new(Name, Cron, TimeZone, Action, Command, Validate, OnlyIfRunning, Enabled);
+    internal ScheduledTaskDefinition ToDefinition() => new(Name, Cron, TimeZone, Action, Command, Validate, OnlyIfRunning, Enabled,
+        // A null step stays null: the task refuses it as an invalid step.
+        Steps?.Select(s => s is null ? null! : s.ToStep()).ToList(), OnlyIfEmpty, OnlyIfUpdateAvailable);
+}
+
+/// <summary>One step of a task of several steps.</summary>
+/// <param name="Text">The console command (command steps), or the message to the players (broadcast steps).</param>
+/// <param name="Seconds">How long a wait lasts (wait steps).</param>
+/// <param name="Validate">An update verifies every file (update steps).</param>
+/// <param name="OnlyIfWasRunning">A start or restart happens only when the server was running as the task began (it is put back as it was).</param>
+/// <param name="Always">Done even after an earlier step failed (the start that puts the server back online).</param>
+public sealed record SequenceStepRequest(
+    SequenceStepKind Kind,
+    [property: StringLength(SequenceStep.MaxTextLength)] string? Text = null,
+    [property: Range(0, SequenceStep.MaxWaitSeconds)] int Seconds = 0,
+    bool Validate = false,
+    bool OnlyIfWasRunning = false,
+    bool Always = false)
+{
+    internal SequenceStep ToStep() => new(Kind, Text, Seconds, Validate, OnlyIfWasRunning, Always);
 }
 
 /// <summary>
 /// A server's scheduled tasks (docs/architecture/07, "Schedules"): listing with each task's next and last run, creating,
-/// changing, deleting, running one now and its run history. Scheduling an action also needs the permission to do it.
+/// changing, deleting, running one now, cancelling the steps of one that runs, and its run history. Scheduling an action
+/// also needs the permission to do it (each of its steps').
 /// </summary>
 public static class ServerScheduleEndpoints
 {
@@ -50,6 +76,9 @@ public static class ServerScheduleEndpoints
             .RequirePermission(Permissions.Server.SchedulesEdit);
         schedules.MapPost("/{taskId:guid}/run", async (Guid id, Guid taskId, ServerSchedules s, CancellationToken ct) =>
                 (await s.RunNowAsync(new ServerId(id), new ScheduledTaskId(taskId), ct)).ToHttp())
+            .RequirePermission(Permissions.Server.SchedulesEdit);
+        schedules.MapPost("/{taskId:guid}/cancel", async (Guid id, Guid taskId, ServerSchedules s, CancellationToken ct) =>
+                (await s.CancelAsync(new ServerId(id), new ScheduledTaskId(taskId), ct)).ToHttp())
             .RequirePermission(Permissions.Server.SchedulesEdit);
         schedules.MapGet("/{taskId:guid}/runs", async (Guid id, Guid taskId, int? limit, ServerSchedules s, CancellationToken ct) =>
                 (await s.RunsAsync(new ServerId(id), new ScheduledTaskId(taskId), limit ?? 20, ct)).ToHttp())

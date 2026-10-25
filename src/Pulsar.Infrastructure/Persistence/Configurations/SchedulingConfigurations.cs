@@ -23,7 +23,7 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
         builder.Property(t => t.CronExpression).HasMaxLength(ScheduledTask.MaxCronLength);
         builder.Property(t => t.TimeZone).HasMaxLength(ScheduledTask.MaxTimeZoneLength);
         builder.Property(t => t.Action).HasColumnName("action_type").HasConversion<SnakeCaseEnumConverter<ScheduledAction>>();
-        builder.Property(t => t.Payload).HasColumnName("action_payload").HasColumnType("jsonb").HasConversion<PayloadConverter>();
+        builder.Property(t => t.Payload).HasColumnName("action_payload").HasColumnType("jsonb").HasConversion(new PayloadConverter(), PayloadConverter.Comparer);
         // The scheduler (taking a run) and users (editing) can race: the loser reads the task again.
         builder.Property<uint>("Version").IsRowVersion();
         builder.HasIndex(t => t.NextRunAt).HasFilter("is_enabled").HasDatabaseName("ix_scheduled_tasks_due");
@@ -33,7 +33,10 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(t => t.CreatedBy).OnDelete(DeleteBehavior.SetNull);
     }
 
-    /// <summary>Only what the action uses: <c>{"command":"say hi"}</c>, <c>{"validate":true}</c> or <c>{}</c>.</summary>
+    /// <summary>
+    /// Only what the action uses: <c>{"command":"say hi"}</c>, <c>{"validate":true}</c>,
+    /// <c>{"steps":[{"kind":"broadcast","text":"Restarting"},{"kind":"restart"}]}</c> or <c>{}</c>.
+    /// </summary>
     private sealed class PayloadConverter() : ValueConverter<ScheduledActionPayload, string>(
         payload => JsonSerializer.Serialize(payload, s_json),
         json => JsonSerializer.Deserialize<ScheduledActionPayload>(json, s_json) ?? ScheduledActionPayload.None)
@@ -41,7 +44,14 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
         private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web)
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
         };
+
+        /// <summary>Payloads are equal when they store the same (records compare their steps' list by reference).</summary>
+        public static ValueComparer<ScheduledActionPayload> Comparer { get; } = new(
+            (a, b) => JsonSerializer.Serialize(a, s_json) == JsonSerializer.Serialize(b, s_json),
+            payload => JsonSerializer.Serialize(payload, s_json).GetHashCode(StringComparison.Ordinal),
+            payload => payload);
     }
 }
 
@@ -66,6 +76,8 @@ internal sealed class ScheduledTaskRunConfiguration : IEntityTypeConfiguration<S
 
         builder.HasOne<ScheduledTask>().WithMany().HasForeignKey(r => r.TaskId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Operation>().WithMany().HasForeignKey(r => r.OperationId).OnDelete(DeleteBehavior.SetNull);
+        // Steps kept no longer leave their run pointing at nothing; one still running then ends as interrupted.
+        builder.HasOne<ServerSequence>().WithMany().HasForeignKey(r => r.SequenceId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 

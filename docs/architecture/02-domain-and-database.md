@@ -583,9 +583,12 @@ CREATE TABLE scheduled_tasks (
     name             varchar(128) NOT NULL,
     cron_expression  varchar(128) NOT NULL,          -- 5 fields, parsed with Cronos
     time_zone        varchar(64)  NOT NULL,          -- IANA, e.g. 'America/Argentina/Buenos_Aires'
-    action_type      text NOT NULL CHECK (action_type IN ('start','stop','restart','backup','update','console_command')),
-    action_payload   jsonb NOT NULL DEFAULT '{}',    -- {"command": "say …"} for console_command, {"validate": true} for update
-    only_if_running  boolean NOT NULL DEFAULT false, -- restarts and backups only (console commands always need it)
+    action_type      text NOT NULL CHECK (action_type IN ('start','stop','restart','backup','update','console_command','sequence')),
+    action_payload   jsonb NOT NULL DEFAULT '{}',    -- {"command": "say …"} for console_command, {"validate": true} for update,
+                                                     -- {"steps": [{"kind": "broadcast", "text": "…"}, {"kind": "wait", "seconds": 240}, …]} for sequence (1.0.9)
+    only_if_running  boolean NOT NULL DEFAULT false, -- restarts, backups and sequences (console commands always need it)
+    only_if_empty    boolean NOT NULL DEFAULT false, -- 1.0.9: nobody plays, as the game's query says (not for start, console_command)
+    only_if_update_available boolean NOT NULL DEFAULT false, -- 1.0.9: the game update checks found one (update, sequence)
     is_enabled       boolean NOT NULL DEFAULT true,
     next_run_at      timestamptz,                    -- UTC
     last_run_at      timestamptz,
@@ -606,15 +609,16 @@ CREATE TABLE scheduled_task_runs (
     finished_at   timestamptz,
     status        text NOT NULL CHECK (status IN ('running','succeeded','failed','skipped')),
     operation_id  uuid REFERENCES operations(id) ON DELETE SET NULL, -- a backup or update: it has the outcome
+    sequence_id   uuid REFERENCES server_sequences(id) ON DELETE SET NULL, -- 1.0.9, a sequence: running until its steps end
     occurrences   integer NOT NULL CHECK (occurrences >= 1), -- runs missed while the panel was down share one row
-    error_code    varchar(64),                      -- schedules.missed, schedules.not_running, server.busy…
+    error_code    varchar(64),                      -- schedules.missed, schedules.not_running, schedules.not_empty, server.busy…
     message       varchar(1024)
 );
 CREATE INDEX ix_task_runs_task ON scheduled_task_runs (task_id, started_at DESC);
 CREATE INDEX ix_task_runs_running ON scheduled_task_runs (started_at) WHERE status = 'running';
 -- The last 100 runs of each task are kept.
 
--- 1.0.9: steps done one after the other on a server (an automatic game update; doc 05).
+-- 1.0.9: steps done one after the other on a server (an automatic game update, a scheduled task of several steps; doc 05).
 CREATE TABLE server_sequences (
     id                      uuid PRIMARY KEY,
     server_id               uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

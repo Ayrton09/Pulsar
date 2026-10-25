@@ -7,11 +7,14 @@ public enum ScheduledRunStatus
     /// <summary>Taken by the scheduler; the action is being done.</summary>
     Running,
 
-    /// <summary>Done; for an action that starts an operation (backup, update), the node accepted it and the operation has the outcome.</summary>
+    /// <summary>
+    /// Done; for an action that starts an operation (backup, update), the node accepted it and the operation has the
+    /// outcome. A task of several steps is done once its steps are.
+    /// </summary>
     Succeeded,
     Failed,
 
-    /// <summary>Not done on purpose: missed while the panel was down, or the server was not running.</summary>
+    /// <summary>Not done on purpose: missed while the panel was down, a condition did not hold, a user cancelled it.</summary>
     Skipped,
 }
 
@@ -56,6 +59,9 @@ public sealed class ScheduledTaskRun
     /// <summary>The operation the action started (a backup, an update): it has the outcome.</summary>
     public OperationId? OperationId { get; private set; }
 
+    /// <summary>The steps a task of several steps started: the run is running until they end, and takes their outcome.</summary>
+    public ServerSequenceId? SequenceId { get; private set; }
+
     /// <summary>How many occurrences the row stands for: more than one only for runs missed together.</summary>
     public int Occurrences { get; private set; }
 
@@ -93,6 +99,34 @@ public sealed class ScheduledTaskRun
     }
 
     public void Failed(string code, string? message, DateTimeOffset now) => End(ScheduledRunStatus.Failed, code, message, now);
+
+    /// <summary>The task's steps started: the run goes on until they end (<see cref="SequenceEnded"/>).</summary>
+    public void Sequenced(ServerSequenceId sequence)
+    {
+        if (Status == ScheduledRunStatus.Running)
+        {
+            SequenceId = sequence;
+        }
+    }
+
+    /// <summary>The steps ended: the run takes their outcome (steps a user cancelled are skipped, not failed).</summary>
+    public void SequenceEnded(SequenceStatus status, string? code, string? message, DateTimeOffset now)
+    {
+        switch (status)
+        {
+            case SequenceStatus.Succeeded:
+                Succeeded(now);
+                break;
+            case SequenceStatus.Cancelled:
+                End(ScheduledRunStatus.Skipped, ScheduleErrors.Cancelled.Code, ScheduleErrors.Cancelled.Message, now);
+                break;
+            case SequenceStatus.Failed:
+                Failed(code ?? "schedules.error", message, now);
+                break;
+            default:
+                break; // still running
+        }
+    }
 
     public void Skipped(DomainError reason, DateTimeOffset now)
     {

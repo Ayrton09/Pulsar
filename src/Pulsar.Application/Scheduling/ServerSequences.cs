@@ -177,6 +177,7 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         {
             LogEnded(sequence.Id, sequence.ServerId, sequence.Origin, sequence.Status, sequence.ErrorCode);
             await services.GetRequiredService<GameUpdates>().SequenceEndedAsync(sequence, CancellationToken.None);
+            await services.GetRequiredService<Scheduler>().SequenceEndedAsync(sequence, CancellationToken.None);
             await PruneAsync(db, sequence.ServerId, CancellationToken.None);
         }
 

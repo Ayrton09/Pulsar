@@ -10811,6 +10811,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/schedules/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    taskId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduledRunView"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/servers/{id}/schedules/{taskId}/runs": {
         parameters: {
             query?: never;
@@ -13638,8 +13721,13 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        ScheduleAbilities: {
+            canBroadcast: boolean;
+            knowsPlayers: boolean;
+            updatesChecked: boolean;
+        };
         /** @enum {unknown} */
-        ScheduledAction: "start" | "stop" | "restart" | "backup" | "update" | "consoleCommand";
+        ScheduledAction: "start" | "stop" | "restart" | "backup" | "update" | "consoleCommand" | "sequence";
         ScheduledRunList: {
             runs: components["schemas"]["ScheduledRunView"][];
         };
@@ -13661,9 +13749,17 @@ export interface components {
             message: null | string;
             /** Format: uuid */
             operationId: null | string;
+            /** Format: uuid */
+            sequenceId?: null | string;
+            /** Format: int32 */
+            step?: null | number;
+            /** Format: int32 */
+            steps?: null | number;
+            stepKind?: null | components["schemas"]["SequenceStepKind"];
         };
         ScheduledTaskList: {
             tasks: components["schemas"]["ScheduledTaskView"][];
+            abilities: components["schemas"]["ScheduleAbilities"];
         };
         ScheduledTaskRequest: {
             name: string;
@@ -13674,6 +13770,11 @@ export interface components {
             validate: boolean;
             onlyIfRunning: boolean;
             enabled: boolean;
+            steps?: null | components["schemas"]["SequenceStepRequest"][];
+            /** @default false */
+            onlyIfEmpty: boolean;
+            /** @default false */
+            onlyIfUpdateAvailable: boolean;
         };
         ScheduledTaskView: {
             /** Format: uuid */
@@ -13684,7 +13785,10 @@ export interface components {
             action: components["schemas"]["ScheduledAction"];
             command: null | string;
             validate: boolean;
+            steps: null | components["schemas"]["SequenceStep"][];
             onlyIfRunning: boolean;
+            onlyIfEmpty: boolean;
+            onlyIfUpdateAvailable: boolean;
             enabled: boolean;
             /** Format: date-time */
             nextRunAt: null | string;
@@ -13706,8 +13810,38 @@ export interface components {
         };
         /** @enum {unknown} */
         SequenceStatus: "running" | "succeeded" | "failed" | "cancelled";
+        SequenceStep: {
+            kind: components["schemas"]["SequenceStepKind"];
+            text?: null | string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            seconds: number;
+            /** @default false */
+            validate: boolean;
+            /** @default false */
+            onlyIfWasRunning: boolean;
+            /** @default false */
+            always: boolean;
+        };
         /** @enum {unknown} */
-        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | null;
+        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update";
+        SequenceStepRequest: {
+            kind: components["schemas"]["SequenceStepKind"];
+            text?: null | string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            seconds: number;
+            /** @default false */
+            validate: boolean;
+            /** @default false */
+            onlyIfWasRunning: boolean;
+            /** @default false */
+            always: boolean;
+        };
         ServerAddressView: {
             ipAddress: string;
             /** Format: int32 */
