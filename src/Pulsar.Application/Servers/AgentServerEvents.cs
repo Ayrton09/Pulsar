@@ -215,6 +215,20 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 await ServerAddons.ApplyAsync(db, server, operation.Type, addons, now, cancellationToken);
             }
 
+            // 1.0.9: the game's version an install or update reported, and the addons it installed again.
+            if (operation.Status == OperationStatus.Succeeded && completed.Result is InstalledResult installed
+                && operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate)
+            {
+                server.GameInstalled(installed.GameVersion, now);
+                if (installed.Addons is { Count: > 0 } reinstalled)
+                {
+                    await ServerAddons.ApplyAsync(db, server, operation.Type, new AddonsResult(reinstalled), now, cancellationToken);
+                }
+            }
+
+            // 1.0.9: mods put on the server or deleted, or not.
+            await ServerMods.CompletedAsync(db, operation, now, cancellationToken);
+
             switch (operation.Type)
             {
                 case OperationType.ServerProvision when operation.Status == OperationStatus.Succeeded:

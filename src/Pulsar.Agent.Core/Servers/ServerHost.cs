@@ -160,6 +160,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.MoreConfigFormats;
             yield return AgentCapabilities.ManifestCommands;
             yield return AgentCapabilities.MinecraftTypes;
+            yield return AgentCapabilities.ChangeMods;
             // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
             if (installOptions.CodeSignatures is not null)
             {
@@ -629,6 +630,7 @@ public sealed partial class ServerHost(
             CheckGameUpdateCommand check => CheckGameUpdate(envelope, check),
             InstallAddonCommand install => InstallAddon(envelope, install),
             RemoveAddonCommand remove => RemoveAddon(envelope, remove),
+            ChangeModsCommand mods => ChangeMods(envelope, mods),
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
             CancelOperationCommand cancel => Cancel(envelope, cancel),
             CreateBackupCommand create => CreateBackup(envelope, create),
@@ -955,7 +957,7 @@ public sealed partial class ServerHost(
                 {
                     // The game's own files it had replaced come back.
                     server.Supervisor.Console.Note("Updating the game, checking every file, to bring back the files it had replaced", clock.GetUtcNow());
-                    await RunStepsAsync(server, operationId, update.Steps, validate: true, command.Login, cancellationToken);
+                    _ = await RunStepsAsync(server, operationId, update.Steps, validate: true, command.Login, cancellationToken);
                 }
 
                 LogAddonRemoved(command.ServerId, addon.Key, replaced.Count);
@@ -994,6 +996,57 @@ public sealed partial class ServerHost(
         }, stopFirst);
     }
 
+    /// <summary>
+    /// Puts a mod catalog's files into the stopped server and deletes others (Pulsar 1.0.9), only in the folders its
+    /// manifest names for its catalogs.
+    /// </summary>
+    private CommandAck ChangeMods(CommandEnvelope envelope, ChangeModsCommand command)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", "Changing mods is an operation.");
+        }
+
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var folders = ModFiles.Folders(server.Manifest);
+        if (folders.Count == 0)
+        {
+            return Rejected(envelope, "mods.unsupported", "The server's game takes no mods from a catalog.");
+        }
+
+        const string stopFirst = "Stop the server before changing its mods.";
+        if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return Rejected(envelope, "server.running", stopFirst);
+        }
+
+        return RunOperation(envelope, command.ServerId, operationId, exclusive: true, stoppedMessage: stopFirst, work: cancellationToken =>
+            NotedAsync<CommandResult?>(server, "Changing the mods", login: null, async () =>
+            {
+                var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+                TerminateStrays(command.ServerId, provisioned.Identity);
+                foreach (var file in command.Add)
+                {
+                    server.Supervisor.Console.Note($"Downloading {file.Path}", clock.GetUtcNow());
+                }
+
+                foreach (var path in command.Remove)
+                {
+                    server.Supervisor.Console.Note($"Deleting {path}", clock.GetUtcNow());
+                }
+
+                await new ModInstaller(files, installOptions.HttpHandler).ChangeAsync(provisioned.Directory, folders, command.Add ?? [], command.Remove ?? [],
+                    new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
+                    cancellationToken);
+                LogModsChanged(command.ServerId, command.Add?.Count ?? 0, command.Remove?.Count ?? 0);
+                return null;
+            }, cancellationToken));
+    }
+
     /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
     /// <param name="update">An update: the installed addons the game's update overwrites are installed again afterwards.</param>
     private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate, bool update,
@@ -1019,11 +1072,11 @@ public sealed partial class ServerHost(
         return RunOperation(envelope, serverId, operationId, exclusive: true, stoppedMessage: stopFirst, work: cancellationToken =>
             NotedAsync<CommandResult?>(server, what, login, async () =>
             {
-                var directory = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
+                var (directory, version) = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
                 LogInstalled(serverId);
                 if (!update)
                 {
-                    return null;
+                    return version is null ? null : new InstalledResult(version, []);
                 }
 
                 // Oxide and the like: the game's update put its own files back. What is installed is what this node recorded
@@ -1039,15 +1092,17 @@ public sealed partial class ServerHost(
                     reinstalled.Add(new AddonRelease(addon.Key, record.Release));
                 }
 
-                return reinstalled.Count > 0 ? new AddonsResult(reinstalled) : null;
+                // The game's version goes with what was installed again (a panel of 1.0.9 reads both).
+                return version is not null ? new InstalledResult(version, reinstalled) : reinstalled.Count > 0 ? new AddonsResult(reinstalled) : null;
             }, cancellationToken));
     }
 
-    /// <summary>Runs install or update steps; returns the server's folder.</summary>
+    /// <summary>Runs install or update steps; returns the server's folder and the game's version, when a step knows it.</summary>
     /// <param name="login">The Steam account SteamCMD signs in with; null: anonymous.</param>
-    private async Task<string> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps, bool? validate, SteamLogin? login,
-        CancellationToken cancellationToken)
+    private async Task<(string Directory, string? GameVersion)> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps,
+        bool? validate, SteamLogin? login, CancellationToken cancellationToken)
     {
+        string? version = null;
         var serverId = server.Supervisor.ServerId;
         var console = server.Supervisor.Console;
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
@@ -1070,13 +1125,13 @@ public sealed partial class ServerHost(
             {
                 var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
                 console.Note(InstallSteps.Describe(step, variables), clock.GetUtcNow());
-                await installSteps.RunAsync(step, provisioned.Directory, variables,
+                version = await installSteps.RunAsync(step, provisioned.Directory, variables,
                     new InstallConsole(console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
-                    new InstallContext(serverId, provisioned.Identity, text => console.Write(text, clock.GetUtcNow())), cancellationToken);
+                    new InstallContext(serverId, provisioned.Identity, text => console.Write(text, clock.GetUtcNow())), cancellationToken) ?? version;
             }
         }
 
-        return provisioned.Directory;
+        return (provisioned.Directory, version is { Length: > 0 and <= InstalledResult.MaxGameVersionLength } ? version : null);
     }
 
     /// <summary>
@@ -1839,6 +1894,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: addon {Addon} installed ({Release})")]
     private partial void LogAddonInstalled(Guid serverId, string addon, string release);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: {Added} mod file(s) written, {Removed} deleted")]
+    private partial void LogModsChanged(Guid serverId, int added, int removed);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: addon {Addon} removed ({Replaced} game files to restore)")]
     private partial void LogAddonRemoved(Guid serverId, string addon, int replaced);

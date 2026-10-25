@@ -48,6 +48,7 @@ const details: Schemas['ServerDetails'] = {
   recentOperations: [],
   limits: { cpuPercent: null, memoryMb: null, databases: 2 },
   hasAddons: false,
+  hasMods: false,
 };
 
 const main: Schemas['ServerDatabaseView'] = {

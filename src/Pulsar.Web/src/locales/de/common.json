@@ -375,6 +375,9 @@
         "backup_storage_changed": "Ziel der Backup-Kopien geändert",
         "addon_install_requested": "Installation einer Mod angefordert",
         "addon_remove_requested": "Entfernen einer Mod angefordert",
+        "mods_install_requested": "Hat die Installation von Mods angefordert",
+        "mods_update_requested": "Hat die Aktualisierung von Mods angefordert",
+        "mods_remove_requested": "Hat das Entfernen eines Mods angefordert",
         "database_created": "Datenbank erstellt",
         "database_deleted": "Datenbank gelöscht",
         "database_password_rotated": "Passwort einer Datenbank geändert",
@@ -459,6 +462,31 @@
       "bad_archive": "Der Download der Mod ist kein Archiv, das Pulsar entpackt: {{detail}}",
       "file_missing": "Eine Datei, die die Mod bearbeitet, fehlt oder ist zu groß: {{detail}}",
       "file_too_large": "Eine Datei der Mod ist größer, als Pulsar lesen kann: {{detail}}"
+    },
+    "mods": {
+      "not_found": "Dieser Mod ist nicht auf dem Server.",
+      "unsupported": "Dieser Server kann keine Mods aus dem Katalog installieren: {{detail}}",
+      "type_unsupported": "Ein Server dieses Typs nimmt keine Mods oder Plugins: wähle in seinen Einstellungen einen anderen Typ und aktualisiere ihn dann.",
+      "version_unknown": "Die Spielversion des Servers ist noch nicht bekannt: installiere oder aktualisiere den Server zuerst.",
+      "no_version": "Das Projekt hat keine Version für Spielversion und Typ dieses Servers.",
+      "file_invalid": "Die Datei des Projekts ist keine .jar-Datei, die das Panel auf den Server legen kann.",
+      "catalog_busy": "Modrinth erhält zu viele Anfragen von diesem Panel: versuche es in einer Minute erneut.",
+      "catalog_unavailable": "Modrinth konnte nicht abgefragt werden: {{detail}}",
+      "change_running": "Die Mods des Servers werden schon geändert: warte, bis das fertig ist.",
+      "too_many": "Ein Server hat höchstens 300 Mods, und eine Änderung umfasst höchstens 64 Dateien.",
+      "query_invalid": "Eine Suche ist eine Zeile mit bis zu 100 Zeichen.",
+      "no_updates": "Modrinth hat nichts Neueres für diese Mods.",
+      "requirement_missing": "Das Projekt braucht ein anderes, das keine Version für diesen Server hat: {{detail}}",
+      "required_by": "Ein anderer installierter Mod braucht diesen: {{detail}}",
+      "incompatible": "Das Projekt funktioniert nicht mit einem anderen Mod auf dem Server: {{detail}}",
+      "path_taken": "Ein anderer Mod auf dem Server nutzt diese Datei schon: {{detail}}",
+      "invalid": "Der Node hat die Änderung abgelehnt: {{detail}}",
+      "invalid_path": "Der Node hat eine Datei außerhalb der Mod-Ordner des Spiels abgelehnt: {{detail}}",
+      "download_failed": "Ein Mod konnte nicht heruntergeladen werden: {{detail}}",
+      "checksum_mismatch": "Ein Download ist nicht die Datei, die Modrinth veröffentlicht hat, daher wurde nichts geändert: {{detail}}",
+      "file_exists": "Dort liegt schon eine Datei mit diesem Namen, die nicht vom Panel stammt: lösche oder benenne sie zuerst um. {{detail}}",
+      "untrusted_host": "Pulsar lädt keine Mods von dieser Seite herunter: {{detail}}",
+      "write_failed": "Nicht alle Mods konnten geschrieben werden: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Geben Sie dem Schlüssel einen einzeiligen Namen mit höchstens 64 Zeichen.",
@@ -1110,7 +1138,8 @@
         "backupCreate": "Backup",
         "backupRestore": "Wiederherstellen",
         "addonInstall": "Mod installieren",
-        "addonRemove": "Mod entfernen"
+        "addonRemove": "Mod entfernen",
+        "modsChange": "Mods ändern"
       },
       "statuses": {
         "queued": "In der Warteschlange",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}} benötigt {{name}}: Entfernen Sie es zuerst."
     },
     "removeConfirm": "{{name}} von {{server}} entfernen? Die von ihr installierten Dateien werden gelöscht, auch wenn Sie sie geändert haben; selbst hinzugefügte Dateien bleiben erhalten."
+  },
+  "mods": {
+    "hint": {
+      "mod": "Mods von Modrinth für Typ und Spielversion dieses Servers ({{version}}), mit den Mods, die sie brauchen. Der Node lädt jede Datei von Modrinth herunter und installiert sie nur, wenn sie zum SHA-512 passt, den Modrinth veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen.",
+      "plugin": "Plugins von Modrinth für Typ und Spielversion dieses Servers ({{version}}), mit den Plugins, die sie brauchen. Der Node lädt jede Datei von Modrinth herunter und installiert sie nur, wenn sie zum SHA-512 passt, den Modrinth veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen."
+    },
+    "stopToChange": "Stoppe den Server, um Mods und Plugins zu installieren, zu aktualisieren oder zu entfernen.",
+    "lastFailed": "Die letzte Änderung ist fehlgeschlagen: {{reason}}",
+    "installed": {
+      "title": "Auf dem Server",
+      "label": "Mods auf dem Server",
+      "noMods": "Noch keine Mods aus dem Katalog: suche sie unten.",
+      "noPlugins": "Noch keine Plugins aus dem Katalog: suche sie unten."
+    },
+    "columns": {
+      "name": "Name",
+      "version": "Version",
+      "file": "Datei",
+      "actions": "Aktionen"
+    },
+    "states": {
+      "installing": "Wird installiert…",
+      "removing": "Wird entfernt…"
+    },
+    "dependency": "Abhängigkeit",
+    "requiredBy": "Gebraucht von {{names}}.",
+    "updates": {
+      "check": "Nach Updates suchen",
+      "none": "Alles ist aktuell.",
+      "found_one": "{{count}} Update verfügbar.",
+      "found_other": "{{count}} Updates verfügbar.",
+      "all": "Alle aktualisieren",
+      "to": "Neu: {{version}}"
+    },
+    "install": "Installieren",
+    "update": "Aktualisieren",
+    "remove": "Entfernen",
+    "onServer": "Installiert",
+    "versions": {
+      "open": "Versionen",
+      "title": "Versionen von {{name}}",
+      "hint": "Die für Typ und Spielversion dieses Servers, neueste zuerst. Eine zu installieren ersetzt die Version auf dem Server.",
+      "change": "Diese installieren",
+      "types": {
+        "beta": "Beta",
+        "alpha": "Alpha"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "Mods suchen",
+      "searchPlugins": "Plugins suchen",
+      "empty": "Nichts gefunden für Typ und Spielversion dieses Servers.",
+      "more": "Mehr laden",
+      "by": "von {{author}}",
+      "downloads_one": "{{formatted}} Download",
+      "downloads_other": "{{formatted}} Downloads"
+    },
+    "refused": {
+      "required_by": "{{others}} braucht {{name}}: entferne es zuerst."
+    },
+    "removeConfirm": "{{name}} von {{server}} entfernen? Seine Datei wird gelöscht; seine Konfigurationsdateien und die Mods, die es brauchte, bleiben."
   },
   "backups": {
     "title": "Backups",
@@ -3524,6 +3615,22 @@
         "version": {
           "label": "Minecraft-Version",
           "description": "'latest' für die neueste Version oder eine Version wie 1.21.4. Eine Änderung erfordert ein Update; der Wechsel zu einer älteren Version kann die Welt beschädigen."
+        },
+        "serverType": {
+          "label": "Servertyp",
+          "description": "Paper und Purpur nutzen Bukkit-Plugins; Fabric, Forge und NeoForge nutzen Mods. Mit 'latest' die neueste Minecraft-Version, die der Typ unterstützt. Eine Änderung braucht ein Update, das den neuen Typ installiert. Die Welt bleibt, lädt aber mit einem anderen Typ vielleicht nicht: Welten von Paper und Purpur brauchen deren Datenpaket, und eine mit Mods erstellte Welt braucht diese Mods. Erstelle vorher ein Backup.",
+          "options": {
+            "vanilla": "Vanilla (Mojang)",
+            "paper": "Paper (Plugins)",
+            "purpur": "Purpur (Plugins)",
+            "fabric": "Fabric (Mods)",
+            "forge": "Forge (Mods)",
+            "neoforge": "NeoForge (Mods)"
+          }
+        },
+        "loaderVersion": {
+          "label": "Loader-Version",
+          "description": "Die Version des Loaders von Fabric, Forge oder NeoForge (etwa 0.20.1, 58.1.26 oder 21.1.265); leer für die empfohlene. Eine Forge-Version braucht auch ihre Minecraft-Version."
         },
         "motd": {
           "label": "Nachricht des Tages"

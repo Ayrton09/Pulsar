@@ -375,6 +375,9 @@
         "backup_storage_changed": "Modification de la destination des copies de sauvegarde",
         "addon_install_requested": "Demande d'installation d'un mod",
         "addon_remove_requested": "Demande de retrait d'un mod",
+        "mods_install_requested": "A demandé l'installation de mods",
+        "mods_update_requested": "A demandé la mise à jour de mods",
+        "mods_remove_requested": "A demandé le retrait d'un mod",
         "database_created": "Création d'une base de données",
         "database_deleted": "Suppression d'une base de données",
         "database_password_rotated": "Modification du mot de passe d'une base de données",
@@ -459,6 +462,31 @@
       "bad_archive": "Le téléchargement du mod n'est pas une archive que Pulsar sait décompresser : {{detail}}",
       "file_missing": "Un fichier que le mod modifie est introuvable ou trop volumineux : {{detail}}",
       "file_too_large": "Un fichier du mod est trop volumineux pour que Pulsar le lise : {{detail}}"
+    },
+    "mods": {
+      "not_found": "Ce mod n'est pas sur le serveur.",
+      "unsupported": "Ce serveur ne peut pas installer de mods du catalogue : {{detail}}",
+      "type_unsupported": "Un serveur de ce type n'accepte ni mods ni plugins : choisissez un autre type dans ses paramètres, puis mettez-le à jour.",
+      "version_unknown": "La version du jeu du serveur n'est pas encore connue : installez ou mettez à jour le serveur d'abord.",
+      "no_version": "Le projet n'a pas de version pour la version du jeu et le type de ce serveur.",
+      "file_invalid": "Le fichier du projet n'est pas un .jar que le panneau peut mettre sur le serveur.",
+      "catalog_busy": "Modrinth reçoit trop de requêtes de ce panneau : réessayez dans une minute.",
+      "catalog_unavailable": "Modrinth n'a pas pu être interrogé : {{detail}}",
+      "change_running": "Les mods du serveur sont déjà en cours de modification : attendez la fin.",
+      "too_many": "Un serveur a au plus 300 mods, et une modification porte sur au plus 64 fichiers.",
+      "query_invalid": "Une recherche tient sur une ligne d'au plus 100 caractères.",
+      "no_updates": "Modrinth n'a rien de plus récent pour ces mods.",
+      "requirement_missing": "Le projet a besoin d'un autre qui n'a pas de version pour ce serveur : {{detail}}",
+      "required_by": "Un autre mod installé a besoin de celui-ci : {{detail}}",
+      "incompatible": "Le projet ne fonctionne pas avec un autre mod déjà sur le serveur : {{detail}}",
+      "path_taken": "Un autre mod du serveur utilise déjà ce fichier : {{detail}}",
+      "invalid": "Le nœud a refusé la modification : {{detail}}",
+      "invalid_path": "Le nœud a refusé un fichier hors des dossiers de mods du jeu : {{detail}}",
+      "download_failed": "Un mod n'a pas pu être téléchargé : {{detail}}",
+      "checksum_mismatch": "Un téléchargement n'est pas le fichier publié par Modrinth, donc rien n'a été modifié : {{detail}}",
+      "file_exists": "Un fichier de ce nom, que le panneau n'a pas mis là, existe déjà : supprimez-le ou renommez-le d'abord. {{detail}}",
+      "untrusted_host": "Pulsar ne télécharge pas de mods depuis ce site : {{detail}}",
+      "write_failed": "Tous les mods n'ont pas pu être écrits : {{detail}}"
     },
     "api_key": {
       "name_invalid": "Donnez à la clé un nom d'une seule ligne, de 64 caractères au plus.",
@@ -1110,7 +1138,8 @@
         "backupCreate": "Sauvegarde",
         "backupRestore": "Restauration",
         "addonInstall": "Installation d'un mod",
-        "addonRemove": "Retrait d'un mod"
+        "addonRemove": "Retrait d'un mod",
+        "modsChange": "Modifier les mods"
       },
       "statuses": {
         "queued": "En file d'attente",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}} nécessite {{name}} : retirez-le d'abord."
     },
     "removeConfirm": "Retirer {{name}} de {{server}} ? Les fichiers qu'il a installés sont supprimés, même si vous les avez modifiés ; les fichiers que vous avez ajoutés vous-même sont conservés."
+  },
+  "mods": {
+    "hint": {
+      "mod": "Mods de Modrinth pour le type et la version du jeu de ce serveur ({{version}}), avec les mods dont ils ont besoin. Le nœud télécharge chaque fichier depuis Modrinth et ne l'installe que s'il correspond au SHA-512 publié par Modrinth. Ils sont faits par des tiers, sous leurs propres licences.",
+      "plugin": "Plugins de Modrinth pour le type et la version du jeu de ce serveur ({{version}}), avec les plugins dont ils ont besoin. Le nœud télécharge chaque fichier depuis Modrinth et ne l'installe que s'il correspond au SHA-512 publié par Modrinth. Ils sont faits par des tiers, sous leurs propres licences."
+    },
+    "stopToChange": "Arrêtez le serveur pour installer, mettre à jour ou retirer des mods et des plugins.",
+    "lastFailed": "La dernière modification a échoué : {{reason}}",
+    "installed": {
+      "title": "Sur le serveur",
+      "label": "Mods du serveur",
+      "noMods": "Aucun mod du catalogue pour le moment : cherchez-les ci-dessous.",
+      "noPlugins": "Aucun plugin du catalogue pour le moment : cherchez-les ci-dessous."
+    },
+    "columns": {
+      "name": "Nom",
+      "version": "Version",
+      "file": "Fichier",
+      "actions": "Actions"
+    },
+    "states": {
+      "installing": "Installation…",
+      "removing": "Retrait…"
+    },
+    "dependency": "Dépendance",
+    "requiredBy": "Nécessaire pour {{names}}.",
+    "updates": {
+      "check": "Chercher des mises à jour",
+      "none": "Tout est à jour.",
+      "found_one": "{{count}} mise à jour disponible.",
+      "found_other": "{{count}} mises à jour disponibles.",
+      "all": "Tout mettre à jour",
+      "to": "Nouvelle : {{version}}"
+    },
+    "install": "Installer",
+    "update": "Mettre à jour",
+    "remove": "Retirer",
+    "onServer": "Installé",
+    "versions": {
+      "open": "Versions",
+      "title": "Versions de {{name}}",
+      "hint": "Celles qui conviennent au type et à la version du jeu de ce serveur, de la plus récente à la plus ancienne. En installer une remplace celle du serveur.",
+      "change": "Installer celle-ci",
+      "types": {
+        "beta": "Bêta",
+        "alpha": "Alpha"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "Chercher des mods",
+      "searchPlugins": "Chercher des plugins",
+      "empty": "Rien trouvé pour le type et la version du jeu de ce serveur.",
+      "more": "Charger plus",
+      "by": "par {{author}}",
+      "downloads_one": "{{formatted}} téléchargement",
+      "downloads_other": "{{formatted}} téléchargements"
+    },
+    "refused": {
+      "required_by": "{{others}} a besoin de {{name}} : retirez-le d'abord."
+    },
+    "removeConfirm": "Retirer {{name}} de {{server}} ? Son fichier est supprimé ; ses fichiers de configuration et les mods dont il avait besoin sont conservés."
   },
   "backups": {
     "title": "Sauvegardes",
@@ -3524,6 +3615,22 @@
         "version": {
           "label": "Version de Minecraft",
           "description": "'latest' pour la dernière version stable, ou une version telle que 1.21.4. La changer demande une mise à jour ; revenir à une version plus ancienne peut abîmer le monde."
+        },
+        "serverType": {
+          "label": "Type de serveur",
+          "description": "Paper et Purpur utilisent des plugins Bukkit ; Fabric, Forge et NeoForge utilisent des mods. Avec 'latest', la version de Minecraft la plus récente que le type prend en charge. Le changer demande une mise à jour, qui installe le nouveau type. Le monde est conservé, mais peut ne pas se charger avec un autre type : les mondes de Paper et de Purpur ont besoin de leur data pack, et un monde créé avec des mods en a besoin. Faites une sauvegarde avant.",
+          "options": {
+            "vanilla": "Vanilla (Mojang)",
+            "paper": "Paper (plugins)",
+            "purpur": "Purpur (plugins)",
+            "fabric": "Fabric (mods)",
+            "forge": "Forge (mods)",
+            "neoforge": "NeoForge (mods)"
+          }
+        },
+        "loaderVersion": {
+          "label": "Version du loader",
+          "description": "La version du loader de Fabric, de Forge ou de NeoForge (comme 0.20.1, 58.1.26 ou 21.1.265) ; vide pour la version recommandée. Une version de Forge demande aussi sa version de Minecraft."
         },
         "motd": {
           "label": "Message du jour"

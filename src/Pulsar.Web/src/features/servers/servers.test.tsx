@@ -113,6 +113,7 @@ function details(
     recentOperations: operations,
     limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons: false,
+    hasMods: false,
   };
 }
 

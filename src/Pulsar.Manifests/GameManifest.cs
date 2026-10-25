@@ -28,7 +28,8 @@ public sealed record GameManifest(
     BackupDefinition? Backup = null,
     QueryDefinition? Query = null,
     IReadOnlyList<AddonDefinition>? Addons = null,
-    CommandsDefinition? Commands = null)
+    CommandsDefinition? Commands = null,
+    IReadOnlyList<ModSourceDefinition>? Mods = null)
 {
     /// <summary>Optional editor hint (<c>"$schema"</c>); ignored.</summary>
     [JsonPropertyName("$schema")]
@@ -41,7 +42,28 @@ public sealed record GameManifest(
     public IReadOnlyList<ConfigFileDefinition> ConfigFileList => ConfigFiles ?? [];
 
     public IReadOnlyList<AddonDefinition> AddonList => Addons ?? [];
+
+    public IReadOnlyList<ModSourceDefinition> ModList => Mods ?? [];
 }
+
+/// <summary>
+/// A catalog of mods the panel installs files from into the server (Pulsar 1.0.9; docs/architecture/04, "Mods"):
+/// Modrinth for Minecraft. What a server can take depends on its type: the type variable's options are keys of
+/// <see cref="Types"/> (an option without one takes nothing from the catalog).
+/// </summary>
+/// <param name="Source">The catalog: <c>modrinth</c>.</param>
+/// <param name="VersionVar">The variable holding the game's version, the catalog's files are filtered by (when the install did not report it).</param>
+/// <param name="TypeVar">The enum variable holding the server's type.</param>
+public sealed record ModSourceDefinition(string Source, string VersionVar, string TypeVar, IReadOnlyDictionary<string, ModTargetDefinition> Types)
+{
+    public const string Modrinth = "modrinth";
+}
+
+/// <summary>What a server of one type takes from the catalog, and where it goes.</summary>
+/// <param name="ProjectType">The catalog's kind of project: <c>mod</c> or <c>plugin</c>.</param>
+/// <param name="Loaders">The catalog's loaders a file must be for, any of them (<c>fabric</c>; <c>paper</c>, <c>spigot</c>, <c>bukkit</c>).</param>
+/// <param name="Folder">The server's folder the files go into (<c>mods</c>, <c>plugins</c>).</param>
+public sealed record ModTargetDefinition(string ProjectType, IReadOnlyList<string> Loaders, string Folder);
 
 /// <summary>
 /// Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console (its input or

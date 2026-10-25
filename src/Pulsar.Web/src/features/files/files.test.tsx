@@ -85,6 +85,7 @@ const details: Schemas['ServerDetails'] = {
   recentOperations: [],
   limits: { cpuPercent: null, memoryMb: null, databases: 2 },
   hasAddons: false,
+  hasMods: false,
 };
 
 const at = '2026-10-03T10:00:00Z';

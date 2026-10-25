@@ -235,6 +235,7 @@ describe('one-time secrets', () => {
       recentOperations: [],
       limits: { cpuPercent: null, memoryMb: null, databases: 2 },
       hasAddons: false,
+      hasMods: false,
     };
     const database: Schemas['ServerDatabaseView'] = {
       id: '0192f1a0-0000-7000-8000-0000000000c1',

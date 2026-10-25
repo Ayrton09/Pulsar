@@ -59,10 +59,10 @@ public sealed class GameSettingsTests
     }
 
     [Theory]
-    [InlineData("number", null, 10.0, "variables[3]")] // no min
-    [InlineData("number", 0.1234567, 10.0, "variables[3]")] // seven decimals
-    [InlineData("number", 10.0, 1.0, "variables[3]")] // min > max
-    [InlineData("integer", 0.5, 10.0, "variables[3]")] // an integer's bounds are whole
+    [InlineData("number", null, 10.0, "variables[5]")] // no min
+    [InlineData("number", 0.1234567, 10.0, "variables[5]")] // seven decimals
+    [InlineData("number", 10.0, 1.0, "variables[5]")] // min > max
+    [InlineData("integer", 0.5, 10.0, "variables[5]")] // an integer's bounds are whole
     public void NumberAndIntegerBoundsAreChecked(string type, double? min, double max, string path)
     {
         var errors = TestManifests.Errors(TestManifests.Change("_test", m =>

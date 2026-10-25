@@ -375,6 +375,9 @@
         "backup_storage_changed": "更改了备份的复制位置",
         "addon_install_requested": "请求安装模组",
         "addon_remove_requested": "请求移除模组",
+        "mods_install_requested": "请求安装模组",
+        "mods_update_requested": "请求更新模组",
+        "mods_remove_requested": "请求移除模组",
         "database_created": "创建了数据库",
         "database_deleted": "删除了数据库",
         "database_password_rotated": "更改了数据库密码",
@@ -459,6 +462,31 @@
       "bad_archive": "此模组的下载不是 Pulsar 能解压的压缩包：{{detail}}",
       "file_missing": "此模组要修改的文件缺失或过大：{{detail}}",
       "file_too_large": "此模组的某个文件超出了 Pulsar 可读取的大小：{{detail}}"
+    },
+    "mods": {
+      "not_found": "服务器上没有这个模组。",
+      "unsupported": "此服务器无法安装目录中的模组：{{detail}}",
+      "type_unsupported": "这种类型的服务器不支持模组或插件：请在设置中选择其他类型，然后更新服务器。",
+      "version_unknown": "还不知道服务器的游戏版本：请先安装或更新服务器。",
+      "no_version": "该项目没有适合此服务器游戏版本和类型的版本。",
+      "file_invalid": "该项目的文件不是面板可以放到服务器上的 .jar 文件。",
+      "catalog_busy": "Modrinth 收到此面板的请求过多：请一分钟后重试。",
+      "catalog_unavailable": "无法查询 Modrinth：{{detail}}",
+      "change_running": "服务器的模组正在更改：请等待完成。",
+      "too_many": "一台服务器最多 300 个模组，一次更改最多 64 个文件。",
+      "query_invalid": "搜索内容为一行，最多 100 个字符。",
+      "no_updates": "Modrinth 没有这些模组的更新版本。",
+      "requirement_missing": "该项目需要另一个没有适合此服务器版本的项目：{{detail}}",
+      "required_by": "另一个已安装的模组需要它：{{detail}}",
+      "incompatible": "该项目无法与服务器上的另一个模组一起使用：{{detail}}",
+      "path_taken": "服务器上的另一个模组已使用该文件：{{detail}}",
+      "invalid": "节点拒绝了更改：{{detail}}",
+      "invalid_path": "节点拒绝了游戏模组文件夹之外的文件：{{detail}}",
+      "download_failed": "无法下载模组：{{detail}}",
+      "checksum_mismatch": "下载的文件不是 Modrinth 公布的文件，因此没有做任何更改：{{detail}}",
+      "file_exists": "已有一个同名文件，不是面板放的：请先删除或重命名它。{{detail}}",
+      "untrusted_host": "Pulsar 不从该网站下载模组：{{detail}}",
+      "write_failed": "无法写入所有模组：{{detail}}"
     },
     "api_key": {
       "name_invalid": "请为密钥取一个单行名称，最多 64 个字符。",
@@ -1110,7 +1138,8 @@
         "backupCreate": "备份",
         "backupRestore": "还原",
         "addonInstall": "安装模组",
-        "addonRemove": "移除模组"
+        "addonRemove": "移除模组",
+        "modsChange": "更改模组"
       },
       "statuses": {
         "queued": "排队中",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}} 需要 {{name}}：请先移除。"
     },
     "removeConfirm": "从 {{server}} 中移除 {{name}}？它安装的文件将被删除（即使你改动过）；你自己添加的文件会保留。"
+  },
+  "mods": {
+    "hint": {
+      "mod": "适合此服务器类型和游戏版本（{{version}}）的 Modrinth 模组，以及它们需要的模组。节点从 Modrinth 下载每个文件，只有与 Modrinth 公布的 SHA-512 一致时才安装。它们由第三方制作，遵循各自的许可证。",
+      "plugin": "适合此服务器类型和游戏版本（{{version}}）的 Modrinth 插件，以及它们需要的插件。节点从 Modrinth 下载每个文件，只有与 Modrinth 公布的 SHA-512 一致时才安装。它们由第三方制作，遵循各自的许可证。"
+    },
+    "stopToChange": "停止服务器后才能安装、更新或移除模组和插件。",
+    "lastFailed": "上次更改失败：{{reason}}",
+    "installed": {
+      "title": "服务器上",
+      "label": "服务器的模组",
+      "noMods": "还没有目录中的模组：在下方搜索。",
+      "noPlugins": "还没有目录中的插件：在下方搜索。"
+    },
+    "columns": {
+      "name": "名称",
+      "version": "版本",
+      "file": "文件",
+      "actions": "操作"
+    },
+    "states": {
+      "installing": "安装中…",
+      "removing": "移除中…"
+    },
+    "dependency": "依赖项",
+    "requiredBy": "{{names}} 需要它。",
+    "updates": {
+      "check": "检查更新",
+      "none": "全部是最新的。",
+      "found_one": "有 {{count}} 个更新。",
+      "found_other": "有 {{count}} 个更新。",
+      "all": "全部更新",
+      "to": "新版本：{{version}}"
+    },
+    "install": "安装",
+    "update": "更新",
+    "remove": "移除",
+    "onServer": "已安装",
+    "versions": {
+      "open": "版本",
+      "title": "{{name}} 的版本",
+      "hint": "适合此服务器类型和游戏版本的版本，最新的在前。安装其中一个会替换服务器上的版本。",
+      "change": "安装此版本",
+      "types": {
+        "beta": "测试版",
+        "alpha": "预览版"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "搜索模组",
+      "searchPlugins": "搜索插件",
+      "empty": "没有找到适合此服务器类型和游戏版本的内容。",
+      "more": "加载更多",
+      "by": "作者：{{author}}",
+      "downloads_one": "{{formatted}} 次下载",
+      "downloads_other": "{{formatted}} 次下载"
+    },
+    "refused": {
+      "required_by": "{{others}} 需要 {{name}}：请先移除它。"
+    },
+    "removeConfirm": "从 {{server}} 移除 {{name}}？它的文件会被删除；它的配置文件和它需要的模组会保留。"
   },
   "backups": {
     "title": "备份",
@@ -3524,6 +3615,22 @@
         "version": {
           "label": "Minecraft 版本",
           "description": "填 'latest' 使用最新正式版，或填写如 1.21.4 的版本。更改版本需要更新；回退到旧版本可能损坏世界。"
+        },
+        "serverType": {
+          "label": "服务器类型",
+          "description": "Paper 和 Purpur 运行 Bukkit 插件；Fabric、Forge 和 NeoForge 运行模组。设为 'latest' 时，使用该类型支持的最新 Minecraft 版本。更改它需要一次更新，更新会安装新类型。世界会保留，但在其他类型上可能无法加载：Paper 和 Purpur 的世界需要它们的数据包，用模组创建的世界需要那些模组。请先备份。",
+          "options": {
+            "vanilla": "原版 (Mojang)",
+            "paper": "Paper（插件）",
+            "purpur": "Purpur（插件）",
+            "fabric": "Fabric（模组）",
+            "forge": "Forge（模组）",
+            "neoforge": "NeoForge（模组）"
+          }
+        },
+        "loaderVersion": {
+          "label": "加载器版本",
+          "description": "Fabric 加载器、Forge 或 NeoForge 的版本（例如 0.20.1、58.1.26 或 21.1.265）；留空则使用推荐版本。指定 Forge 版本时也需要设置对应的 Minecraft 版本。"
         },
         "motd": {
           "label": "每日消息（MOTD）"

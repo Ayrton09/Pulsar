@@ -114,6 +114,12 @@ public sealed class Server
 
     public InstallState InstallState { get; private set; }
 
+    /// <summary>
+    /// The game's version its last install or update reported (Pulsar 1.0.9: Minecraft's, which "latest" stands for);
+    /// null when it did not say.
+    /// </summary>
+    public string? GameVersion { get; private set; }
+
     public ServerRuntimeState RuntimeState { get; private set; }
 
     public DesiredState DesiredState { get; private set; }
@@ -167,6 +173,17 @@ public sealed class Server
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public const int MaxGameVersionLength = 64;
+
+    /// <summary>An install or update reported the game's version (one of letters, digits and <c>. - _ +</c>; anything else is dropped).</summary>
+    public void GameInstalled(string? version, DateTimeOffset now)
+    {
+        GameVersion = version is { Length: > 0 and <= MaxGameVersionLength } && version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or '+')
+            ? version
+            : null;
+        UpdatedAt = now;
+    }
 
     public static string NewShortId() => RandomNumberGenerator.GetString(ShortIdAlphabet, ShortIdLength);
 

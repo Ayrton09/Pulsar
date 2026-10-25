@@ -68,12 +68,13 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
     /// <param name="version">A Mojang version id, or null or <see cref="MinecraftServerStep.Latest"/> for the latest release.</param>
     /// <param name="progress">Stage and percent, as SteamCMD reports them.</param>
     /// <exception cref="GameProcessException">With a <c>minecraft.*</c> code.</exception>
-    public Task InstallAsync(string serverDirectory, string? version, Func<string, double?, Task> progress, CancellationToken cancellationToken) =>
+    public Task<string> InstallAsync(string serverDirectory, string? version, Func<string, double?, Task> progress, CancellationToken cancellationToken) =>
         InstallAsync(serverDirectory, new MinecraftChoice(version), progress, cancellationToken);
 
     /// <param name="progress">Stage and percent, as SteamCMD reports them.</param>
+    /// <returns>The Minecraft version installed (the one "latest" stood for).</returns>
     /// <exception cref="GameProcessException">With a <c>minecraft.*</c> code.</exception>
-    public async Task InstallAsync(string serverDirectory, MinecraftChoice choice, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    public async Task<string> InstallAsync(string serverDirectory, MinecraftChoice choice, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(choice);
         ArgumentNullException.ThrowIfNull(progress);
@@ -84,8 +85,7 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
             await progress(InstallStages.Preparing, null);
             if (choice.TypeOrVanilla == MinecraftServerStep.Vanilla)
             {
-                await InstallVanillaAsync(client, serverDirectory, choice.Version, progress, cancellationToken);
-                return;
+                return await InstallVanillaAsync(client, serverDirectory, choice.Version, progress, cancellationToken);
             }
 
             // The runtime first: Forge's and NeoForge's installers run on it.
@@ -95,6 +95,7 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
                 percent => progress(InstallStages.Downloading, percent / 2), cancellationToken);
             await InstallTypeAsync(client, serverDirectory, target, percent => progress(InstallStages.Downloading, 50 + percent / 2), cancellationToken);
             await progress(InstallStages.Installing, 100);
+            return target.Version;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidDataException
                                        || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
@@ -103,7 +104,7 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
         }
     }
 
-    private async Task InstallVanillaAsync(VerifiedDownloader client, string serverDirectory, string? version, Func<string, double?, Task> progress,
+    private async Task<string> InstallVanillaAsync(VerifiedDownloader client, string serverDirectory, string? version, Func<string, double?, Task> progress,
         CancellationToken cancellationToken)
     {
         var (id, details) = await MojangAsync(client, version, cancellationToken);
@@ -121,6 +122,7 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
         WriteMarker(serverDirectory, new LoaderTarget(MinecraftServerStep.Vanilla, id, ""), server.Sha1!.ToLowerInvariant());
         await InstallJavaAsync(client, serverDirectory, details.JavaVersion?.MajorVersion ?? 8,
             percent => progress(InstallStages.Downloading, 50 + percent / 2), cancellationToken);
+        return id;
     }
 
     /// <summary>Mojang's details of a version (the latest release for null or "latest"), checked against Mojang's list.</summary>

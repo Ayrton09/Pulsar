@@ -157,3 +157,10 @@ public sealed class UserIdTypeConverter : TypeConverter
             ? id.Value.ToString()
             : base.ConvertTo(context, culture, value, destinationType);
 }
+
+public readonly record struct ServerModId(Guid Value)
+{
+    public static ServerModId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}

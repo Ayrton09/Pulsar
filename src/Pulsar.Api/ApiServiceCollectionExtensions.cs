@@ -61,7 +61,8 @@ public sealed class AuthRateLimitOptions
 
     /// <summary>
     /// Requests per minute each user may make to the routes that cost more than a database read: Workshop lookups (each
-    /// asks Steam) and the previews that check a manifest or a schedule (<c>RateLimiting:Auth:LookupPermitLimit</c>).
+    /// asks Steam), the mod catalog's (each asks Modrinth) and the previews that check a manifest or a schedule
+    /// (<c>RateLimiting:Auth:LookupPermitLimit</c>).
     /// </summary>
     public int LookupPermitLimit { get; set; } = DefaultLookupPermitLimit;
 

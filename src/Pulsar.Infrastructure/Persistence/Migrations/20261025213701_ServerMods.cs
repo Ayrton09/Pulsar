@@ -1,0 +1,121 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Pulsar.Infrastructure.Persistence.Migrations
+{
+    /// <inheritdoc />
+    public partial class ServerMods : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_servers_active_operation_type",
+                table: "servers");
+
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_operations_type",
+                table: "operations");
+
+            migrationBuilder.AddColumn<string>(
+                name: "game_version",
+                table: "servers",
+                type: "character varying(64)",
+                maxLength: 64,
+                nullable: true);
+
+            migrationBuilder.CreateTable(
+                name: "server_mods",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    server_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    source = table.Column<string>(type: "text", nullable: false),
+                    project_id = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    version_id = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    name = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    version_number = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    path = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    sha512 = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    size = table.Column<long>(type: "bigint", nullable: false),
+                    dependency = table.Column<bool>(type: "boolean", nullable: false),
+                    requires = table.Column<string>(type: "jsonb", nullable: false),
+                    state = table.Column<string>(type: "text", nullable: false),
+                    operation_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    installed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_server_mods", x => x.id);
+                    table.CheckConstraint("ck_server_mods_source", "source IN ('modrinth')");
+                    table.CheckConstraint("ck_server_mods_state", "state IN ('installed', 'installing', 'removing')");
+                    table.ForeignKey(
+                        name: "fk_server_mods_operations_operation_id",
+                        column: x => x.operation_id,
+                        principalTable: "operations",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "fk_server_mods_servers_server_id",
+                        column: x => x.server_id,
+                        principalTable: "servers",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_servers_active_operation_type",
+                table: "servers",
+                sql: "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_operations_type",
+                table: "operations",
+                sql: "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_server_mods_operation_id",
+                table: "server_mods",
+                column: "operation_id",
+                filter: "operation_id IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_server_mods_server_id_project_id",
+                table: "server_mods",
+                columns: new[] { "server_id", "project_id" });
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "server_mods");
+
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_servers_active_operation_type",
+                table: "servers");
+
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_operations_type",
+                table: "operations");
+
+            migrationBuilder.DropColumn(
+                name: "game_version",
+                table: "servers");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_servers_active_operation_type",
+                table: "servers",
+                sql: "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_operations_type",
+                table: "operations",
+                sql: "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+        }
+    }
+}

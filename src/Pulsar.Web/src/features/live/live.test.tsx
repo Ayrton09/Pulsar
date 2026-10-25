@@ -62,6 +62,7 @@ const details: Schemas['ServerDetails'] = {
   recentOperations: [],
   limits: { cpuPercent: null, memoryMb: null, databases: 2 },
   hasAddons: false,
+  hasMods: false,
 };
 
 const entry = (sequence: number, text: string, isGap = false): ConsoleEntry => ({

@@ -74,6 +74,9 @@ public static class AuditActions
         public const string TemplateChanged = "server.template_changed";
         public const string AddonInstallRequested = "server.addon_install_requested";
         public const string AddonRemoveRequested = "server.addon_remove_requested";
+        public const string ModsInstallRequested = "server.mods_install_requested";
+        public const string ModsRemoveRequested = "server.mods_remove_requested";
+        public const string ModsUpdateRequested = "server.mods_update_requested";
         public const string UpdateRequested = "server.update_requested";
         public const string SettingsChanged = "server.settings_changed";
         public const string PortsChanged = "server.ports_changed";

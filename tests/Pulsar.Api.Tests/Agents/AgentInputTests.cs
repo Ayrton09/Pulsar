@@ -109,6 +109,25 @@ public sealed class AgentInputTests
     }
 
     [Theory]
+    [InlineData("26.3", "26.3")]
+    [InlineData("1.21.11-rc1", "1.21.11-rc1")]
+    [InlineData("26.3\n<script>", null)]
+    [InlineData("26.3 (Paper 223)", null)]
+    [InlineData("", null)]
+    public void AnInstallsGameVersionIsAShortTagOrNone(string version, string? kept)
+    {
+        var result = new InstalledResult(version, [new AddonRelease("oxide", "2.0\n.1")]);
+
+        var completed = AgentInput.Completed(new OperationCompleted(Guid.NewGuid(), null, OperationOutcome.Succeeded, null, null, result));
+
+        var installed = Assert.IsType<InstalledResult>(completed.Result);
+        Assert.Equal(kept, installed.GameVersion);
+        Assert.Equal(new AddonRelease("oxide", "2.0.1"), Assert.Single(installed.Addons));
+        Assert.Null(Assert.IsType<InstalledResult>(AgentInput.Completed(new OperationCompleted(Guid.NewGuid(), null, OperationOutcome.Succeeded, null, null,
+            new InstalledResult(new string('1', 65), null!))).Result).GameVersion);
+    }
+
+    [Theory]
     [InlineData("server.cfg", true)]
     [InlineData("nombre \U0000202Eraro.cfg", true)] // format characters are real names the panel can address
     [InlineData("a/b.cfg", false)]

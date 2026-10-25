@@ -2406,7 +2406,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_operations_status", "status IN ('cancelled', 'failed', 'interrupted', 'queued', 'running', 'succeeded')");
 
-                            t.HasCheckConstraint("ck_operations_type", "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_operations_type", "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
                         });
                 });
 
@@ -2466,6 +2466,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("extra_arguments")
                         .HasDefaultValueSql("'{}'");
+
+                    b.Property<string>("GameVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("game_version");
 
                     b.Property<string>("InstallState")
                         .IsRequired()
@@ -2567,7 +2572,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("servers", null, t =>
                         {
-                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
 
                             t.HasCheckConstraint("ck_servers_backup_limit", "backup_limit BETWEEN 1 AND 1000");
 
@@ -2616,6 +2621,111 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasName("pk_server_addons");
 
                     b.ToTable("server_addons", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerMod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Dependency")
+                        .HasColumnType("boolean")
+                        .HasColumnName("dependency");
+
+                    b.Property<DateTimeOffset>("InstalledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("installed_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("path");
+
+                    b.Property<string>("ProjectId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("Requires")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("requires");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("Sha512")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("sha512");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("VersionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("version_id");
+
+                    b.Property<string>("VersionNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("version_number");
+
+                    b.HasKey("Id")
+                        .HasName("pk_server_mods");
+
+                    b.HasIndex("OperationId")
+                        .HasDatabaseName("ix_server_mods_operation_id")
+                        .HasFilter("operation_id IS NOT NULL");
+
+                    b.HasIndex("ServerId", "ProjectId")
+                        .HasDatabaseName("ix_server_mods_server_id_project_id");
+
+                    b.ToTable("server_mods", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_server_mods_source", "source IN ('modrinth')");
+
+                            t.HasCheckConstraint("ck_server_mods_state", "state IN ('installed', 'installing', 'removing')");
+                        });
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>
@@ -3475,6 +3585,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_server_addons_servers_server_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerMod", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Operation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_server_mods_operations_operation_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_mods_servers_server_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>

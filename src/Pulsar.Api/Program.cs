@@ -145,6 +145,7 @@ try
     api.MapServerFileEndpoints();
     api.MapServerBackupEndpoints();
     api.MapServerAddonEndpoints();
+    api.MapServerModEndpoints();
     api.MapWorkshopEndpoints();
     api.MapDatabaseEndpoints();
     api.MapServerScheduleEndpoints();

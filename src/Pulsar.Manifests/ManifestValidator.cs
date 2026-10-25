@@ -149,7 +149,70 @@ public static partial class ManifestValidator
             ValidateCommands(commands, Error);
         }
 
+        ValidateMods(manifest.ModList, context);
         return errors;
+    }
+
+    private static void ValidateMods(IReadOnlyList<ModSourceDefinition> sources, Context context)
+    {
+        if (sources.Count > 4 || sources.Select(s => s.Source).Distinct(StringComparer.Ordinal).Count() != sources.Count)
+        {
+            context.Error("mods", "At most 4 catalogs, each once.");
+        }
+
+        for (var i = 0; i < sources.Count; i++)
+        {
+            var path = $"mods[{i}]";
+            var source = sources[i];
+            if (source.Source != ModSourceDefinition.Modrinth)
+            {
+                context.Error($"{path}.source", $"Pulsar knows the catalog '{ModSourceDefinition.Modrinth}'.");
+            }
+
+            if (!IsVersionVariable(source.VersionVar, context))
+            {
+                context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
+            }
+
+            var options = context.Variables.TryGetValue(source.TypeVar, out var type) && type.Type == VariableType.Enum && !type.Secret
+                ? (type.Options ?? []).Select(o => o.Value).ToHashSet(StringComparer.Ordinal)
+                : null;
+            if (options is null)
+            {
+                context.Error($"{path}.typeVar", "Must name an enum variable.");
+            }
+
+            if (source.Types.Count is 0 or > 32)
+            {
+                context.Error($"{path}.types", "1 to 32 types.");
+            }
+
+            foreach (var (key, target) in source.Types)
+            {
+                var at = $"{path}.types.{key}";
+                if (options is not null && !options.Contains(key))
+                {
+                    context.Error(at, $"Not an option of '{source.TypeVar}'.");
+                }
+
+                if (target.ProjectType is not ("mod" or "plugin"))
+                {
+                    context.Error($"{at}.projectType", "'mod' or 'plugin'.");
+                }
+
+                if (target.Loaders.Count is 0 or > 8 || target.Loaders.Any(l => !CatalogLoaderPattern().IsMatch(l)))
+                {
+                    context.Error($"{at}.loaders", "1 to 8 loaders, each lowercase letters, digits, '-' or '_'.");
+                }
+
+                // A folder of its own, one name deep: never the server's root, never Pulsar's.
+                if (!IsValidRelativePath(target.Folder) || target.Folder.Contains('/', StringComparison.Ordinal)
+                    || target.Folder.StartsWith('.'))
+                {
+                    context.Error($"{at}.folder", "One folder name in the server's folder (mods, plugins).");
+                }
+            }
+        }
     }
 
     private static void ValidateCommands(CommandsDefinition commands, Action<string, string> error)
@@ -1175,6 +1238,10 @@ public static partial class ManifestValidator
     // \z, not $, in every pattern: '$' also matches before a final newline ("hostname\n" would write a second line).
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();
+
+    /// <summary>A catalog's loader name (Modrinth's <c>neoforge</c>, <c>paper</c>).</summary>
+    [GeneratedRegex(@"^[a-z0-9_-]{1,32}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex CatalogLoaderPattern();
 
     // [0-9], not \d: other scripts' digits would be ordered as 0 (GameTemplate.CompareVersions).
     [GeneratedRegex(@"^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,32})?\z", RegexOptions.CultureInvariant)]

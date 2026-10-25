@@ -60,6 +60,7 @@ function details(changes: Partial<Schemas['ServerSummary']> = {}): Schemas['Serv
     recentOperations: [],
     limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons: false,
+    hasMods: false,
   };
 }
 

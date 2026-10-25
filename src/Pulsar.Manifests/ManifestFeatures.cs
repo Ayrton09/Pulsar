@@ -46,6 +46,13 @@ public static class ManifestFeatures
             || manifest.Runtime.Values.SelectMany(r => Conditions(r.ArgumentList)).Any(c => c.If.Split('.') is ["var", _, _]);
     }
 
+    /// <summary>The mod catalogs of Pulsar 1.0.9 (<see cref="GameManifest.Mods"/>).</summary>
+    public static bool UsesMods(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ModList.Count > 0;
+    }
+
     /// <summary>The console commands of Pulsar 1.0.9 (<see cref="GameManifest.Commands"/>).</summary>
     public static bool UsesCommands(GameManifest manifest)
     {

@@ -192,6 +192,7 @@ function details(server: Schemas['ServerSummary'] = summary): Schemas['ServerDet
     recentOperations: [],
     limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons: false,
+    hasMods: false,
   };
 }
 

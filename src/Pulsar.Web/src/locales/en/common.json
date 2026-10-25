@@ -375,6 +375,9 @@
         "backup_storage_changed": "Changed where backups are copied",
         "addon_install_requested": "Asked to install a mod",
         "addon_remove_requested": "Asked to remove a mod",
+        "mods_install_requested": "Asked to install mods",
+        "mods_update_requested": "Asked to update mods",
+        "mods_remove_requested": "Asked to remove a mod",
         "database_created": "Created a database",
         "database_deleted": "Deleted a database",
         "database_password_rotated": "Changed a database's password",
@@ -459,6 +462,31 @@
       "bad_archive": "The mod's download is not an archive Pulsar unpacks: {{detail}}",
       "file_missing": "A file the mod edits is missing or too large: {{detail}}",
       "file_too_large": "A file of the mod is larger than Pulsar reads: {{detail}}"
+    },
+    "mods": {
+      "not_found": "That mod is not on the server.",
+      "unsupported": "{{detail}}",
+      "type_unsupported": "A server of this type takes no mods or plugins: choose another type in its settings, then update it.",
+      "version_unknown": "The server's game version is not known yet: install or update the server first.",
+      "no_version": "The project has no version for this server's game version and type.",
+      "file_invalid": "The project's file is not a .jar file the panel can put on the server.",
+      "catalog_busy": "Modrinth is receiving too many requests from this panel: try again in a minute.",
+      "catalog_unavailable": "{{detail}}",
+      "change_running": "The server's mods are already being changed: wait for that to end.",
+      "too_many": "A server has at most 300 mods, and a change takes at most 64 files.",
+      "query_invalid": "A search is one line of up to 100 characters.",
+      "no_updates": "Modrinth has nothing newer for those mods.",
+      "requirement_missing": "{{detail}}",
+      "required_by": "{{detail}}",
+      "incompatible": "{{detail}}",
+      "path_taken": "{{detail}}",
+      "invalid": "The node refused the change: {{detail}}",
+      "invalid_path": "The node refused a file outside the game's mod folders: {{detail}}",
+      "download_failed": "{{detail}}",
+      "checksum_mismatch": "A download is not the file Modrinth published, so nothing was changed: {{detail}}",
+      "file_exists": "{{detail}}",
+      "untrusted_host": "{{detail}}",
+      "write_failed": "{{detail}}"
     },
     "api_key": {
       "name_invalid": "Give the key a name of one line, up to 64 characters.",
@@ -1110,7 +1138,8 @@
         "backupCreate": "Backup",
         "backupRestore": "Restore",
         "addonInstall": "Install mod",
-        "addonRemove": "Remove mod"
+        "addonRemove": "Remove mod",
+        "modsChange": "Change mods"
       },
       "statuses": {
         "queued": "Queued",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}} needs {{name}}: remove it first."
     },
     "removeConfirm": "Remove {{name}} from {{server}}? The files it installed are deleted, even if you changed them; files you added yourself are kept."
+  },
+  "mods": {
+    "hint": {
+      "mod": "Mods from Modrinth for this server's type and game version ({{version}}), with the mods they need. The node downloads each file from Modrinth and installs it only when it matches the SHA-512 Modrinth publishes. They are made by third parties, under their own licences.",
+      "plugin": "Plugins from Modrinth for this server's type and game version ({{version}}), with the plugins they need. The node downloads each file from Modrinth and installs it only when it matches the SHA-512 Modrinth publishes. They are made by third parties, under their own licences."
+    },
+    "stopToChange": "Stop the server to install, update or remove mods and plugins.",
+    "lastFailed": "The last change failed: {{reason}}",
+    "installed": {
+      "title": "On the server",
+      "label": "Mods on the server",
+      "noMods": "No mods from the catalog yet: search for them below.",
+      "noPlugins": "No plugins from the catalog yet: search for them below."
+    },
+    "columns": {
+      "name": "Name",
+      "version": "Version",
+      "file": "File",
+      "actions": "Actions"
+    },
+    "states": {
+      "installing": "Installing…",
+      "removing": "Removing…"
+    },
+    "dependency": "Dependency",
+    "requiredBy": "Needed by {{names}}.",
+    "updates": {
+      "check": "Check for updates",
+      "none": "Everything is up to date.",
+      "found_one": "{{count}} update available.",
+      "found_other": "{{count}} updates available.",
+      "all": "Update all",
+      "to": "New: {{version}}"
+    },
+    "install": "Install",
+    "update": "Update",
+    "remove": "Remove",
+    "onServer": "Installed",
+    "versions": {
+      "open": "Versions",
+      "title": "Versions of {{name}}",
+      "hint": "Those for this server's type and game version, newest first. Installing one replaces the version on the server.",
+      "change": "Install this one",
+      "types": {
+        "beta": "Beta",
+        "alpha": "Alpha"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "Search mods",
+      "searchPlugins": "Search plugins",
+      "empty": "Nothing found for this server's type and game version.",
+      "more": "Load more",
+      "by": "by {{author}}",
+      "downloads_one": "{{formatted}} download",
+      "downloads_other": "{{formatted}} downloads"
+    },
+    "refused": {
+      "required_by": "{{others}} needs {{name}}: remove it first."
+    },
+    "removeConfirm": "Remove {{name}} from {{server}}? Its file is deleted; its configuration files and the mods it needed are kept."
   },
   "backups": {
     "title": "Backups",

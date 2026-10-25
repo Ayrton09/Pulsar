@@ -12,6 +12,9 @@ public enum OperationType
     BackupRestore,
     AddonInstall,
     AddonRemove,
+
+    /// <summary>Files from a mod catalog put on the server or deleted (Pulsar 1.0.9).</summary>
+    ModsChange,
 }
 
 public enum OperationStatus

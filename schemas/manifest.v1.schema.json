@@ -34,7 +34,8 @@
         "backup": { "$ref": "#/$defs/BackupDefinition" },
         "query": { "$ref": "#/$defs/QueryDefinition" },
         "addons": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/AddonDefinition" }, "description": "Mods the game supports, installed on request." },
-        "commands": { "$ref": "#/$defs/CommandsDefinition" }
+        "commands": { "$ref": "#/$defs/CommandsDefinition" },
+        "mods": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/ModSourceDefinition" }, "description": "Catalogs of mods the panel installs files from (Pulsar 1.0.9)." }
       }
     },
     "AddonDefinition": {
@@ -323,6 +324,28 @@
       "properties": {
         "broadcast": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{message\\}\\}[^\\u0000-\\u001f]*$", "description": "Tells everyone playing a message: {{message}} stands for it (say {{message}}). The panel keeps only letters, digits, spaces and . , ! ? : ' ( ) - of a message." },
         "messageSpaces": { "enum": ["_", "-", "."], "description": "What stands for a space in the message, for a game whose command takes one word." }
+      }
+    },
+    "ModSourceDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "versionVar", "typeVar", "types"],
+      "description": "A catalog of mods (Pulsar 1.0.9): what a server of each type takes from it, and where.",
+      "properties": {
+        "source": { "enum": ["modrinth"] },
+        "versionVar": { "type": "string", "description": "The variable holding the game's version, when the install does not report it." },
+        "typeVar": { "type": "string", "description": "The enum variable holding the server's type; each type the catalog serves is a key of 'types'." },
+        "types": { "type": "object", "minProperties": 1, "maxProperties": 32, "additionalProperties": { "$ref": "#/$defs/ModTargetDefinition" } }
+      }
+    },
+    "ModTargetDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectType", "loaders", "folder"],
+      "properties": {
+        "projectType": { "enum": ["mod", "plugin"] },
+        "loaders": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" }, "description": "The catalog's loaders a file must be for, any of them." },
+        "folder": { "type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$", "description": "The server's folder the files go into." }
       }
     },
     "ConfigFileDefinition": {

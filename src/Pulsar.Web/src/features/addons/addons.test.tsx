@@ -49,6 +49,7 @@ function details(changes: Partial<Schemas['ServerSummary']> = {}, hasAddons = tr
     recentOperations: [],
     limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons,
+    hasMods: false,
   };
 }
 

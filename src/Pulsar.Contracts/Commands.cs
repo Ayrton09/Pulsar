@@ -53,6 +53,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(DeleteBackupCommand), DeleteBackupCommand.Type)]
 [JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
+[JsonDerivedType(typeof(ChangeModsCommand), ChangeModsCommand.Type)]
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 [JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
@@ -213,6 +214,24 @@ public sealed record RemoveAddonCommand(Guid ServerId, string AddonKey, SteamLog
 {
     public const string Type = "server.addon_remove";
 }
+
+/// <summary>
+/// Operation (Pulsar 1.0.9): puts files from a mod catalog (Modrinth) into the stopped server and deletes others: the
+/// mods or plugins the panel resolved. Each download is checked against its SHA-512 before it is written.
+/// </summary>
+/// <param name="Add">Files to download, each to its path in the server's folder (replacing one there).</param>
+/// <param name="Remove">Paths of files to delete (a missing one is nothing to do).</param>
+public sealed record ChangeModsCommand(Guid ServerId, IReadOnlyList<ModDownload> Add, IReadOnlyList<string> Remove) : AgentCommand
+{
+    public const string Type = "server.mods_change";
+
+    public const int MaxFiles = 64;
+}
+
+/// <param name="Path">Where it goes in the server's folder: <c>mods/lithium-fabric-0.18.1.jar</c>.</param>
+/// <param name="Url">An https address of the catalog's own download host.</param>
+/// <param name="Sha512">The catalog's checksum of the file, lowercase hex.</param>
+public sealed record ModDownload(string Path, string Url, string Sha512, long Size);
 
 /// <summary>Cancels a running operation (an install or update kills SteamCMD); it then completes as cancelled.</summary>
 public sealed record CancelOperationCommand(Guid OperationId) : AgentCommand
@@ -468,6 +487,7 @@ public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Tick
 [JsonDerivedType(typeof(FileEntryResult), "files.entry")]
 [JsonDerivedType(typeof(BackupResult), "backups.created")]
 [JsonDerivedType(typeof(AddonsResult), "addons.changed")]
+[JsonDerivedType(typeof(InstalledResult), "server.installed")]
 [JsonDerivedType(typeof(PortsInUseResult), "node.ports_in_use")]
 public abstract record CommandResult;
 
@@ -475,6 +495,15 @@ public abstract record CommandResult;
 /// Addons an operation installed, updated (an addon installed again after a game update) or removed (no release).
 /// </summary>
 public sealed record AddonsResult(IReadOnlyList<AddonRelease> Addons) : CommandResult;
+
+/// <summary>
+/// What an install or update installed (Pulsar 1.0.9): the game's version as its install step knows it (Minecraft's
+/// version id, which "latest" stands for), and the addons it installed again.
+/// </summary>
+public sealed record InstalledResult(string? GameVersion, IReadOnlyList<AddonRelease> Addons) : CommandResult
+{
+    public const int MaxGameVersionLength = 64;
+}
 
 /// <summary>The ports in use on the node's machine (<see cref="ListPortsInUseCommand"/>), each once, at most <see cref="MaxPorts"/>.</summary>
 /// <param name="Truncated">There were more: the lowest numbers are the ones listed.</param>
@@ -634,6 +663,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string MinecraftTypes = "manifest.minecraft_types";
 
+    /// <summary>
+    /// The agent puts a mod catalog's files into a server (<see cref="ChangeModsCommand"/>, Pulsar 1.0.9) and reads
+    /// manifests with a <c>mods</c> section.
+    /// </summary>
+    public const string ChangeMods = ChangeModsCommand.Type;
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 
@@ -712,6 +747,7 @@ public static class AgentCapabilities
         SendBackupCommand => SendBackup,
         InstallAddonCommand => InstallAddon,
         RemoveAddonCommand => RemoveAddon,
+        ChangeModsCommand => ChangeMods,
         ForgetSteamLoginCommand => ForgetSteamLogin,
         UseAgentsAddressCommand => UseAgentsAddress,
         UpdatePulsarCommand => UpdatePulsar,

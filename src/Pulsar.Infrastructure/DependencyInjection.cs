@@ -14,6 +14,7 @@ using Pulsar.Contracts;
 using Pulsar.Infrastructure.Databases;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Metrics;
+using Pulsar.Infrastructure.Mods;
 using Pulsar.Infrastructure.Nodes;
 using Pulsar.Infrastructure.Notifications;
 using Pulsar.Infrastructure.Persistence;
@@ -83,6 +84,16 @@ public static class DependencyInjection
             {
                 // Also the deadline for reading the body (SteamWorkshopClient reads it after the headers).
                 client.Timeout = TimeSpan.FromSeconds(15);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        // Modrinth's public API (1.0.9): one host, no redirects; it asks applications to name themselves.
+        services.AddScoped<IModrinth, ModrinthClient>();
+        services.AddHttpClient(ModrinthClient.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(20);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    $"Ayrton09/Pulsar/{PanelUpdates.PanelVersionText} (https://github.com/Ayrton09/Pulsar)");
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();

@@ -14,7 +14,7 @@
 | Nodes | **Node**, NodeCredential, NodeEnrollmentToken, ReusableEnrollmentToken | Cryptographic identity per node; reusable tokens enroll many machines (Phase 14). |
 | Nodes | NodeAllocation | Reservable `ip:port` pair (TCP and UDP) assignable to a server. |
 | Templates | **GameTemplate** | Validated, versioned, immutable manifest (`key` + `version`). |
-| Servers | **Server**, ServerVariable, ServerAddon | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12). |
+| Servers | **Server**, ServerVariable, ServerAddon, ServerMod | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12), mods from a catalog and the game version (1.0.9). |
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
 | Steam accounts | **SteamAccount** | Accounts SteamCMD signs in with for servers whose game needs one (Phase 13); a server points at one or none. |
@@ -156,6 +156,8 @@ Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/
 ### Addons (Phase 12)
 
 The addons a server's game supports come from its template (doc 04, "Addons"); the panel keeps only which are installed and which release (`server_addons`), from the results of the operations that install, update and remove them (`addon_install`, `addon_remove`: the server installed and stopped, nothing else running; installing can be cancelled). A game update that reinstalls addons reports their new releases the same way. Only those three operations change the rows, and only for addons of the server's template with a non-empty release (an addon named twice: the last one counts). The installed keys go in the server's spec, so the agent keeps their lines in the game's files at every start. `GET /api/v1/servers/{id}/addons` (`server.view`), `POST` and `DELETE /api/v1/servers/{id}/addons/{key}` (`server.install`: they change the game's files); requests are audited (`server.addon_install_requested`, `server.addon_remove_requested`).
+
+Mods from a catalog (1.0.9; doc 04, "Mods") are rows of `server_mods`, one per file the panel installed: the catalog's project and version, its name and version number, the file's path, SHA-512 and size, whether it came in as another's dependency, and the projects it requires (so a mod others need is not removed). A change writes its rows when it starts, tied to its `mods_change` operation (`installing`, `removing`), and the operation's end settles them (doc 03, "Mods"). `servers.game_version` is the game version the last install or update reported, which the catalog is asked for.
 
 ## PostgreSQL schema
 
@@ -339,6 +341,7 @@ CREATE TABLE servers (
     extra_arguments      text[] NOT NULL DEFAULT '{}',    -- only if the manifest allows it
     memory_limit_mb      integer,              -- reserved (Job Object limits, post-v1)
     last_exit_code       integer,
+    game_version         varchar(64),          -- 1.0.9: what the last install or update reported
     last_started_at      timestamptz,
     last_stopped_at      timestamptz,
     created_at           timestamptz NOT NULL,
@@ -354,6 +357,27 @@ CREATE TABLE server_addons (  -- Phase 12
     updated_at    timestamptz NOT NULL,
     PRIMARY KEY (server_id, key)
 );
+
+CREATE TABLE server_mods (  -- 1.0.9
+    id              uuid PRIMARY KEY,
+    server_id       uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    source          text NOT NULL CHECK (source IN ('modrinth')),
+    project_id      varchar(64) NOT NULL,          -- the catalog's ids
+    version_id      varchar(64) NOT NULL,
+    name            varchar(128) NOT NULL,
+    version_number  varchar(64) NOT NULL,
+    path            varchar(200) NOT NULL,         -- a .jar right in a mod folder of the manifest
+    sha512          varchar(128) NOT NULL,
+    size            bigint NOT NULL,
+    dependency      boolean NOT NULL,              -- installed because another mod requires it
+    requires        jsonb NOT NULL,                -- the projects its version requires
+    state           text NOT NULL CHECK (state IN ('installing','installed','removing')),
+    operation_id    uuid REFERENCES operations(id) ON DELETE SET NULL,  -- the change on its way
+    installed_at    timestamptz NOT NULL,
+    updated_at      timestamptz NOT NULL,
+    xmin            xid                            -- row version
+);
+CREATE INDEX ix_server_mods_server_project ON server_mods (server_id, project_id);
 
 CREATE TABLE server_variables (
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
@@ -457,7 +481,7 @@ CREATE TABLE operations (
     type                 text NOT NULL CHECK (type IN (
                              'server_provision','server_install','server_update',
                              'server_delete','backup_create','backup_restore',
-                             'addon_install','addon_remove')),
+                             'addon_install','addon_remove','mods_change')),
                              -- a reinstall is provision + install; deleting a backup is a plain command
     status               text NOT NULL CHECK (status IN (
                              'queued','running','succeeded','failed','cancelled','interrupted')),

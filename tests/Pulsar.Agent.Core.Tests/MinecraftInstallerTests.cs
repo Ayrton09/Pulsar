@@ -32,7 +32,7 @@ public sealed class MinecraftInstallerTests : IDisposable
     [Fact]
     public async Task InstallsTheServerAndTheJavaItsVersionNeeds()
     {
-        await InstallAsync("latest");
+        Assert.Equal("26.3", await InstallAsync("latest")); // the version "latest" stood for, for the panel
 
         Assert.Equal(_jar, File.ReadAllBytes(Path.Combine(_root, "server.jar")));
         Assert.Equal("java", File.ReadAllText(Path.Combine(_root, "java", "bin", "java.exe")));
@@ -193,7 +193,7 @@ public sealed class MinecraftInstallerTests : IDisposable
         }));
         _http.Routes[PaperJar(223)] = () => Ok(paper);
 
-        await InstallAsync(new MinecraftChoice("latest", "paper"));
+        Assert.Equal("26.3", await InstallAsync(new MinecraftChoice("latest", "paper")));
 
         Assert.Equal(paper, File.ReadAllBytes(Path.Combine(_root, "server.jar")));
         Assert.Equal("java", File.ReadAllText(Path.Combine(_root, "java", "bin", "java.exe"))); // the runtime 26.3 needs
@@ -440,7 +440,7 @@ public sealed class MinecraftInstallerTests : IDisposable
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.CheckAsync(_root, choice,
             TestContext.Current.CancellationToken);
 
-    private Task InstallAsync(MinecraftChoice choice) =>
+    private Task<string> InstallAsync(MinecraftChoice choice) =>
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.InstallAsync(_root, choice,
             (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
 
@@ -448,7 +448,7 @@ public sealed class MinecraftInstallerTests : IDisposable
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.CheckAsync(_root, version,
             TestContext.Current.CancellationToken);
 
-    private Task InstallAsync(string version) =>
+    private Task<string> InstallAsync(string version) =>
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.InstallAsync(_root, version, (stage, _) =>
         {
             _stages.Add(stage);

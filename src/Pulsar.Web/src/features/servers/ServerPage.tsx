@@ -31,6 +31,7 @@ import { useFormatBytes, useFormatDate, useFormatDuration } from '../../lib/form
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { AddonsTab } from '../addons/AddonsTab';
+import { ModsTab } from '../mods/ModsTab';
 import { BackupsTab } from '../backups/BackupsTab';
 import { DatabasesTab } from '../databases/DatabasesTab';
 import { useArtworkShown } from '../games/api';
@@ -108,8 +109,8 @@ function ServerView({ id }: { id: string }) {
     (name) =>
       (name !== 'console' || canOnServer(me, target, Permission.ServerConsoleView)) &&
       (name !== 'files' || canOnServer(me, target, Permission.ServerFilesView)) &&
-      // Only for games whose template has addons.
-      (name !== 'addons' || details.data?.hasAddons === true) &&
+      // Only for games whose template has addons, or a mod catalog.
+      (name !== 'addons' || details.data?.hasAddons === true || details.data?.hasMods === true) &&
       (name !== 'backups' || canOnServer(me, target, Permission.ServerBackupsView)) &&
       (name !== 'databases' || canOnServer(me, target, Permission.ServerDatabasesView)) &&
       (name !== 'schedules' || canOnServer(me, target, Permission.ServerSchedulesView)),
@@ -187,7 +188,12 @@ function ServerView({ id }: { id: string }) {
         )}
         {tab === 'console' && <ConsoleTab details={details.data} />}
         {tab === 'files' && <FilesTab details={details.data} />}
-        {tab === 'addons' && <AddonsTab details={details.data} />}
+        {tab === 'addons' && (
+          <div className="space-y-10">
+            {details.data.hasAddons && <AddonsTab details={details.data} />}
+            {details.data.hasMods && <ModsTab details={details.data} />}
+          </div>
+        )}
         {tab === 'backups' && <BackupsTab details={details.data} />}
         {tab === 'databases' && <DatabasesTab details={details.data} />}
         {tab === 'schedules' && <SchedulesTab details={details.data} />}

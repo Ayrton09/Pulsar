@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
@@ -48,6 +50,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.HasIndex(s => s.ShortId).IsUnique();
         builder.Property(s => s.Name).HasMaxLength(Server.MaxNameLength);
         builder.Property(s => s.Description).HasMaxLength(Server.MaxDescriptionLength);
+        builder.Property(s => s.GameVersion).HasMaxLength(Server.MaxGameVersionLength);
         builder.Property(s => s.InstallState).HasConversion<SnakeCaseEnumConverter<InstallState>>();
         builder.Property(s => s.RuntimeState).HasConversion<SnakeCaseEnumConverter<ServerRuntimeState>>();
         builder.Property(s => s.DesiredState).HasConversion<SnakeCaseEnumConverter<DesiredState>>();
@@ -206,6 +209,41 @@ internal sealed class ServerAddonConfiguration : IEntityTypeConfiguration<Server
         builder.Property(a => a.Key).HasMaxLength(ServerAddon.MaxKeyLength);
         builder.Property(a => a.Release).HasMaxLength(ServerAddon.MaxReleaseLength);
         builder.HasOne<Server>().WithMany().HasForeignKey(a => a.ServerId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class ServerModConfiguration : IEntityTypeConfiguration<ServerMod>
+{
+    public void Configure(EntityTypeBuilder<ServerMod> builder)
+    {
+        builder.ToTable("server_mods", t =>
+        {
+            t.HasCheckConstraint("ck_server_mods_source", SnakeCaseEnum<ModSource>.CheckConstraint("source"));
+            t.HasCheckConstraint("ck_server_mods_state", SnakeCaseEnum<ServerModState>.CheckConstraint("state"));
+        });
+
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.Id).ValueGeneratedNever();
+        builder.Property(m => m.Source).HasConversion<SnakeCaseEnumConverter<ModSource>>();
+        builder.Property(m => m.State).HasConversion<SnakeCaseEnumConverter<ServerModState>>();
+        builder.Property(m => m.ProjectId).HasMaxLength(ServerMod.MaxIdLength);
+        builder.Property(m => m.VersionId).HasMaxLength(ServerMod.MaxIdLength);
+        builder.Property(m => m.Name).HasMaxLength(ServerMod.MaxNameLength);
+        builder.Property(m => m.VersionNumber).HasMaxLength(ServerMod.MaxVersionLength);
+        builder.Property(m => m.Path).HasMaxLength(ServerMod.MaxPathLength);
+        builder.Property(m => m.Sha512).HasMaxLength(128);
+        builder.Property(m => m.Requires).HasColumnType("jsonb").HasConversion(
+            requires => JsonSerializer.Serialize(requires, (JsonSerializerOptions?)null),
+            json => JsonSerializer.Deserialize<List<string>>(json, (JsonSerializerOptions?)null) ?? new List<string>(),
+            new ValueComparer<IReadOnlyList<string>>((a, b) => a!.SequenceEqual(b!), list => list.Aggregate(0, (hash, item) => HashCode.Combine(hash, item)),
+                list => list.ToList()));
+        // An operation's report and a user's view settle the same rows: the loser reads them again.
+        builder.Property<uint>("Version").IsRowVersion();
+        builder.HasIndex(m => new { m.ServerId, m.ProjectId });
+        builder.HasIndex(m => m.OperationId).HasFilter("operation_id IS NOT NULL");
+
+        builder.HasOne<Server>().WithMany().HasForeignKey(m => m.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Operation>().WithMany().HasForeignKey(m => m.OperationId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 

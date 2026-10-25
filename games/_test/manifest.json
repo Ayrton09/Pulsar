@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "key": "pulsar-test",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Pulsar test server",
   "description": "A fake game server for developing and testing Pulsar. Only offered when the panel enables the test game.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,11 @@
     { "key": "readyAfterMs", "label": "Startup time (ms)", "type": "integer", "default": 1000, "min": 0, "max": 600000 },
     { "key": "ignoreQuit", "label": "Ignore the quit command", "type": "boolean", "default": false,
       "description": "Makes the graceful stop time out, so the agent has to kill the server." },
-    { "key": "message", "label": "Greeting", "type": "string", "default": "hello", "maxLength": 32, "pattern": "^[A-Za-z0-9 ]{0,32}$" }
+    { "key": "message", "label": "Greeting", "type": "string", "default": "hello", "maxLength": 32, "pattern": "^[A-Za-z0-9 ]{0,32}$" },
+    { "key": "modType", "label": "Mods from Modrinth", "type": "enum", "default": "none",
+      "options": [ { "value": "none", "label": "None" }, { "value": "fabric", "label": "Fabric mods" }, { "value": "paper", "label": "Paper plugins" } ],
+      "description": "What the test server takes from Modrinth (as Minecraft's server types do), for testing mods." },
+    { "key": "gameVersion", "label": "Game version", "type": "string", "default": "26.3", "maxLength": 32, "pattern": "^[0-9A-Za-z._-]{1,32}$" }
   ],
 
   "install": {
@@ -52,5 +56,12 @@
     "save": { "commands": ["save-off", "save"], "confirmation": "^Test server: saved", "timeoutSeconds": 15, "resume": ["save-on"] }
   },
 
-  "commands": { "broadcast": "say {{message}}" }
+  "commands": { "broadcast": "say {{message}}" },
+  "mods": [
+    { "source": "modrinth", "versionVar": "gameVersion", "typeVar": "modType",
+      "types": {
+        "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
+        "paper": { "projectType": "plugin", "loaders": ["paper", "spigot"], "folder": "plugins" }
+      } }
+  ]
 }

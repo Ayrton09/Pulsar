@@ -170,5 +170,15 @@
       "plugins/**", "mods/**", "config/**", "defaultconfigs/**"],
     "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
   },
-  "commands": { "broadcast": "say {{message}}" }
+  "commands": { "broadcast": "say {{message}}" },
+  "mods": [
+    { "source": "modrinth", "versionVar": "version", "typeVar": "serverType",
+      "types": {
+        "paper": { "projectType": "plugin", "loaders": ["paper", "spigot", "bukkit"], "folder": "plugins" },
+        "purpur": { "projectType": "plugin", "loaders": ["purpur", "paper", "spigot", "bukkit"], "folder": "plugins" },
+        "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
+        "forge": { "projectType": "mod", "loaders": ["forge"], "folder": "mods" },
+        "neoforge": { "projectType": "mod", "loaders": ["neoforge"], "folder": "mods" }
+      } }
+  ]
 }

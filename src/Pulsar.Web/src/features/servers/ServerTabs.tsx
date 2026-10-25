@@ -28,7 +28,7 @@ import { SteamAccountCard } from '../steam/SteamServerCards';
 import { GameUpdateSettingsCard } from '../gameUpdates/GameUpdates';
 
 /** Operations whose work the server's console shows as it runs (what SteamCMD prints, among others). */
-const shownInConsole = new Set(['serverInstall', 'serverUpdate', 'addonInstall', 'addonRemove']);
+const shownInConsole = new Set(['serverInstall', 'serverUpdate', 'addonInstall', 'addonRemove', 'modsChange']);
 
 /**
  * The running operation: its stage, a progress bar when the agent reports one, Cancel for installs and updates, and a

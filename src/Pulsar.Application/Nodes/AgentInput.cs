@@ -98,6 +98,7 @@ public static partial class AgentInput
         FileListResult listing => FileListing(listing),
         FileEntryResult file => IsFile(file) ? file : null,
         AddonsResult addons => Addons(addons),
+        InstalledResult installed => Installed(installed),
         _ => result,
     };
 
@@ -190,6 +191,17 @@ public static partial class AgentInput
     public static bool IsFileName(string? name) => name is { Length: > 0 } && !name.Contains('/', StringComparison.Ordinal) && ServerFilePath.IsValid(name);
 
     private static string? Message(string? message) => message is null ? null : Text(message, MaxMessageLength);
+
+    /// <summary>
+    /// An install's result: its addons as <see cref="Addons"/> keeps them, and the game's version only when it is a short
+    /// tag of letters, digits and <c>. - _ +</c> (what a version id is; anything else is no version).
+    /// </summary>
+    private static InstalledResult Installed(InstalledResult result) => new(
+        result.GameVersion is { Length: > 0 and <= InstalledResult.MaxGameVersionLength } version
+            && version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or '+')
+                ? version
+                : null,
+        [.. (result.Addons ?? []).Where(a => a is not null).Select(a => a with { Release = AddonRelease(a.Release) })]);
 
     private static AddonsResult Addons(AddonsResult result) => result.Addons is null
         ? result

@@ -34,6 +34,8 @@ public interface IPulsarDbContext
 
     DbSet<ServerAddon> ServerAddons { get; }
 
+    DbSet<ServerMod> ServerMods { get; }
+
     DbSet<AuditEntry> AuditLog { get; }
 
     DbSet<Node> Nodes { get; }

@@ -59,14 +59,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 {
     /// <summary>Runs one step that is not a SteamCMD step, reporting its progress.</summary>
     /// <param name="variables">The server's variable values, defaults included.</param>
-    public Task RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
+    public Task<string?> RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
         Func<string, double?, Task> progress, CancellationToken cancellationToken) =>
         RunAsync(step, serverDirectory, variables, progress, context: null, cancellationToken);
 
     /// <summary>Runs one step that is not a SteamCMD step, reporting its progress.</summary>
     /// <param name="variables">The server's variable values, defaults included.</param>
     /// <param name="context">The server, for what runs as its account; without it, steps that need that fail.</param>
-    public async Task RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
+    /// <returns>The game's version the step installed, when it knows it (Minecraft's, which "latest" stands for).</returns>
+    public async Task<string?> RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
         Func<string, double?, Task> progress, InstallContext? context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(step);
@@ -74,9 +75,8 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         ArgumentNullException.ThrowIfNull(progress);
         if (step is MinecraftServerStep minecraft)
         {
-            await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory))
+            return await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory))
                 .InstallAsync(serverDirectory, Choice(minecraft, variables), progress, cancellationToken);
-            return;
         }
 
         if (step is MinecraftBedrockStep bedrock)
@@ -85,11 +85,12 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
             var signatures = options.CodeSignatures
                 ?? throw new GameProcessException("bedrock.untrusted", "This agent cannot check code signatures, so it does not install the Bedrock server.");
             await new MinecraftBedrockInstaller(files, options.HttpHandler, signatures).InstallAsync(serverDirectory, version, progress, cancellationToken);
-            return;
+            return null;
         }
 
         await progress(Steam.InstallStages.Installing, null);
         await Task.Run(() => Run(step, serverDirectory), cancellationToken);
+        return null;
     }
 
     /// <summary>Whether an update check can ask what the step would install: SteamCMD's and Minecraft's (Pulsar 1.0.9).</summary>

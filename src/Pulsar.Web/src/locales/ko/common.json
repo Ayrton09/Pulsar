@@ -375,6 +375,9 @@
         "backup_storage_changed": "백업 복사 위치 변경",
         "addon_install_requested": "모드 설치 요청",
         "addon_remove_requested": "모드 제거 요청",
+        "mods_install_requested": "모드 설치 요청",
+        "mods_update_requested": "모드 업데이트 요청",
+        "mods_remove_requested": "모드 제거 요청",
         "database_created": "데이터베이스 생성",
         "database_deleted": "데이터베이스 삭제",
         "database_password_rotated": "데이터베이스 비밀번호 변경",
@@ -459,6 +462,31 @@
       "bad_archive": "모드 다운로드가 Pulsar에서 풀 수 있는 압축 파일이 아닙니다: {{detail}}",
       "file_missing": "모드가 편집하는 파일이 없거나 너무 큽니다: {{detail}}",
       "file_too_large": "모드의 파일이 Pulsar에서 읽을 수 있는 크기보다 큽니다: {{detail}}"
+    },
+    "mods": {
+      "not_found": "그 모드는 서버에 없습니다.",
+      "unsupported": "이 서버에는 카탈로그 모드를 설치할 수 없습니다: {{detail}}",
+      "type_unsupported": "이 종류의 서버는 모드나 플러그인을 사용할 수 없습니다. 설정에서 다른 종류를 고른 뒤 업데이트하세요.",
+      "version_unknown": "서버의 게임 버전을 아직 모릅니다. 먼저 서버를 설치하거나 업데이트하세요.",
+      "no_version": "이 프로젝트에는 이 서버의 게임 버전과 종류에 맞는 버전이 없습니다.",
+      "file_invalid": "프로젝트 파일이 패널이 서버에 넣을 수 있는 .jar 파일이 아닙니다.",
+      "catalog_busy": "Modrinth가 이 패널에서 너무 많은 요청을 받고 있습니다. 1분 뒤 다시 시도하세요.",
+      "catalog_unavailable": "Modrinth에 문의할 수 없었습니다: {{detail}}",
+      "change_running": "서버의 모드를 이미 변경하고 있습니다. 끝날 때까지 기다리세요.",
+      "too_many": "서버는 모드를 최대 300개, 한 번의 변경은 최대 64개 파일까지 가질 수 있습니다.",
+      "query_invalid": "검색은 100자 이하의 한 줄입니다.",
+      "no_updates": "Modrinth에 그 모드들의 새 버전이 없습니다.",
+      "requirement_missing": "이 프로젝트에는 이 서버용 버전이 없는 다른 프로젝트가 필요합니다: {{detail}}",
+      "required_by": "설치된 다른 모드가 이 모드를 필요로 합니다: {{detail}}",
+      "incompatible": "이 프로젝트는 서버에 있는 다른 모드와 함께 동작하지 않습니다: {{detail}}",
+      "path_taken": "서버의 다른 모드가 이미 그 파일을 사용합니다: {{detail}}",
+      "invalid": "노드가 변경을 거부했습니다: {{detail}}",
+      "invalid_path": "노드가 게임 모드 폴더 밖의 파일을 거부했습니다: {{detail}}",
+      "download_failed": "모드를 내려받을 수 없었습니다: {{detail}}",
+      "checksum_mismatch": "내려받은 파일이 Modrinth가 공개한 파일이 아니어서 아무것도 바꾸지 않았습니다: {{detail}}",
+      "file_exists": "패널이 넣지 않은 같은 이름의 파일이 이미 있습니다. 먼저 삭제하거나 이름을 바꾸세요. {{detail}}",
+      "untrusted_host": "Pulsar는 그 사이트에서 모드를 내려받지 않습니다: {{detail}}",
+      "write_failed": "모든 모드를 기록할 수 없었습니다: {{detail}}"
     },
     "api_key": {
       "name_invalid": "키 이름은 한 줄, 최대 64자로 입력하세요.",
@@ -1110,7 +1138,8 @@
         "backupCreate": "백업",
         "backupRestore": "복원",
         "addonInstall": "모드 설치",
-        "addonRemove": "모드 제거"
+        "addonRemove": "모드 제거",
+        "modsChange": "모드 변경"
       },
       "statuses": {
         "queued": "대기 중",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}}에 {{name}}이(가) 필요합니다. 먼저 제거하세요."
     },
     "removeConfirm": "{{server}}에서 {{name}}을(를) 제거하시겠습니까? 설치된 파일은 변경하셨더라도 삭제되며, 직접 추가한 파일은 유지됩니다."
+  },
+  "mods": {
+    "hint": {
+      "mod": "이 서버의 종류와 게임 버전({{version}})에 맞는 Modrinth 모드와, 그 모드에 필요한 모드입니다. 노드는 각 파일을 Modrinth에서 내려받아 Modrinth가 공개한 SHA-512와 일치할 때만 설치합니다. 제3자가 만든 것으로, 각자의 라이선스를 따릅니다.",
+      "plugin": "이 서버의 종류와 게임 버전({{version}})에 맞는 Modrinth 플러그인과, 그 플러그인에 필요한 플러그인입니다. 노드는 각 파일을 Modrinth에서 내려받아 Modrinth가 공개한 SHA-512와 일치할 때만 설치합니다. 제3자가 만든 것으로, 각자의 라이선스를 따릅니다."
+    },
+    "stopToChange": "모드와 플러그인을 설치, 업데이트 또는 제거하려면 서버를 중지하세요.",
+    "lastFailed": "마지막 변경이 실패했습니다: {{reason}}",
+    "installed": {
+      "title": "서버에 있음",
+      "label": "서버의 모드",
+      "noMods": "아직 카탈로그 모드가 없습니다. 아래에서 검색하세요.",
+      "noPlugins": "아직 카탈로그 플러그인이 없습니다. 아래에서 검색하세요."
+    },
+    "columns": {
+      "name": "이름",
+      "version": "버전",
+      "file": "파일",
+      "actions": "작업"
+    },
+    "states": {
+      "installing": "설치 중…",
+      "removing": "제거 중…"
+    },
+    "dependency": "의존성",
+    "requiredBy": "{{names}}에 필요합니다.",
+    "updates": {
+      "check": "업데이트 확인",
+      "none": "모두 최신입니다.",
+      "found_one": "업데이트 {{count}}개가 있습니다.",
+      "found_other": "업데이트 {{count}}개가 있습니다.",
+      "all": "모두 업데이트",
+      "to": "새 버전: {{version}}"
+    },
+    "install": "설치",
+    "update": "업데이트",
+    "remove": "제거",
+    "onServer": "설치됨",
+    "versions": {
+      "open": "버전",
+      "title": "{{name}} 버전",
+      "hint": "이 서버의 종류와 게임 버전에 맞는 버전(최신순)입니다. 하나를 설치하면 서버에 있는 버전을 대체합니다.",
+      "change": "이 버전 설치",
+      "types": {
+        "beta": "베타",
+        "alpha": "알파"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "모드 검색",
+      "searchPlugins": "플러그인 검색",
+      "empty": "이 서버의 종류와 게임 버전에 맞는 결과가 없습니다.",
+      "more": "더 불러오기",
+      "by": "제작: {{author}}",
+      "downloads_one": "다운로드 {{formatted}}회",
+      "downloads_other": "다운로드 {{formatted}}회"
+    },
+    "refused": {
+      "required_by": "{{others}}에 {{name}}이(가) 필요합니다. 먼저 그것을 제거하세요."
+    },
+    "removeConfirm": "{{server}}에서 {{name}}을(를) 제거할까요? 파일은 삭제되지만 설정 파일과 필요했던 모드는 남습니다."
   },
   "backups": {
     "title": "백업",
@@ -3524,6 +3615,22 @@
         "version": {
           "label": "Minecraft 버전",
           "description": "최신 정식 버전은 'latest', 또는 1.21.4 같은 버전을 입력하세요. 변경하려면 업데이트가 필요하며, 이전 버전으로 되돌리면 월드가 손상될 수 있습니다."
+        },
+        "serverType": {
+          "label": "서버 종류",
+          "description": "Paper와 Purpur는 Bukkit 플러그인을, Fabric, Forge, NeoForge는 모드를 사용합니다. 'latest'로 두면 그 종류가 지원하는 최신 Minecraft 버전이 됩니다. 바꾸려면 업데이트가 필요하며, 업데이트가 새 종류를 설치합니다. 월드는 유지되지만 다른 종류에서는 불러오지 못할 수 있습니다. Paper와 Purpur의 월드에는 해당 데이터 팩이, 모드로 만든 월드에는 그 모드가 필요합니다. 먼저 백업하세요.",
+          "options": {
+            "vanilla": "바닐라 (Mojang)",
+            "paper": "Paper (플러그인)",
+            "purpur": "Purpur (플러그인)",
+            "fabric": "Fabric (모드)",
+            "forge": "Forge (모드)",
+            "neoforge": "NeoForge (모드)"
+          }
+        },
+        "loaderVersion": {
+          "label": "로더 버전",
+          "description": "Fabric 로더, Forge 또는 NeoForge의 버전(예: 0.20.1, 58.1.26, 21.1.265)입니다. 비워 두면 권장 버전을 사용합니다. Forge 버전에는 Minecraft 버전도 지정해야 합니다."
         },
         "motd": {
           "label": "서버 메시지(MOTD)"

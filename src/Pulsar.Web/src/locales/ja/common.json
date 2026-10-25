@@ -375,6 +375,9 @@
         "backup_storage_changed": "バックアップのコピー先を変更",
         "addon_install_requested": "Modのインストールを要求",
         "addon_remove_requested": "Modの削除を要求",
+        "mods_install_requested": "Mod のインストールを依頼",
+        "mods_update_requested": "Mod の更新を依頼",
+        "mods_remove_requested": "Mod の削除を依頼",
         "database_created": "データベースを作成",
         "database_deleted": "データベースを削除",
         "database_password_rotated": "データベースのパスワードを変更",
@@ -459,6 +462,31 @@
       "bad_archive": "このModのダウンロードは、Pulsarが展開できるアーカイブではありません: {{detail}}",
       "file_missing": "Modが編集するファイルが見つからないか、大きすぎます: {{detail}}",
       "file_too_large": "Modのファイルが、Pulsarが読み込める大きさを超えています: {{detail}}"
+    },
+    "mods": {
+      "not_found": "その Mod はサーバーにありません。",
+      "unsupported": "このサーバーにはカタログの Mod をインストールできません: {{detail}}",
+      "type_unsupported": "この種類のサーバーは Mod もプラグインも使えません。設定で別の種類を選んでから更新してください。",
+      "version_unknown": "サーバーのゲームバージョンがまだわかりません。先にサーバーをインストールまたは更新してください。",
+      "no_version": "このプロジェクトには、このサーバーのゲームバージョンと種類に合うバージョンがありません。",
+      "file_invalid": "プロジェクトのファイルは、パネルがサーバーに置ける .jar ファイルではありません。",
+      "catalog_busy": "このパネルから Modrinth へのリクエストが多すぎます。1 分後にもう一度お試しください。",
+      "catalog_unavailable": "Modrinth に問い合わせできませんでした: {{detail}}",
+      "change_running": "サーバーの Mod はすでに変更中です。終わるまでお待ちください。",
+      "too_many": "サーバーの Mod は最大 300 個、1 回の変更は最大 64 ファイルです。",
+      "query_invalid": "検索は 100 文字以内の 1 行です。",
+      "no_updates": "それらの Mod に新しいバージョンはありません。",
+      "requirement_missing": "このプロジェクトは、このサーバー向けのバージョンがない別のプロジェクトを必要とします: {{detail}}",
+      "required_by": "インストール済みの別の Mod がこれを必要としています: {{detail}}",
+      "incompatible": "このプロジェクトは、サーバー上の別の Mod と一緒に動作しません: {{detail}}",
+      "path_taken": "サーバー上の別の Mod がすでにそのファイルを使っています: {{detail}}",
+      "invalid": "ノードが変更を拒否しました: {{detail}}",
+      "invalid_path": "ノードがゲームの Mod フォルダー外のファイルを拒否しました: {{detail}}",
+      "download_failed": "Mod をダウンロードできませんでした: {{detail}}",
+      "checksum_mismatch": "ダウンロードしたファイルが Modrinth の公開したものと違うため、何も変更していません: {{detail}}",
+      "file_exists": "パネルが置いたものではない同じ名前のファイルがすでにあります。先に削除するか名前を変えてください。{{detail}}",
+      "untrusted_host": "Pulsar はそのサイトから Mod をダウンロードしません: {{detail}}",
+      "write_failed": "すべての Mod を書き込めませんでした: {{detail}}"
     },
     "api_key": {
       "name_invalid": "キーの名前は1行、64文字以内で入力してください。",
@@ -1110,7 +1138,8 @@
         "backupCreate": "バックアップ",
         "backupRestore": "復元",
         "addonInstall": "Modのインストール",
-        "addonRemove": "Modの削除"
+        "addonRemove": "Modの削除",
+        "modsChange": "Mod の変更"
       },
       "statuses": {
         "queued": "待機中",
@@ -1473,6 +1502,68 @@
       "required_by": "{{others}}には{{name}}が必要です。先に削除してください。"
     },
     "removeConfirm": "{{server}}から{{name}}を削除しますか?インストールされたファイルは、変更していても削除されます。ご自身で追加したファイルは残ります。"
+  },
+  "mods": {
+    "hint": {
+      "mod": "このサーバーの種類とゲームバージョン（{{version}}）に合う Modrinth の Mod と、それらが必要とする Mod。ノードは各ファイルを Modrinth からダウンロードし、Modrinth が公開する SHA-512 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。",
+      "plugin": "このサーバーの種類とゲームバージョン（{{version}}）に合う Modrinth のプラグインと、それらが必要とするプラグイン。ノードは各ファイルを Modrinth からダウンロードし、Modrinth が公開する SHA-512 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。"
+    },
+    "stopToChange": "Mod やプラグインをインストール・更新・削除するには、サーバーを停止してください。",
+    "lastFailed": "前回の変更は失敗しました: {{reason}}",
+    "installed": {
+      "title": "サーバー上",
+      "label": "サーバーの Mod",
+      "noMods": "カタログの Mod はまだありません。下で検索してください。",
+      "noPlugins": "カタログのプラグインはまだありません。下で検索してください。"
+    },
+    "columns": {
+      "name": "名前",
+      "version": "バージョン",
+      "file": "ファイル",
+      "actions": "操作"
+    },
+    "states": {
+      "installing": "インストール中…",
+      "removing": "削除中…"
+    },
+    "dependency": "依存関係",
+    "requiredBy": "{{names}} が必要としています。",
+    "updates": {
+      "check": "更新を確認",
+      "none": "すべて最新です。",
+      "found_one": "{{count}} 件の更新があります。",
+      "found_other": "{{count}} 件の更新があります。",
+      "all": "すべて更新",
+      "to": "新しいバージョン: {{version}}"
+    },
+    "install": "インストール",
+    "update": "更新",
+    "remove": "削除",
+    "onServer": "インストール済み",
+    "versions": {
+      "open": "バージョン",
+      "title": "{{name}} のバージョン",
+      "hint": "このサーバーの種類とゲームバージョンに合うもの（新しい順）。インストールすると、サーバー上のバージョンと置き換わります。",
+      "change": "これをインストール",
+      "types": {
+        "beta": "ベータ",
+        "alpha": "アルファ"
+      }
+    },
+    "catalog": {
+      "title": "Modrinth",
+      "searchMods": "Mod を検索",
+      "searchPlugins": "プラグインを検索",
+      "empty": "このサーバーの種類とゲームバージョンに合うものは見つかりませんでした。",
+      "more": "さらに読み込む",
+      "by": "作者: {{author}}",
+      "downloads_one": "{{formatted}} ダウンロード",
+      "downloads_other": "{{formatted}} ダウンロード"
+    },
+    "refused": {
+      "required_by": "{{others}} が {{name}} を必要としています。先にそちらを削除してください。"
+    },
+    "removeConfirm": "{{server}} から {{name}} を削除しますか？ファイルは削除されますが、設定ファイルと必要としていた Mod は残ります。"
   },
   "backups": {
     "title": "バックアップ",
@@ -3524,6 +3615,22 @@
         "version": {
           "label": "Minecraftのバージョン",
           "description": "最新版なら'latest'、または1.21.4のようなバージョンを指定します。変更にはアップデートが必要です。古いバージョンに戻すとワールドが壊れることがあります。"
+        },
+        "serverType": {
+          "label": "サーバーの種類",
+          "description": "Paper と Purpur は Bukkit プラグインを、Fabric、Forge、NeoForge は Mod を使います。'latest' にすると、その種類が対応する最新の Minecraft バージョンになります。変更するには更新が必要で、更新で新しい種類がインストールされます。ワールドは残りますが、別の種類では読み込めないことがあります。Paper と Purpur のワールドには専用のデータパックが、Mod で作ったワールドにはその Mod が必要です。先にバックアップしてください。",
+          "options": {
+            "vanilla": "バニラ (Mojang)",
+            "paper": "Paper（プラグイン）",
+            "purpur": "Purpur（プラグイン）",
+            "fabric": "Fabric（Mod）",
+            "forge": "Forge（Mod）",
+            "neoforge": "NeoForge（Mod）"
+          }
+        },
+        "loaderVersion": {
+          "label": "ローダーのバージョン",
+          "description": "Fabric のローダー、Forge、NeoForge のバージョン（0.20.1、58.1.26、21.1.265 など）。空欄なら推奨バージョンになります。Forge のバージョンには、対応する Minecraft のバージョンの指定も必要です。"
         },
         "motd": {
           "label": "サーバーのメッセージ(MOTD)"

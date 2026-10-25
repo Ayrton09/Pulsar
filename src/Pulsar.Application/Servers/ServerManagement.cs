@@ -72,7 +72,9 @@ public sealed record ServerDetails(
     ServerLimitsView Limits,
     TemplateUpgradeView? TemplateUpgrade = null,
     bool HasAddons = false,
-    ServerSteamView? Steam = null);
+    ServerSteamView? Steam = null,
+    bool HasMods = false,
+    string? GameVersion = null);
 
 /// <summary>The Steam account a server's SteamCMD signs in with (Phase 13).</summary>
 /// <param name="Required">Its game's dedicated server can only be downloaded with an account.</param>
@@ -711,7 +713,8 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
         && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
         && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands))
-        && (!ManifestFeatures.UsesMinecraftTypes(manifest) || Announces(connection, AgentCapabilities.MinecraftTypes));
+        && (!ManifestFeatures.UsesMinecraftTypes(manifest) || Announces(connection, AgentCapabilities.MinecraftTypes))
+        && (!ManifestFeatures.UsesMods(manifest) || Announces(connection, AgentCapabilities.ChangeMods));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;
@@ -1026,7 +1029,7 @@ public sealed partial class ServerManagement(
             newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0,
             new ServerSteamView(SteamAccounts.NeedsAccount(manifest), server.SteamAccountId?.Value, server.SteamAccountId is { } account
                 ? await db.SteamAccounts.AsNoTracking().Where(a => a.Id == account).Select(a => a.Name).SingleOrDefaultAsync(cancellationToken)
-                : null));
+                : null), manifest.ModList.Count > 0, server.GameVersion);
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)
