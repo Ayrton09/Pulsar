@@ -74,6 +74,31 @@ public sealed class BundledGameSettingsTests
         Assert.Contains("ServerName=\"All\"", line, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ScpSecretLaboratoryNamesTakeTheGamesRichText()
+    {
+        // As other panels take it (2026-10-25): sizes, bold, colors by hex, long.
+        const string name =
+            "<size=60><b><color=#6495ED>Umbrella</color> Se<color=#FFBF00>rv</color>er <color=#6495ED>Argentina</color> | <i>Vanilla 24/7</i></b></size>";
+        var manifest = TestManifests.Load("scpsl");
+        var serverName = manifest.VariableList.Single(v => v.Key == "serverName");
+        Assert.Null(VariableValues.Check(serverName, name));
+        Assert.Null(VariableValues.Check(manifest.VariableList.Single(v => v.Key == "playerListTitle"), name));
+
+        var plan = Render(manifest, new Dictionary<string, string?> { ["eula"] = "accepted", ["serverName"] = name });
+        var file = plan.ConfigFiles.Single(f => f.Path.EndsWith("config_gameplay.txt", StringComparison.Ordinal));
+        Assert.Contains($"server_name: {name}\n", ConfigFileWriter.Apply(file, "server_name: Pulsar SCP SL\n"), StringComparison.Ordinal);
+
+        // What a YAML reader would take for something else is still refused, by the pattern or by the file's rules.
+        Assert.NotNull(VariableValues.Check(serverName, "a \"quoted\" name"));
+        foreach (var refused in (string[])["# a comment", "[a, list]", "Name: value", "name #comment", "' quoted"])
+        {
+            Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(
+                Render(manifest, new Dictionary<string, string?> { ["eula"] = "accepted", ["serverName"] = refused })
+                    .ConfigFiles.Single(f => f.Path.EndsWith("config_gameplay.txt", StringComparison.Ordinal)), null));
+        }
+    }
+
     private static LaunchPlan Render(GameManifest manifest, IReadOnlyDictionary<string, string?> values)
     {
         // Every port, optional ones too, on its usual number.
