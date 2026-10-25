@@ -26,7 +26,7 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
 
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
 
-    public async Task<ModrinthSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string gameVersion, int offset, int limit,
+    public async Task<ModrinthSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(loaders);
@@ -35,11 +35,15 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
         {
             new() { $"project_type:{projectType}" },
             loaders.Select(l => $"categories:{l}").ToList(),
-            new() { $"versions:{gameVersion}" },
         };
-        if (projectType == "mod")
+        if (gameVersion is not null)
         {
-            facets.Add(["server_side:required", "server_side:optional"]); // mods only for players' games are no use on a server
+            facets.Add([$"versions:{gameVersion}"]);
+        }
+
+        if (projectType is "mod" or "modpack")
+        {
+            facets.Add(["server_side:required", "server_side:optional"]); // those only for players' games are no use on a server
         }
 
         var path = $"search?query={Uri.EscapeDataString(query ?? "")}&facets={Uri.EscapeDataString(JsonSerializer.Serialize(facets))}"
@@ -51,12 +55,12 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
             Math.Max(0, found.TotalHits));
     }
 
-    public async Task<IReadOnlyList<ModrinthVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string gameVersion,
+    public async Task<IReadOnlyList<ModrinthVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string? gameVersion,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(loaders);
         var path = $"project/{Uri.EscapeDataString(projectId)}/version?loaders={Uri.EscapeDataString(JsonSerializer.Serialize(loaders))}"
-            + $"&game_versions={Uri.EscapeDataString(JsonSerializer.Serialize(new[] { gameVersion }))}";
+            + (gameVersion is null ? "" : $"&game_versions={Uri.EscapeDataString(JsonSerializer.Serialize(new[] { gameVersion }))}");
         var versions = await GetAsync<List<VersionResponse>>(path, cancellationToken, notFoundIsNull: true);
         return [.. (versions ?? []).Select(Version).OfType<ModrinthVersion>()];
     }

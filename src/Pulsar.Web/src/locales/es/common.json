@@ -377,6 +377,7 @@
         "addon_remove_requested": "Pidió quitar un mod",
         "mods_install_requested": "Pidió instalar mods",
         "mods_update_requested": "Pidió actualizar mods",
+        "modpack_install_requested": "Pidió instalar un modpack",
         "mods_remove_requested": "Pidió quitar un mod",
         "database_created": "Creó una base de datos",
         "database_deleted": "Borró una base de datos",
@@ -487,6 +488,22 @@
       "file_exists": "Ya hay un archivo con ese nombre que no puso el panel: borralo o cambiale el nombre primero. {{detail}}",
       "untrusted_host": "Pulsar no descarga mods de ese sitio: {{detail}}",
       "write_failed": "No se pudieron escribir todos los mods: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "Este servidor no puede instalar modpacks: {{detail}}",
+      "no_version": "El modpack no tiene una versión para un tipo de servidor que corra este juego.",
+      "loader_unsupported": "El modpack está hecho para un loader que no corre ningún tipo de servidor de este juego.",
+      "game_version_invalid": "El modpack no nombra una única versión de Minecraft que el servidor acepte.",
+      "file_invalid": "La versión del modpack no tiene un archivo .mrpack que Pulsar pueda instalar.",
+      "invalid": "El modpack no es válido: {{detail}}",
+      "mismatch": "El modpack no coincide con lo que dice el catálogo: {{detail}}",
+      "unsafe_path": "El modpack tiene un archivo que Pulsar no escribe: {{detail}}",
+      "untrusted_host": "El modpack ofrece un archivo desde un sitio del que Pulsar no descarga: {{detail}}",
+      "too_large": "El modpack es más grande de lo que Pulsar instala: {{detail}}",
+      "disk_full": "El nodo no tiene espacio libre suficiente para el modpack: {{detail}}",
+      "download_failed": "No se pudo descargar el modpack: {{detail}}",
+      "checksum_mismatch": "Una descarga no es el archivo que lista el modpack, así que no se cambió nada: {{detail}}",
+      "write_failed": "No se pudo escribir todo el modpack: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
@@ -1139,7 +1156,8 @@
         "backupRestore": "Restauración",
         "addonInstall": "Instalar mod",
         "addonRemove": "Quitar mod",
-        "modsChange": "Cambiar mods"
+        "modsChange": "Cambiar mods",
+        "modpackInstall": "Instalar modpack"
       },
       "statuses": {
         "queued": "En cola",
@@ -1559,6 +1577,26 @@
       "by": "de {{author}}",
       "downloads_one": "{{formatted}} descarga",
       "downloads_other": "{{formatted}} descargas"
+    },
+    "modpacks": {
+      "title": "Modpacks",
+      "hint": "Un modpack vuelve a instalar el servidor con el tipo y la versión de Minecraft del pack, y después le pone sus mods y su configuración, en lugar de los mods del pack anterior. Los archivos que agregaste vos se conservan, pero hacé un backup antes: el mundo puede no cargar con otro tipo o versión.",
+      "none": "No hay ningún modpack instalado.",
+      "notListed": "Los mods del modpack no aparecen acá: instalar uno que el pack ya trae pone una segunda copia en el servidor.",
+      "installing": "Instalando {{name}}…",
+      "runsOn": "{{loader}} {{loaderVersion}} en Minecraft {{gameVersion}}",
+      "installedAt": "instalado el {{when}}",
+      "search": "Buscar modpacks",
+      "installConfirm": "¿Instalar {{name}} en {{server}}? El servidor se vuelve a instalar con el tipo y la versión de Minecraft del pack, y se reemplazan los mods del pack anterior. Hacé un backup antes.",
+      "versionsHint": "Cada versión dice sobre qué corre; instalar una vuelve a instalar el servidor con su tipo y su versión de Minecraft.",
+      "versionRunsOn": "{{loader}} en Minecraft {{gameVersion}}",
+      "notForServer": "No sirve para este servidor ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} necesita {{name}}: quitalo primero."

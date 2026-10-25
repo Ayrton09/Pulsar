@@ -33,6 +33,8 @@ development panel and a real agent, one server moved through every type with upd
 
 The template's `mods` section takes plugins from Modrinth on Paper (`paper`, `spigot`, `bukkit` projects, into `plugins`) and Purpur (`purpur` as well), and mods on Fabric, Forge and NeoForge (into `mods`); Mojang's own server takes neither. The Mods tab searches the catalog for the server's game version (the one its last install or update reported) and installs a project with the projects it requires, while the server is stopped (doc 04, "Mods"). Backups include `plugins`, `mods` and `config`.
 
+Modrinth's modpacks (`.mrpack`) install too (`modpacks`, `loaderVersion`): a pack for Fabric, Forge or NeoForge installs the server again as that type, its Minecraft version and the loader version its index names, then its server files and overrides (doc 04, "Modpacks"). Quilt packs are not offered.
+
 ## Options added in 1.0.8
 
 Max tick time, signed chat keys, world border radius, entity range, pause when empty, and the resource pack (URL, SHA-1, required, message), in `server.properties`. The description of `pvp` now says it only applies to 1.21.8 and older: newer versions moved it to a game rule that Pulsar cannot patch.

@@ -377,6 +377,7 @@
         "addon_remove_requested": "Modの削除を要求",
         "mods_install_requested": "Mod のインストールを依頼",
         "mods_update_requested": "Mod の更新を依頼",
+        "modpack_install_requested": "Modpack のインストールを依頼",
         "mods_remove_requested": "Mod の削除を依頼",
         "database_created": "データベースを作成",
         "database_deleted": "データベースを削除",
@@ -487,6 +488,22 @@
       "file_exists": "パネルが置いたものではない同じ名前のファイルがすでにあります。先に削除するか名前を変えてください。{{detail}}",
       "untrusted_host": "Pulsar はそのサイトから Mod をダウンロードしません: {{detail}}",
       "write_failed": "すべての Mod を書き込めませんでした: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "このサーバーには Modpack をインストールできません: {{detail}}",
+      "no_version": "この Modpack には、このゲームで動くサーバーの種類向けのバージョンがありません。",
+      "loader_unsupported": "この Modpack は、このゲームのどのサーバーの種類でも動かないローダー向けです。",
+      "game_version_invalid": "この Modpack は、サーバーが受け付ける単一の Minecraft バージョンを示していません。",
+      "file_invalid": "この Modpack のバージョンには、Pulsar がインストールできる .mrpack ファイルがありません。",
+      "invalid": "Modpack が無効です: {{detail}}",
+      "mismatch": "Modpack がカタログの内容と一致しません: {{detail}}",
+      "unsafe_path": "Modpack に Pulsar が書き込まないファイルがあります: {{detail}}",
+      "untrusted_host": "Modpack が Pulsar のダウンロード対象外のサイトのファイルを指定しています: {{detail}}",
+      "too_large": "Modpack が Pulsar のインストールできる大きさを超えています: {{detail}}",
+      "disk_full": "ノードに Modpack 用の空き容量が足りません: {{detail}}",
+      "download_failed": "Modpack をダウンロードできませんでした: {{detail}}",
+      "checksum_mismatch": "ダウンロードしたファイルが Modpack の記載と違うため、何も変更していません: {{detail}}",
+      "write_failed": "Modpack をすべて書き込めませんでした: {{detail}}"
     },
     "api_key": {
       "name_invalid": "キーの名前は1行、64文字以内で入力してください。",
@@ -1139,7 +1156,8 @@
         "backupRestore": "復元",
         "addonInstall": "Modのインストール",
         "addonRemove": "Modの削除",
-        "modsChange": "Mod の変更"
+        "modsChange": "Mod の変更",
+        "modpackInstall": "Modpack のインストール"
       },
       "statuses": {
         "queued": "待機中",
@@ -1559,6 +1577,26 @@
       "by": "作者: {{author}}",
       "downloads_one": "{{formatted}} ダウンロード",
       "downloads_other": "{{formatted}} ダウンロード"
+    },
+    "modpacks": {
+      "title": "Modpack",
+      "hint": "Modpack はサーバーをパックの種類と Minecraft バージョンで再インストールし、そのあと Mod と設定を置きます。前のパックの Mod は置き換わります。自分で追加したファイルは残りますが、先にバックアップしてください。別の種類やバージョンではワールドを読み込めないことがあります。",
+      "none": "Modpack はインストールされていません。",
+      "notListed": "Modpack に含まれる Mod はここに表示されません。パックにすでにある Mod をインストールすると、サーバーに 2 つ目のコピーが置かれます。",
+      "installing": "{{name}} をインストール中…",
+      "runsOn": "Minecraft {{gameVersion}} 上の {{loader}} {{loaderVersion}}",
+      "installedAt": "{{when}} にインストール",
+      "search": "Modpack を検索",
+      "installConfirm": "{{server}} に {{name}} をインストールしますか？サーバーはパックの種類と Minecraft バージョンで再インストールされ、前のパックの Mod は置き換わります。先にバックアップしてください。",
+      "versionsHint": "各バージョンには動作環境が表示されます。インストールすると、その種類と Minecraft バージョンでサーバーが再インストールされます。",
+      "versionRunsOn": "Minecraft {{gameVersion}} 上の {{loader}}",
+      "notForServer": "このサーバー向けではありません（{{loaders}}、{{gameVersions}}）",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} が {{name}} を必要としています。先にそちらを削除してください。"

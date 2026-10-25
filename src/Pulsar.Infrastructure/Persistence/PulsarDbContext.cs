@@ -38,6 +38,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ServerMod> ServerMods => Set<ServerMod>();
 
+    public DbSet<ServerModpack> ServerModpacks => Set<ServerModpack>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     public DbSet<Node> Nodes => Set<Node>();
@@ -112,6 +114,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
         configurationBuilder.Properties<ServerSequenceId>().HaveConversion<ServerSequenceIdConverter>();
         configurationBuilder.Properties<ServerModId>().HaveConversion<ServerModIdConverter>();
+        configurationBuilder.Properties<ServerModpackId>().HaveConversion<ServerModpackIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
         configurationBuilder.Properties<SshKeyId>().HaveConversion<SshKeyIdConverter>();

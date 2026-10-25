@@ -161,6 +161,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.ManifestCommands;
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
+            yield return AgentCapabilities.InstallModpack;
             // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
             if (installOptions.CodeSignatures is not null)
             {
@@ -631,6 +632,7 @@ public sealed partial class ServerHost(
             InstallAddonCommand install => InstallAddon(envelope, install),
             RemoveAddonCommand remove => RemoveAddon(envelope, remove),
             ChangeModsCommand mods => ChangeMods(envelope, mods),
+            InstallModpackCommand modpack => InstallModpack(envelope, modpack),
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
             CancelOperationCommand cancel => Cancel(envelope, cancel),
             CreateBackupCommand create => CreateBackup(envelope, create),
@@ -1047,6 +1049,70 @@ public sealed partial class ServerHost(
             }, cancellationToken));
     }
 
+    /// <summary>
+    /// Installs a Modrinth modpack on the stopped server (Pulsar 1.0.9): the pack and its files are downloaded and checked
+    /// first; then the manifest's install steps run as the pack's server type, game version and loader version, and the
+    /// pack's files replace the previous pack's.
+    /// </summary>
+    private CommandAck InstallModpack(CommandEnvelope envelope, InstallModpackCommand command)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", "Installing a modpack is an operation.");
+        }
+
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        // The manifest the node holds says which variables the pack sets, and which of its types take its mods.
+        var source = server.Manifest.ModList.FirstOrDefault(s => s.Modpacks is not null);
+        var variables = server.Manifest.VariableList.ToDictionary(v => v.Key, StringComparer.Ordinal);
+        if (source?.Modpacks is not { } modpacks || !variables.TryGetValue(modpacks.LoaderVar, out var loaderVariable)
+            || !variables.TryGetValue(source.VersionVar, out var versionVariable))
+        {
+            return Rejected(envelope, "modpack.unsupported", "The server's game takes no modpacks.");
+        }
+
+        if (command.Pack is null || source.Types.GetValueOrDefault(command.ServerType) is not { ProjectType: "mod" } kind || !kind.Loaders.Contains(command.Loader)
+            || VariableValues.Check(versionVariable, command.GameVersion) is not null || command.GameVersion == MinecraftServerStep.Latest)
+        {
+            return Rejected(envelope, "modpack.invalid", "The modpack's server type, loader or game version is not one this server takes.");
+        }
+
+        const string stopFirst = "Stop the server before installing a modpack.";
+        if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return Rejected(envelope, "server.running", stopFirst);
+        }
+
+        return RunOperation(envelope, command.ServerId, operationId, exclusive: true, stoppedMessage: stopFirst, work: cancellationToken =>
+            NotedAsync<CommandResult?>(server, "Installing the modpack", login: null, async () =>
+            {
+                var progress = new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent));
+                var installer = new ModpackInstaller(files, installOptions.HttpHandler);
+                using var prepared = await installer.PrepareAsync(command.Pack, command.Loader, command.GameVersion,
+                    version => VariableValues.Check(loaderVariable, version), progress.ReportAsync, cancellationToken);
+                server.Supervisor.Console.Note($"Modpack {prepared.Name ?? "?"}: {prepared.Count} files, {command.Loader} {prepared.LoaderVersion} on {command.GameVersion}",
+                    clock.GetUtcNow());
+
+                // The pack's type and versions over the server's own: the panel records them once it reports success.
+                var values = new Dictionary<string, string?>(server.Spec.Variables, StringComparer.Ordinal)
+                {
+                    [source.TypeVar] = command.ServerType,
+                    [source.VersionVar] = command.GameVersion,
+                    [modpacks.LoaderVar] = prepared.LoaderVersion,
+                };
+                var (directory, version) = await RunStepsAsync(server, operationId, server.Manifest.Install?.Steps ?? [], validate: null, login: null,
+                    cancellationToken, values);
+                await progress.ReportAsync(Steam.InstallStages.Installing, null);
+                var written = installer.Apply(directory, prepared);
+                LogModpackInstalled(command.ServerId, prepared.Count);
+                return new ModpackResult(version, prepared.LoaderVersion, written);
+            }, cancellationToken));
+    }
+
     /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
     /// <param name="update">An update: the installed addons the game's update overwrites are installed again afterwards.</param>
     private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate, bool update,
@@ -1099,9 +1165,11 @@ public sealed partial class ServerHost(
 
     /// <summary>Runs install or update steps; returns the server's folder and the game's version, when a step knows it.</summary>
     /// <param name="login">The Steam account SteamCMD signs in with; null: anonymous.</param>
+    /// <param name="values">The variables' values the steps run with; null: the server's.</param>
     private async Task<(string Directory, string? GameVersion)> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps,
-        bool? validate, SteamLogin? login, CancellationToken cancellationToken)
+        bool? validate, SteamLogin? login, CancellationToken cancellationToken, IReadOnlyDictionary<string, string?>? values = null)
     {
+        values ??= server.Spec.Variables;
         string? version = null;
         var serverId = server.Supervisor.ServerId;
         var console = server.Supervisor.Console;
@@ -1116,14 +1184,14 @@ public sealed partial class ServerHost(
                     throw new GameProcessException("steamcmd.account_required", "Only a Steam account that owns this game's dedicated server may download it.");
                 }
 
-                var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
+                var betaPassword = steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
                     validate ?? steam.Validate, login);
                 await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
             }
             else
             {
-                var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
+                var variables = VariableValues.Resolve(server.Manifest, values);
                 console.Note(InstallSteps.Describe(step, variables), clock.GetUtcNow());
                 version = await installSteps.RunAsync(step, provisioned.Directory, variables,
                     new InstallConsole(console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
@@ -1897,6 +1965,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: {Added} mod file(s) written, {Removed} deleted")]
     private partial void LogModsChanged(Guid serverId, int added, int removed);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: modpack installed ({Files} files)")]
+    private partial void LogModpackInstalled(Guid serverId, int files);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: addon {Addon} removed ({Replaced} game files to restore)")]
     private partial void LogAddonRemoved(Guid serverId, string addon, int replaced);

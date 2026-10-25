@@ -164,3 +164,10 @@ public readonly record struct ServerModId(Guid Value)
 
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct ServerModpackId(Guid Value)
+{
+    public static ServerModpackId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}

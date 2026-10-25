@@ -8,6 +8,8 @@ export type ServerModView = Schemas['ServerModView'];
 export type ModHitView = Schemas['ModHitView'];
 export type ModVersionView = Schemas['ModVersionView'];
 export type ModUpdateView = Schemas['ModUpdateView'];
+export type ModpackView = Schemas['ModpackView'];
+export type ModpackVersionView = Schemas['ModpackVersionView'];
 
 /** The catalog's answers change slowly, and each one is a request to Modrinth: they are kept a while. */
 const catalogStaleTime = 5 * 60_000;
@@ -21,6 +23,9 @@ export const modKeys = {
   versions: (serverId: string, projectId: string) => [...modKeys.catalog(serverId), 'versions', projectId] as const,
   /** By the versions on the server: a change that installs others asks again. */
   updates: (serverId: string, installed: string) => [...modKeys.catalog(serverId), 'updates', installed] as const,
+  modpackSearch: (serverId: string, query: string) => [...modKeys.catalog(serverId), 'modpacks', query] as const,
+  modpackVersions: (serverId: string, projectId: string) =>
+    [...modKeys.catalog(serverId), 'modpacks', 'versions', projectId] as const,
 };
 
 export function useMods(serverId: string) {
@@ -76,6 +81,42 @@ export function useModUpdates(serverId: string, installed: string, enabled: bool
   });
 }
 
+/** The catalog's modpacks for the game's mod loaders, whatever the server's type (a pack sets it). */
+export function useModpackSearch(serverId: string, query: string, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: modKeys.modpackSearch(serverId, query),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/api/v1/servers/{id}/modpacks/search', {
+          params: { path: { id: serverId }, query: { ...(query ? { query } : {}), offset: pageParam } },
+        }),
+      ),
+    getNextPageParam: (page, pages) => {
+      const loaded = pages.reduce((count, p) => count + p.hits.length, 0);
+      return page.hits.length > 0 && loaded < page.total ? loaded : undefined;
+    },
+    enabled,
+    staleTime: catalogStaleTime,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** A pack's versions, each with the server type and game version it would install (none: not for this server). */
+export function useModpackVersions(serverId: string, projectId: string | null) {
+  return useQuery({
+    queryKey: modKeys.modpackVersions(serverId, projectId ?? ''),
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/servers/{id}/modpacks/projects/{projectId}/versions', {
+          params: { path: { id: serverId, projectId: projectId ?? '' } },
+        }),
+      ),
+    enabled: projectId != null,
+    staleTime: catalogStaleTime,
+  });
+}
+
 /** Each change starts an operation on the server (and is audited). */
 function useModsChanged(serverId: string) {
   const queryClient = useQueryClient();
@@ -107,6 +148,21 @@ export function useUpdateMods(serverId: string) {
   return useMutation({
     mutationFn: (modIds: string[] | null) =>
       unwrap(api.POST('/api/v1/servers/{id}/mods/update', { params: { path: { id: serverId } }, body: { modIds } })),
+    onSettled: changed,
+  });
+}
+
+/** Installs the pack (its newest version the server can run, or the one chosen): the server is installed again as its type. */
+export function useInstallModpack(serverId: string) {
+  const changed = useModsChanged(serverId);
+  return useMutation({
+    mutationFn: ({ projectId, versionId }: { projectId: string; versionId?: string }) =>
+      unwrap(
+        api.POST('/api/v1/servers/{id}/modpacks', {
+          params: { path: { id: serverId } },
+          body: { projectId, versionId: versionId ?? null },
+        }),
+      ),
     onSettled: changed,
   });
 }

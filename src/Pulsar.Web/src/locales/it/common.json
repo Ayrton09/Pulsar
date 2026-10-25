@@ -377,6 +377,7 @@
         "addon_remove_requested": "Ha chiesto di rimuovere una mod",
         "mods_install_requested": "Ha chiesto l'installazione di mod",
         "mods_update_requested": "Ha chiesto l'aggiornamento di mod",
+        "modpack_install_requested": "Ha chiesto l'installazione di un modpack",
         "mods_remove_requested": "Ha chiesto la rimozione di una mod",
         "database_created": "Ha creato un database",
         "database_deleted": "Ha eliminato un database",
@@ -487,6 +488,22 @@
       "file_exists": "C'è già un file con questo nome che non ha messo il pannello: eliminalo o rinominalo prima. {{detail}}",
       "untrusted_host": "Pulsar non scarica mod da questo sito: {{detail}}",
       "write_failed": "Non è stato possibile scrivere tutte le mod: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "Questo server non può installare modpack: {{detail}}",
+      "no_version": "Il modpack non ha una versione per un tipo di server che questo gioco esegue.",
+      "loader_unsupported": "Il modpack è fatto per un loader che nessun tipo di server di questo gioco esegue.",
+      "game_version_invalid": "Il modpack non indica una sola versione di Minecraft accettata dal server.",
+      "file_invalid": "La versione del modpack non ha un file .mrpack che Pulsar possa installare.",
+      "invalid": "Il modpack non è valido: {{detail}}",
+      "mismatch": "Il modpack non corrisponde a quanto dice il catalogo: {{detail}}",
+      "unsafe_path": "Il modpack ha un file che Pulsar non scrive: {{detail}}",
+      "untrusted_host": "Il modpack offre un file da un sito da cui Pulsar non scarica: {{detail}}",
+      "too_large": "Il modpack è più grande di quanto Pulsar installa: {{detail}}",
+      "disk_full": "Il nodo non ha abbastanza spazio libero per il modpack: {{detail}}",
+      "download_failed": "Non è stato possibile scaricare il modpack: {{detail}}",
+      "checksum_mismatch": "Un download non è il file elencato dal modpack, quindi non è stato cambiato nulla: {{detail}}",
+      "write_failed": "Non è stato possibile scrivere tutto il modpack: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Dare alla chiave un nome di una sola riga, fino a 64 caratteri.",
@@ -1139,7 +1156,8 @@
         "backupRestore": "Ripristina",
         "addonInstall": "Installa mod",
         "addonRemove": "Rimuovi mod",
-        "modsChange": "Modifica mod"
+        "modsChange": "Modifica mod",
+        "modpackInstall": "Installa modpack"
       },
       "statuses": {
         "queued": "In coda",
@@ -1559,6 +1577,26 @@
       "by": "di {{author}}",
       "downloads_one": "{{formatted}} download",
       "downloads_other": "{{formatted}} download"
+    },
+    "modpacks": {
+      "title": "Modpack",
+      "hint": "Un modpack reinstalla il server con il tipo e la versione di Minecraft del pack, poi ci mette le sue mod e le sue impostazioni, al posto delle mod del pack precedente. I file che hai aggiunto tu restano, ma fai prima un backup: il mondo potrebbe non caricarsi con un altro tipo o versione.",
+      "none": "Nessun modpack installato.",
+      "notListed": "Le mod del modpack non sono elencate qui: installarne una che il pack ha già ne mette una seconda copia sul server.",
+      "installing": "Installazione di {{name}}…",
+      "runsOn": "{{loader}} {{loaderVersion}} su Minecraft {{gameVersion}}",
+      "installedAt": "installato il {{when}}",
+      "search": "Cerca modpack",
+      "installConfirm": "Installare {{name}} su {{server}}? Il server viene reinstallato con il tipo e la versione di Minecraft del pack, e le mod del pack precedente vengono sostituite. Fai prima un backup.",
+      "versionsHint": "Ogni versione dice su cosa gira; installarne una reinstalla il server con il suo tipo e la sua versione di Minecraft.",
+      "versionRunsOn": "{{loader}} su Minecraft {{gameVersion}}",
+      "notForServer": "Non adatta a questo server ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} ha bisogno di {{name}}: rimuovilo prima."

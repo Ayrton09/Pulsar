@@ -1,6 +1,6 @@
 namespace Pulsar.Application.Servers;
 
-/// <summary>A project in Modrinth's search: a mod, a plugin.</summary>
+/// <summary>A project in Modrinth's search: a mod, a plugin, a modpack.</summary>
 public sealed record ModrinthHit(string ProjectId, string Slug, string Title, string? Description, string? Author, long Downloads, DateTimeOffset? Updated);
 
 public sealed record ModrinthSearch(IReadOnlyList<ModrinthHit> Hits, int Total);
@@ -28,13 +28,14 @@ public sealed record ModrinthProject(string Id, string Slug, string Title);
 /// <summary>Modrinth's public API (no key; it asks for a User-Agent naming the application), as the panel uses it.</summary>
 public interface IModrinth
 {
+    /// <param name="gameVersion">Only projects for this game version; null: any.</param>
     /// <exception cref="ModCatalogUnavailableException">Modrinth could not be asked, or answered something else.</exception>
-    Task<ModrinthSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string gameVersion, int offset, int limit,
+    Task<ModrinthSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
         CancellationToken cancellationToken);
 
-    /// <summary>The project's versions for any of the loaders and the game version, newest first.</summary>
+    /// <summary>The project's versions for any of the loaders and the game version (any, when null), newest first.</summary>
     /// <exception cref="ModCatalogUnavailableException">Modrinth could not be asked (a project it does not know is no version).</exception>
-    Task<IReadOnlyList<ModrinthVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string gameVersion, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ModrinthVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string? gameVersion, CancellationToken cancellationToken);
 
     /// <summary>One version; null when Modrinth does not know it.</summary>
     /// <exception cref="ModCatalogUnavailableException">Modrinth could not be asked.</exception>

@@ -212,6 +212,20 @@ public static partial class ManifestValidator
                     context.Error($"{at}.folder", "One folder name in the server's folder (mods, plugins).");
                 }
             }
+
+            if (source.Modpacks is { } modpacks)
+            {
+                if (!context.Variables.TryGetValue(modpacks.LoaderVar, out var loader) || loader.Type != VariableType.String || loader.Secret
+                    || loader.Pattern is null || modpacks.LoaderVar == source.VersionVar || modpacks.LoaderVar == source.TypeVar)
+                {
+                    context.Error($"{path}.modpacks.loaderVar", "Must name a string variable with a 'pattern' of its own.");
+                }
+
+                if (!source.Types.Values.Any(t => t.ProjectType == "mod"))
+                {
+                    context.Error($"{path}.modpacks", "Modpacks are made of mods: a type must take them.");
+                }
+            }
         }
     }
 

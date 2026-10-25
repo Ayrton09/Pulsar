@@ -5,6 +5,8 @@ namespace Pulsar.Manifests.Tests;
 /// <summary>Mod catalogs in manifests (Pulsar 1.0.9): what each server type takes from Modrinth, and where it goes.</summary>
 public sealed class ModsTests
 {
+    private static readonly string[] s_modTypes = ["fabric", "forge", "neoforge"];
+
     [Fact]
     public void MinecraftTakesPluginsOnPaperAndPurpurAndModsOnTheModLoaders()
     {
@@ -57,6 +59,41 @@ public sealed class ModsTests
 
         Assert.Contains(errors, e => e.Path == "mods[0].types.fabric.loaders");
         Assert.Contains(errors, e => e.Path == "mods[0].types.forge.projectType");
+    }
+
+    [Fact]
+    public void MinecraftTakesModpacksSettingItsTypeVersionAndLoader()
+    {
+        var manifest = TestManifests.Load("minecraft");
+
+        Assert.Equal("loaderVersion", Assert.Single(manifest.ModList).Modpacks?.LoaderVar);
+        Assert.True(ManifestFeatures.UsesModpacks(manifest));
+        Assert.False(ManifestFeatures.UsesModpacks(TestManifests.Load("cs2")));
+    }
+
+    [Theory]
+    [InlineData("nope")] // no such variable
+    [InlineData("serverType")] // an enum, and the type's own
+    [InlineData("version")] // the game version's
+    public void AModpacksLoaderVariableIsAVersionOfItsOwn(string variable)
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("minecraft", manifest => manifest["mods"]![0]!["modpacks"]!["loaderVar"] = variable));
+
+        Assert.Contains(errors, e => e.Path == "mods[0].modpacks.loaderVar" || e.Path.StartsWith("variables", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ModpacksAreMadeOfMods()
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("minecraft", manifest =>
+        {
+            foreach (var type in s_modTypes)
+            {
+                manifest["mods"]![0]!["types"]!.AsObject().Remove(type);
+            }
+        }));
+
+        Assert.Contains(errors, e => e.Path == "mods[0].modpacks");
     }
 
     [Theory]

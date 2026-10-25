@@ -335,7 +335,17 @@
         "source": { "enum": ["modrinth"] },
         "versionVar": { "type": "string", "description": "The variable holding the game's version, when the install does not report it." },
         "typeVar": { "type": "string", "description": "The enum variable holding the server's type; each type the catalog serves is a key of 'types'." },
-        "types": { "type": "object", "minProperties": 1, "maxProperties": 32, "additionalProperties": { "$ref": "#/$defs/ModTargetDefinition" } }
+        "types": { "type": "object", "minProperties": 1, "maxProperties": 32, "additionalProperties": { "$ref": "#/$defs/ModTargetDefinition" } },
+        "modpacks": { "$ref": "#/$defs/ModpacksDefinition" }
+      }
+    },
+    "ModpacksDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loaderVar"],
+      "description": "The catalog's modpacks install on the game: a pack runs on the type whose mods it is made of, at the game version it names.",
+      "properties": {
+        "loaderVar": { "type": "string", "description": "The string variable holding the loader's version, which the pack's index names." }
       }
     },
     "ModTargetDefinition": {

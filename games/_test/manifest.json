@@ -15,7 +15,8 @@
     { "key": "modType", "label": "Mods from Modrinth", "type": "enum", "default": "none",
       "options": [ { "value": "none", "label": "None" }, { "value": "fabric", "label": "Fabric mods" }, { "value": "paper", "label": "Paper plugins" } ],
       "description": "What the test server takes from Modrinth (as Minecraft's server types do), for testing mods." },
-    { "key": "gameVersion", "label": "Game version", "type": "string", "default": "26.3", "maxLength": 32, "pattern": "^[0-9A-Za-z._-]{1,32}$" }
+    { "key": "gameVersion", "label": "Game version", "type": "string", "default": "26.3", "maxLength": 32, "pattern": "^[0-9A-Za-z._-]{1,32}$" },
+    { "key": "loaderVersion", "label": "Loader version", "type": "string", "default": "", "maxLength": 32, "pattern": "^([0-9A-Za-z][0-9A-Za-z._+-]{0,31})?$" }
   ],
 
   "install": {
@@ -62,6 +63,7 @@
       "types": {
         "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
         "paper": { "projectType": "plugin", "loaders": ["paper", "spigot"], "folder": "plugins" }
-      } }
+      },
+      "modpacks": { "loaderVar": "loaderVersion" } }
   ]
 }

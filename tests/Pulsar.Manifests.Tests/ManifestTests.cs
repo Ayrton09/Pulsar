@@ -471,15 +471,15 @@ public sealed class ManifestTests
             m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("--mode={{var.mode.flag}}");
         });
 
-        Assert.Contains(errors, e => e.Path == "variables[5].options");
+        Assert.Contains(errors, e => e.Path == "variables[6].options");
     }
 
     // '$' also matches before a final newline: "hostname\n" would write a second line (in a Source .cfg, a command).
     [Theory]
     [InlineData("key")]
     [InlineData("version")]
-    [InlineData("variables[5].key")]
-    [InlineData("variables[5].options")]
+    [InlineData("variables[6].key")]
+    [InlineData("variables[6].options")]
     [InlineData("ports[0].name")]
     [InlineData("install.steps[2].beta")]
     [InlineData("runtime.windows-x64.environment.FOO\n")]
@@ -499,10 +499,10 @@ public sealed class ManifestTests
                 case "version":
                     m["version"] = "1.0.0\n";
                     break;
-                case "variables[5].key":
+                case "variables[6].key":
                     m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "extra\n", ["label"] = "Extra", ["type"] = "boolean" });
                     break;
-                case "variables[5].options":
+                case "variables[6].options":
                     m["variables"]!.AsArray().Add(new JsonObject
                     {
                         ["key"] = "extra",
@@ -611,7 +611,7 @@ public sealed class ManifestTests
         const string pattern = "(?x)[a-z]+ # letters";
         var errors = Errors(m => m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "name", ["label"] = "Name", ["type"] = "string", ["pattern"] = pattern }));
 
-        Assert.Contains(errors, e => e.Path == "variables[5].pattern");
+        Assert.Contains(errors, e => e.Path == "variables[6].pattern");
         Assert.NotNull(VariableValues.Check(new VariableDefinition("name", "Name", VariableType.String, Pattern: pattern), "abc"));
     }
 

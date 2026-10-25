@@ -285,7 +285,8 @@ Bundled: `cs2` has Metamod:Source and CounterStrikeSharp (with its .NET runtime)
   { "source": "modrinth", "versionVar": "version", "typeVar": "serverType",
     "types": {
       "paper":  { "projectType": "plugin", "loaders": ["paper", "spigot", "bukkit"], "folder": "plugins" },
-      "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" } } }
+      "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" } },
+    "modpacks": { "loaderVar": "loaderVersion" } }
 ]
 ```
 
@@ -300,7 +301,17 @@ Only the first catalog is used. The panel asks the catalog (doc 03, "Mods"): a s
 
 Each change is a `server.mods_change` operation on the stopped, installed server: the agent gets the files to write (path, address, SHA-512, size) and those to delete, checks every path is a `.jar` right in one of the manifest's mod folders (`mods.invalid_path`), downloads them all from `cdn.modrinth.com` (HTTPS, every redirect checked, 256 MiB at most each) and checks each SHA-512 before it deletes or writes anything (`mods.checksum_mismatch`, `mods.download_failed`); then it deletes and writes (`mods.write_failed`). The panel records the change's rows when it starts (`installing`, `removing`) and confirms or rolls them back with the operation. Files the panel did not install are never touched: what someone uploads to `mods/` stays theirs, and a catalog file with the name of one is refused (`mods.file_exists`) rather than written over it.
 
-Bundled: `minecraft` takes plugins on Paper (`paper`, `spigot`, `bukkit`, in `plugins`) and Purpur (`purpur` too), and mods on Fabric, Forge and NeoForge (their own loader, in `mods`). Backups include `plugins`, `mods` and `config`. *Implemented in 1.0.9 (modpacks and CurseForge come later).*
+Bundled: `minecraft` takes plugins on Paper (`paper`, `spigot`, `bukkit`, in `plugins`) and Purpur (`purpur` too), and mods on Fabric, Forge and NeoForge (their own loader, in `mods`). Backups include `plugins`, `mods` and `config`. *Implemented in 1.0.9 (CurseForge comes later).*
+
+*Modpacks (1.0.9).* With `modpacks`, the catalog's modpacks (Modrinth's `.mrpack`) install on the game too, whatever the server's type, since a pack sets it. `loaderVar` names the string variable (with a pattern of its own, neither `versionVar` nor `typeVar`) that holds the loader's version; at least one type must take mods. The panel searches packs made for the loaders of the types whose project type is `mod`, and of a version takes: the first of its loaders such a type lists (in the manifest's order; Quilt, which no bundled type runs, is refused: `modpack.loader_unsupported`), the single game version it names (one `versionVar` takes, not `latest`: `modpack.game_version_invalid`), and its primary `.mrpack` on Modrinth's CDN with a SHA-512 (`modpack.file_invalid`). Installing is a `server.modpack_install` operation on the stopped, installed server (cancellable, needing the right to install it). The agent:
+
+1. downloads the pack from `cdn.modrinth.com` and checks its SHA-512 (4 GiB at most);
+2. reads `modrinth.index.json` (format 1, game `minecraft`, 8 MiB at most), whose dependencies must be exactly the game version the panel chose and the loader's version (`fabric-loader`, `forge`, `neoforge`), the latter one `loaderVar` takes (`modpack.mismatch` otherwise);
+3. downloads every file the index lists for servers (`env.server` not `unsupported`), each from the first of its addresses on a host the format allows (`cdn.modrinth.com`, `github.com` and its download hosts, `raw.githubusercontent.com`, `gitlab.com`: `modpack.untrusted_host` otherwise), checked against its SHA-512, into a folder of the agent's own: 2000 files and 4 GiB at most (`modpack.too_large`), each download only when the agent's drive keeps 1 GiB free after it (`modpack.disk_full`), each path a plain relative one outside `.pulsar` (`modpack.unsafe_path`), as are the overrides';
+4. runs the game's install steps with the pack's type, game version and loader version in `typeVar`, `versionVar` and `loaderVar`, over the server's own values (the Minecraft step installs Fabric, Forge or NeoForge as for a type change);
+5. deletes the files of the previous pack that the new one does not have, writes the new ones, then the pack's `overrides/` and `server-overrides/` (the latter winning), and records the files it wrote in `.pulsar/modpack.json` (first with the old ones too, so a failure midway leaves a record the next install trusts).
+
+Nothing on the server changes before step 4. On success the panel sets the server's three variables, records the game version and the pack (`server_modpacks`, doc 02); on failure they stay as they were, though the server may hold part of the pack (install it again, or restore a backup). A pack's files replace whatever the server has under their paths, and its overrides may replace any file (configuration, `server.properties`): it is what the pack is. Files the previous pack did not list, mods from the catalog included, stay. The pack's own mods are not rows of `server_mods`: the Mods tab says so, since installing from the catalog a mod the pack has puts a second copy on the server (roadmap: list a pack's projects, from its files' SHA-512).
 
 ### Commands
 

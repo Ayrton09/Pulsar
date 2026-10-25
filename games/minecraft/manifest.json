@@ -179,6 +179,7 @@
         "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
         "forge": { "projectType": "mod", "loaders": ["forge"], "folder": "mods" },
         "neoforge": { "projectType": "mod", "loaders": ["neoforge"], "folder": "mods" }
-      } }
+      },
+      "modpacks": { "loaderVar": "loaderVersion" } }
   ]
 }

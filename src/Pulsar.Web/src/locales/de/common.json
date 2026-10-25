@@ -377,6 +377,7 @@
         "addon_remove_requested": "Entfernen einer Mod angefordert",
         "mods_install_requested": "Hat die Installation von Mods angefordert",
         "mods_update_requested": "Hat die Aktualisierung von Mods angefordert",
+        "modpack_install_requested": "Hat die Installation eines Modpacks angefordert",
         "mods_remove_requested": "Hat das Entfernen eines Mods angefordert",
         "database_created": "Datenbank erstellt",
         "database_deleted": "Datenbank gelöscht",
@@ -487,6 +488,22 @@
       "file_exists": "Dort liegt schon eine Datei mit diesem Namen, die nicht vom Panel stammt: lösche oder benenne sie zuerst um. {{detail}}",
       "untrusted_host": "Pulsar lädt keine Mods von dieser Seite herunter: {{detail}}",
       "write_failed": "Nicht alle Mods konnten geschrieben werden: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "Dieser Server kann keine Modpacks installieren: {{detail}}",
+      "no_version": "Das Modpack hat keine Version für einen Servertyp, den dieses Spiel ausführt.",
+      "loader_unsupported": "Das Modpack ist für einen Loader gemacht, den kein Servertyp dieses Spiels ausführt.",
+      "game_version_invalid": "Das Modpack nennt keine einzelne Minecraft-Version, die der Server annimmt.",
+      "file_invalid": "Die Version des Modpacks hat keine .mrpack-Datei, die Pulsar installieren kann.",
+      "invalid": "Das Modpack ist ungültig: {{detail}}",
+      "mismatch": "Das Modpack passt nicht zu dem, was der Katalog sagt: {{detail}}",
+      "unsafe_path": "Das Modpack enthält eine Datei, die Pulsar nicht schreibt: {{detail}}",
+      "untrusted_host": "Das Modpack bietet eine Datei von einer Seite an, von der Pulsar nicht herunterlädt: {{detail}}",
+      "too_large": "Das Modpack ist größer, als Pulsar installiert: {{detail}}",
+      "disk_full": "Der Node hat nicht genug freien Speicher für das Modpack: {{detail}}",
+      "download_failed": "Das Modpack konnte nicht heruntergeladen werden: {{detail}}",
+      "checksum_mismatch": "Ein Download ist nicht die Datei, die das Modpack nennt, daher wurde nichts geändert: {{detail}}",
+      "write_failed": "Das Modpack konnte nicht vollständig geschrieben werden: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Geben Sie dem Schlüssel einen einzeiligen Namen mit höchstens 64 Zeichen.",
@@ -1139,7 +1156,8 @@
         "backupRestore": "Wiederherstellen",
         "addonInstall": "Mod installieren",
         "addonRemove": "Mod entfernen",
-        "modsChange": "Mods ändern"
+        "modsChange": "Mods ändern",
+        "modpackInstall": "Modpack installieren"
       },
       "statuses": {
         "queued": "In der Warteschlange",
@@ -1559,6 +1577,26 @@
       "by": "von {{author}}",
       "downloads_one": "{{formatted}} Download",
       "downloads_other": "{{formatted}} Downloads"
+    },
+    "modpacks": {
+      "title": "Modpacks",
+      "hint": "Ein Modpack installiert den Server neu mit Typ und Minecraft-Version des Packs und legt dann seine Mods und Einstellungen darauf, anstelle der Mods des vorigen Packs. Dateien, die du selbst hinzugefügt hast, bleiben, aber erstelle vorher ein Backup: die Welt lädt mit einem anderen Typ oder einer anderen Version vielleicht nicht.",
+      "none": "Kein Modpack installiert.",
+      "notListed": "Die Mods des Modpacks stehen nicht hier: einen zu installieren, den das Pack schon hat, legt eine zweite Kopie auf den Server.",
+      "installing": "{{name}} wird installiert…",
+      "runsOn": "{{loader}} {{loaderVersion}} auf Minecraft {{gameVersion}}",
+      "installedAt": "installiert am {{when}}",
+      "search": "Modpacks suchen",
+      "installConfirm": "{{name}} auf {{server}} installieren? Der Server wird mit Typ und Minecraft-Version des Packs neu installiert, und die Mods des vorigen Packs werden ersetzt. Erstelle vorher ein Backup.",
+      "versionsHint": "Jede Version sagt, worauf sie läuft; eine zu installieren installiert den Server mit ihrem Typ und ihrer Minecraft-Version neu.",
+      "versionRunsOn": "{{loader}} auf Minecraft {{gameVersion}}",
+      "notForServer": "Nicht für diesen Server ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} braucht {{name}}: entferne es zuerst."

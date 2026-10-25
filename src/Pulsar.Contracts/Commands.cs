@@ -54,6 +54,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
 [JsonDerivedType(typeof(ChangeModsCommand), ChangeModsCommand.Type)]
+[JsonDerivedType(typeof(InstallModpackCommand), InstallModpackCommand.Type)]
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 [JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
@@ -232,6 +233,23 @@ public sealed record ChangeModsCommand(Guid ServerId, IReadOnlyList<ModDownload>
 /// <param name="Url">An https address of the catalog's own download host.</param>
 /// <param name="Sha512">The catalog's checksum of the file, lowercase hex.</param>
 public sealed record ModDownload(string Path, string Url, string Sha512, long Size);
+
+/// <summary>
+/// Operation (Pulsar 1.0.9): installs a Modrinth modpack (<c>.mrpack</c>) on the stopped server. The agent checks the pack
+/// against its SHA-512 and reads its index, which must name <paramref name="GameVersion"/> and <paramref name="Loader"/>;
+/// downloads every file the index lists for servers, each checked against its SHA-512, from the hosts the format allows;
+/// runs the manifest's install steps as the pack's server type, game version and loader version (the panel's choices
+/// and the index's loader version over the server's variables); deletes the previous pack's files; writes the new ones
+/// and the pack's overrides. Completes with a <see cref="ModpackResult"/>.
+/// </summary>
+/// <param name="Pack">The pack's file; its path is only a name.</param>
+/// <param name="ServerType">The option of the manifest's server type variable the pack runs on.</param>
+/// <param name="Loader">The catalog's loader the pack is made for (<c>fabric</c>, <c>forge</c>, <c>neoforge</c>).</param>
+/// <param name="GameVersion">The game version the pack is made for.</param>
+public sealed record InstallModpackCommand(Guid ServerId, ModDownload Pack, string ServerType, string Loader, string GameVersion) : AgentCommand
+{
+    public const string Type = "server.modpack_install";
+}
 
 /// <summary>Cancels a running operation (an install or update kills SteamCMD); it then completes as cancelled.</summary>
 public sealed record CancelOperationCommand(Guid OperationId) : AgentCommand
@@ -488,6 +506,7 @@ public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Tick
 [JsonDerivedType(typeof(BackupResult), "backups.created")]
 [JsonDerivedType(typeof(AddonsResult), "addons.changed")]
 [JsonDerivedType(typeof(InstalledResult), "server.installed")]
+[JsonDerivedType(typeof(ModpackResult), "server.modpack_installed")]
 [JsonDerivedType(typeof(PortsInUseResult), "node.ports_in_use")]
 public abstract record CommandResult;
 
@@ -504,6 +523,12 @@ public sealed record InstalledResult(string? GameVersion, IReadOnlyList<AddonRel
 {
     public const int MaxGameVersionLength = 64;
 }
+
+/// <summary>
+/// A modpack installed (<see cref="InstallModpackCommand"/>, Pulsar 1.0.9): the game's version the install steps put
+/// in, the loader version the pack's index names, and how many of its files went on the server.
+/// </summary>
+public sealed record ModpackResult(string? GameVersion, string LoaderVersion, int Files) : CommandResult;
 
 /// <summary>The ports in use on the node's machine (<see cref="ListPortsInUseCommand"/>), each once, at most <see cref="MaxPorts"/>.</summary>
 /// <param name="Truncated">There were more: the lowest numbers are the ones listed.</param>
@@ -669,6 +694,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string ChangeMods = ChangeModsCommand.Type;
 
+    /// <summary>
+    /// The agent installs Modrinth modpacks (<see cref="InstallModpackCommand"/>, Pulsar 1.0.9) and reads manifests whose
+    /// mod catalog takes them.
+    /// </summary>
+    public const string InstallModpack = InstallModpackCommand.Type;
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 
@@ -748,6 +779,7 @@ public static class AgentCapabilities
         InstallAddonCommand => InstallAddon,
         RemoveAddonCommand => RemoveAddon,
         ChangeModsCommand => ChangeMods,
+        InstallModpackCommand => InstallModpack,
         ForgetSteamLoginCommand => ForgetSteamLogin,
         UseAgentsAddressCommand => UseAgentsAddress,
         UpdatePulsarCommand => UpdatePulsar,

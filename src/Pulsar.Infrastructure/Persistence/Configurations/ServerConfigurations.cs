@@ -247,6 +247,39 @@ internal sealed class ServerModConfiguration : IEntityTypeConfiguration<ServerMo
     }
 }
 
+internal sealed class ServerModpackConfiguration : IEntityTypeConfiguration<ServerModpack>
+{
+    public void Configure(EntityTypeBuilder<ServerModpack> builder)
+    {
+        builder.ToTable("server_modpacks", t =>
+        {
+            t.HasCheckConstraint("ck_server_modpacks_source", SnakeCaseEnum<ModSource>.CheckConstraint("source"));
+            t.HasCheckConstraint("ck_server_modpacks_state", SnakeCaseEnum<ServerModpackState>.CheckConstraint("state"));
+        });
+
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.Id).ValueGeneratedNever();
+        builder.Property(m => m.Source).HasConversion<SnakeCaseEnumConverter<ModSource>>();
+        builder.Property(m => m.State).HasConversion<SnakeCaseEnumConverter<ServerModpackState>>();
+        builder.Property(m => m.ProjectId).HasMaxLength(ServerModpack.MaxIdLength);
+        builder.Property(m => m.VersionId).HasMaxLength(ServerModpack.MaxIdLength);
+        builder.Property(m => m.Name).HasMaxLength(ServerModpack.MaxNameLength);
+        builder.Property(m => m.VersionNumber).HasMaxLength(ServerModpack.MaxVersionLength);
+        builder.Property(m => m.ServerType).HasMaxLength(ServerModpack.MaxTypeLength);
+        builder.Property(m => m.Loader).HasMaxLength(ServerModpack.MaxTypeLength);
+        builder.Property(m => m.GameVersion).HasMaxLength(ServerModpack.MaxVersionLength);
+        builder.Property(m => m.LoaderVersion).HasMaxLength(ServerModpack.MaxVersionLength);
+        builder.Property<uint>("Version").IsRowVersion();
+        // One installed pack, and one on its way, per server (kept so by the panel: a unique index would order the
+        // settling's deletion and update by chance).
+        builder.HasIndex(m => m.ServerId);
+        builder.HasIndex(m => m.OperationId).HasFilter("operation_id IS NOT NULL");
+
+        builder.HasOne<Server>().WithMany().HasForeignKey(m => m.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Operation>().WithMany().HasForeignKey(m => m.OperationId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
 internal sealed class SteamAccountConfiguration : IEntityTypeConfiguration<SteamAccount>
 {
     public void Configure(EntityTypeBuilder<SteamAccount> builder)

@@ -53,6 +53,13 @@ public static class ManifestFeatures
         return manifest.ModList.Count > 0;
     }
 
+    /// <summary>A mod catalog whose modpacks install on the game (Pulsar 1.0.9, <see cref="ModSourceDefinition.Modpacks"/>).</summary>
+    public static bool UsesModpacks(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ModList.Any(s => s.Modpacks is not null);
+    }
+
     /// <summary>The console commands of Pulsar 1.0.9 (<see cref="GameManifest.Commands"/>).</summary>
     public static bool UsesCommands(GameManifest manifest)
     {

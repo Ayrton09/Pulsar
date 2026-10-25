@@ -99,6 +99,7 @@ public static partial class AgentInput
         FileEntryResult file => IsFile(file) ? file : null,
         AddonsResult addons => Addons(addons),
         InstalledResult installed => Installed(installed),
+        ModpackResult modpack => Modpack(modpack),
         _ => result,
     };
 
@@ -197,11 +198,18 @@ public static partial class AgentInput
     /// tag of letters, digits and <c>. - _ +</c> (what a version id is; anything else is no version).
     /// </summary>
     private static InstalledResult Installed(InstalledResult result) => new(
-        result.GameVersion is { Length: > 0 and <= InstalledResult.MaxGameVersionLength } version
-            && version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or '+')
-                ? version
-                : null,
+        VersionTag(result.GameVersion),
         [.. (result.Addons ?? []).Where(a => a is not null).Select(a => a with { Release = AddonRelease(a.Release) })]);
+
+    /// <summary>A modpack's versions as short tags (the loader's becomes a server variable, checked against its pattern too).</summary>
+    private static ModpackResult Modpack(ModpackResult result) =>
+        new(VersionTag(result.GameVersion), VersionTag(result.LoaderVersion) ?? "", Math.Clamp(result.Files, 0, 1_000_000));
+
+    /// <summary>A version as agents report it: letters, digits and <c>.-_+</c>, 64 at most; anything else is none.</summary>
+    private static string? VersionTag(string? version) =>
+        version is { Length: > 0 and <= InstalledResult.MaxGameVersionLength } && version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or '+')
+            ? version
+            : null;
 
     private static AddonsResult Addons(AddonsResult result) => result.Addons is null
         ? result

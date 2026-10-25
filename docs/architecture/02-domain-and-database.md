@@ -157,7 +157,7 @@ Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/
 
 The addons a server's game supports come from its template (doc 04, "Addons"); the panel keeps only which are installed and which release (`server_addons`), from the results of the operations that install, update and remove them (`addon_install`, `addon_remove`: the server installed and stopped, nothing else running; installing can be cancelled). A game update that reinstalls addons reports their new releases the same way. Only those three operations change the rows, and only for addons of the server's template with a non-empty release (an addon named twice: the last one counts). The installed keys go in the server's spec, so the agent keeps their lines in the game's files at every start. `GET /api/v1/servers/{id}/addons` (`server.view`), `POST` and `DELETE /api/v1/servers/{id}/addons/{key}` (`server.install`: they change the game's files); requests are audited (`server.addon_install_requested`, `server.addon_remove_requested`).
 
-Mods from a catalog (1.0.9; doc 04, "Mods") are rows of `server_mods`, one per file the panel installed: the catalog's project and version, its name and version number, the file's path, SHA-512 and size, whether it came in as another's dependency, and the projects it requires (so a mod others need is not removed). A change writes its rows when it starts, tied to its `mods_change` operation (`installing`, `removing`), and the operation's end settles them (doc 03, "Mods"). `servers.game_version` is the game version the last install or update reported, which the catalog is asked for.
+Mods from a catalog (1.0.9; doc 04, "Mods") are rows of `server_mods`, one per file the panel installed: the catalog's project and version, its name and version number, the file's path, SHA-512 and size, whether it came in as another's dependency, and the projects it requires (so a mod others need is not removed). A change writes its rows when it starts, tied to its `mods_change` operation (`installing`, `removing`), and the operation's end settles them (doc 03, "Mods"). `servers.game_version` is the game version the last install or update reported, which the catalog is asked for. A modpack is a row of `server_modpacks`: its project and version, name and version number, the server type, loader and game version it runs on, and the loader's version once the node reported it; the one an operation installs is `installing` (tied to it) and becomes the server's `installed` pack when it succeeds, replacing the previous one, together with the server's type, game version and loader version variables.
 
 ## PostgreSQL schema
 
@@ -379,6 +379,26 @@ CREATE TABLE server_mods (  -- 1.0.9
 );
 CREATE INDEX ix_server_mods_server_project ON server_mods (server_id, project_id);
 
+CREATE TABLE server_modpacks (  -- 1.0.9
+    id              uuid PRIMARY KEY,
+    server_id       uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    source          text NOT NULL CHECK (source IN ('modrinth')),
+    project_id      varchar(64) NOT NULL,
+    version_id      varchar(64) NOT NULL,
+    name            varchar(128) NOT NULL,
+    version_number  varchar(64) NOT NULL,
+    server_type     varchar(64) NOT NULL,          -- an option of the manifest's type variable
+    loader          varchar(64) NOT NULL,          -- the catalog's loader (fabric)
+    game_version    varchar(64) NOT NULL,
+    loader_version  varchar(64),                   -- as the pack's index names it, once reported
+    state           text NOT NULL CHECK (state IN ('installing','installed')),  -- one of each per server at most
+    operation_id    uuid REFERENCES operations(id) ON DELETE SET NULL,
+    installed_at    timestamptz NOT NULL,
+    updated_at      timestamptz NOT NULL,
+    xmin            xid
+);
+CREATE INDEX ix_server_modpacks_server ON server_modpacks (server_id);
+
 CREATE TABLE server_variables (
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     key              varchar(64) NOT NULL,
@@ -481,7 +501,7 @@ CREATE TABLE operations (
     type                 text NOT NULL CHECK (type IN (
                              'server_provision','server_install','server_update',
                              'server_delete','backup_create','backup_restore',
-                             'addon_install','addon_remove','mods_change')),
+                             'addon_install','addon_remove','mods_change','modpack_install')),
                              -- a reinstall is provision + install; deleting a backup is a plain command
     status               text NOT NULL CHECK (status IN (
                              'queued','running','succeeded','failed','cancelled','interrupted')),

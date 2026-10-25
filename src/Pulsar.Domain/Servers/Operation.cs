@@ -15,6 +15,9 @@ public enum OperationType
 
     /// <summary>Files from a mod catalog put on the server or deleted (Pulsar 1.0.9).</summary>
     ModsChange,
+
+    /// <summary>A modpack from a mod catalog installed, with the server type and game version it runs on (Pulsar 1.0.9).</summary>
+    ModpackInstall,
 }
 
 public enum OperationStatus
@@ -93,7 +96,7 @@ public sealed class Operation
     public DateTimeOffset? CancelRequestedAt { get; private set; }
 
     public bool IsCancellable => IsActive && Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupCreate
-        or OperationType.AddonInstall;
+        or OperationType.AddonInstall or OperationType.ModpackInstall;
 
     public bool IsActive => Status is OperationStatus.Queued or OperationStatus.Running;
 

@@ -377,6 +377,7 @@
         "addon_remove_requested": "Pediu para remover um mod",
         "mods_install_requested": "Pediu para instalar mods",
         "mods_update_requested": "Pediu para atualizar mods",
+        "modpack_install_requested": "Pediu para instalar um modpack",
         "mods_remove_requested": "Pediu para remover um mod",
         "database_created": "Criou um banco de dados",
         "database_deleted": "Excluiu um banco de dados",
@@ -487,6 +488,22 @@
       "file_exists": "Já existe um arquivo com esse nome que o painel não colocou: apague-o ou renomeie-o primeiro. {{detail}}",
       "untrusted_host": "O Pulsar não baixa mods desse site: {{detail}}",
       "write_failed": "Não foi possível gravar todos os mods: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "Este servidor não pode instalar modpacks: {{detail}}",
+      "no_version": "O modpack não tem versão para um tipo de servidor que este jogo roda.",
+      "loader_unsupported": "O modpack é feito para um loader que nenhum tipo de servidor deste jogo roda.",
+      "game_version_invalid": "O modpack não indica uma única versão do Minecraft que o servidor aceite.",
+      "file_invalid": "A versão do modpack não tem um arquivo .mrpack que o Pulsar possa instalar.",
+      "invalid": "O modpack não é válido: {{detail}}",
+      "mismatch": "O modpack não corresponde ao que o catálogo diz: {{detail}}",
+      "unsafe_path": "O modpack tem um arquivo que o Pulsar não grava: {{detail}}",
+      "untrusted_host": "O modpack oferece um arquivo de um site do qual o Pulsar não baixa: {{detail}}",
+      "too_large": "O modpack é maior do que o Pulsar instala: {{detail}}",
+      "disk_full": "O nó não tem espaço livre suficiente para o modpack: {{detail}}",
+      "download_failed": "Não foi possível baixar o modpack: {{detail}}",
+      "checksum_mismatch": "Um download não é o arquivo que o modpack lista, então nada foi alterado: {{detail}}",
+      "write_failed": "Não foi possível gravar todo o modpack: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Dê à chave um nome de uma linha, com até 64 caracteres.",
@@ -1139,7 +1156,8 @@
         "backupRestore": "Restaurar",
         "addonInstall": "Instalar mod",
         "addonRemove": "Remover mod",
-        "modsChange": "Alterar mods"
+        "modsChange": "Alterar mods",
+        "modpackInstall": "Instalar modpack"
       },
       "statuses": {
         "queued": "Na fila",
@@ -1559,6 +1577,26 @@
       "by": "por {{author}}",
       "downloads_one": "{{formatted}} download",
       "downloads_other": "{{formatted}} downloads"
+    },
+    "modpacks": {
+      "title": "Modpacks",
+      "hint": "Um modpack instala o servidor de novo com o tipo e a versão do Minecraft do pack e depois coloca nele seus mods e sua configuração, no lugar dos mods do pack anterior. Os arquivos que você adicionou são mantidos, mas faça um backup antes: o mundo pode não carregar em outro tipo ou versão.",
+      "none": "Nenhum modpack instalado.",
+      "notListed": "Os mods do modpack não aparecem aqui: instalar um que o pack já traz coloca uma segunda cópia no servidor.",
+      "installing": "Instalando {{name}}…",
+      "runsOn": "{{loader}} {{loaderVersion}} no Minecraft {{gameVersion}}",
+      "installedAt": "instalado em {{when}}",
+      "search": "Procurar modpacks",
+      "installConfirm": "Instalar {{name}} em {{server}}? O servidor é instalado de novo com o tipo e a versão do Minecraft do pack, e os mods do pack anterior são substituídos. Faça um backup antes.",
+      "versionsHint": "Cada versão diz em que roda; instalar uma instala o servidor de novo com seu tipo e sua versão do Minecraft.",
+      "versionRunsOn": "{{loader}} no Minecraft {{gameVersion}}",
+      "notForServer": "Não serve para este servidor ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} precisa de {{name}}: remova-o primeiro."

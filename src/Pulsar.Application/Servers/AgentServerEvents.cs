@@ -228,6 +228,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
             // 1.0.9: mods put on the server or deleted, or not.
             await ServerMods.CompletedAsync(db, operation, now, cancellationToken);
+            await ServerMods.ModpackCompletedAsync(db, operation, completed.Result as ModpackResult, now, cancellationToken);
 
             switch (operation.Type)
             {

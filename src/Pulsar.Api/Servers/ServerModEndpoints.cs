@@ -19,7 +19,7 @@ public sealed record UpdateModsRequest([property: MaxLength(300)] IReadOnlyList<
 /// <summary>
 /// A server's mods and plugins from a catalog (Pulsar 1.0.9; docs/architecture/07, "Mods"): what it has, searching the
 /// catalog for what it can take, installing (with what a project requires), updating and removing. Changing them is an
-/// operation on the stopped server, and needs the right to install it, as addons do. The routes that ask the catalog
+/// operation on the stopped server, and needs the right to install it, as addons do; so does installing a modpack. The routes that ask the catalog
 /// share each user's budget of lookups with the Workshop's: Modrinth answers a panel's address 300 times a minute.
 /// </summary>
 public static class ServerModEndpoints
@@ -46,6 +46,18 @@ public static class ServerModEndpoints
         mods.MapDelete("/{modId:guid}", async (Guid id, Guid modId, ServerMods m, CancellationToken ct) =>
                 (await m.RemoveAsync(new ServerId(id), new ServerModId(modId), ct)).ToHttp())
             .RequirePermission(Permissions.Server.Install);
+
+        // Modpacks: installing one installs the server again, as its type and game version (the right to install it).
+        var modpacks = api.MapGroup("/servers/{id:guid}/modpacks").WithTags("Mods");
+        modpacks.MapGet("/search", async (Guid id, string? query, int? offset, ServerMods m, CancellationToken ct) =>
+                (await m.SearchModpacksAsync(new ServerId(id), query, offset ?? 0, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.View).RequireRateLimiting(WorkshopEndpoints.LookupRateLimitPolicy);
+        modpacks.MapGet("/projects/{projectId}/versions", async (Guid id, string projectId, ServerMods m, CancellationToken ct) =>
+                (await m.ModpackVersionsAsync(new ServerId(id), projectId, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.View).RequireRateLimiting(WorkshopEndpoints.LookupRateLimitPolicy);
+        modpacks.MapPost("/", async (Guid id, InstallModRequest request, ServerMods m, CancellationToken ct) =>
+                (await m.InstallModpackAsync(new ServerId(id), request.ProjectId, request.VersionId, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.Install).RequireRateLimiting(WorkshopEndpoints.LookupRateLimitPolicy);
         return api;
     }
 }

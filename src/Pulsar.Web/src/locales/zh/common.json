@@ -377,6 +377,7 @@
         "addon_remove_requested": "请求移除模组",
         "mods_install_requested": "请求安装模组",
         "mods_update_requested": "请求更新模组",
+        "modpack_install_requested": "请求安装整合包",
         "mods_remove_requested": "请求移除模组",
         "database_created": "创建了数据库",
         "database_deleted": "删除了数据库",
@@ -487,6 +488,22 @@
       "file_exists": "已有一个同名文件，不是面板放的：请先删除或重命名它。{{detail}}",
       "untrusted_host": "Pulsar 不从该网站下载模组：{{detail}}",
       "write_failed": "无法写入所有模组：{{detail}}"
+    },
+    "modpack": {
+      "unsupported": "此服务器无法安装整合包：{{detail}}",
+      "no_version": "该整合包没有适合此游戏服务器类型的版本。",
+      "loader_unsupported": "该整合包所用的加载器，此游戏的任何服务器类型都不支持。",
+      "game_version_invalid": "该整合包没有指定服务器可接受的唯一 Minecraft 版本。",
+      "file_invalid": "该整合包版本没有 Pulsar 可以安装的 .mrpack 文件。",
+      "invalid": "整合包无效：{{detail}}",
+      "mismatch": "整合包与目录所述不一致：{{detail}}",
+      "unsafe_path": "整合包中有 Pulsar 不会写入的文件：{{detail}}",
+      "untrusted_host": "整合包提供的文件来自 Pulsar 不下载的网站：{{detail}}",
+      "too_large": "整合包超出 Pulsar 可安装的大小：{{detail}}",
+      "disk_full": "节点没有足够的可用空间来安装整合包：{{detail}}",
+      "download_failed": "无法下载整合包：{{detail}}",
+      "checksum_mismatch": "下载的文件不是整合包列出的文件，因此没有做任何更改：{{detail}}",
+      "write_failed": "无法写入整个整合包：{{detail}}"
     },
     "api_key": {
       "name_invalid": "请为密钥取一个单行名称，最多 64 个字符。",
@@ -1139,7 +1156,8 @@
         "backupRestore": "还原",
         "addonInstall": "安装模组",
         "addonRemove": "移除模组",
-        "modsChange": "更改模组"
+        "modsChange": "更改模组",
+        "modpackInstall": "安装整合包"
       },
       "statuses": {
         "queued": "排队中",
@@ -1559,6 +1577,26 @@
       "by": "作者：{{author}}",
       "downloads_one": "{{formatted}} 次下载",
       "downloads_other": "{{formatted}} 次下载"
+    },
+    "modpacks": {
+      "title": "整合包",
+      "hint": "整合包会按该包的类型和 Minecraft 版本重新安装服务器，然后放入它的模组和设置，替换上一个整合包的模组。你自己添加的文件会保留，但请先备份：换了类型或版本后，世界可能无法加载。",
+      "none": "没有安装整合包。",
+      "notListed": "整合包自带的模组不会列在这里：安装一个整合包已有的模组，会在服务器上放第二份副本。",
+      "installing": "正在安装 {{name}}…",
+      "runsOn": "Minecraft {{gameVersion}} 上的 {{loader}} {{loaderVersion}}",
+      "installedAt": "安装于 {{when}}",
+      "search": "搜索整合包",
+      "installConfirm": "在 {{server}} 上安装 {{name}}？服务器会按该包的类型和 Minecraft 版本重新安装，上一个整合包的模组会被替换。请先备份。",
+      "versionsHint": "每个版本都注明运行环境；安装后会按其类型和 Minecraft 版本重新安装服务器。",
+      "versionRunsOn": "Minecraft {{gameVersion}} 上的 {{loader}}",
+      "notForServer": "不适用于此服务器（{{loaders}}，{{gameVersions}}）",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} 需要 {{name}}：请先移除它。"

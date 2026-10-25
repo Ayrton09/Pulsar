@@ -229,12 +229,13 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
 
         // An agent before 1.0.9 would install Mojang's server whatever the type, and start it with an empty jar name.
         string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands];
-        // Its mod catalog (also 1.0.9) is a section an agent that does not change mods would not read.
+        // Its mod catalog and its modpacks (also 1.0.9) are what an agent that does not install them would not read.
         foreach (var (name, capabilities, refused) in new[]
         {
             ("types-old", older, true),
             ("types-no-mods", [.. older, AgentCapabilities.MinecraftTypes], true),
-            ("types-new", [.. older, AgentCapabilities.MinecraftTypes, AgentCapabilities.ChangeMods], false),
+            ("types-no-packs", [.. older, AgentCapabilities.MinecraftTypes, AgentCapabilities.ChangeMods], true),
+            ("types-new", [.. older, AgentCapabilities.MinecraftTypes, AgentCapabilities.ChangeMods, AgentCapabilities.InstallModpack], false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);

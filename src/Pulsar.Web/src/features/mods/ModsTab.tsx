@@ -14,6 +14,9 @@ import type { ServerDetails } from '../servers/api';
 import { failureReason, serverActions } from '../servers/serverStatus';
 import {
   useInstallMod,
+  useInstallModpack,
+  useModpackSearch,
+  useModpackVersions,
   useModSearch,
   useMods,
   useModUpdates,
@@ -21,6 +24,7 @@ import {
   useRemoveMod,
   useUpdateMods,
   type ModHitView,
+  type ModpackView,
   type ModUpdateView,
   type ServerModView,
 } from './api';
@@ -40,8 +44,10 @@ export function ModsTab({ details }: { details: ServerDetails }) {
   const install = useInstallMod(server.id);
   const update = useUpdateMods(server.id);
   const remove = useRemoveMod(server.id);
+  const installPack = useInstallModpack(server.id);
   const [checking, setChecking] = useState(false);
   const [versionsOf, setVersionsOf] = useState<{ projectId: string; title: string } | null>(null);
+  const [packVersionsOf, setPackVersionsOf] = useState<{ projectId: string; title: string } | null>(null);
   const canChange = canOnServer(me, server, Permission.ServerInstall);
   // The same moment a reinstall is possible: connected, idle and stopped; and installed, as mods go into the game.
   const changeable = serverActions(server).reinstall && server.installState === 'installed';
@@ -66,17 +72,21 @@ export function ModsTab({ details }: { details: ServerDetails }) {
 
   const view = mods.data;
   const plugins = view.projectType === 'plugin';
-  // A change on its way (rows still installing or removing) ends before another starts.
-  const enabled =
+  // A change on its way (rows still installing or removing, a pack installing) ends before another starts.
+  const idle =
     changeable &&
-    usable &&
     !install.isPending &&
     !update.isPending &&
     !remove.isPending &&
+    !installPack.isPending &&
+    view.modpackInstalling == null &&
     installed.every((mod) => mod.state === 'installed');
-  const error = install.error ?? update.error ?? remove.error;
+  const enabled = idle && usable;
+  const error = install.error ?? update.error ?? remove.error ?? installPack.error;
   // The node's refusals come when the operation ends: the last change says why it failed, until another one works.
-  const lastChange = details.recentOperations.find((operation) => operation.type === 'modsChange');
+  const lastChange = details.recentOperations.find(
+    (operation) => operation.type === 'modsChange' || operation.type === 'modpackInstall',
+  );
   const lastFailed = lastChange && (lastChange.status === 'failed' || lastChange.status === 'interrupted');
   const newer = new Map((updates.data?.updates ?? []).map((u) => [u.modId, u]));
   // The panel's refusal names the mods in English: say it again with the names, in the user's language.
@@ -94,6 +104,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
     install.reset();
     update.reset();
     remove.reset();
+    installPack.reset();
   };
   const installMod = (projectId: string, versionId?: string) => {
     reset();
@@ -102,6 +113,14 @@ export function ModsTab({ details }: { details: ServerDetails }) {
   const updateMods = (modIds: string[] | null) => {
     reset();
     update.mutate(modIds);
+  };
+  const installModpack = (project: { projectId: string; title: string }, versionId?: string) => {
+    if (window.confirm(t('mods.modpacks.installConfirm', { name: project.title, server: server.name }))) {
+      reset();
+      installPack.mutate(versionId ? { projectId: project.projectId, versionId } : { projectId: project.projectId }, {
+        onSuccess: () => setPackVersionsOf(null),
+      });
+    }
   };
   const removeMod = (mod: ServerModView) => {
     if (window.confirm(t('mods.removeConfirm', { name: mod.name, server: server.name }))) {
@@ -117,7 +136,9 @@ export function ModsTab({ details }: { details: ServerDetails }) {
         {t(plugins ? 'mods.hint.plugin' : 'mods.hint.mod', { version: view.gameVersion ?? '?' })}
       </p>
       {view.unavailable && <Alert>{t(`errors.${view.unavailable}`, { defaultValue: view.unavailable })}</Alert>}
-      {canChange && usable && !changeable && <p className="text-sm text-muted">{t('mods.stopToChange')}</p>}
+      {canChange && (usable || view.modpacks) && !changeable && (
+        <p className="text-sm text-muted">{t('mods.stopToChange')}</p>
+      )}
       {error && <Alert>{refusal() ?? errorMessage(t, error)}</Alert>}
       {!error && lastFailed && (
         <Alert>
@@ -155,6 +176,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
           )}
         </div>
         {updates.isError && <Alert>{errorMessage(t, updates.error)}</Alert>}
+        {view.modpack && <p className="max-w-2xl text-sm text-muted">{t('mods.modpacks.notListed')}</p>}
         {installed.length === 0 ? (
           <p className="text-sm text-muted">{t(plugins ? 'mods.installed.noPlugins' : 'mods.installed.noMods')}</p>
         ) : (
@@ -175,13 +197,45 @@ export function ModsTab({ details }: { details: ServerDetails }) {
       </section>
       {canChange && usable && (
         <Catalog
+          kind="mods"
           serverId={server.id}
           projectType={view.projectType ?? 'mod'}
-          installed={installed}
+          onServer={new Set(installed.map((mod) => mod.projectId))}
           enabled={enabled}
           installing={install.isPending ? (install.variables?.projectId ?? null) : null}
           onInstall={(hit) => installMod(hit.projectId)}
           onVersions={(hit) => setVersionsOf({ projectId: hit.projectId, title: hit.title })}
+        />
+      )}
+      {view.modpacks && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">{t('mods.modpacks.title')}</h2>
+          <p className="max-w-2xl text-sm text-muted">{t('mods.modpacks.hint')}</p>
+          <ModpackCard pack={view.modpack ?? null} installing={view.modpackInstalling ?? null} />
+          {canChange && (
+            <Catalog
+              kind="modpacks"
+              serverId={server.id}
+              projectType="modpack"
+              onServer={new Set(view.modpack ? [view.modpack.projectId] : [])}
+              enabled={idle}
+              installing={installPack.isPending ? (installPack.variables?.projectId ?? null) : null}
+              onInstall={(hit) => installModpack({ projectId: hit.projectId, title: hit.title })}
+              onVersions={(hit) => setPackVersionsOf({ projectId: hit.projectId, title: hit.title })}
+            />
+          )}
+        </section>
+      )}
+      {packVersionsOf && (
+        <ModpackVersionsDialog
+          serverId={server.id}
+          project={packVersionsOf}
+          current={view.modpack?.versionId ?? null}
+          enabled={idle}
+          installing={installPack.isPending ? (installPack.variables?.versionId ?? null) : null}
+          error={installPack.error}
+          onInstall={(versionId) => installModpack(packVersionsOf, versionId)}
+          onClose={() => setPackVersionsOf(null)}
         />
       )}
       {versionsOf && (
@@ -295,18 +349,22 @@ function InstalledTable({
   );
 }
 
+/** The catalog's search: mods or plugins for the server's type and game version, or modpacks for any of its mod types. */
 function Catalog({
+  kind,
   serverId,
   projectType,
-  installed,
+  onServer,
   enabled,
   installing,
   onInstall,
   onVersions,
 }: {
+  kind: 'mods' | 'modpacks';
   serverId: string;
   projectType: string;
-  installed: ServerModView[];
+  /** From the server's list, not the hits: it is current after a change, the search may be minutes old. */
+  onServer: Set<string>;
   enabled: boolean;
   installing: string | null;
   onInstall: (hit: ModHitView) => void;
@@ -319,16 +377,21 @@ function Catalog({
     const timer = setTimeout(() => setQuery(text.trim()), searchDelay);
     return () => clearTimeout(timer);
   }, [text]);
-  const search = useModSearch(serverId, query, true);
-  // From the server's list, not the hits: it is current after a change, the search may be minutes old.
-  const onServer = new Set(installed.map((mod) => mod.projectId));
+  const mods = useModSearch(serverId, query, kind === 'mods');
+  const modpacks = useModpackSearch(serverId, query, kind === 'modpacks');
+  const search = kind === 'mods' ? mods : modpacks;
   const hits = search.data?.pages.flatMap((page) => page.hits) ?? [];
-  const plugins = projectType === 'plugin';
+  const label =
+    kind === 'modpacks'
+      ? 'mods.modpacks.search'
+      : projectType === 'plugin'
+        ? 'mods.catalog.searchPlugins'
+        : 'mods.catalog.searchMods';
 
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">{t('mods.catalog.title')}</h2>
-      <Field label={t(plugins ? 'mods.catalog.searchPlugins' : 'mods.catalog.searchMods')}>
+      {kind === 'mods' && <h2 className="text-lg font-semibold">{t('mods.catalog.title')}</h2>}
+      <Field label={t(label)}>
         {(control) => (
           <Input {...control} type="search" maxLength={100} value={text} onChange={(e) => setText(e.target.value)} />
         )}
@@ -494,6 +557,127 @@ function VersionsDialog({
                 >
                   {current ? t('mods.versions.change') : t('mods.install')}
                 </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
+}
+
+/** The pack on the server, and the one being installed. */
+function ModpackCard({ pack, installing }: { pack: ModpackView | null; installing: ModpackView | null }) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  if (!pack && !installing) {
+    return <p className="text-sm text-muted">{t('mods.modpacks.none')}</p>;
+  }
+
+  return (
+    <Card className="space-y-2 p-4">
+      {pack && (
+        <div>
+          <p className="flex flex-wrap items-center gap-2 font-medium">
+            <span className="break-words">{pack.name}</span>
+            <span className="text-muted">{pack.versionNumber}</span>
+          </p>
+          <p className="text-xs text-muted">
+            {t('mods.modpacks.runsOn', {
+              loader: t(`mods.modpacks.loaders.${pack.loader}`, { defaultValue: pack.loader }),
+              loaderVersion: pack.loaderVersion ?? '',
+              gameVersion: pack.gameVersion,
+            })}
+            {' · '}
+            {t('mods.modpacks.installedAt', { when: formatDate(pack.installedAt) })}
+          </p>
+        </div>
+      )}
+      {installing && <Badge tone="accent">{t('mods.modpacks.installing', { name: installing.name })}</Badge>}
+    </Card>
+  );
+}
+
+function ModpackVersionsDialog({
+  serverId,
+  project,
+  current,
+  enabled,
+  installing,
+  error,
+  onInstall,
+  onClose,
+}: {
+  serverId: string;
+  project: { projectId: string; title: string };
+  current: string | null;
+  enabled: boolean;
+  installing: string | null;
+  error: Error | null;
+  onInstall: (versionId: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  const versions = useModpackVersions(serverId, project.projectId);
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t('mods.versions.title', { name: project.title })}
+      description={t('mods.modpacks.versionsHint')}
+      size="lg"
+    >
+      {error && <Alert>{errorMessage(t, error)}</Alert>}
+      {versions.isPending ? (
+        <Spinner label={t('common.loading')} />
+      ) : versions.isError ? (
+        <Alert>{errorMessage(t, versions.error)}</Alert>
+      ) : versions.data.versions.length === 0 ? (
+        <p className="text-sm text-muted">{t('errors.modpack.no_version')}</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {versions.data.versions.map((version) => (
+            <li key={version.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 font-medium">
+                  <span className="break-all">{version.versionNumber}</span>
+                  {version.versionType !== 'release' && (
+                    <Badge tone="accent">
+                      {t(`mods.versions.types.${version.versionType}`, { defaultValue: version.versionType })}
+                    </Badge>
+                  )}
+                </p>
+                <p className="text-xs text-muted">
+                  {version.serverType && version.gameVersion
+                    ? t('mods.modpacks.versionRunsOn', {
+                        loader: t(`mods.modpacks.loaders.${version.loaders[0] ?? ''}`, {
+                          defaultValue: version.loaders.join(', '),
+                        }),
+                        gameVersion: version.gameVersion,
+                      })
+                    : t('mods.modpacks.notForServer', {
+                        loaders: version.loaders.join(', '),
+                        gameVersions: version.gameVersions.join(', '),
+                      })}
+                  {' · '}
+                  {formatDate(version.published)}
+                </p>
+              </div>
+              {version.id === current ? (
+                <Badge tone="success">{t('mods.onServer')}</Badge>
+              ) : (
+                version.serverType && (
+                  <Button
+                    size="sm"
+                    variant={current ? 'secondary' : 'primary'}
+                    disabled={!enabled}
+                    busy={installing === version.id}
+                    onClick={() => onInstall(version.id)}
+                  >
+                    {current ? t('mods.versions.change') : t('mods.install')}
+                  </Button>
+                )
               )}
             </li>
           ))}

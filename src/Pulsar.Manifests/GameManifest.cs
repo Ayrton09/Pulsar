@@ -54,10 +54,21 @@ public sealed record GameManifest(
 /// <param name="Source">The catalog: <c>modrinth</c>.</param>
 /// <param name="VersionVar">The variable holding the game's version, the catalog's files are filtered by (when the install did not report it).</param>
 /// <param name="TypeVar">The enum variable holding the server's type.</param>
-public sealed record ModSourceDefinition(string Source, string VersionVar, string TypeVar, IReadOnlyDictionary<string, ModTargetDefinition> Types)
+/// <param name="Modpacks">The catalog's modpacks install on the game too (null: they do not).</param>
+public sealed record ModSourceDefinition(string Source, string VersionVar, string TypeVar, IReadOnlyDictionary<string, ModTargetDefinition> Types,
+    ModpacksDefinition? Modpacks = null)
 {
     public const string Modrinth = "modrinth";
 }
+
+/// <summary>
+/// Modpacks of the catalog (Pulsar 1.0.9; docs/architecture/04, "Modpacks"): a pack runs on the type whose mods it is
+/// made of (a type of project type <c>mod</c> listing its loader), at the game version it names. Installing one runs the
+/// game's install steps with those values in <see cref="ModSourceDefinition.TypeVar"/> and
+/// <see cref="ModSourceDefinition.VersionVar"/>, and the loader version its index names in <see cref="LoaderVar"/>.
+/// </summary>
+/// <param name="LoaderVar">The string variable holding the loader's version.</param>
+public sealed record ModpacksDefinition(string LoaderVar);
 
 /// <summary>What a server of one type takes from the catalog, and where it goes.</summary>
 /// <param name="ProjectType">The catalog's kind of project: <c>mod</c> or <c>plugin</c>.</param>

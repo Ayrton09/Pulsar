@@ -377,6 +377,7 @@
         "addon_remove_requested": "Asked to remove a mod",
         "mods_install_requested": "Asked to install mods",
         "mods_update_requested": "Asked to update mods",
+        "modpack_install_requested": "Asked to install a modpack",
         "mods_remove_requested": "Asked to remove a mod",
         "database_created": "Created a database",
         "database_deleted": "Deleted a database",
@@ -486,6 +487,22 @@
       "checksum_mismatch": "A download is not the file Modrinth published, so nothing was changed: {{detail}}",
       "file_exists": "{{detail}}",
       "untrusted_host": "{{detail}}",
+      "write_failed": "{{detail}}"
+    },
+    "modpack": {
+      "unsupported": "{{detail}}",
+      "no_version": "The modpack has no version for a server type this game runs.",
+      "loader_unsupported": "The modpack is made for a loader none of this game's server types runs.",
+      "game_version_invalid": "The modpack names no single Minecraft version the server takes.",
+      "file_invalid": "The modpack's version has no .mrpack file Pulsar can install.",
+      "invalid": "{{detail}}",
+      "mismatch": "{{detail}}",
+      "unsafe_path": "{{detail}}",
+      "untrusted_host": "{{detail}}",
+      "too_large": "{{detail}}",
+      "disk_full": "{{detail}}",
+      "download_failed": "{{detail}}",
+      "checksum_mismatch": "A download is not the file the modpack lists, so nothing was changed: {{detail}}",
       "write_failed": "{{detail}}"
     },
     "api_key": {
@@ -1139,7 +1156,8 @@
         "backupRestore": "Restore",
         "addonInstall": "Install mod",
         "addonRemove": "Remove mod",
-        "modsChange": "Change mods"
+        "modsChange": "Change mods",
+        "modpackInstall": "Install modpack"
       },
       "statuses": {
         "queued": "Queued",
@@ -1559,6 +1577,26 @@
       "by": "by {{author}}",
       "downloads_one": "{{formatted}} download",
       "downloads_other": "{{formatted}} downloads"
+    },
+    "modpacks": {
+      "title": "Modpacks",
+      "hint": "A modpack installs the server again as the pack's type and Minecraft version, then puts its mods and settings on it, in place of the previous pack's mods. Files you added yourself stay, but back the server up first: its world may not load on another type or version.",
+      "none": "No modpack installed.",
+      "notListed": "The modpack's own mods are not listed here: installing one it already has puts a second copy on the server.",
+      "installing": "Installing {{name}}…",
+      "runsOn": "{{loader}} {{loaderVersion}} on Minecraft {{gameVersion}}",
+      "installedAt": "installed on {{when}}",
+      "search": "Search modpacks",
+      "installConfirm": "Install {{name}} on {{server}}? The server is installed again as the pack's type and Minecraft version, and the previous pack's mods are replaced. Back the server up first.",
+      "versionsHint": "Each version says what it runs on; installing one installs the server again as its type and Minecraft version.",
+      "versionRunsOn": "{{loader}} on Minecraft {{gameVersion}}",
+      "notForServer": "Not for this server ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}} needs {{name}}: remove it first."

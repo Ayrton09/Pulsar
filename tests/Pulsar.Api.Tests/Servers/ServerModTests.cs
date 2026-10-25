@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -41,9 +42,9 @@ public sealed class FakeModrinth : HttpMessageHandler
 
     /// <summary>A version of a project with one file (served by the CDN), for one game version and loader.</summary>
     public JsonObject Version(string project, string id, string number, byte[] file, string? requires = null, string loader = "fabric",
-        string gameVersion = "26.3")
+        string gameVersion = "26.3", string extension = "jar")
     {
-        var url = $"https://cdn.modrinth.com/data/{project}/versions/{id}/{project}-{number}.jar";
+        var url = $"https://cdn.modrinth.com/data/{project}/versions/{id}/{project}-{number}.{extension}";
         Files[url] = file;
         var version = new JsonObject
         {
@@ -58,7 +59,7 @@ public sealed class FakeModrinth : HttpMessageHandler
             ["files"] = new JsonArray(new JsonObject
             {
                 ["url"] = url,
-                ["filename"] = $"{project}-{number}.jar",
+                ["filename"] = $"{project}-{number}.{extension}",
                 ["hashes"] = new JsonObject { ["sha1"] = "0", ["sha512"] = Convert.ToHexStringLower(SHA512.HashData(file)) },
                 ["size"] = file.Length,
                 ["primary"] = true,
@@ -109,7 +110,8 @@ public sealed class FakeModrinth : HttpMessageHandler
             _ when path.StartsWith("/v2/project/", StringComparison.Ordinal) && path.EndsWith("/version", StringComparison.Ordinal) =>
                 Versions.GetValueOrDefault(path.Split('/')[3]) is { } versions
                     ? versions.Where(v => v["loaders"]!.AsArray().Any(l => JsonSerializer.Deserialize<string[]>(query["loaders"]!)!.Contains(l!.GetValue<string>()))
-                        && v["game_versions"]!.AsArray().Any(g => JsonSerializer.Deserialize<string[]>(query["game_versions"]!)!.Contains(g!.GetValue<string>())))
+                        && (query["game_versions"] is not { } wanted
+                            || v["game_versions"]!.AsArray().Any(g => JsonSerializer.Deserialize<string[]>(wanted)!.Contains(g!.GetValue<string>()))))
                     : null,
             _ when path.StartsWith("/v2/version/", StringComparison.Ordinal) =>
                 Versions.Values.SelectMany(v => v).FirstOrDefault(v => v["id"]!.GetValue<string>() == path.Split('/')[3]),
@@ -286,6 +288,145 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         {
             factory.Modrinth.Failure = null;
         }
+    }
+
+    [DatabaseFact]
+    public async Task AModpackSetsTheServersTypeAndVersionsAndPutsItsFilesOnIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "pack");
+        var server = await InstalledAsync(admin, agent, "Pack");
+
+        // Whatever the server's type: a pack sets it.
+        var view = await ModsAsync(admin, server);
+        Assert.Equal((true, (ModpackView?)null, ModErrors.TypeUnsupported.Code), (view.Modpacks, view.Modpack, view.Unavailable));
+
+        var lithium = Encoding.UTF8.GetBytes("lithium in a pack");
+        const string LithiumUrl = "https://cdn.modrinth.com/data/lithium/versions/inpack/lithium.jar";
+        factory.Modrinth.Files[LithiumUrl] = lithium;
+        factory.Modrinth.Version("test-pack", "tp1", "1.0", Mrpack("26.3", "0.17.2", ("mods/lithium.jar", LithiumUrl, lithium)), extension: "mrpack");
+        factory.Modrinth.Titles["test-pack"] = "Test Pack";
+        factory.Modrinth.Hits.Add(new
+        {
+            project_id = "test-pack",
+            slug = "test-pack",
+            title = "Test Pack",
+            description = "A pack",
+            author = "someone",
+            downloads = 10,
+            date_modified = "2026-10-20T10:00:00Z"
+        });
+
+        var found = await GetAsync<ModSearchView>(admin, $"/api/v1/servers/{server}/modpacks/search?query=pack");
+        Assert.Equal("Test Pack", found.Hits.Single(h => h.ProjectId == "test-pack").Title);
+        var search = factory.Modrinth.Requests.Last(r => r.Contains("/v2/search", StringComparison.Ordinal));
+        Assert.Contains(Uri.EscapeDataString("project_type:modpack"), search, StringComparison.Ordinal);
+        Assert.Contains(Uri.EscapeDataString("categories:fabric"), search, StringComparison.Ordinal);
+        Assert.DoesNotContain(Uri.EscapeDataString("versions:"), search, StringComparison.Ordinal); // any game version: the pack sets it
+
+        var versions = await GetAsync<ModpackVersionList>(admin, $"/api/v1/servers/{server}/modpacks/projects/test-pack/versions");
+        Assert.Equal(("fabric", "26.3"), (Assert.Single(versions.Versions).ServerType, versions.Versions[0].GameVersion));
+
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("test-pack", null)));
+        view = await PackSettledAsync(admin, server);
+        var pack = view.Modpack!;
+        Assert.Equal(("Test Pack", "1.0", "fabric", "fabric", "26.3", "0.17.2"),
+            (pack.Name, pack.VersionNumber, pack.ServerType, pack.Loader, pack.GameVersion, pack.LoaderVersion));
+        Assert.Equal(("mod", "26.3", (string?)null), (view.ProjectType, view.GameVersion, view.Unavailable)); // the server is the pack's type now
+
+        var folder = Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId);
+        Assert.Equal(lithium, await File.ReadAllBytesAsync(Path.Combine(folder, "mods", "lithium.jar"), Ct));
+        Assert.Equal("from the pack", await File.ReadAllTextAsync(Path.Combine(folder, "config", "pack.txt"), Ct));
+        Assert.Equal(new Dictionary<string, string?> { ["modType"] = "fabric", ["gameVersion"] = "26.3", ["loaderVersion"] = "0.17.2" },
+            await VariablesAsync(server, "modType", "gameVersion", "loaderVersion"));
+        Assert.Contains(await AuditAsync(server), a => a.Action == AuditActions.Server.ModpackInstallRequested
+            && a.Metadata.Contains("test-pack", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
+    public async Task APackThatIsNotWhatTheCatalogSaysChangesNothing()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "packfail");
+        var server = await InstalledAsync(admin, agent, "Pack fail");
+
+        // The catalog says 26.3; the pack's index, another version.
+        factory.Modrinth.Version("odd-pack", "op1", "1.0", Mrpack("26.2", "0.17.2"), extension: "mrpack");
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("odd-pack", null)));
+
+        var view = await PackSettledAsync(admin, server, installed: false);
+        Assert.Null(view.Modpack);
+        var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "the install ended");
+        Assert.Contains(details.RecentOperations, o => o.Type == OperationType.ModpackInstall && o.Status == OperationStatus.Failed
+            && o.ErrorCode == "modpack.mismatch");
+        Assert.Equal(new Dictionary<string, string?> { ["modType"] = null, ["gameVersion"] = null, ["loaderVersion"] = null },
+            await VariablesAsync(server, "modType", "gameVersion", "loaderVersion"));
+
+        // A version is installed only as its own project's.
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("test-pack", "op1")), HttpStatusCode.BadRequest,
+            ModpackErrors.NoVersion.Code);
+
+        // Packs for a loader none of the game's types runs are not offered at all.
+        factory.Modrinth.Version("quilt-pack", "qp1", "1.0", Mrpack("26.3", "0.29.0"), loader: "quilt", extension: "mrpack");
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("quilt-pack", "qp1")), HttpStatusCode.BadRequest,
+            ModpackErrors.LoaderUnsupported.Code);
+    }
+
+    /// <summary>A .mrpack for Fabric on <paramref name="minecraft"/>, its files on Modrinth's CDN, with an override.</summary>
+    private static byte[] Mrpack(string minecraft, string loader, params (string Path, string Url, byte[] Content)[] files)
+    {
+        var index = new JsonObject
+        {
+            ["formatVersion"] = 1,
+            ["game"] = "minecraft",
+            ["versionId"] = "1.0",
+            ["name"] = "Test Pack",
+            ["files"] = new JsonArray([.. files.Select(f => (JsonNode)new JsonObject
+            {
+                ["path"] = f.Path,
+                ["hashes"] = new JsonObject { ["sha1"] = new string('0', 40), ["sha512"] = Convert.ToHexStringLower(SHA512.HashData(f.Content)) },
+                ["env"] = new JsonObject { ["client"] = "required", ["server"] = "required" },
+                ["downloads"] = new JsonArray(f.Url),
+                ["fileSize"] = f.Content.Length,
+            })]),
+            ["dependencies"] = new JsonObject { ["minecraft"] = minecraft, ["fabric-loader"] = loader },
+        };
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var writer = new StreamWriter(zip.CreateEntry("modrinth.index.json").Open()))
+            {
+                writer.Write(index.ToJsonString());
+            }
+
+            using (var writer = new StreamWriter(zip.CreateEntry("overrides/config/pack.txt").Open()))
+            {
+                writer.Write("from the pack");
+            }
+        }
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>Waits until no pack is being installed, and one is (or is not) installed.</summary>
+    private static async Task<ModsView> PackSettledAsync(PanelClient client, Guid server, bool installed = true)
+    {
+        ModsView? view = null;
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            view = await ModsAsync(client, server);
+            var details = await ServerApi.GetAsync(client, server);
+            return view.ModpackInstalling is null && (view.Modpack is not null) == installed && details!.Server.ActiveOperation is null;
+        }, () => $"modpack settled (last: {view?.Modpack?.Name ?? "none"}, installing {view?.ModpackInstalling?.Name ?? "none"})");
+        return view!;
+    }
+
+    private async Task<Dictionary<string, string?>> VariablesAsync(Guid server, params string[] keys)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Servers.AsNoTracking().Include(s => s.Variables)
+            .SingleAsync(s => s.Id == new ServerId(server), Ct);
+        return keys.ToDictionary(k => k, k => stored.Variables.FirstOrDefault(v => v.Key == k)?.Value);
     }
 
     private static async Task ChangeAsync(Task<HttpResponseMessage> sending)

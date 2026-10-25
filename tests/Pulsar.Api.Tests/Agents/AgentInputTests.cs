@@ -127,6 +127,18 @@ public sealed class AgentInputTests
             new InstalledResult(new string('1', 65), null!))).Result).GameVersion);
     }
 
+    [Fact]
+    public void AModpacksVersionsAreShortTagsOrNone()
+    {
+        var completed = AgentInput.Completed(new OperationCompleted(Guid.NewGuid(), null, OperationOutcome.Succeeded, null, null,
+            new ModpackResult("1.21.8\n<b>", "0.17.2+build.1", -5)));
+
+        var modpack = Assert.IsType<ModpackResult>(completed.Result);
+        Assert.Equal(((string?)null, "0.17.2+build.1", 0), (modpack.GameVersion, modpack.LoaderVersion, modpack.Files));
+        Assert.Equal("", Assert.IsType<ModpackResult>(AgentInput.Completed(new OperationCompleted(Guid.NewGuid(), null, OperationOutcome.Succeeded, null, null,
+            new ModpackResult("1.21.8", "0.17 <script>", 3))).Result).LoaderVersion);
+    }
+
     [Theory]
     [InlineData("server.cfg", true)]
     [InlineData("nombre \U0000202Eraro.cfg", true)] // format characters are real names the panel can address

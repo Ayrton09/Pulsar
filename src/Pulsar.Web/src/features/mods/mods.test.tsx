@@ -92,6 +92,7 @@ function mods(installed: Schemas['ServerModView'][], changes: Partial<Schemas['M
     gameVersion: '1.21.8',
     unavailable: null,
     installed,
+    modpacks: false,
     ...changes,
   };
 }
@@ -435,6 +436,127 @@ describe('mods from the catalog', () => {
 
     await screen.findByRole('heading', { name: 'On the server' });
     expect(screen.queryByText(/The last change failed/)).not.toBeInTheDocument();
+  });
+
+  it('shows the modpack on the server, and installs another one after asking', async () => {
+    const installs: unknown[] = [];
+    const pack: Schemas['ModpackView'] = {
+      projectId: 'fo1Zw7tY',
+      versionId: 'pv1',
+      name: 'Simply Optimized',
+      versionNumber: '1.21.8-1.0',
+      serverType: 'fabric',
+      loader: 'fabric',
+      gameVersion: '1.21.8',
+      loaderVersion: '0.17.2',
+      installedAt: '2026-10-25T18:00:00Z',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () => json(mods([], { modpacks: true, modpack: pack })),
+      [`GET /api/v1/servers/${serverId}/mods/search`]: () => json({ hits: [], total: 0 }),
+      [`GET /api/v1/servers/${serverId}/modpacks/search`]: () =>
+        json({
+          hits: [{ ...sodium, projectId: 'packB', slug: 'cobblemon-pack', title: 'Cobblemon Pack', author: 'cobble' }],
+          total: 1,
+        }),
+      [`GET /api/v1/servers/${serverId}/modpacks/projects/packB/versions`]: () =>
+        json({
+          versions: [
+            {
+              id: 'cb2',
+              name: 'Cobblemon Pack 2.0',
+              versionNumber: '2.0',
+              versionType: 'release',
+              published: '2026-10-24T00:00:00Z',
+              loaders: ['fabric'],
+              gameVersions: ['1.21.8'],
+              serverType: 'fabric',
+              gameVersion: '1.21.8',
+            },
+            {
+              id: 'cb1q',
+              name: 'Cobblemon Pack 1.9 (Quilt)',
+              versionNumber: '1.9-quilt',
+              versionType: 'release',
+              published: '2026-10-01T00:00:00Z',
+              loaders: ['quilt'],
+              gameVersions: ['1.21.1'],
+              serverType: null,
+              gameVersion: null,
+            },
+          ],
+        }),
+      [`POST /api/v1/servers/${serverId}/modpacks`]: async (request) => {
+        installs.push(await request.json());
+        return json(mods([], { modpacks: true, modpack: pack }));
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText('Simply Optimized')).toBeInTheDocument();
+    expect(screen.getByText(/Fabric 0\.17\.2 on Minecraft 1\.21\.8/)).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Cobblemon Pack' });
+    expect(within(hit('Cobblemon Pack')).getByRole('link', { name: 'Cobblemon Pack' })).toHaveAttribute(
+      'href',
+      'https://modrinth.com/modpack/cobblemon-pack',
+    );
+
+    // A version for a loader none of the game's types runs is shown, but cannot be installed.
+    await userEvent.click(within(hit('Cobblemon Pack')).getByRole('button', { name: 'Versions' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Versions of Cobblemon Pack' });
+    expect(await within(dialog).findByText('Fabric on Minecraft 1.21.8', { exact: false })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Not for this server \(quilt, 1\.21\.1\)/)).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button', { name: 'Install this one' })).toHaveLength(1);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true);
+    await userEvent.click(within(hit('Cobblemon Pack')).getByRole('button', { name: 'Install' }));
+    expect(confirm).toHaveBeenCalledWith(
+      "Install Cobblemon Pack on Survival? The server is installed again as the pack's type and Minecraft version, and the previous pack's mods are replaced. Back the server up first.",
+    );
+    expect(installs).toEqual([]);
+    await userEvent.click(within(hit('Cobblemon Pack')).getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(installs).toEqual([{ projectId: 'packB', versionId: null }]));
+  });
+
+  it('offers modpacks on a server whose type takes no mods, and waits for one being installed', async () => {
+    const installing: Schemas['ModpackView'] = {
+      projectId: 'packB',
+      versionId: 'cb2',
+      name: 'Cobblemon Pack',
+      versionNumber: '2.0',
+      serverType: 'fabric',
+      loader: 'fabric',
+      gameVersion: '1.21.8',
+      loaderVersion: null,
+      installedAt: '2026-10-25T18:00:00Z',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () =>
+        json(
+          mods([], {
+            projectType: null,
+            folder: null,
+            loaders: [],
+            unavailable: 'mods.type_unsupported',
+            modpacks: true,
+            modpackInstalling: installing,
+          }),
+        ),
+      [`GET /api/v1/servers/${serverId}/modpacks/search`]: () => json({ hits: [sodium], total: 1 }),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText('Installing Cobblemon Pack…')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search modpacks' })).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: 'Search mods' })).not.toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Sodium' });
+    expect(within(hit('Sodium')).getByRole('button', { name: 'Install' })).toBeDisabled();
   });
 
   it('calls them plugins on a plugin server, and links to their page', async () => {

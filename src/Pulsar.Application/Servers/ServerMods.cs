@@ -30,6 +30,9 @@ public sealed record ServerModView(
 /// <param name="ProjectType">What its type takes: <c>mod</c> or <c>plugin</c>; null when its type takes nothing.</param>
 /// <param name="GameVersion">The game's version the catalog's files are chosen for; null when not known yet.</param>
 /// <param name="Unavailable">Why nothing can be added now (<c>mods.type_unsupported</c>, <c>mods.version_unknown</c>); null when it can.</param>
+/// <param name="Modpacks">The catalog's modpacks install on the server's game (whatever its type: a pack sets it).</param>
+/// <param name="Modpack">The modpack installed, if any.</param>
+/// <param name="ModpackInstalling">The modpack an operation is installing, if any.</param>
 public sealed record ModsView(
     bool Supported,
     string? Catalog,
@@ -38,7 +41,10 @@ public sealed record ModsView(
     IReadOnlyList<string> Loaders,
     string? GameVersion,
     string? Unavailable,
-    IReadOnlyList<ServerModView> Installed);
+    IReadOnlyList<ServerModView> Installed,
+    bool Modpacks = false,
+    ModpackView? Modpack = null,
+    ModpackView? ModpackInstalling = null);
 
 public sealed record ModHitView(string ProjectId, string Slug, string Title, string? Description, string? Author, long Downloads, DateTimeOffset? Updated,
     bool Installed);
@@ -96,6 +102,7 @@ public sealed partial class ServerMods(
         }
 
         await SettleAsync(server.Id, cancellationToken);
+        await SettleModpacksAsync(server.Id, cancellationToken);
         var manifest = await ManifestAsync(server, cancellationToken);
         var installed = await ViewsAsync(server.Id, cancellationToken);
         if (FirstOf(manifest.ModList) is not { } source)
@@ -107,7 +114,10 @@ public sealed partial class ServerMods(
         var kind = values.GetValueOrDefault(source.TypeVar) is { } type ? source.Types.GetValueOrDefault(type) : null;
         var version = GameVersion(server, source, values);
         var unavailable = kind is null ? ModErrors.TypeUnsupported.Code : version is null ? ModErrors.VersionUnknown.Code : null;
-        return new ModsView(true, source.Source, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed);
+        var packs = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == server.Id).ToListAsync(cancellationToken);
+        return new ModsView(true, source.Source, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed,
+            source.Modpacks is not null, ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installed)),
+            ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installing)));
     }
 
     /// <summary>The catalog's projects the server can take, by relevance, a page of <see cref="SearchPageSize"/>.</summary>

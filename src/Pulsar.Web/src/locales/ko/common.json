@@ -377,6 +377,7 @@
         "addon_remove_requested": "모드 제거 요청",
         "mods_install_requested": "모드 설치 요청",
         "mods_update_requested": "모드 업데이트 요청",
+        "modpack_install_requested": "모드팩 설치 요청",
         "mods_remove_requested": "모드 제거 요청",
         "database_created": "데이터베이스 생성",
         "database_deleted": "데이터베이스 삭제",
@@ -487,6 +488,22 @@
       "file_exists": "패널이 넣지 않은 같은 이름의 파일이 이미 있습니다. 먼저 삭제하거나 이름을 바꾸세요. {{detail}}",
       "untrusted_host": "Pulsar는 그 사이트에서 모드를 내려받지 않습니다: {{detail}}",
       "write_failed": "모든 모드를 기록할 수 없었습니다: {{detail}}"
+    },
+    "modpack": {
+      "unsupported": "이 서버에는 모드팩을 설치할 수 없습니다: {{detail}}",
+      "no_version": "이 모드팩에는 이 게임이 실행하는 서버 종류용 버전이 없습니다.",
+      "loader_unsupported": "이 모드팩은 이 게임의 어떤 서버 종류도 실행하지 않는 로더용입니다.",
+      "game_version_invalid": "이 모드팩은 서버가 받는 단일 Minecraft 버전을 지정하지 않습니다.",
+      "file_invalid": "이 모드팩 버전에는 Pulsar가 설치할 수 있는 .mrpack 파일이 없습니다.",
+      "invalid": "모드팩이 올바르지 않습니다: {{detail}}",
+      "mismatch": "모드팩이 카탈로그 내용과 일치하지 않습니다: {{detail}}",
+      "unsafe_path": "모드팩에 Pulsar가 쓰지 않는 파일이 있습니다: {{detail}}",
+      "untrusted_host": "모드팩이 Pulsar가 내려받지 않는 사이트의 파일을 제공합니다: {{detail}}",
+      "too_large": "모드팩이 Pulsar가 설치하는 크기보다 큽니다: {{detail}}",
+      "disk_full": "노드에 모드팩을 위한 여유 공간이 부족합니다: {{detail}}",
+      "download_failed": "모드팩을 내려받을 수 없었습니다: {{detail}}",
+      "checksum_mismatch": "내려받은 파일이 모드팩에 적힌 파일이 아니어서 아무것도 바꾸지 않았습니다: {{detail}}",
+      "write_failed": "모드팩을 모두 기록할 수 없었습니다: {{detail}}"
     },
     "api_key": {
       "name_invalid": "키 이름은 한 줄, 최대 64자로 입력하세요.",
@@ -1139,7 +1156,8 @@
         "backupRestore": "복원",
         "addonInstall": "모드 설치",
         "addonRemove": "모드 제거",
-        "modsChange": "모드 변경"
+        "modsChange": "모드 변경",
+        "modpackInstall": "모드팩 설치"
       },
       "statuses": {
         "queued": "대기 중",
@@ -1559,6 +1577,26 @@
       "by": "제작: {{author}}",
       "downloads_one": "다운로드 {{formatted}}회",
       "downloads_other": "다운로드 {{formatted}}회"
+    },
+    "modpacks": {
+      "title": "모드팩",
+      "hint": "모드팩은 서버를 팩의 종류와 Minecraft 버전으로 다시 설치한 뒤 모드와 설정을 넣으며, 이전 팩의 모드를 대체합니다. 직접 추가한 파일은 남지만 먼저 백업하세요. 다른 종류나 버전에서는 월드를 불러오지 못할 수 있습니다.",
+      "none": "설치된 모드팩이 없습니다.",
+      "notListed": "모드팩의 모드는 여기에 나오지 않습니다. 팩에 이미 있는 모드를 설치하면 서버에 두 번째 사본이 생깁니다.",
+      "installing": "{{name}} 설치 중…",
+      "runsOn": "Minecraft {{gameVersion}}의 {{loader}} {{loaderVersion}}",
+      "installedAt": "{{when}}에 설치",
+      "search": "모드팩 검색",
+      "installConfirm": "{{server}}에 {{name}}을(를) 설치할까요? 서버가 팩의 종류와 Minecraft 버전으로 다시 설치되고 이전 팩의 모드는 대체됩니다. 먼저 백업하세요.",
+      "versionsHint": "각 버전은 어디서 실행되는지 보여 줍니다. 설치하면 그 종류와 Minecraft 버전으로 서버가 다시 설치됩니다.",
+      "versionRunsOn": "Minecraft {{gameVersion}}의 {{loader}}",
+      "notForServer": "이 서버용이 아님 ({{loaders}}, {{gameVersions}})",
+      "loaders": {
+        "fabric": "Fabric",
+        "forge": "Forge",
+        "neoforge": "NeoForge",
+        "quilt": "Quilt"
+      }
     },
     "refused": {
       "required_by": "{{others}}에 {{name}}이(가) 필요합니다. 먼저 그것을 제거하세요."
