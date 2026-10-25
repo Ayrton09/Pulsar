@@ -814,17 +814,30 @@ public sealed partial class ServerManagement(
             return NodeErrors.NotConnected;
         }
 
-        operation.RequestCancel(clock.GetUtcNow());
-        audit.Record(AuditActions.Server.OperationCancelRequested, metadata: new { operation = operationId, type = operation.Type.ToString() })
-            .WithServer(server.Id, server.NodeId);
-        try
+        // The node's progress reports change the row too: a cancel that meets one reads it again, and goes on while it runs.
+        for (var attempt = 0; ; attempt++)
         {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // It finished meanwhile.
-            return ServerErrors.OperationNotCancellable;
+            operation.RequestCancel(clock.GetUtcNow());
+            audit.Record(AuditActions.Server.OperationCancelRequested, metadata: new { operation = operationId, type = operation.Type.ToString() })
+                .WithServer(server.Id, server.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 4)
+            {
+                db.ChangeTracker.Clear();
+                operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(operationId) && o.ServerId == id, cancellationToken);
+                if (operation is not { IsCancellable: true })
+                {
+                    return ServerErrors.OperationNotCancellable; // it finished meanwhile
+                }
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return ServerErrors.OperationNotCancellable;
+            }
         }
 
         var ack = await connections.SendAsync(server.NodeId, new CancelOperationCommand(operationId), request.UserId, cancellationToken);
