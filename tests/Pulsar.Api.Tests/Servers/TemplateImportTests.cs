@@ -220,6 +220,34 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         }
     }
 
+    [DatabaseFact]
+    public async Task MinecraftWithServerTypesGoesOnlyToAgentsThatInstallThem()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "minecraft" && t.Source == TemplateSource.Bundled);
+
+        // An agent before 1.0.9 would install Mojang's server whatever the type, and start it with an empty jar name.
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands];
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("types-old", older, true),
+            ("types-new", [.. older, AgentCapabilities.MinecraftTypes], false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers",
+                new CreateServerRequest(node.Node.Id, template.Id, "Paper", null, new Dictionary<string, string?> { ["eula"] = "accepted", ["serverType"] = "paper" }));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
     private static async Task<TemplateImportPreview> PreviewAsync(PanelClient client, string content)
     {
         using var response = await client.PostAsync("/api/v1/templates/preview", new TemplateContentRequest(content));

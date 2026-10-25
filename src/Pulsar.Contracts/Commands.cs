@@ -628,6 +628,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string ManifestCommands = "manifest.commands";
 
+    /// <summary>
+    /// Not a command: the agent installs Minecraft's server types (Paper, Purpur, Fabric, Forge, NeoForge) and reads
+    /// conditions on what an enum's option maps (Pulsar 1.0.9); an older one refuses manifests that use them.
+    /// </summary>
+    public const string MinecraftTypes = "manifest.minecraft_types";
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 

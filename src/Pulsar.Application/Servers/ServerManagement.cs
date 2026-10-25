@@ -703,13 +703,15 @@ public sealed partial class ServerManagement(
 
     /// <summary>
     /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
-    /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players 1.0.9.
+    /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
+    /// server types 1.0.9.
     /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
         && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
         && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
-        && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands));
+        && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands))
+        && (!ManifestFeatures.UsesMinecraftTypes(manifest) || Announces(connection, AgentCapabilities.MinecraftTypes));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;

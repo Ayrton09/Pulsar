@@ -26,7 +26,17 @@ public sealed class InstallOptions
     /// install what only a signature vouches for (<see cref="MinecraftBedrockStep"/>).
     /// </summary>
     public ICodeSignatures? CodeSignatures { get; init; }
+
+    /// <summary>An installer the agent runs (Forge's, NeoForge's) that prints nothing for this long is stopped.</summary>
+    public TimeSpan InstallerStallTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>An installer the agent runs is stopped after this long, whatever it prints.</summary>
+    public TimeSpan InstallerTimeout { get; init; } = TimeSpan.FromMinutes(30);
 }
+
+/// <summary>The server the steps install, for what runs as its account (Forge's and NeoForge's installers).</summary>
+/// <param name="Output">Where what such a program prints goes (the server's console).</param>
+public sealed record InstallContext(Guid ServerId, ProcessIdentity Identity, Action<string>? Output);
 
 /// <summary>Who signed an executable.</summary>
 public interface ICodeSignatures
@@ -44,20 +54,28 @@ public interface ICodeSignatures
 /// the directory, so every write goes through <see cref="IServerFiles"/>: never through a junction or link, never into
 /// an existing file.
 /// </summary>
-public sealed class InstallSteps(InstallOptions options, IServerFiles files)
+/// <param name="processes">Starts what runs as the server's account (Forge's and NeoForge's installers); without it, nothing does.</param>
+public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGameProcessManager? processes = null)
 {
     /// <summary>Runs one step that is not a SteamCMD step, reporting its progress.</summary>
     /// <param name="variables">The server's variable values, defaults included.</param>
+    public Task RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
+        Func<string, double?, Task> progress, CancellationToken cancellationToken) =>
+        RunAsync(step, serverDirectory, variables, progress, context: null, cancellationToken);
+
+    /// <summary>Runs one step that is not a SteamCMD step, reporting its progress.</summary>
+    /// <param name="variables">The server's variable values, defaults included.</param>
+    /// <param name="context">The server, for what runs as its account; without it, steps that need that fail.</param>
     public async Task RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
-        Func<string, double?, Task> progress, CancellationToken cancellationToken)
+        Func<string, double?, Task> progress, InstallContext? context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(step);
         ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(progress);
         if (step is MinecraftServerStep minecraft)
         {
-            var version = minecraft.VersionVar is { } key ? variables.GetValueOrDefault(key) : null;
-            await new MinecraftInstaller(files, options.HttpHandler).InstallAsync(serverDirectory, version, progress, cancellationToken);
+            await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory))
+                .InstallAsync(serverDirectory, Choice(minecraft, variables), progress, cancellationToken);
             return;
         }
 
@@ -91,7 +109,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
         return step switch
         {
             MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler)
-                .CheckAsync(serverDirectory, minecraft.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
+                .CheckAsync(serverDirectory, Choice(minecraft, variables), cancellationToken),
             // A check downloads nothing, so it has no signature to verify.
             MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures ?? Unsigned.Instance)
                 .CheckAsync(serverDirectory, bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
@@ -106,10 +124,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
         ArgumentNullException.ThrowIfNull(variables);
         return step switch
         {
-            MinecraftServerStep minecraft => minecraft.VersionVar is { } key && variables.GetValueOrDefault(key) is { Length: > 0 } version
-                && version != MinecraftServerStep.Latest
-                    ? $"Downloading the Minecraft {version} server from Mojang, then its Java runtime"
-                    : "Downloading the latest Minecraft server from Mojang, then its Java runtime",
+            MinecraftServerStep minecraft => Choice(minecraft, variables) switch
+            {
+                { TypeOrVanilla: MinecraftServerStep.Vanilla, Version: { Length: > 0 } version } when version != MinecraftServerStep.Latest =>
+                    $"Downloading the Minecraft {version} server from Mojang, then its Java runtime",
+                { TypeOrVanilla: MinecraftServerStep.Vanilla } => "Downloading the latest Minecraft server from Mojang, then its Java runtime",
+                var choice => $"Installing a {TypeName(choice.TypeOrVanilla)} server for Minecraft "
+                    + $"{(choice.Version is { Length: > 0 } version && version != MinecraftServerStep.Latest ? version : "(the latest it supports)")}"
+                    + (choice.Loader is { Length: > 0 } loader ? $", loader {loader}" : "") + ", with its Java runtime",
+            },
             MinecraftBedrockStep bedrock => bedrock.VersionVar is { } key && variables.GetValueOrDefault(key) is { Length: > 0 } version
                 && version != MinecraftBedrockStep.Latest
                     ? $"Getting the Minecraft Bedrock {version} server from Mojang, unless it is already installed"
@@ -120,6 +143,89 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
             TestGameServerStep => "Copying Pulsar's test game server",
             _ => step.GetType().Name,
         };
+    }
+
+    /// <summary>What a Minecraft step installs, from the server's variables.</summary>
+    private static MinecraftChoice Choice(MinecraftServerStep step, IReadOnlyDictionary<string, string?> variables) =>
+        new(step.VersionVar is { } version ? variables.GetValueOrDefault(version) : null,
+            step.TypeVar is { } type ? variables.GetValueOrDefault(type) : null,
+            step.LoaderVar is { } loader ? variables.GetValueOrDefault(loader) : null);
+
+    private static string TypeName(string type) => type switch
+    {
+        MinecraftServerStep.Paper => "Paper",
+        MinecraftServerStep.Purpur => "Purpur",
+        MinecraftServerStep.Fabric => "Fabric",
+        MinecraftServerStep.Forge => "Forge",
+        MinecraftServerStep.NeoForge => "NeoForge",
+        _ => type,
+    };
+
+    /// <summary>What runs the server's Java runtime as its account (Forge's and NeoForge's installers); null when nothing can.</summary>
+    public JavaRunner? JavaFor(InstallContext? context, string serverDirectory) =>
+        context is null || processes is null ? null : (arguments, cancellationToken) => RunJavaAsync(context, serverDirectory, arguments, cancellationToken);
+
+    /// <summary>
+    /// The server's Java runtime, as its account, in its folder (an installer the publisher's checksum vouched for): what it
+    /// prints goes to the console; one that stalls or runs too long is stopped.
+    /// </summary>
+    private async Task RunJavaAsync(InstallContext context, string serverDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        var spec = new ProcessLaunchSpec(context.ServerId, serverDirectory, "java/bin/java.exe", arguments, "", new Dictionary<string, string>(),
+            ConsoleMode.Pipes, ConsoleEncoding.Utf8, context.Identity);
+        var process = await processes!.StartAsync(spec, cancellationToken);
+        using var stall = new CancellationTokenSource(options.InstallerStallTimeout);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
+        deadline.CancelAfter(options.InstallerTimeout);
+        var pump = Task.Run(async () =>
+        {
+            await foreach (var chunk in process.Output.ReadAllAsync(CancellationToken.None))
+            {
+                if (!stall.IsCancellationRequested)
+                {
+                    stall.CancelAfter(options.InstallerStallTimeout);
+                }
+
+                context.Output?.Invoke(chunk.Text);
+            }
+        }, CancellationToken.None);
+        int exitCode;
+        try
+        {
+            exitCode = await process.Exited.WaitAsync(deadline.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.TerminateTree(1);
+            await process.DisposeAsync();
+            await DrainedAsync(pump);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new GameProcessException("minecraft.installer_stalled", "The installer stopped making progress, or ran too long; the console has what it printed.");
+        }
+
+        await process.DisposeAsync();
+        await DrainedAsync(pump);
+        if (exitCode != 0)
+        {
+            throw new GameProcessException("minecraft.installer_failed",
+                $"The installer exited with code {exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)}; the console has what it printed.");
+        }
+    }
+
+    /// <summary>
+    /// Waits for what the installer printed last, but not for long: a process it left behind outside its Job could keep
+    /// the output open, and the install would never end.
+    /// </summary>
+    private static async Task DrainedAsync(Task pump)
+    {
+        try
+        {
+            await pump.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            // The rest of its output is not shown.
+        }
     }
 
     /// <summary>Runs one step that is not a SteamCMD step.</summary>

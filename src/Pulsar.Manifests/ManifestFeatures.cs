@@ -34,6 +34,18 @@ public static class ManifestFeatures
         return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<MinecraftBedrockStep>().Any();
     }
 
+    /// <summary>
+    /// Minecraft's server types of Pulsar 1.0.9 (<see cref="MinecraftServerStep.TypeVar"/>, its loader's version) and the
+    /// conditions on what an enum's option maps, which its arguments use.
+    /// </summary>
+    public static bool UsesMinecraftTypes(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<MinecraftServerStep>()
+                .Any(s => s.TypeVar is not null || s.LoaderVar is not null)
+            || manifest.Runtime.Values.SelectMany(r => Conditions(r.ArgumentList)).Any(c => c.If.Split('.') is ["var", _, _]);
+    }
+
     /// <summary>The console commands of Pulsar 1.0.9 (<see cref="GameManifest.Commands"/>).</summary>
     public static bool UsesCommands(GameManifest manifest)
     {

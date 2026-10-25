@@ -2,9 +2,9 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "name": "Minecraft: Java Edition",
-  "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang, with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version.",
+  "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang (or Paper, Purpur, Fabric, Forge or NeoForge from their publishers), with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version, and the same mods on Fabric, Forge or NeoForge.",
   "authors": ["Pulsar contributors"],
   "platforms": ["windows-x64"],
 
@@ -17,6 +17,19 @@
     { "key": "version", "label": "Minecraft version", "type": "string", "default": "latest", "maxLength": 32,
       "pattern": "^(latest|[0-9A-Za-z][0-9A-Za-z._-]{0,31})$",
       "description": "'latest' for the latest release, or a version such as 1.21.4. Changing it takes an update; going back to an older version can damage the world." },
+    { "key": "serverType", "label": "Server type", "type": "enum", "default": "vanilla",
+      "options": [
+        { "value": "vanilla", "label": "Vanilla (Mojang)", "map": { "jar": "server.jar", "argfile": "" } },
+        { "value": "paper", "label": "Paper (plugins)", "map": { "jar": "server.jar", "argfile": "" } },
+        { "value": "purpur", "label": "Purpur (plugins)", "map": { "jar": "server.jar", "argfile": "" } },
+        { "value": "fabric", "label": "Fabric (mods)", "map": { "jar": "fabric-server-launch.jar", "argfile": "" } },
+        { "value": "forge", "label": "Forge (mods)", "map": { "jar": "", "argfile": ".pulsar/minecraft-args.txt" } },
+        { "value": "neoforge", "label": "NeoForge (mods)", "map": { "jar": "", "argfile": ".pulsar/minecraft-args.txt" } }
+      ],
+      "description": "Paper and Purpur run Bukkit plugins; Fabric, Forge and NeoForge run mods. With 'latest', the newest Minecraft version the type supports. Changing it takes an update, which installs the new type. The world stays, but may not load on another type: Paper's and Purpur's worlds need their data pack, and a world made with mods needs them. Back it up first." },
+    { "key": "loaderVersion", "label": "Loader version", "type": "string", "default": "", "maxLength": 32,
+      "pattern": "^([0-9A-Za-z][0-9A-Za-z._+-]{0,31})?$",
+      "description": "Fabric's loader, Forge's or NeoForge's version (such as 0.20.1, 58.1.26 or 21.1.265); empty for the recommended one. A Forge version needs its Minecraft version set too." },
     { "key": "motd", "label": "Message of the day", "type": "string", "default": "A Minecraft server on Pulsar", "maxLength": 59,
       "pattern": "^[^\\\\]{0,59}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 20, "min": 1, "max": 500 },
@@ -87,8 +100,8 @@
     { "name": "game", "label": "Game", "protocols": ["tcp"], "default": 25565 }
   ],
 
-  "install": { "steps": [ { "type": "minecraftServer", "versionVar": "version" } ] },
-  "update": { "steps": [ { "type": "minecraftServer", "versionVar": "version" } ] },
+  "install": { "steps": [ { "type": "minecraftServer", "versionVar": "version", "typeVar": "serverType", "loaderVar": "loaderVersion" } ] },
+  "update": { "steps": [ { "type": "minecraftServer", "versionVar": "version", "typeVar": "serverType", "loaderVar": "loaderVersion" } ] },
 
   "runtime": {
     "windows-x64": {
@@ -96,7 +109,8 @@
       "arguments": [
         "-Xmx{{var.memoryMb}}M",
         "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
-        "-jar", "server.jar", "--nogui"
+        { "if": "var.serverType.argfile", "then": ["@{{var.serverType.argfile}}"], "else": ["-jar", "{{var.serverType.jar}}"] },
+        "--nogui"
       ],
       "allowExtraArguments": false,
       "console": { "mode": "pipes", "encoding": "utf-8" }
@@ -152,7 +166,8 @@
   },
 
   "backup": {
-    "include": ["world/**", "world_nether/**", "world_the_end/**", "server.properties", "*.json"],
+    "include": ["world/**", "world_nether/**", "world_the_end/**", "*.properties", "*.json", "*.yml", "*.yaml", "*.toml",
+      "plugins/**", "mods/**", "config/**", "defaultconfigs/**"],
     "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
   },
   "commands": { "broadcast": "say {{message}}" }

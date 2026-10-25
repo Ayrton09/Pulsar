@@ -225,10 +225,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type"],
-      "description": "Minecraft: Java Edition's server.jar from Mojang and the Java runtime its version needs in java/ (Eclipse Temurin), both checked against their publishers' checksums.",
+      "description": "Minecraft: Java Edition's server.jar from Mojang and the Java runtime its version needs in java/ (Eclipse Temurin), both checked against their publishers' checksums; or (Pulsar 1.0.9) Paper, Purpur, Fabric, Forge or NeoForge.",
       "properties": {
         "type": { "const": "minecraftServer" },
-        "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.4', or 'latest' for the latest release)." }
+        "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.4', or 'latest' for the latest release)." },
+        "typeVar": { "type": "string", "description": "An enum variable choosing the server type (Pulsar 1.0.9): vanilla, paper, purpur, fabric, forge or neoforge." },
+        "loaderVar": { "type": "string", "description": "A variable holding the version of Fabric's loader, Forge or NeoForge; empty for the recommended one (Pulsar 1.0.9)." }
       }
     },
     "MinecraftBedrockStep": {
@@ -277,7 +279,7 @@
       "additionalProperties": false,
       "required": ["if", "then"],
       "properties": {
-        "if": { "type": "string", "pattern": "^(var|port)\\.[A-Za-z][A-Za-z0-9_]*$", "description": "A variable (a boolean when true, any other when it has a value), or an optional port (assigned)." },
+        "if": { "type": "string", "pattern": "^(var\\.[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)?|port\\.[A-Za-z][A-Za-z0-9_]*)$", "description": "A variable (a boolean when true, any other when it has a value), what an enum's chosen option maps when it is not empty (Pulsar 1.0.9), or an optional port (assigned)." },
         "then": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" } },
         "else": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" }, "description": "What goes instead when the condition does not hold." }
       }

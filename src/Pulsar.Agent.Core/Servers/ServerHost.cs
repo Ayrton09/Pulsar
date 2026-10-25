@@ -159,6 +159,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.GameSettings;
             yield return AgentCapabilities.MoreConfigFormats;
             yield return AgentCapabilities.ManifestCommands;
+            yield return AgentCapabilities.MinecraftTypes;
             // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
             if (installOptions.CodeSignatures is not null)
             {
@@ -1070,7 +1071,8 @@ public sealed partial class ServerHost(
                 var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
                 console.Note(InstallSteps.Describe(step, variables), clock.GetUtcNow());
                 await installSteps.RunAsync(step, provisioned.Directory, variables,
-                    new InstallConsole(console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync, cancellationToken);
+                    new InstallConsole(console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
+                    new InstallContext(serverId, provisioned.Identity, text => console.Write(text, clock.GetUtcNow())), cancellationToken);
             }
         }
 

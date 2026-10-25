@@ -611,9 +611,24 @@ public static partial class ManifestValidator
                     }
 
                     break;
-                case MinecraftServerStep { VersionVar: { } versionVar }
-                    when !IsVersionVariable(versionVar, context):
-                    context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
+                case MinecraftServerStep step:
+                    if (step.VersionVar is { } javaVersionVar && !IsVersionVariable(javaVersionVar, context))
+                    {
+                        context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
+                    }
+
+                    if (step.TypeVar is { } typeVar && !(context.Variables.TryGetValue(typeVar, out var type) && !type.Secret
+                            && type.Type == VariableType.Enum && type.Options is { Count: > 0 } options
+                            && options.All(o => MinecraftServerStep.Types.Contains(o.Value))))
+                    {
+                        context.Error($"{path}.typeVar", $"Must name an enum whose options are server types: {string.Join(", ", MinecraftServerStep.Types.Order(StringComparer.Ordinal))}.");
+                    }
+
+                    if (step.LoaderVar is { } loaderVar && !IsVersionVariable(loaderVar, context))
+                    {
+                        context.Error($"{path}.loaderVar", "Must name a string variable with a 'pattern', or an enum.");
+                    }
+
                     break;
                 case MinecraftBedrockStep { VersionVar: { } versionVar }
                     when !IsVersionVariable(versionVar, context):
@@ -749,11 +764,17 @@ public static partial class ManifestValidator
                         case ["var", var key] when context.Variables.ContainsKey(key):
                             guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { $"var.{key}" };
                             break;
+                        // 1.0.9: what the chosen option maps (Minecraft's server types: an arguments file, or a jar).
+                        case ["var", var key, var sub] when context.Variables.TryGetValue(key, out var choice) && choice.Type == VariableType.Enum
+                            && (choice.Required || choice.Default is not null) && choice.Options is { Count: > 0 } choices
+                            && choices.All(o => o.Map?.ContainsKey(sub) == true):
+                            break;
                         case ["port", var name] when context.Ports.ContainsKey(name):
                             guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { name };
                             break;
                         default:
-                            context.Error($"{path}[{i}].if", "Must be 'var.<key>' of a variable, or 'port.<name>'.");
+                            context.Error($"{path}[{i}].if",
+                                "Must be 'var.<key>' of a variable, 'var.<key>.<sub>' of an enum with a default (or required) whose options all map it, or 'port.<name>'.");
                             break;
                     }
 

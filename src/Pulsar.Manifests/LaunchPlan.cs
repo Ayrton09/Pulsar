@@ -365,6 +365,8 @@ public static partial class LaunchPlanRenderer
                         var holds = condition.If.Split('.') switch
                         {
                             ["var", var key] => resolved.GetValueOrDefault(key) is { Length: > 0 } flag && flag != "false",
+                            ["var", var key, var sub] => definitions[key].Options?.FirstOrDefault(o => o.Value == resolved.GetValueOrDefault(key))?.Map
+                                ?.GetValueOrDefault(sub) is { Length: > 0 } mapped && mapped != "false",
                             ["port", var name] => ports.ContainsKey(name),
                             _ => false,
                         };

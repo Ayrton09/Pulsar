@@ -187,12 +187,29 @@ public sealed record TestGameServerStep(string Path) : InstallStep;
 /// <summary>
 /// Installs Minecraft: Java Edition's dedicated server as <c>server.jar</c>, from Mojang, and the Java runtime its
 /// version asks for in <c>java/</c>, from Adoptium (Eclipse Temurin). The agent checks both against the checksums their
-/// publishers list.
+/// publishers list. Pulsar 1.0.9: a server type other than Mojang's own (<see cref="Types"/>): Paper or Purpur as
+/// <c>server.jar</c>, Fabric's loader beside Mojang's jar (<c>fabric-server-launch.jar</c>), or Forge's or NeoForge's
+/// installer run as the server's account, which leaves the Java arguments that start it in <see cref="ArgumentsFile"/>.
 /// </summary>
 /// <param name="VersionVar">A variable holding the version ("1.21.4", or "latest" for the latest release); latest without one.</param>
-public sealed record MinecraftServerStep(string? VersionVar = null) : InstallStep
+/// <param name="TypeVar">An enum variable whose options are <see cref="Types"/>; Mojang's server without one.</param>
+/// <param name="LoaderVar">A variable holding the version of Fabric's loader, Forge or NeoForge; empty for the recommended one.</param>
+public sealed record MinecraftServerStep(string? VersionVar = null, string? TypeVar = null, string? LoaderVar = null) : InstallStep
 {
     public const string Latest = "latest";
+
+    public const string Vanilla = "vanilla";
+    public const string Paper = "paper";
+    public const string Purpur = "purpur";
+    public const string Fabric = "fabric";
+    public const string Forge = "forge";
+    public const string NeoForge = "neoforge";
+
+    /// <summary>The server types the step installs.</summary>
+    public static readonly IReadOnlySet<string> Types = new HashSet<string>(StringComparer.Ordinal) { Vanilla, Paper, Purpur, Fabric, Forge, NeoForge };
+
+    /// <summary>The Java arguments that start a Forge or NeoForge server (its <c>win_args.txt</c>), for <c>java @file</c>.</summary>
+    public const string ArgumentsFile = ".pulsar/minecraft-args.txt";
 }
 
 /// <summary>
