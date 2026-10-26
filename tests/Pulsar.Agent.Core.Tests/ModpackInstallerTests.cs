@@ -150,7 +150,7 @@ public sealed class ModpackInstallerTests : IDisposable
         _http.Routes[PackUrl] = pack;
 
         using var prepared = await new ModpackInstaller(new DirectServerFiles(), _http).PrepareAsync(
-            new ModDownload("pack.mrpack", PackUrl, Convert.ToHexStringLower(SHA512.HashData(pack)), pack.Length), "fabric", "1.21.8", _ => null,
+            new ModDownload("pack.mrpack", PackUrl, Convert.ToHexStringLower(SHA512.HashData(pack)), pack.Length), null, "fabric", "1.21.8", _ => null,
             (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
 
         Assert.StartsWith("Pack[2m[Pulsar] Donexxx", prepared.Name, StringComparison.Ordinal);
@@ -169,13 +169,112 @@ public sealed class ModpackInstallerTests : IDisposable
         Assert.Equal("modpack.invalid", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(Pack(index)))).Code);
     }
 
+    [Fact]
+    public async Task ACurseForgePackTakesItsFilesFromItsServerPackNotItsList()
+    {
+        const string ClientUrl = "https://edge.forgecdn.net/files/5000/1/Pack-1.0.zip";
+        const string ServerUrl = "https://edge.forgecdn.net/files/5000/2/Pack-1.0-server.zip";
+        var client = Zip(("manifest.json", CurseForgeManifest("1.21.8", "fabric-0.17.2")), ("overrides/config/client-only.toml", "x"));
+        var server = Zip(("Pack-1.0-server/mods/lithium.jar", "lithium"), ("Pack-1.0-server/config/lithium.properties", "mixin.ai=false"),
+            ("Pack-1.0-server/start.sh", "java -jar evil.jar"), ("Pack-1.0-server/run.bat", "evil"));
+        _http.Routes[ClientUrl] = client;
+        _http.Routes[ServerUrl] = server;
+
+        var installer = new ModpackInstaller(new DirectServerFiles(), _http);
+        using var prepared = await installer.PrepareAsync(new ModDownload("Pack-1.0.zip", ClientUrl, Sha1(client), client.Length),
+            new ModDownload("Pack-1.0-server.zip", ServerUrl, Sha1(server), server.Length), "fabric", "1.21.8", _ => null, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(("0.17.2", "Test pack"), (prepared.LoaderVersion, prepared.Name));
+        installer.Apply(_root, prepared);
+
+        Assert.Equal("lithium", Read("mods/lithium.jar")); // from the server pack, out of its top folder
+        Assert.Equal("mixin.ai=false", Read("config/lithium.properties"));
+        Assert.False(System.IO.File.Exists(Path.Combine(_root, "start.sh"))); // Pulsar never runs a pack's scripts: none are written
+        Assert.False(System.IO.File.Exists(Path.Combine(_root, "run.bat")));
+        Assert.False(System.IO.File.Exists(Path.Combine(_root, "config", "client-only.toml"))); // the client pack is read, not unpacked
+    }
+
+    [Theory]
+    [InlineData("1.21.7", "fabric-0.17.2")]
+    [InlineData("1.21.8", "forge-58.1.0")]
+    [InlineData("1.21.8", "fabric-not a version")]
+    public async Task ACurseForgePackIsForTheGameVersionAndLoaderThePanelChoseOnly(string minecraft, string loader)
+    {
+        const string ClientUrl = "https://edge.forgecdn.net/files/5000/3/Odd.zip";
+        const string ServerUrl = "https://edge.forgecdn.net/files/5000/4/Odd-server.zip";
+        var client = Zip(("manifest.json", CurseForgeManifest(minecraft, loader)));
+        var server = Zip(("mods/x.jar", "x"));
+        _http.Routes[ClientUrl] = client;
+        _http.Routes[ServerUrl] = server;
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => new ModpackInstaller(new DirectServerFiles(), _http).PrepareAsync(
+            new ModDownload("Odd.zip", ClientUrl, Sha1(client), client.Length), new ModDownload("Odd-server.zip", ServerUrl, Sha1(server), server.Length),
+            "fabric", "1.21.8", version => version.Contains(' ', StringComparison.Ordinal) ? "not a version" : null, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("modpack.mismatch", error.Code);
+        Assert.DoesNotContain(ServerUrl, _http.Requested); // refused before its server files are fetched
+    }
+
+    [Fact]
+    public async Task AServerPacksPathsAreCheckedAsAnyPacksAre()
+    {
+        const string ClientUrl = "https://edge.forgecdn.net/files/5000/5/Bad.zip";
+        const string ServerUrl = "https://edge.forgecdn.net/files/5000/6/Bad-server.zip";
+        var client = Zip(("manifest.json", CurseForgeManifest("1.21.8", "fabric-0.17.2")));
+        var server = Zip(("mods/x.jar", "x"), ("../escape.jar", "x"));
+        _http.Routes[ClientUrl] = client;
+        _http.Routes[ServerUrl] = server;
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => new ModpackInstaller(new DirectServerFiles(), _http).PrepareAsync(
+            new ModDownload("Bad.zip", ClientUrl, Sha1(client), client.Length), new ModDownload("Bad-server.zip", ServerUrl, Sha1(server), server.Length),
+            "fabric", "1.21.8", _ => null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("modpack.unsafe_path", error.Code);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
+    }
+
+    private static string CurseForgeManifest(string minecraft, string loader) => new JsonObject
+    {
+        ["manifestType"] = "minecraftModpack",
+        ["manifestVersion"] = 1,
+        ["name"] = "Test pack",
+        ["version"] = "1.0",
+        ["minecraft"] = new JsonObject { ["version"] = minecraft, ["modLoaders"] = new JsonArray(new JsonObject { ["id"] = loader, ["primary"] = true }) },
+        ["files"] = new JsonArray(new JsonObject { ["projectID"] = 1, ["fileID"] = 2, ["required"] = true }),
+        ["overrides"] = "overrides",
+    }.ToJsonString();
+
+    private static byte[] Zip(params (string Name, string Content)[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in entries)
+            {
+                using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+                writer.Write(content);
+            }
+        }
+
+        return buffer.ToArray();
+    }
+
+    // CurseForge publishes SHA-1 (and MD5) only.
+    private static string Sha1(byte[] content)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        hash.AppendData(content);
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
     /// <summary>Prepares and applies the pack as the agent does (the install steps in between are not this class's).</summary>
     private async Task<int> InstallAsync(byte[] pack, byte[]? hashedAs = null)
     {
         _http.Routes[PackUrl] = pack;
         var installer = new ModpackInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) };
         using var prepared = await installer.PrepareAsync(
-            new ModDownload("pack.mrpack", PackUrl, Convert.ToHexStringLower(SHA512.HashData(hashedAs ?? pack)), pack.Length), "fabric", "1.21.8",
+            new ModDownload("pack.mrpack", PackUrl, Convert.ToHexStringLower(SHA512.HashData(hashedAs ?? pack)), pack.Length), null, "fabric", "1.21.8",
             version => version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+') ? null : "not a version",
             (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
         Assert.Equal("0.17.2", prepared.LoaderVersion);

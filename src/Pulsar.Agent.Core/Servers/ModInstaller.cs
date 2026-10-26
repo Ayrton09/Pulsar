@@ -13,8 +13,11 @@ namespace Pulsar.Agent.Core.Servers;
 /// </summary>
 public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 {
-    // Modrinth's files are served from its CDN only.
-    private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase) { "cdn.modrinth.com" };
+    // The catalogs' own CDNs only: Modrinth's, and CurseForge's (whose edge redirects to its file host).
+    private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cdn.modrinth.com", "edge.forgecdn.net", "mediafilez.forgecdn.net",
+    };
 
     /// <summary>A mod or plugin larger than this is not one.</summary>
     public const long MaximumFile = 256L * 1024 * 1024;
@@ -67,13 +70,13 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
             for (var i = 0; i < add.Count; i++)
             {
                 var file = add[i];
-                if (file.Size is < 0 or > MaximumFile || file.Sha512 is not { Length: 128 } sha512 || !sha512.All(char.IsAsciiHexDigit))
+                if (file.Size is < 0 or > MaximumFile || file.Algorithm is not { } algorithm)
                 {
-                    throw Failed("mods.invalid", $"'{file.Path}' has no SHA-512, or is larger than a mod.");
+                    throw Failed("mods.invalid", $"'{file.Path}' has no SHA-512 or SHA-1, or is larger than a mod.");
                 }
 
                 var index = i;
-                downloaded.Add((file.Path, await client.DownloadAsync(VerifiedDownloader.Https(file.Url, "mods"), HashAlgorithmName.SHA512, sha512,
+                downloaded.Add((file.Path, await client.DownloadAsync(VerifiedDownloader.Https(file.Url, "mods"), algorithm, file.Hash,
                     percent => progress(Steam.InstallStages.Downloading, (index + percent / 100) * 100 / add.Count), cancellationToken, MaximumFile)));
             }
         }

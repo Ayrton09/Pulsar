@@ -12,7 +12,8 @@ public sealed class ModsTests
     {
         var manifest = TestManifests.Load("minecraft");
 
-        var modrinth = Assert.Single(manifest.ModList);
+        Assert.Equal(["modrinth", "curseforge"], manifest.ModList.Select(m => m.Source));
+        var modrinth = manifest.ModList[0];
         Assert.Equal(("modrinth", "version", "serverType"), (modrinth.Source, modrinth.VersionVar, modrinth.TypeVar));
         var paper = modrinth.Types["paper"];
         Assert.Equal(("plugin", "plugins"), (paper.ProjectType, paper.Folder));
@@ -25,7 +26,8 @@ public sealed class ModsTests
     }
 
     [Theory]
-    [InlineData("source", "curseforge", "mods[0].source")]
+    [InlineData("source", "thunderstore", "mods[0].source")]
+    [InlineData("source", "curseforge", "mods")] // each catalog once
     [InlineData("typeVar", "difficulty", "mods[0].types.paper")]
     [InlineData("typeVar", "motd", "mods[0].typeVar")]
     [InlineData("versionVar", "nope", "mods[0].versionVar")]
@@ -66,7 +68,7 @@ public sealed class ModsTests
     {
         var manifest = TestManifests.Load("minecraft");
 
-        Assert.Equal("loaderVersion", Assert.Single(manifest.ModList).Modpacks?.LoaderVar);
+        Assert.All(manifest.ModList, m => Assert.Equal("loaderVersion", m.Modpacks?.LoaderVar));
         Assert.True(ManifestFeatures.UsesModpacks(manifest));
         Assert.False(ManifestFeatures.UsesModpacks(TestManifests.Load("cs2")));
     }

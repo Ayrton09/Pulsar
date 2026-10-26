@@ -87,8 +87,21 @@ public static class DependencyInjection
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
-        // Modrinth's public API (1.0.9): one host, no redirects; it asks applications to name themselves.
-        services.AddScoped<IModrinth, ModrinthClient>();
+        // Mod catalogs (1.0.9). Modrinth's public API: one host, no redirects; it asks applications to name themselves.
+        // CurseForge's: the administrator's own key, encrypted in the database; one host, no redirects.
+        services.AddScoped<IModCatalog, ModrinthClient>();
+        services.AddScoped<CurseForgeClient>();
+        services.AddScoped<IModCatalog>(provider => provider.GetRequiredService<CurseForgeClient>());
+        services.AddScoped<ICurseForgeKeyCheck>(provider => provider.GetRequiredService<CurseForgeClient>());
+        services.AddSingleton<ICatalogKeyProtector, DataProtectionCatalogKeyProtector>();
+        services.AddHttpClient(CurseForgeClient.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(20);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    $"Ayrton09/Pulsar/{PanelUpdates.PanelVersionText} (https://github.com/Ayrton09/Pulsar)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
         services.AddHttpClient(ModrinthClient.ClientName, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(20);

@@ -164,9 +164,9 @@ public static partial class ManifestValidator
         {
             var path = $"mods[{i}]";
             var source = sources[i];
-            if (source.Source != ModSourceDefinition.Modrinth)
+            if (source.Source is not (ModSourceDefinition.Modrinth or ModSourceDefinition.CurseForge))
             {
-                context.Error($"{path}.source", $"Pulsar knows the catalog '{ModSourceDefinition.Modrinth}'.");
+                context.Error($"{path}.source", $"Pulsar knows the catalogs '{ModSourceDefinition.Modrinth}' and '{ModSourceDefinition.CurseForge}'.");
             }
 
             if (!IsVersionVariable(source.VersionVar, context))

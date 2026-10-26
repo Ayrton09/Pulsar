@@ -332,7 +332,7 @@
       "required": ["source", "versionVar", "typeVar", "types"],
       "description": "A catalog of mods (Pulsar 1.0.9): what a server of each type takes from it, and where.",
       "properties": {
-        "source": { "enum": ["modrinth"] },
+        "source": { "enum": ["modrinth", "curseforge"] },
         "versionVar": { "type": "string", "description": "The variable holding the game's version, when the install does not report it." },
         "typeVar": { "type": "string", "description": "The enum variable holding the server's type; each type the catalog serves is a key of 'types'." },
         "types": { "type": "object", "minProperties": 1, "maxProperties": 32, "additionalProperties": { "$ref": "#/$defs/ModTargetDefinition" } },

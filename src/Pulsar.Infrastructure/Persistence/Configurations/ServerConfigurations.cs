@@ -231,7 +231,7 @@ internal sealed class ServerModConfiguration : IEntityTypeConfiguration<ServerMo
         builder.Property(m => m.Name).HasMaxLength(ServerMod.MaxNameLength);
         builder.Property(m => m.VersionNumber).HasMaxLength(ServerMod.MaxVersionLength);
         builder.Property(m => m.Path).HasMaxLength(ServerMod.MaxPathLength);
-        builder.Property(m => m.Sha512).HasMaxLength(128);
+        builder.Property(m => m.Hash).HasMaxLength(128);
         builder.Property(m => m.Requires).HasColumnType("jsonb").HasConversion(
             requires => JsonSerializer.Serialize(requires, (JsonSerializerOptions?)null),
             json => JsonSerializer.Deserialize<List<string>>(json, (JsonSerializerOptions?)null) ?? new List<string>(),
@@ -277,6 +277,17 @@ internal sealed class ServerModpackConfiguration : IEntityTypeConfiguration<Serv
 
         builder.HasOne<Server>().WithMany().HasForeignKey(m => m.ServerId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Operation>().WithMany().HasForeignKey(m => m.OperationId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class ModCatalogSettingsConfiguration : IEntityTypeConfiguration<ModCatalogSettings>
+{
+    public void Configure(EntityTypeBuilder<ModCatalogSettings> builder)
+    {
+        builder.ToTable("mod_catalog_settings", t => t.HasCheckConstraint("ck_mod_catalog_settings_singleton", $"id = {ModCatalogSettings.SingletonId}"));
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property<uint>("Version").IsRowVersion();
     }
 }
 

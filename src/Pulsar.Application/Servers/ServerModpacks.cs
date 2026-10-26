@@ -10,9 +10,11 @@ using Pulsar.Manifests;
 namespace Pulsar.Application.Servers;
 
 /// <summary>A modpack on a server, or on its way.</summary>
+/// <param name="Source">The catalog it comes from: <c>modrinth</c>, <c>curseforge</c>.</param>
 /// <param name="ServerType">The server type it runs on.</param>
 /// <param name="LoaderVersion">The loader's version its index names; null until the node reported it.</param>
 public sealed record ModpackView(
+    string Source,
     string ProjectId,
     string VersionId,
     string Name,
@@ -50,7 +52,8 @@ public sealed partial class ServerMods
     /// <summary>The catalog loaders a pack's index can name (<c>modrinth.index.json</c>'s dependencies).</summary>
     private static readonly HashSet<string> s_modpackLoaders = new(StringComparer.Ordinal) { "fabric", "forge", "neoforge", "quilt" };
 
-    public async Task<Result<ModSearchView>> SearchModpacksAsync(ServerId id, string? query, int offset, CancellationToken cancellationToken)
+    public async Task<Result<ModSearchView>> SearchModpacksAsync(ServerId id, string catalogSource, string? query, int offset,
+        CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -58,10 +61,13 @@ public sealed partial class ServerMods
             return ServerErrors.NotFound;
         }
 
-        if (PackSource(await ManifestAsync(server, cancellationToken)) is not { } source)
+        var packs = await PackCatalogAsync(await ManifestAsync(server, cancellationToken), catalogSource, cancellationToken);
+        if (!packs.IsSuccess)
         {
-            return ModpackErrors.Unsupported;
+            return packs.Error!;
         }
+
+        var (catalog, modSource, source) = packs.Value;
 
         var text = query?.Trim();
         if (text is { Length: > 100 } || text?.Any(char.IsControl) == true)
@@ -71,8 +77,9 @@ public sealed partial class ServerMods
 
         return await CatalogAsync(async () =>
         {
-            var found = await modrinth.SearchAsync(text, "modpack", PackLoaders(source), null, Math.Clamp(offset, 0, 10_000), SearchPageSize, cancellationToken);
-            var installed = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == server.Id && p.State == ServerModpackState.Installed)
+            var found = await catalog.SearchAsync(text, "modpack", PackLoaders(source), null, Math.Clamp(offset, 0, 10_000), SearchPageSize, cancellationToken);
+            var installed = await db.ServerModpacks.AsNoTracking()
+                .Where(p => p.ServerId == server.Id && p.State == ServerModpackState.Installed && p.Source == modSource)
                 .Select(p => p.ProjectId).ToListAsync(cancellationToken);
             return new ModSearchView([.. found.Hits.Select(h => new ModHitView(h.ProjectId, h.Slug, h.Title, h.Description, h.Author, h.Downloads, h.Updated,
                 installed.Contains(h.ProjectId)))], found.Total);
@@ -80,7 +87,8 @@ public sealed partial class ServerMods
     }
 
     /// <summary>The pack's versions for the game's loaders, newest first, each with what it would run on.</summary>
-    public async Task<Result<ModpackVersionList>> ModpackVersionsAsync(ServerId id, string projectId, CancellationToken cancellationToken)
+    public async Task<Result<ModpackVersionList>> ModpackVersionsAsync(ServerId id, string catalogSource, string projectId,
+        CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -89,10 +97,13 @@ public sealed partial class ServerMods
         }
 
         var manifest = await ManifestAsync(server, cancellationToken);
-        if (PackSource(manifest) is not { } source)
+        var packs = await PackCatalogAsync(manifest, catalogSource, cancellationToken);
+        if (!packs.IsSuccess)
         {
-            return ModpackErrors.Unsupported;
+            return packs.Error!;
         }
+
+        var (catalog, modSource, source) = packs.Value;
 
         if (!IsCatalogId(projectId))
         {
@@ -101,10 +112,10 @@ public sealed partial class ServerMods
 
         return await CatalogAsync(async () =>
         {
-            var versions = await modrinth.VersionsAsync(projectId, PackLoaders(source), null, cancellationToken);
+            var versions = await catalog.VersionsAsync(projectId, PackLoaders(source), null, cancellationToken);
             return new ModpackVersionList([.. versions.Take(50).Select(v =>
             {
-                var target = PackTarget(manifest, source, v);
+                var target = PackTarget(manifest, modSource, source, v);
                 return new ModpackVersionView(v.Id, v.Name, v.VersionNumber, v.VersionType, v.Published, v.Loaders, v.GameVersions,
                     target.IsSuccess ? target.Value.ServerType : null, target.IsSuccess ? target.Value.GameVersion : null);
             })]);
@@ -112,7 +123,8 @@ public sealed partial class ServerMods
     }
 
     /// <summary>Installs the pack (its newest version the server can run, a release first, or <paramref name="versionId"/>).</summary>
-    public async Task<Result<ModsView>> InstallModpackAsync(ServerId id, string projectId, string? versionId, CancellationToken cancellationToken)
+    public async Task<Result<ModsView>> InstallModpackAsync(ServerId id, string catalogSource, string projectId, string? versionId,
+        CancellationToken cancellationToken)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -127,12 +139,14 @@ public sealed partial class ServerMods
 
         await SettleModpacksAsync(server.Id, cancellationToken);
         var manifest = await ManifestAsync(server, cancellationToken);
-        if (PackSource(manifest) is not { } source)
+        var packs = await PackCatalogAsync(manifest, catalogSource, cancellationToken);
+        if (!packs.IsSuccess)
         {
-            return ModpackErrors.Unsupported;
+            return packs.Error!;
         }
 
-        var chosen = await CatalogAsync(() => ChooseModpackAsync(manifest, source, projectId, versionId, cancellationToken));
+        var (catalog, modSource, source) = packs.Value;
+        var chosen = await CatalogAsync(() => ChooseModpackAsync(catalog, manifest, modSource, source, projectId, versionId, cancellationToken));
         if (!chosen.IsSuccess)
         {
             return chosen.Error!;
@@ -165,7 +179,7 @@ public sealed partial class ServerMods
         var name = version.Name;
         try
         {
-            name = FirstOf(await modrinth.ProjectsAsync([version.ProjectId], cancellationToken))?.Title ?? name;
+            name = FirstOf(await catalog.ProjectsAsync([version.ProjectId], cancellationToken))?.Title ?? name;
         }
         catch (ModCatalogUnavailableException)
         {
@@ -174,14 +188,16 @@ public sealed partial class ServerMods
 
         var now = clock.GetUtcNow();
         var operation = Operation.Create(OperationType.ModpackInstall, server.NodeId, server.Id, request.UserId, OperationRequester.User, now);
-        var command = new InstallModpackCommand(server.Id.Value, new ModDownload(target.File.FileName, target.File.Url, target.File.Sha512, target.File.Size),
-            target.ServerType, target.Loader, target.GameVersion);
+        var command = new InstallModpackCommand(server.Id.Value, new ModDownload(target.File.FileName, target.File.Url, target.File.Hash, target.File.Size),
+            target.ServerType, target.Loader, target.GameVersion,
+            target.ServerPack is { } serverPack ? new ModDownload(serverPack.FileName, serverPack.Url, serverPack.Hash, serverPack.Size) : null);
         var run = await operations.RunAsync(server, operation, command, beforeSave: () =>
         {
-            db.ServerModpacks.Add(ServerModpack.Installing(server.Id, ModSource.Modrinth, version.ProjectId, version.Id, name, version.VersionNumber,
+            db.ServerModpacks.Add(ServerModpack.Installing(server.Id, modSource, version.ProjectId, version.Id, name, version.VersionNumber,
                 target.ServerType, target.Loader, target.GameVersion, operation.Id, now));
             audit.Record(AuditActions.Server.ModpackInstallRequested, metadata: new
             {
+                source = catalogSource,
                 project = version.ProjectId,
                 version = version.VersionNumber,
                 name,
@@ -206,31 +222,31 @@ public sealed partial class ServerMods
     }
 
     /// <summary>The version asked for, or the pack's newest the server can run (a release first).</summary>
-    private async Task<Result<(ModrinthVersion Version, PackPlan Plan)>> ChooseModpackAsync(GameManifest manifest, ModSourceDefinition source, string projectId,
-        string? versionId, CancellationToken cancellationToken)
+    private static async Task<Result<(CatalogVersion Version, PackPlan Plan)>> ChooseModpackAsync(IModCatalog catalog, GameManifest manifest, ModSource modSource,
+        ModSourceDefinition source, string projectId, string? versionId, CancellationToken cancellationToken)
     {
         if (versionId is not null)
         {
-            var asked = await modrinth.VersionAsync(versionId, cancellationToken);
+            var asked = await catalog.VersionAsync(versionId, cancellationToken);
             if (asked is null || asked.ProjectId != projectId)
             {
                 return ModpackErrors.NoVersion;
             }
 
-            var plan = PackTarget(manifest, source, asked);
+            var plan = PackTarget(manifest, modSource, source, asked);
             return plan.IsSuccess ? (asked, plan.Value) : plan.Error!;
         }
 
-        var versions = await modrinth.VersionsAsync(projectId, PackLoaders(source), null, cancellationToken);
+        var versions = await catalog.VersionsAsync(projectId, PackLoaders(source), null, cancellationToken);
         if (versions.Count == 0)
         {
             return ModpackErrors.NoVersion;
         }
 
-        var installable = versions.Select(v => (Version: v, Plan: PackTarget(manifest, source, v))).Where(p => p.Plan.IsSuccess).ToList();
+        var installable = versions.Select(v => (Version: v, Plan: PackTarget(manifest, modSource, source, v))).Where(p => p.Plan.IsSuccess).ToList();
         if (installable.Count == 0)
         {
-            return PackTarget(manifest, source, versions[0]).Error!; // why the newest cannot be
+            return PackTarget(manifest, modSource, source, versions[0]).Error!; // why the newest cannot be
         }
 
         var best = installable.FirstOrDefault(p => p.Version.VersionType == "release");
@@ -270,7 +286,7 @@ public sealed partial class ServerMods
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
         var loaderVersion = result?.LoaderVersion is { Length: > 0 } reported ? reported : null;
-        if (PackSource(manifest) is { Modpacks: { } modpacks } source)
+        if (PackSource(manifest, SourceName(pack.Source)) is { Modpacks: { } modpacks } source)
         {
             server.SetVariable(source.TypeVar, pack.ServerType, null, now);
             server.SetVariable(source.VersionVar, pack.GameVersion, null, now);
@@ -297,7 +313,10 @@ public sealed partial class ServerMods
     /// <summary>Packs left installing by an operation that ended unheard of take its outcome; those whose operation is gone are dropped.</summary>
     private async Task SettleModpacksAsync(ServerId serverId, CancellationToken cancellationToken)
     {
-        var pending = await db.ServerModpacks.Where(p => p.ServerId == serverId && p.State == ServerModpackState.Installing).ToListAsync(cancellationToken);
+        // Read untracked: the node's report may settle a pack between this read and what follows, which then reads it again
+        // and finds it settled (a tracked copy would be the old one, and settle it again without the report's loader version).
+        var pending = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == serverId && p.State == ServerModpackState.Installing)
+            .ToListAsync(cancellationToken);
         if (pending.Count == 0)
         {
             return;
@@ -311,8 +330,12 @@ public sealed partial class ServerMods
                 : null;
             if (operation is null)
             {
-                db.ServerModpacks.Remove(pack);
-                changed = true;
+                if (await db.ServerModpacks.SingleOrDefaultAsync(p => p.Id == pack.Id && p.State == ServerModpackState.Installing, cancellationToken)
+                    is { } orphan)
+                {
+                    db.ServerModpacks.Remove(orphan);
+                    changed = true;
+                }
             }
             else if (!operation.IsActive)
             {
@@ -339,13 +362,15 @@ public sealed partial class ServerMods
     }
 
     /// <param name="ServerType">The option of the server type variable the pack runs on.</param>
-    private sealed record PackPlan(string ServerType, string Loader, string GameVersion, ModrinthFile File);
+    /// <param name="ServerPack">A CurseForge pack's server files (null for a Modrinth pack).</param>
+    private sealed record PackPlan(string ServerType, string Loader, string GameVersion, CatalogFile File, CatalogFile? ServerPack);
 
     /// <summary>
     /// What a version of a pack runs on: the first of its loaders one of the game's mod types runs (in the manifest's order),
-    /// the single game version it names (one the server's variable takes), and its <c>.mrpack</c> on Modrinth's CDN.
+    /// the single game version it names (one the server's variable takes), and its file: a Modrinth <c>.mrpack</c>, or a
+    /// CurseForge pack's zip with the server files its author publishes beside it.
     /// </summary>
-    private static Result<PackPlan> PackTarget(GameManifest manifest, ModSourceDefinition source, ModrinthVersion version)
+    private static Result<PackPlan> PackTarget(GameManifest manifest, ModSource modSource, ModSourceDefinition source, CatalogVersion version)
     {
         var type = source.Types.Where(t => t.Value.ProjectType == "mod")
             .SelectMany(t => t.Value.Loaders.Where(l => s_modpackLoaders.Contains(l) && version.Loaders.Contains(l)).Select(l => (Type: t.Key, Loader: l)))
@@ -363,16 +388,41 @@ public sealed partial class ServerMods
         }
 
         var file = version.Files.FirstOrDefault(f => f.Primary) ?? FirstOf(version.Files);
-        if (file is null || !file.FileName.EndsWith(".mrpack", StringComparison.OrdinalIgnoreCase) || file.Sha512.Length != 128
-            || !file.Sha512.All(char.IsAsciiHexDigit))
+        var extension = modSource == ModSource.CurseForge ? ".zip" : ".mrpack";
+        if (file is null || !file.FileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase) || !IsHash(file.Hash))
+        {
+            return version.DistributionForbidden ? ModErrors.DistributionForbidden(version.Name) : ModpackErrors.FileInvalid;
+        }
+
+        if (modSource == ModSource.CurseForge && version.ServerPack is not { } serverPack)
+        {
+            return ModpackErrors.NoServerPack;
+        }
+
+        var server = version.ServerPack;
+        if (server is not null && (!server.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || !IsHash(server.Hash)))
         {
             return ModpackErrors.FileInvalid;
         }
 
-        return new PackPlan(type.Type, type.Loader, gameVersion, file with { Sha512 = file.Sha512.ToLowerInvariant() });
+        return new PackPlan(type.Type, type.Loader, gameVersion, file with { Hash = file.Hash.ToLowerInvariant() },
+            server is null ? null : server with { Hash = server.Hash.ToLowerInvariant() });
     }
 
-    private static ModSourceDefinition? PackSource(GameManifest manifest) => manifest.ModList.FirstOrDefault(s => s.Modpacks is not null);
+    /// <summary>The catalog asked for, if the game's manifest takes its modpacks and the panel can ask it.</summary>
+    private async Task<Result<(IModCatalog Catalog, ModSource Source, ModSourceDefinition Definition)>> PackCatalogAsync(GameManifest manifest, string source,
+        CancellationToken cancellationToken)
+    {
+        if (PackSource(manifest, source) is not { } definition || catalogs.For(source) is not { } catalog || SourceOf(source) is not { } modSource)
+        {
+            return ModpackErrors.Unsupported;
+        }
+
+        return await catalog.IsConfiguredAsync(cancellationToken) ? (catalog, modSource, definition) : ModErrors.CatalogNotConfigured;
+    }
+
+    private static ModSourceDefinition? PackSource(GameManifest manifest, string source) =>
+        manifest.ModList.FirstOrDefault(s => s.Source == source && s.Modpacks is not null);
 
     /// <summary>The loaders of the game's mod types that packs can be made for.</summary>
     private static List<string> PackLoaders(ModSourceDefinition source) =>
@@ -380,6 +430,6 @@ public sealed partial class ServerMods
 
     private static ModpackView? ModpackViewOf(ServerModpack? pack) => pack is null
         ? null
-        : new ModpackView(pack.ProjectId, pack.VersionId, pack.Name, pack.VersionNumber, pack.ServerType, pack.Loader, pack.GameVersion, pack.LoaderVersion,
+        : new ModpackView(SourceName(pack.Source), pack.ProjectId, pack.VersionId, pack.Name, pack.VersionNumber, pack.ServerType, pack.Loader, pack.GameVersion, pack.LoaderVersion,
             pack.InstalledAt);
 }

@@ -437,6 +437,10 @@
         "settings_changed": "毎日のアップデート確認を変更",
         "requested": "ノードにPulsarの更新を要求",
         "finished": "ノードがPulsarの更新を完了"
+      },
+      "mod_catalogs": {
+        "curseforge_key_set": "CurseForge API キーを設定",
+        "curseforge_key_removed": "CurseForge API キーを削除"
       }
     }
   },
@@ -488,7 +492,11 @@
       "checksum_mismatch": "ダウンロードしたファイルが Modrinth の公開したものと違うため、何も変更していません: {{detail}}",
       "file_exists": "パネルが置いたものではない同じ名前のファイルがすでにあります。先に削除するか名前を変えてください。{{detail}}",
       "untrusted_host": "Pulsar はそのサイトから Mod をダウンロードしません: {{detail}}",
-      "write_failed": "すべての Mod を書き込めませんでした: {{detail}}"
+      "write_failed": "すべての Mod を書き込めませんでした: {{detail}}",
+      "catalog_not_configured": "CurseForge には API キーが必要です。管理者が「ゲーム」で設定します。",
+      "distribution_forbidden": "作者は CurseForge のサイトからのダウンロードのみ許可しています。そこでダウンロードし、ファイルマネージャーでアップロードしてください。{{detail}}",
+      "curseforge_key_invalid": "CurseForge API キーは 256 文字以内の表示可能な文字の 1 行です。",
+      "curseforge_key_rejected": "CurseForge はその API キーを受け付けません。"
     },
     "modpack": {
       "unsupported": "このサーバーには Modpack をインストールできません: {{detail}}",
@@ -504,7 +512,8 @@
       "disk_full": "ノードに Modpack 用の空き容量が足りません: {{detail}}",
       "download_failed": "Modpack をダウンロードできませんでした: {{detail}}",
       "checksum_mismatch": "ダウンロードしたファイルが Modpack の記載と違うため、何も変更していません: {{detail}}",
-      "write_failed": "Modpack をすべて書き込めませんでした: {{detail}}"
+      "write_failed": "Modpack をすべて書き込めませんでした: {{detail}}",
+      "no_server_pack": "この Modpack の作者は、このバージョンのサーバーファイルを CurseForge で公開していません。"
     },
     "api_key": {
       "name_invalid": "キーの名前は1行、64文字以内で入力してください。",
@@ -1570,7 +1579,6 @@
       }
     },
     "catalog": {
-      "title": "Modrinth",
       "searchMods": "Mod を検索",
       "searchPlugins": "プラグインを検索",
       "empty": "このサーバーの種類とゲームバージョンに合うものは見つかりませんでした。",
@@ -1588,7 +1596,7 @@
       "runsOn": "Minecraft {{gameVersion}} 上の {{loader}} {{loaderVersion}}",
       "installedAt": "{{when}} にインストール",
       "search": "Modpack を検索",
-      "installConfirm": "{{server}} に {{name}} をインストールしますか？サーバーはパックの種類と Minecraft バージョンで再インストールされ、前のパックの Mod は置き換わります。先にバックアップしてください。",
+      "installConfirm": "{{server}} に {{name}} をインストールしますか？サーバーはパックの種類と Minecraft バージョンで再インストールされ、前のパックのファイルは設定も含めて置き換わります（自分のファイルは残ります）。先にバックアップしてください。",
       "versionsHint": "各バージョンには動作環境が表示されます。インストールすると、その種類と Minecraft バージョンでサーバーが再インストールされます。",
       "versionRunsOn": "Minecraft {{gameVersion}} 上の {{loader}}",
       "notForServer": "このサーバー向けではありません（{{loaders}}、{{gameVersions}}）",
@@ -1602,7 +1610,27 @@
     "refused": {
       "required_by": "{{others}} が {{name}} を必要としています。先にそちらを削除してください。"
     },
-    "removeConfirm": "{{server}} から {{name}} を削除しますか？ファイルは削除されますが、設定ファイルと必要としていた Mod は残ります。"
+    "removeConfirm": "{{server}} から {{name}} を削除しますか？ファイルは削除されますが、設定ファイルと必要としていた Mod は残ります。",
+    "catalogs": {
+      "label": "カタログ",
+      "modrinth": "Modrinth",
+      "curseforge": "CurseForge",
+      "needsKey": "CurseForge には API キーが必要です。",
+      "setKey": "「ゲーム」で設定",
+      "needsKeyAskAdmin": "CurseForge には API キーが必要です。管理者に設定を依頼してください。"
+    },
+    "curseForgeKey": {
+      "title": "CurseForge",
+      "hint": "自分の API キーを設定すると、サーバーの Mod タブで CurseForge も検索できます（規約でキーの共有は禁止されています）。Pulsar はキーを CurseForge で確認し、暗号化して保存し、二度と表示しません。ノードに渡ることもありません。キーの取得先:",
+      "configured": "設定済み",
+      "missing": "未設定",
+      "label": "CurseForge API キー",
+      "replace": "CurseForge API キーを置き換える",
+      "save": "キーを保存",
+      "remove": "キーを削除",
+      "removeConfirm": "CurseForge API キーを削除しますか？サーバーの Mod タブで CurseForge を検索できなくなります。そこからインストールしたものは残ります。",
+      "saved": "CurseForge がキーを受け付け、保存しました。"
+    }
   },
   "backups": {
     "title": "バックアップ",

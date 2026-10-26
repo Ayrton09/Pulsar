@@ -6,6 +6,7 @@ namespace Pulsar.Domain.Servers;
 public enum ModSource
 {
     Modrinth,
+    CurseForge,
 }
 
 public enum ServerModState
@@ -40,12 +41,12 @@ public sealed class ServerMod
         Name = null!;
         VersionNumber = null!;
         Path = null!;
-        Sha512 = null!;
+        Hash = null!;
         Requires = null!;
     }
 
     private ServerMod(ServerId serverId, ModSource source, string projectId, string versionId, string name, string versionNumber, string path,
-        string sha512, long size, bool dependency, IReadOnlyList<string> requires, OperationId operation, DateTimeOffset now)
+        string hash, long size, bool dependency, IReadOnlyList<string> requires, OperationId operation, DateTimeOffset now)
     {
         Id = ServerModId.New();
         ServerId = serverId;
@@ -55,7 +56,7 @@ public sealed class ServerMod
         Name = name;
         VersionNumber = versionNumber;
         Path = path;
-        Sha512 = sha512;
+        Hash = hash;
         Size = size;
         Dependency = dependency;
         Requires = requires;
@@ -85,8 +86,8 @@ public sealed class ServerMod
     /// <summary>The file in the server's folder (<c>mods/lithium-fabric-0.18.1.jar</c>).</summary>
     public string Path { get; private set; }
 
-    /// <summary>The catalog's SHA-512 of the file, lowercase hex: how its updates are looked up.</summary>
-    public string Sha512 { get; private set; }
+    /// <summary>The catalog's checksum of the file, lowercase hex: SHA-512 (Modrinth's, how its updates are looked up) or SHA-1 (CurseForge's).</summary>
+    public string Hash { get; private set; }
 
     public long Size { get; private set; }
 
@@ -107,14 +108,14 @@ public sealed class ServerMod
 
     /// <summary>A file an operation is about to put on the server.</summary>
     public static ServerMod Installing(ServerId serverId, ModSource source, string projectId, string versionId, string name, string versionNumber,
-        string path, string sha512, long size, bool dependency, IReadOnlyList<string> requires, OperationId operation, DateTimeOffset now)
+        string path, string hash, long size, bool dependency, IReadOnlyList<string> requires, OperationId operation, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrEmpty(projectId);
         ArgumentException.ThrowIfNullOrEmpty(versionId);
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(requires);
         return new ServerMod(serverId, source, Cut(projectId, MaxIdLength), Cut(versionId, MaxIdLength), Cut(name, MaxNameLength),
-            Cut(versionNumber, MaxVersionLength), path, sha512, size, dependency, [.. requires.Take(MaxRequires).Select(r => Cut(r, MaxIdLength))], operation,
+            Cut(versionNumber, MaxVersionLength), path, hash, size, dependency, [.. requires.Take(MaxRequires).Select(r => Cut(r, MaxIdLength))], operation,
             now);
     }
 

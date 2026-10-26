@@ -146,6 +146,13 @@ public static class AuditActions
         public const string SettingsChanged = "appearance.settings_changed";
     }
 
+    /// <summary>Mod catalogs' settings (Pulsar 1.0.9): the administrator's CurseForge key, never in the entry.</summary>
+    public static class ModCatalogs
+    {
+        public const string CurseForgeKeySet = "mod_catalogs.curseforge_key_set";
+        public const string CurseForgeKeyRemoved = "mod_catalogs.curseforge_key_removed";
+    }
+
     /// <summary>Updates of Pulsar from its releases (Phase 19).</summary>
     public static class Updates
     {

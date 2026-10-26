@@ -35,6 +35,8 @@ The template's `mods` section takes plugins from Modrinth on Paper (`paper`, `sp
 
 Modrinth's modpacks (`.mrpack`) install too (`modpacks`, `loaderVersion`): a pack for Fabric, Forge or NeoForge installs the server again as that type, its Minecraft version and the loader version its index names, then its server files and overrides (doc 04, "Modpacks"). Quilt packs are not offered.
 
+CurseForge is the second catalog (`curseforge`): mods by its loader types, Bukkit plugins on Paper and Purpur, and modpacks through the server files their authors publish. It needs the administrator's own API key, set on the Games page.
+
 ## Options added in 1.0.8
 
 Max tick time, signed chat keys, world border radius, entity range, pause when empty, and the resource pack (URL, SHA-1, required, message), in `server.properties`. The description of `pvp` now says it only applies to 1.21.8 and older: newer versions moved it to a game rule that Pulsar cannot patch.

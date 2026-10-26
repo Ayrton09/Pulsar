@@ -40,6 +40,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ServerModpack> ServerModpacks => Set<ServerModpack>();
 
+    public DbSet<ModCatalogSettings> ModCatalogSettings => Set<ModCatalogSettings>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     public DbSet<Node> Nodes => Set<Node>();

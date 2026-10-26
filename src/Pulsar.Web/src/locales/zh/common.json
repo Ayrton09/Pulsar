@@ -437,6 +437,10 @@
         "settings_changed": "更改了每日更新检查",
         "requested": "请求节点更新 Pulsar",
         "finished": "节点已完成 Pulsar 更新"
+      },
+      "mod_catalogs": {
+        "curseforge_key_set": "设置了 CurseForge API 密钥",
+        "curseforge_key_removed": "移除了 CurseForge API 密钥"
       }
     }
   },
@@ -488,7 +492,11 @@
       "checksum_mismatch": "下载的文件不是 Modrinth 公布的文件，因此没有做任何更改：{{detail}}",
       "file_exists": "已有一个同名文件，不是面板放的：请先删除或重命名它。{{detail}}",
       "untrusted_host": "Pulsar 不从该网站下载模组：{{detail}}",
-      "write_failed": "无法写入所有模组：{{detail}}"
+      "write_failed": "无法写入所有模组：{{detail}}",
+      "catalog_not_configured": "CurseForge 需要 API 密钥：由管理员在“游戏”中设置。",
+      "distribution_forbidden": "作者只允许从 CurseForge 网站下载：请在那里下载，再用文件管理器上传。{{detail}}",
+      "curseforge_key_invalid": "CurseForge API 密钥是一行不超过 256 个可见字符。",
+      "curseforge_key_rejected": "CurseForge 不接受该 API 密钥。"
     },
     "modpack": {
       "unsupported": "此服务器无法安装整合包：{{detail}}",
@@ -504,7 +512,8 @@
       "disk_full": "节点没有足够的可用空间来安装整合包：{{detail}}",
       "download_failed": "无法下载整合包：{{detail}}",
       "checksum_mismatch": "下载的文件不是整合包列出的文件，因此没有做任何更改：{{detail}}",
-      "write_failed": "无法写入整个整合包：{{detail}}"
+      "write_failed": "无法写入整个整合包：{{detail}}",
+      "no_server_pack": "该整合包的作者没有在 CurseForge 上发布此版本的服务器文件。"
     },
     "api_key": {
       "name_invalid": "请为密钥取一个单行名称，最多 64 个字符。",
@@ -1570,7 +1579,6 @@
       }
     },
     "catalog": {
-      "title": "Modrinth",
       "searchMods": "搜索模组",
       "searchPlugins": "搜索插件",
       "empty": "没有找到适合此服务器类型和游戏版本的内容。",
@@ -1588,7 +1596,7 @@
       "runsOn": "Minecraft {{gameVersion}} 上的 {{loader}} {{loaderVersion}}",
       "installedAt": "安装于 {{when}}",
       "search": "搜索整合包",
-      "installConfirm": "在 {{server}} 上安装 {{name}}？服务器会按该包的类型和 Minecraft 版本重新安装，上一个整合包的模组会被替换。请先备份。",
+      "installConfirm": "在 {{server}} 上安装 {{name}}？服务器会按该包的类型和 Minecraft 版本重新安装，上一个整合包的文件（包括其配置）会被替换（你自己的文件会保留）。请先备份。",
       "versionsHint": "每个版本都注明运行环境；安装后会按其类型和 Minecraft 版本重新安装服务器。",
       "versionRunsOn": "Minecraft {{gameVersion}} 上的 {{loader}}",
       "notForServer": "不适用于此服务器（{{loaders}}，{{gameVersions}}）",
@@ -1602,7 +1610,27 @@
     "refused": {
       "required_by": "{{others}} 需要 {{name}}：请先移除它。"
     },
-    "removeConfirm": "从 {{server}} 移除 {{name}}？它的文件会被删除；它的配置文件和它需要的模组会保留。"
+    "removeConfirm": "从 {{server}} 移除 {{name}}？它的文件会被删除；它的配置文件和它需要的模组会保留。",
+    "catalogs": {
+      "label": "目录",
+      "modrinth": "Modrinth",
+      "curseforge": "CurseForge",
+      "needsKey": "CurseForge 需要 API 密钥。",
+      "setKey": "在“游戏”中设置",
+      "needsKeyAskAdmin": "CurseForge 需要 API 密钥：请管理员设置。"
+    },
+    "curseForgeKey": {
+      "title": "CurseForge",
+      "hint": "使用你自己的 API 密钥后，服务器的“模组”页也会搜索 CurseForge（其条款禁止共享密钥）。Pulsar 会向 CurseForge 验证密钥，加密保存且不再显示；节点永远不会收到它。在此获取：",
+      "configured": "已设置",
+      "missing": "未设置",
+      "label": "CurseForge API 密钥",
+      "replace": "替换 CurseForge API 密钥",
+      "save": "保存密钥",
+      "remove": "移除密钥",
+      "removeConfirm": "移除 CurseForge API 密钥？服务器的“模组”页将不再搜索 CurseForge；已从那里安装的内容会保留。",
+      "saved": "CurseForge 接受了该密钥，已保存。"
+    }
   },
   "backups": {
     "title": "备份",

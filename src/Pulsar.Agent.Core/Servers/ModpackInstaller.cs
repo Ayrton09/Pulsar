@@ -9,14 +9,16 @@ using Pulsar.Manifests;
 namespace Pulsar.Agent.Core.Servers;
 
 /// <summary>
-/// Installs a Modrinth modpack (<see cref="InstallModpackCommand"/>, Pulsar 1.0.9; docs/architecture/04, "Modpacks") in
-/// two steps. <see cref="PrepareAsync"/> changes nothing on the server: it downloads the pack from Modrinth's CDN, checks
-/// its SHA-512, reads its index (<c>modrinth.index.json</c>), which must name the game version and loader the panel chose,
+/// Installs a modpack (<see cref="InstallModpackCommand"/>, Pulsar 1.0.9; docs/architecture/04, "Modpacks") in two steps.
+/// <see cref="PrepareAsync"/> changes nothing on the server. For a Modrinth pack it downloads the <c>.mrpack</c>, checks its
+/// checksum, reads its index (<c>modrinth.index.json</c>), which must name the game version and loader the panel chose,
 /// and downloads every file the index lists for servers, each from a host the format allows and checked against its
-/// SHA-512, into a folder of the agent's own. Once the game's install steps have put in the pack's loader,
-/// <see cref="Apply"/> deletes the previous pack's files, writes the new ones and then the pack's overrides
-/// (<c>overrides/</c>, then <c>server-overrides/</c>), and records what it wrote in <c>.pulsar/modpack.json</c>.
-/// Every path is a plain relative one outside Pulsar's folder; sizes and counts are bounded.
+/// SHA-512, into a folder of the agent's own. For a CurseForge pack it reads the pack's <c>manifest.json</c> for the game
+/// version and loader the same way, and takes its files from the server pack its author publishes (checked against
+/// CurseForge's SHA-1), not from the pack's list, which holds mods for players' games too. Once the game's install steps
+/// have put in the pack's loader, <see cref="Apply"/> deletes the previous pack's files, writes the new ones and records
+/// what it wrote in <c>.pulsar/modpack.json</c>. Every path is a plain relative one outside Pulsar's folder; sizes and
+/// counts are bounded.
 /// </summary>
 public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler handler)
 {
@@ -33,13 +35,24 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
 
     private const long MaximumIndex = 8 * 1024 * 1024;
     private const string IndexName = "modrinth.index.json";
+    private const string ManifestName = "manifest.json";
     private const int MaximumNameLength = 64;
 
     /// <summary>Room left on the agent's drive after the pack and its files are downloaded there.</summary>
     private const long FreeSpaceMargin = 1024L * 1024 * 1024;
 
-    // The pack comes from Modrinth's CDN only.
-    private static readonly HashSet<string> s_packHosts = new(StringComparer.OrdinalIgnoreCase) { "cdn.modrinth.com" };
+    // The pack comes from its catalog's CDN only: Modrinth's, or CurseForge's (whose edge redirects to its file host).
+    private static readonly HashSet<string> s_packHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cdn.modrinth.com", "edge.forgecdn.net", "mediafilez.forgecdn.net",
+    };
+
+    // A server pack's scripts and programs: Pulsar starts the game itself, and never runs what a pack brings.
+    private static readonly HashSet<string> s_skippedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".bat", ".cmd", ".sh", ".ps1", ".psm1", ".psd1", ".ps1xml", ".exe", ".com", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta", ".command",
+        ".msi", ".msp", ".scr", ".lnk", ".pif", ".cpl", ".reg", ".scf", ".dll",
+    };
 
     // Its files, from the hosts the .mrpack format allows (GitHub's downloads redirect to its asset hosts).
     private static readonly HashSet<string> s_fileHosts = new(StringComparer.OrdinalIgnoreCase)
@@ -63,29 +76,36 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
     };
 
     /// <summary>Downloads and checks the pack and its files; nothing on the server changes.</summary>
-    /// <param name="loaderVersionError">Why the index's loader version is not one the server's variable takes, or null.</param>
+    /// <param name="serverPack">A CurseForge pack's server files; null for a Modrinth pack.</param>
+    /// <param name="loaderVersionError">Why the pack's loader version is not one the server's variable takes, or null.</param>
     /// <exception cref="GameProcessException">With a <c>modpack.*</c> code.</exception>
-    public async Task<PreparedModpack> PrepareAsync(ModDownload pack, string loader, string gameVersion, Func<string, string?> loaderVersionError,
-        Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    public async Task<PreparedModpack> PrepareAsync(ModDownload pack, ModDownload? serverPack, string loader, string gameVersion,
+        Func<string, string?> loaderVersionError, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentNullException.ThrowIfNull(loaderVersionError);
         ArgumentNullException.ThrowIfNull(progress);
-        if (pack.Size is < 0 or > MaximumSize || pack.Sha512 is not { Length: 128 } sha512 || !sha512.All(char.IsAsciiHexDigit)
-            || IndexLoader(loader) is not { } loaderKey)
+        if (pack.Size is < 0 or > MaximumSize || pack.Algorithm is not { } algorithm || IndexLoader(loader) is not { } loaderKey
+            || (serverPack is not null && (serverPack.Size is < 0 or > MaximumSize || serverPack.Algorithm is null)))
         {
-            throw Failed("modpack.invalid", "The modpack has no SHA-512, is larger than Pulsar installs, or is for a loader Pulsar does not know.");
+            throw Failed("modpack.invalid", "The modpack has no checksum, is larger than Pulsar installs, or is for a loader Pulsar does not know.");
         }
 
-        EnsureSpace(pack.Size);
+        EnsureSpace(pack.Size + (serverPack?.Size ?? 0));
         var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
         var prepared = new PreparedModpack(http);
         try
         {
             var packs = new VerifiedDownloader(http, s_packHosts, "modpack", "modpacks") { StallTimeout = StallTimeout };
-            prepared.Pack = await Download(() => packs.DownloadAsync(VerifiedDownloader.Https(pack.Url, "modpack"), HashAlgorithmName.SHA512, sha512,
+            prepared.Pack = await Download(() => packs.DownloadAsync(VerifiedDownloader.Https(pack.Url, "modpack"), algorithm, pack.Hash,
                 percent => progress(Steam.InstallStages.Downloading, percent / 10), cancellationToken, MaximumSize));
             prepared.Archive = new ZipArchive(prepared.Pack, ZipArchiveMode.Read);
+            if (serverPack is not null)
+            {
+                await PrepareServerPackAsync(prepared, packs, serverPack, loader, gameVersion, loaderVersionError, progress, cancellationToken);
+                return prepared;
+            }
+
             var index = ReadIndex(prepared.Archive);
             prepared.Name = Name(index.Name);
             prepared.LoaderVersion = CheckDependencies(index, loaderKey, gameVersion, loaderVersionError);
@@ -125,6 +145,98 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
     }
 
     /// <summary>
+    /// A CurseForge pack: its <c>manifest.json</c> must name the game version and loader the panel chose (and the loader's
+    /// version); its files are the server pack's, unpacked from its one top folder when it has one, without scripts or programs.
+    /// </summary>
+    private static async Task PrepareServerPackAsync(PreparedModpack prepared, VerifiedDownloader packs, ModDownload serverPack, string loader,
+        string gameVersion, Func<string, string?> loaderVersionError, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    {
+        var manifest = ReadManifest(prepared.Archive!);
+        prepared.Name = Name(manifest.Name);
+        if (manifest.Minecraft?.Version != gameVersion)
+        {
+            throw Failed("modpack.mismatch", $"The modpack is for Minecraft {manifest.Minecraft?.Version ?? "(none named)"}, not {gameVersion}.");
+        }
+
+        // CurseForge names a loader with its version: forge-47.2.0, neoforge-21.1.72, fabric-0.16.10.
+        var loaders = manifest.Minecraft.ModLoaders ?? [];
+        var primary = loaders.FirstOrDefault(l => l?.Primary == true) ?? (loaders.Count == 1 ? loaders[0] : null);
+        var prefix = $"{loader}-";
+        if (primary?.Id is not { } id || !id.StartsWith(prefix, StringComparison.Ordinal) || loaderVersionError(id[prefix.Length..]) is not null)
+        {
+            throw Failed("modpack.mismatch", $"The modpack names no version of {loader} the server takes.");
+        }
+
+        prepared.LoaderVersion = id[prefix.Length..];
+        prepared.ServerPack = await Download(() => packs.DownloadAsync(VerifiedDownloader.Https(serverPack.Url, "modpack"), serverPack.Algorithm!.Value,
+            serverPack.Hash, percent => progress(Steam.InstallStages.Downloading, 10 + percent * 0.9), cancellationToken, MaximumSize));
+        prepared.ServerArchive = new ZipArchive(prepared.ServerPack, ZipArchiveMode.Read);
+        prepared.Overrides = ServerPackFiles(prepared.ServerArchive);
+    }
+
+    private static CurseForgeManifest ReadManifest(ZipArchive archive)
+    {
+        var entry = archive.GetEntry(ManifestName);
+        if (entry is null || entry.Length > MaximumIndex)
+        {
+            throw Failed("modpack.invalid", $"The modpack has no {ManifestName}, or a larger one than Pulsar reads.");
+        }
+
+        try
+        {
+            using var content = BoundedEntryStream.Open(entry);
+            var manifest = JsonSerializer.Deserialize<CurseForgeManifest>(content, s_json);
+            return manifest is { ManifestType: "minecraftModpack", ManifestVersion: 1, Minecraft: not null }
+                ? manifest
+                : throw Failed("modpack.invalid", "The modpack's manifest is not one of a Minecraft modpack in version 1.");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
+        {
+            throw Failed("modpack.invalid", $"The modpack's manifest cannot be read: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// A server pack's files: under its one top folder when every file is in the same one (most are zipped so), else as
+    /// they are; scripts and programs left out; checked as the overrides of a Modrinth pack are.
+    /// </summary>
+    private static List<(string Path, ZipArchiveEntry Entry)> ServerPackFiles(ZipArchive archive)
+    {
+        var files = archive.Entries.Where(e => !e.FullName.Replace('\\', '/').EndsWith('/')).ToList();
+        var names = files.Select(e => e.FullName.Replace('\\', '/')).ToList();
+        var top = names.Count > 0 && names.All(n => n.Contains('/', StringComparison.Ordinal))
+            && names.Select(n => n[..n.IndexOf('/', StringComparison.Ordinal)]).Distinct(StringComparer.Ordinal).Count() == 1
+                ? names[0][..(names[0].IndexOf('/', StringComparison.Ordinal) + 1)]
+                : "";
+        var chosen = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < files.Count; i++)
+        {
+            var path = names[i][top.Length..];
+            if (s_skippedExtensions.Contains(Path.GetExtension(path)))
+            {
+                continue;
+            }
+
+            if (!IsPackPath(path) || !chosen.TryAdd(path, files[i]))
+            {
+                throw Failed("modpack.unsafe_path", $"The server pack has a file Pulsar does not write: '{files[i].FullName}'.");
+            }
+        }
+
+        if (chosen.Count == 0)
+        {
+            throw Failed("modpack.invalid", "The server pack has no files.");
+        }
+
+        if (chosen.Count > MaximumOverrides || chosen.Values.Sum(e => e.Length) > MaximumSize)
+        {
+            throw Failed("modpack.too_large", "The server pack is larger than Pulsar installs.");
+        }
+
+        return [.. chosen.Select(p => (p.Key, p.Value))];
+    }
+
+    /// <summary>
     /// Puts the prepared pack on the server, after its loader was installed: the previous pack's files are deleted (those
     /// the new one does not have), then its files and overrides are written. Returns how many files were written.
     /// </summary>
@@ -132,7 +244,8 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
     public int Apply(string serverDirectory, PreparedModpack prepared)
     {
         ArgumentNullException.ThrowIfNull(prepared);
-        var current = prepared.Files.Select(f => f.Path).ToList();
+        // All it writes is the pack's: its files and its overrides go when another pack takes its place.
+        var current = prepared.Files.Select(f => f.Path).Concat(prepared.Overrides.Select(o => o.Path)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var previous = ReadRecord(serverDirectory);
         try
         {
@@ -365,6 +478,12 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
     private sealed record IndexHashes(string? Sha1, string? Sha512);
 
     private sealed record IndexEnv(string? Client, string? Server);
+
+    private sealed record CurseForgeManifest(string? ManifestType, int ManifestVersion, string? Name, CurseForgeMinecraft? Minecraft);
+
+    private sealed record CurseForgeMinecraft(string? Version, List<CurseForgeLoader?>? ModLoaders);
+
+    private sealed record CurseForgeLoader(string? Id, bool Primary);
 }
 
 /// <summary>A modpack downloaded and checked (<see cref="ModpackInstaller.PrepareAsync"/>): its files wait in a folder of the agent's own.</summary>
@@ -383,6 +502,11 @@ public sealed class PreparedModpack : IDisposable
 
     internal ZipArchive? Archive { get; set; }
 
+    /// <summary>A CurseForge pack's server files.</summary>
+    internal FileStream? ServerPack { get; set; }
+
+    internal ZipArchive? ServerArchive { get; set; }
+
     internal string? Staging { get; set; }
 
     internal List<(string Path, string Staged)> Files { get; } = [];
@@ -395,6 +519,8 @@ public sealed class PreparedModpack : IDisposable
     {
         Archive?.Dispose();
         Pack?.Dispose();
+        ServerArchive?.Dispose();
+        ServerPack?.Dispose();
         _http.Dispose();
         if (Staging is not null)
         {

@@ -56,6 +56,7 @@ function details(changes: Partial<Schemas['ServerSummary']> = {}, hasMods = true
 
 const fabricApi: Schemas['ServerModView'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',
+  source: 'modrinth',
   projectId: 'P7dR8mSH',
   versionId: 'fapi0130',
   name: 'Fabric API',
@@ -70,6 +71,7 @@ const fabricApi: Schemas['ServerModView'] = {
 
 const lithium: Schemas['ServerModView'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c2',
+  source: 'modrinth',
   projectId: 'gvQqBUqZ',
   versionId: 'lith0181',
   name: 'Lithium',
@@ -85,7 +87,8 @@ const lithium: Schemas['ServerModView'] = {
 function mods(installed: Schemas['ServerModView'][], changes: Partial<Schemas['ModsView']> = {}): Schemas['ModsView'] {
   return {
     supported: true,
-    catalog: 'modrinth',
+    catalogs: ['modrinth'],
+    catalogsNeedingKey: [],
     projectType: 'mod',
     folder: 'mods',
     loaders: ['fabric'],
@@ -238,7 +241,7 @@ describe('mods from the catalog', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Sodium' })).not.toBeInTheDocument());
 
     await userEvent.click(within(hit('FerriteCore')).getByRole('button', { name: 'Install' }));
-    await waitFor(() => expect(installs).toEqual([{ projectId: 'uXXizFIs', versionId: null }]));
+    await waitFor(() => expect(installs).toEqual([{ projectId: 'uXXizFIs', versionId: null, source: 'modrinth' }]));
   });
 
   it('marks what the server has from its own list, and installs a chosen version', async () => {
@@ -286,7 +289,9 @@ describe('mods from the catalog', () => {
     expect(within(dialog).getByText('Beta')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Install this one' }));
 
-    await waitFor(() => expect(installs).toEqual([{ projectId: 'gvQqBUqZ', versionId: 'lith0190' }]));
+    await waitFor(() =>
+      expect(installs).toEqual([{ projectId: 'gvQqBUqZ', versionId: 'lith0190', source: 'modrinth' }]),
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
@@ -441,6 +446,7 @@ describe('mods from the catalog', () => {
   it('shows the modpack on the server, and installs another one after asking', async () => {
     const installs: unknown[] = [];
     const pack: Schemas['ModpackView'] = {
+      source: 'modrinth',
       projectId: 'fo1Zw7tY',
       versionId: 'pv1',
       name: 'Simply Optimized',
@@ -514,15 +520,16 @@ describe('mods from the catalog', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true);
     await userEvent.click(within(hit('Cobblemon Pack')).getByRole('button', { name: 'Install' }));
     expect(confirm).toHaveBeenCalledWith(
-      "Install Cobblemon Pack on Survival? The server is installed again as the pack's type and Minecraft version, and the previous pack's mods are replaced. Back the server up first.",
+      "Install Cobblemon Pack on Survival? The server is installed again as the pack's type and Minecraft version, and the previous pack's files are replaced, its configuration included (your own files stay). Back the server up first.",
     );
     expect(installs).toEqual([]);
     await userEvent.click(within(hit('Cobblemon Pack')).getByRole('button', { name: 'Install' }));
-    await waitFor(() => expect(installs).toEqual([{ projectId: 'packB', versionId: null }]));
+    await waitFor(() => expect(installs).toEqual([{ projectId: 'packB', versionId: null, source: 'modrinth' }]));
   });
 
   it('offers modpacks on a server whose type takes no mods, and waits for one being installed', async () => {
     const installing: Schemas['ModpackView'] = {
+      source: 'modrinth',
       projectId: 'packB',
       versionId: 'cb2',
       name: 'Cobblemon Pack',
@@ -557,6 +564,59 @@ describe('mods from the catalog', () => {
     expect(screen.queryByRole('searchbox', { name: 'Search mods' })).not.toBeInTheDocument();
     await screen.findByRole('heading', { name: 'Sodium' });
     expect(within(hit('Sodium')).getByRole('button', { name: 'Install' })).toBeDisabled();
+  });
+
+  it('searches CurseForge when chosen, and links to its pages', async () => {
+    const searched: string[] = [];
+    const installs: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () => json(mods([fabricApi], { catalogs: ['modrinth', 'curseforge'] })),
+      [`GET /api/v1/servers/${serverId}/mods/search`]: (request) => {
+        const source = new URL(request.url).searchParams.get('source') ?? '';
+        searched.push(source);
+        return json(
+          source === 'curseforge'
+            ? { hits: [{ ...sodium, projectId: '238222', slug: 'jei', title: 'Just Enough Items' }], total: 1 }
+            : { hits: [sodium], total: 1 },
+        );
+      },
+      [`POST /api/v1/servers/${serverId}/mods`]: async (request) => {
+        installs.push(await request.json());
+        return json(mods([fabricApi], { catalogs: ['modrinth', 'curseforge'] }));
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    await screen.findByRole('heading', { name: 'Sodium' });
+    await userEvent.click(screen.getByRole('button', { name: 'CurseForge' }));
+    expect(await screen.findByRole('heading', { name: 'Just Enough Items' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CurseForge' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(hit('Just Enough Items')).getByRole('link', { name: 'Just Enough Items' })).toHaveAttribute(
+      'href',
+      'https://www.curseforge.com/minecraft/mc-mods/jei',
+    );
+    expect(searched).toContain('curseforge');
+
+    await userEvent.click(within(hit('Just Enough Items')).getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(installs).toEqual([{ projectId: '238222', versionId: null, source: 'curseforge' }]));
+  });
+
+  it('says CurseForge needs a key, and where an administrator sets it', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () => json(mods([], { catalogsNeedingKey: ['curseforge'] })),
+      [`GET /api/v1/servers/${serverId}/mods/search`]: () => json({ hits: [], total: 0 }),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    // A manager who cannot change the panel's settings is told to ask.
+    expect(await screen.findByText(/CurseForge needs an API key/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Set it in Games' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CurseForge' })).not.toBeInTheDocument();
   });
 
   it('calls them plugins on a plugin server, and links to their page', async () => {

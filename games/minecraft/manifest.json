@@ -180,6 +180,15 @@
         "forge": { "projectType": "mod", "loaders": ["forge"], "folder": "mods" },
         "neoforge": { "projectType": "mod", "loaders": ["neoforge"], "folder": "mods" }
       },
+      "modpacks": { "loaderVar": "loaderVersion" } },
+    { "source": "curseforge", "versionVar": "version", "typeVar": "serverType",
+      "types": {
+        "paper": { "projectType": "plugin", "loaders": ["bukkit"], "folder": "plugins" },
+        "purpur": { "projectType": "plugin", "loaders": ["bukkit"], "folder": "plugins" },
+        "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
+        "forge": { "projectType": "mod", "loaders": ["forge"], "folder": "mods" },
+        "neoforge": { "projectType": "mod", "loaders": ["neoforge"], "folder": "mods" }
+      },
       "modpacks": { "loaderVar": "loaderVersion" } }
   ]
 }

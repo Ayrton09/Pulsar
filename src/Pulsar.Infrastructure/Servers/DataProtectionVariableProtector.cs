@@ -28,6 +28,18 @@ internal sealed class DataProtectionBackupStorageSecretProtector(IDataProtection
     public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
 }
 
+/// <summary>The administrator's CurseForge API key encrypted with the panel's Data Protection key ring (Pulsar 1.0.9).</summary>
+internal sealed class DataProtectionCatalogKeyProtector(IDataProtectionProvider provider) : ICatalogKeyProtector
+{
+    private const string Purpose = "Pulsar.ModCatalogs.CurseForgeKey.v1";
+
+    private readonly IDataProtector _protector = provider.CreateProtector(Purpose);
+
+    public byte[] Protect(string value) => _protector.Protect(Encoding.UTF8.GetBytes(value));
+
+    public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
+}
+
 /// <summary>Steam account passwords encrypted with the panel's Data Protection key ring (ADR-0011).</summary>
 internal sealed class DataProtectionSteamAccountSecretProtector(IDataProtectionProvider provider) : ISteamAccountSecretProtector
 {

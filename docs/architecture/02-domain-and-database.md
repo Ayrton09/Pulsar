@@ -157,7 +157,7 @@ Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/
 
 The addons a server's game supports come from its template (doc 04, "Addons"); the panel keeps only which are installed and which release (`server_addons`), from the results of the operations that install, update and remove them (`addon_install`, `addon_remove`: the server installed and stopped, nothing else running; installing can be cancelled). A game update that reinstalls addons reports their new releases the same way. Only those three operations change the rows, and only for addons of the server's template with a non-empty release (an addon named twice: the last one counts). The installed keys go in the server's spec, so the agent keeps their lines in the game's files at every start. `GET /api/v1/servers/{id}/addons` (`server.view`), `POST` and `DELETE /api/v1/servers/{id}/addons/{key}` (`server.install`: they change the game's files); requests are audited (`server.addon_install_requested`, `server.addon_remove_requested`).
 
-Mods from a catalog (1.0.9; doc 04, "Mods") are rows of `server_mods`, one per file the panel installed: the catalog's project and version, its name and version number, the file's path, SHA-512 and size, whether it came in as another's dependency, and the projects it requires (so a mod others need is not removed). A change writes its rows when it starts, tied to its `mods_change` operation (`installing`, `removing`), and the operation's end settles them (doc 03, "Mods"). `servers.game_version` is the game version the last install or update reported, which the catalog is asked for. A modpack is a row of `server_modpacks`: its project and version, name and version number, the server type, loader and game version it runs on, and the loader's version once the node reported it; the one an operation installs is `installing` (tied to it) and becomes the server's `installed` pack when it succeeds, replacing the previous one, together with the server's type, game version and loader version variables.
+Mods from a catalog (1.0.9; doc 04, "Mods") are rows of `server_mods`, one per file the panel installed: the catalog's project and version, its name and version number, the file's path, checksum (SHA-512 from Modrinth, SHA-1 from CurseForge) and size, whether it came in as another's dependency, and the projects it requires (so a mod others need is not removed). A change writes its rows when it starts, tied to its `mods_change` operation (`installing`, `removing`), and the operation's end settles them (doc 03, "Mods"). `servers.game_version` is the game version the last install or update reported, which the catalog is asked for. A modpack is a row of `server_modpacks`: its project and version, name and version number, the server type, loader and game version it runs on, and the loader's version once the node reported it; the one an operation installs is `installing` (tied to it) and becomes the server's `installed` pack when it succeeds, replacing the previous one, together with the server's type, game version and loader version variables.
 
 ## PostgreSQL schema
 
@@ -361,13 +361,13 @@ CREATE TABLE server_addons (  -- Phase 12
 CREATE TABLE server_mods (  -- 1.0.9
     id              uuid PRIMARY KEY,
     server_id       uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    source          text NOT NULL CHECK (source IN ('modrinth')),
+    source          text NOT NULL CHECK (source IN ('modrinth','curse_forge')),
     project_id      varchar(64) NOT NULL,          -- the catalog's ids
     version_id      varchar(64) NOT NULL,
     name            varchar(128) NOT NULL,
     version_number  varchar(64) NOT NULL,
     path            varchar(200) NOT NULL,         -- a .jar right in a mod folder of the manifest
-    sha512          varchar(128) NOT NULL,
+    hash            varchar(128) NOT NULL,         -- the catalog's checksum: SHA-512 (Modrinth) or SHA-1 (CurseForge), hex
     size            bigint NOT NULL,
     dependency      boolean NOT NULL,              -- installed because another mod requires it
     requires        jsonb NOT NULL,                -- the projects its version requires
@@ -382,7 +382,7 @@ CREATE INDEX ix_server_mods_server_project ON server_mods (server_id, project_id
 CREATE TABLE server_modpacks (  -- 1.0.9
     id              uuid PRIMARY KEY,
     server_id       uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    source          text NOT NULL CHECK (source IN ('modrinth')),
+    source          text NOT NULL CHECK (source IN ('modrinth','curse_forge')),
     project_id      varchar(64) NOT NULL,
     version_id      varchar(64) NOT NULL,
     name            varchar(128) NOT NULL,
@@ -398,6 +398,13 @@ CREATE TABLE server_modpacks (  -- 1.0.9
     xmin            xid
 );
 CREATE INDEX ix_server_modpacks_server ON server_modpacks (server_id);
+
+CREATE TABLE mod_catalog_settings (  -- 1.0.9, one row
+    id               integer PRIMARY KEY CHECK (id = 1),
+    curse_forge_key  bytea,                        -- the administrator's CurseForge API key, Data Protection; never returned
+    updated_at       timestamptz NOT NULL,
+    xmin             xid
+);
 
 CREATE TABLE server_variables (
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

@@ -9960,6 +9960,13 @@
             }
           },
           {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "query",
             "in": "query",
             "schema": {
@@ -10058,6 +10065,13 @@
             "name": "projectId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10402,6 +10416,13 @@
             }
           },
           {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "query",
             "in": "query",
             "schema": {
@@ -10500,6 +10521,13 @@
             "name": "projectId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10652,6 +10680,221 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ModsView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mod-catalogs": {
+      "get": {
+        "tags": [
+          "Mods"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSettingsView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mod-catalogs/curseforge-key": {
+      "put": {
+        "tags": [
+          "Mods"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurseForgeKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSettingsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Mods"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSettingsView"
                 }
               }
             }
@@ -14871,6 +15114,25 @@
           }
         }
       },
+      "CatalogSettingsView": {
+        "required": [
+          "curseForgeConfigured",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "curseForgeConfigured": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "ChangePasswordRequest": {
         "required": [
           "currentPassword",
@@ -15317,6 +15579,19 @@
             "items": {
               "$ref": "#/components/schemas/ScopedPermissions"
             }
+          }
+        }
+      },
+      "CurseForgeKeyRequest": {
+        "required": [
+          "apiKey"
+        ],
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "maxLength": 256,
+            "minLength": 0,
+            "type": "string"
           }
         }
       },
@@ -16066,6 +16341,14 @@
               "null",
               "string"
             ]
+          },
+          "source": {
+            "maxLength": 16,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -16299,6 +16582,7 @@
       },
       "ModpackView": {
         "required": [
+          "source",
           "projectId",
           "versionId",
           "name",
@@ -16311,6 +16595,9 @@
         ],
         "type": "object",
         "properties": {
+          "source": {
+            "type": "string"
+          },
           "projectId": {
             "type": "string"
           },
@@ -16366,7 +16653,8 @@
       "ModsView": {
         "required": [
           "supported",
-          "catalog",
+          "catalogs",
+          "catalogsNeedingKey",
           "projectType",
           "folder",
           "loaders",
@@ -16379,11 +16667,17 @@
           "supported": {
             "type": "boolean"
           },
-          "catalog": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "catalogs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "catalogsNeedingKey": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "projectType": {
             "type": [
@@ -18870,6 +19164,7 @@
       "ServerModView": {
         "required": [
           "id",
+          "source",
           "projectId",
           "versionId",
           "name",
@@ -18886,6 +19181,9 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "source": {
+            "type": "string"
           },
           "projectId": {
             "type": "string"

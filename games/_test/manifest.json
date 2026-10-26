@@ -64,6 +64,12 @@
         "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
         "paper": { "projectType": "plugin", "loaders": ["paper", "spigot"], "folder": "plugins" }
       },
+      "modpacks": { "loaderVar": "loaderVersion" } },
+    { "source": "curseforge", "versionVar": "gameVersion", "typeVar": "modType",
+      "types": {
+        "fabric": { "projectType": "mod", "loaders": ["fabric"], "folder": "mods" },
+        "paper": { "projectType": "plugin", "loaders": ["bukkit"], "folder": "plugins" }
+      },
       "modpacks": { "loaderVar": "loaderVersion" } }
   ]
 }

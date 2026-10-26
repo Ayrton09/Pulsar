@@ -38,6 +38,8 @@ public interface IPulsarDbContext
 
     DbSet<ServerModpack> ServerModpacks { get; }
 
+    DbSet<ModCatalogSettings> ModCatalogSettings { get; }
+
     DbSet<AuditEntry> AuditLog { get; }
 
     DbSet<Node> Nodes { get; }

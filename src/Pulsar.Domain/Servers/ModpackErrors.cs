@@ -17,6 +17,10 @@ public static class ModpackErrors
     public static DomainError GameVersionInvalid { get; } =
         new("modpack.game_version_invalid", "The modpack names no single game version the server takes.");
 
+    /// <summary>A CurseForge pack whose author publishes no server files for that version.</summary>
+    public static DomainError NoServerPack { get; } =
+        new("modpack.no_server_pack", "The modpack's author publishes no server files for this version on CurseForge.");
+
     public static DomainError FileInvalid { get; } =
         new("modpack.file_invalid", "The modpack's version has no .mrpack file the panel can have the node install.");
 }

@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Common;
 
@@ -13,7 +14,7 @@ namespace Pulsar.Infrastructure.Mods;
 /// read and a User-Agent naming Pulsar, as Modrinth asks of applications. It allows 300 requests a minute per address;
 /// past that it answers 429, which is reported as busy.
 /// </summary>
-public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
+public sealed class ModrinthClient(IHttpClientFactory clients) : IModCatalog
 {
     public const string ClientName = "Pulsar.Modrinth";
     public static readonly Uri BaseAddress = new("https://api.modrinth.com/v2/");
@@ -26,7 +27,21 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
 
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
 
-    public async Task<ModrinthSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
+    // Modrinth answers the panel's address 300 times a minute: the whole panel stays under that, whatever each user's budget.
+    private static readonly FixedWindowRateLimiter s_budget = new(new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = 240,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0,
+    });
+
+    public const string SourceName = "modrinth";
+
+    public string Source => SourceName;
+
+    public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public async Task<CatalogSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(loaders);
@@ -50,25 +65,25 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
             + $"&index={(string.IsNullOrEmpty(query) ? "downloads" : "relevance")}&offset={offset.ToString(CultureInfo.InvariantCulture)}"
             + $"&limit={limit.ToString(CultureInfo.InvariantCulture)}";
         var found = await GetAsync<SearchResponse>(path, cancellationToken) ?? throw Unavailable("Modrinth sent an empty answer.");
-        return new ModrinthSearch([.. (found.Hits ?? []).Where(h => h.ProjectId is not null && h.Title is not null).Select(h => new ModrinthHit(
+        return new CatalogSearch([.. (found.Hits ?? []).Where(h => h.ProjectId is not null && h.Title is not null).Select(h => new CatalogHit(
             Id(h.ProjectId!), Text(h.Slug) ?? Id(h.ProjectId!), Text(h.Title)!, Text(h.Description), Text(h.Author), Math.Max(0, h.Downloads), h.DateModified))],
             Math.Max(0, found.TotalHits));
     }
 
-    public async Task<IReadOnlyList<ModrinthVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string? gameVersion,
+    public async Task<IReadOnlyList<CatalogVersion>> VersionsAsync(string projectId, IReadOnlyList<string> loaders, string? gameVersion,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(loaders);
         var path = $"project/{Uri.EscapeDataString(projectId)}/version?loaders={Uri.EscapeDataString(JsonSerializer.Serialize(loaders))}"
             + (gameVersion is null ? "" : $"&game_versions={Uri.EscapeDataString(JsonSerializer.Serialize(new[] { gameVersion }))}");
         var versions = await GetAsync<List<VersionResponse>>(path, cancellationToken, notFoundIsNull: true);
-        return [.. (versions ?? []).Select(Version).OfType<ModrinthVersion>()];
+        return [.. (versions ?? []).Select(Version).OfType<CatalogVersion>()];
     }
 
-    public async Task<ModrinthVersion?> VersionAsync(string versionId, CancellationToken cancellationToken) =>
+    public async Task<CatalogVersion?> VersionAsync(string versionId, CancellationToken cancellationToken) =>
         Version(await GetAsync<VersionResponse>($"version/{Uri.EscapeDataString(versionId)}", cancellationToken, notFoundIsNull: true));
 
-    public async Task<IReadOnlyList<ModrinthProject>> ProjectsAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CatalogProject>> ProjectsAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(ids);
         if (ids.Count == 0)
@@ -78,21 +93,37 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
 
         var projects = await GetAsync<List<ProjectResponse>>($"projects?ids={Uri.EscapeDataString(JsonSerializer.Serialize(ids))}", cancellationToken);
         return [.. (projects ?? []).Where(p => p.Id is not null && p.Title is not null)
-            .Select(p => new ModrinthProject(Id(p.Id!), Text(p.Slug) ?? Id(p.Id!), Text(p.Title)!))];
+            .Select(p => new CatalogProject(Id(p.Id!), Text(p.Slug) ?? Id(p.Id!), Text(p.Title)!))];
     }
 
-    public async Task<IReadOnlyDictionary<string, ModrinthVersion>> LatestVersionsAsync(IReadOnlyList<string> sha512s, IReadOnlyList<string> loaders,
+    /// <summary>Looked up by the files' SHA-512 (Modrinth knows its files by their checksums).</summary>
+    public async Task<IReadOnlyDictionary<string, CatalogVersion>> LatestVersionsAsync(IReadOnlyList<CatalogInstalled> installed, IReadOnlyList<string> loaders,
         string gameVersion, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(sha512s);
-        var body = JsonSerializer.Serialize(new { hashes = sha512s, algorithm = "sha512", loaders, game_versions = new[] { gameVersion } });
+        ArgumentNullException.ThrowIfNull(installed);
+        var byHash = installed.Where(i => i.Hash.Length == 128).GroupBy(i => i.Hash, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(),
+            StringComparer.Ordinal);
+        if (byHash.Count == 0)
+        {
+            return new Dictionary<string, CatalogVersion>();
+        }
+
+        var body = JsonSerializer.Serialize(new { hashes = byHash.Keys, algorithm = "sha512", loaders, game_versions = new[] { gameVersion } });
         var latest = await SendAsync<Dictionary<string, VersionResponse>>(HttpMethod.Post, "version_files/update", body, cancellationToken) ?? [];
-        return latest.Where(p => sha512s.Contains(p.Key)).Select(p => (p.Key, Version: Version(p.Value)))
-            .Where(p => p.Version is not null).ToDictionary(p => p.Key, p => p.Version!, StringComparer.Ordinal);
+        var newest = new Dictionary<string, CatalogVersion>(StringComparer.Ordinal);
+        foreach (var (hash, response) in latest)
+        {
+            if (byHash.TryGetValue(hash, out var mod) && Version(response) is { } version && version.ProjectId == mod.ProjectId)
+            {
+                newest[mod.ProjectId] = version;
+            }
+        }
+
+        return newest;
     }
 
     /// <summary>A version as the panel uses it: its files only on Modrinth's CDN, with a SHA-512; null when it cannot be read.</summary>
-    private static ModrinthVersion? Version(VersionResponse? version)
+    private static CatalogVersion? Version(VersionResponse? version)
     {
         if (version is not { Id: not null, ProjectId: not null })
         {
@@ -101,11 +132,11 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
 
         var files = (version.Files ?? []).Where(f => f is { Url: not null, Filename: not null } && f.Hashes?.Sha512 is { Length: 128 }
                 && Uri.TryCreate(f.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Host == FileHost)
-            .Select(f => new ModrinthFile(f.Url!, f.Filename!, f.Hashes!.Sha512!.ToLowerInvariant(), Math.Max(0, f.Size), f.Primary)).ToList();
-        return new ModrinthVersion(Id(version.Id), Id(version.ProjectId), Text(version.Name) ?? Text(version.VersionNumber) ?? Id(version.Id),
+            .Select(f => new CatalogFile(f.Url!, f.Filename!, f.Hashes!.Sha512!.ToLowerInvariant(), Math.Max(0, f.Size), f.Primary)).ToList();
+        return new CatalogVersion(Id(version.Id), Id(version.ProjectId), Text(version.Name) ?? Text(version.VersionNumber) ?? Id(version.Id),
             Text(version.VersionNumber) ?? "?", Text(version.VersionType) ?? "release", [.. (version.Loaders ?? []).Select(l => Text(l)!).Where(l => l is not null)],
             [.. (version.GameVersions ?? []).Select(v => Text(v)!).Where(v => v is not null)], version.DatePublished ?? DateTimeOffset.MinValue, files,
-            [.. (version.Dependencies ?? []).Select(d => new ModrinthDependency(d.ProjectId is null ? null : Id(d.ProjectId),
+            [.. (version.Dependencies ?? []).Select(d => new CatalogDependency(d.ProjectId is null ? null : Id(d.ProjectId),
                 d.VersionId is null ? null : Id(d.VersionId), Text(d.DependencyType) ?? "optional"))]);
     }
 
@@ -114,6 +145,12 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModrinth
 
     private async Task<T?> SendAsync<T>(HttpMethod method, string path, string? body, CancellationToken cancellationToken, bool notFoundIsNull = false)
     {
+        using var permit = s_budget.AttemptAcquire();
+        if (!permit.IsAcquired)
+        {
+            throw new ModCatalogUnavailableException("This panel asked Modrinth too often in the last minute.", busy: true);
+        }
+
         var http = clients.CreateClient(ClientName);
         // The client's timeout ends at the headers when the body is read separately: this deadline covers both.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

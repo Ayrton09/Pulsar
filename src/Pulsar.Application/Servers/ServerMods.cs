@@ -11,9 +11,11 @@ using Pulsar.Manifests;
 
 namespace Pulsar.Application.Servers;
 
+/// <param name="Source">The catalog it comes from: <c>modrinth</c>, <c>curseforge</c>.</param>
 /// <param name="RequiredBy">The installed mods that need it.</param>
 public sealed record ServerModView(
     Guid Id,
+    string Source,
     string ProjectId,
     string VersionId,
     string Name,
@@ -27,6 +29,8 @@ public sealed record ServerModView(
 
 /// <summary>What a server takes from a mod catalog, and what it has.</summary>
 /// <param name="Supported">The server's game takes files from a catalog (whatever its type).</param>
+/// <param name="Catalogs">The catalogs the panel can ask for the server's game, in its manifest's order.</param>
+/// <param name="CatalogsNeedingKey">Catalogs the game takes that the panel has no key for (CurseForge's is the administrator's).</param>
 /// <param name="ProjectType">What its type takes: <c>mod</c> or <c>plugin</c>; null when its type takes nothing.</param>
 /// <param name="GameVersion">The game's version the catalog's files are chosen for; null when not known yet.</param>
 /// <param name="Unavailable">Why nothing can be added now (<c>mods.type_unsupported</c>, <c>mods.version_unknown</c>); null when it can.</param>
@@ -35,7 +39,8 @@ public sealed record ServerModView(
 /// <param name="ModpackInstalling">The modpack an operation is installing, if any.</param>
 public sealed record ModsView(
     bool Supported,
-    string? Catalog,
+    IReadOnlyList<string> Catalogs,
+    IReadOnlyList<string> CatalogsNeedingKey,
     string? ProjectType,
     string? Folder,
     IReadOnlyList<string> Loaders,
@@ -60,15 +65,15 @@ public sealed record ModUpdateView(Guid ModId, string Name, string VersionNumber
 public sealed record ModUpdateList(IReadOnlyList<ModUpdateView> Updates);
 
 /// <summary>
-/// A server's mods and plugins from a catalog (Pulsar 1.0.9; docs/architecture/04, "Mods"): Modrinth, filtered by the
-/// server's type (the loaders and folder its manifest names) and game version. Installing a project installs the newest
-/// version for the server, or the one chosen, with the projects it requires; the node downloads the files, checked
-/// against Modrinth's SHA-512, while the server is stopped. What is on the server is recorded when the change starts and
-/// confirmed or rolled back with its operation.
+/// A server's mods and plugins from a catalog (Pulsar 1.0.9; docs/architecture/04, "Mods"): Modrinth or CurseForge,
+/// filtered by the server's type (the loaders and folder its manifest names for that catalog) and game version. Installing
+/// a project installs the newest version for the server, or the one chosen, with the projects it requires from the same
+/// catalog; the node downloads the files, checked against the catalog's checksum, while the server is stopped. What is on
+/// the server is recorded when the change starts and confirmed or rolled back with its operation.
 /// </summary>
 public sealed partial class ServerMods(
     IPulsarDbContext db,
-    IModrinth modrinth,
+    ModCatalogs catalogs,
     IAgentConnections connections,
     AgentSessionStore sessions,
     ServerOperations operations,
@@ -82,9 +87,10 @@ public sealed partial class ServerMods(
     /// <summary>Projects one install may bring: the one asked for and those it requires, recursively.</summary>
     public const int MaxProjectsPerInstall = 32;
 
-    private sealed record Target(ModSourceDefinition Source, ModTargetDefinition Kind, string GameVersion, IReadOnlySet<string> Folders);
+    private sealed record Target(IModCatalog Catalog, ModSource Source, ModSourceDefinition Definition, ModTargetDefinition Kind, string GameVersion,
+        IReadOnlySet<string> Folders);
 
-    private sealed record Planned(ModrinthVersion Version, ModrinthFile File, string Path, bool Dependency);
+    private sealed record Planned(ModSource Source, CatalogVersion Version, CatalogFile File, string Path, bool Dependency);
 
     private enum Change
     {
@@ -95,19 +101,35 @@ public sealed partial class ServerMods(
 
     public async Task<Result<ModsView>> GetAsync(ServerId id, CancellationToken cancellationToken)
     {
+        if (!await db.Servers.AnyAsync(s => s.Id == id, cancellationToken))
+        {
+            return ServerErrors.NotFound;
+        }
+
+        // Settled first: a pack settled now changes the server's type and versions, which the view is made from.
+        await SettleAsync(id, cancellationToken);
+        await SettleModpacksAsync(id, cancellationToken);
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
         }
 
-        await SettleAsync(server.Id, cancellationToken);
-        await SettleModpacksAsync(server.Id, cancellationToken);
         var manifest = await ManifestAsync(server, cancellationToken);
         var installed = await ViewsAsync(server.Id, cancellationToken);
         if (FirstOf(manifest.ModList) is not { } source)
         {
-            return new ModsView(false, null, null, null, [], null, ModErrors.Unsupported.Code, installed);
+            return new ModsView(false, [], [], null, null, [], null, ModErrors.Unsupported.Code, installed);
+        }
+
+        var usable = new List<string>();
+        var needingKey = new List<string>();
+        foreach (var offered in manifest.ModList)
+        {
+            if (catalogs.For(offered.Source) is { } catalog)
+            {
+                (await catalog.IsConfiguredAsync(cancellationToken) ? usable : needingKey).Add(offered.Source);
+            }
         }
 
         var values = Values(server, manifest);
@@ -115,13 +137,13 @@ public sealed partial class ServerMods(
         var version = GameVersion(server, source, values);
         var unavailable = kind is null ? ModErrors.TypeUnsupported.Code : version is null ? ModErrors.VersionUnknown.Code : null;
         var packs = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == server.Id).ToListAsync(cancellationToken);
-        return new ModsView(true, source.Source, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed,
-            source.Modpacks is not null, ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installed)),
+        return new ModsView(true, usable, needingKey, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed,
+            manifest.ModList.Any(s => s.Modpacks is not null), ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installed)),
             ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installing)));
     }
 
     /// <summary>The catalog's projects the server can take, by relevance, a page of <see cref="SearchPageSize"/>.</summary>
-    public async Task<Result<ModSearchView>> SearchAsync(ServerId id, string? query, int offset, CancellationToken cancellationToken)
+    public async Task<Result<ModSearchView>> SearchAsync(ServerId id, string source, string? query, int offset, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -129,7 +151,7 @@ public sealed partial class ServerMods(
             return ServerErrors.NotFound;
         }
 
-        var target = await TargetAsync(server, cancellationToken);
+        var target = await TargetAsync(server, source, cancellationToken);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -143,16 +165,17 @@ public sealed partial class ServerMods(
 
         return await CatalogAsync(async () =>
         {
-            var found = await modrinth.SearchAsync(text, target.Value.Kind.ProjectType, target.Value.Kind.Loaders, target.Value.GameVersion,
+            var found = await target.Value.Catalog.SearchAsync(text, target.Value.Kind.ProjectType, target.Value.Kind.Loaders, target.Value.GameVersion,
                 Math.Clamp(offset, 0, 10_000), SearchPageSize, cancellationToken);
-            var installed = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == server.Id).Select(m => m.ProjectId).ToListAsync(cancellationToken);
+            var installed = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == server.Id && m.Source == target.Value.Source).Select(m => m.ProjectId)
+                .ToListAsync(cancellationToken);
             return new ModSearchView([.. found.Hits.Select(h => new ModHitView(h.ProjectId, h.Slug, h.Title, h.Description, h.Author, h.Downloads, h.Updated,
                 installed.Contains(h.ProjectId)))], found.Total);
         });
     }
 
     /// <summary>The project's versions the server can take, newest first.</summary>
-    public async Task<Result<ModVersionList>> VersionsAsync(ServerId id, string projectId, CancellationToken cancellationToken)
+    public async Task<Result<ModVersionList>> VersionsAsync(ServerId id, string source, string projectId, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -160,7 +183,7 @@ public sealed partial class ServerMods(
             return ServerErrors.NotFound;
         }
 
-        var target = await TargetAsync(server, cancellationToken);
+        var target = await TargetAsync(server, source, cancellationToken);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -173,7 +196,7 @@ public sealed partial class ServerMods(
 
         return await CatalogAsync(async () =>
         {
-            var versions = await modrinth.VersionsAsync(projectId, target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+            var versions = await target.Value.Catalog.VersionsAsync(projectId, target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
             return new ModVersionList([.. versions.Take(50).Select(v => new ModVersionView(v.Id, v.Name, v.VersionNumber, v.VersionType, v.Published))]);
         });
     }
@@ -182,7 +205,7 @@ public sealed partial class ServerMods(
     /// Installs the project (its newest version for the server, or <paramref name="versionId"/>), with the projects it
     /// requires that the server does not have; a project on the server already is replaced by that version.
     /// </summary>
-    public async Task<Result<ModsView>> InstallAsync(ServerId id, string projectId, string? versionId, CancellationToken cancellationToken)
+    public async Task<Result<ModsView>> InstallAsync(ServerId id, string source, string projectId, string? versionId, CancellationToken cancellationToken)
     {
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -195,7 +218,7 @@ public sealed partial class ServerMods(
             return ModErrors.NoVersion;
         }
 
-        var prepared = await PrepareAsync(server, cancellationToken);
+        var prepared = await PrepareAsync(server, source, cancellationToken);
         if (!prepared.IsSuccess)
         {
             return prepared.Error!;
@@ -228,34 +251,56 @@ public sealed partial class ServerMods(
             return ServerErrors.NotFound;
         }
 
-        var prepared = await PrepareAsync(server, cancellationToken);
-        if (!prepared.IsSuccess)
+        await SettleAsync(server.Id, cancellationToken);
+        var installed = await db.ServerMods.Where(m => m.ServerId == server.Id).ToListAsync(cancellationToken);
+        if (installed.Any(m => m.State != ServerModState.Installed))
         {
-            return prepared.Error!;
+            return ModErrors.ChangeRunning;
         }
 
-        var (target, installed) = prepared.Value;
         if (modIds is not null && modIds.Any(m => installed.All(i => i.Id != m)))
         {
             return ModErrors.NotFound;
         }
 
-        var plan = await CatalogAsync(async () =>
+        var chosen = installed.Where(m => modIds is null || modIds.Contains(m.Id)).ToList();
+        var plan = new List<Planned>();
+        foreach (var bySource in chosen.GroupBy(m => m.Source))
         {
-            var chosen = installed.Where(m => modIds is null || modIds.Contains(m.Id)).ToList();
-            var latest = chosen.Count == 0
-                ? new Dictionary<string, ModrinthVersion>()
-                : await modrinth.LatestVersionsAsync([.. chosen.Select(m => m.Sha512)], target.Kind.Loaders, target.GameVersion, cancellationToken);
-            var updates = chosen.Where(m => latest.TryGetValue(m.Sha512, out var newer) && newer.Id != m.VersionId && newer.ProjectId == m.ProjectId)
-                .Select(m => (m.ProjectId, (string?)latest[m.Sha512].Id, m.Dependency)).ToList();
-            return updates.Count == 0 ? ModErrors.NoUpdates : await PlanAsync(target, installed, updates, cancellationToken);
-        });
-        if (!plan.IsSuccess)
-        {
-            return plan.Error!;
+            var target = await TargetAsync(server, SourceName(bySource.Key), cancellationToken);
+            if (!target.IsSuccess)
+            {
+                // Updating all: a catalog the panel cannot ask now (no key) has nothing newer to offer.
+                if (modIds is null && target.Error == ModErrors.CatalogNotConfigured)
+                {
+                    continue;
+                }
+
+                return target.Error!;
+            }
+
+            var planned = await CatalogAsync<List<Planned>>(async () =>
+            {
+                var latest = await target.Value.Catalog.LatestVersionsAsync([.. bySource.Select(m => new CatalogInstalled(m.ProjectId, m.VersionId, m.Hash))],
+                    target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+                var updates = bySource.Where(m => latest.TryGetValue(m.ProjectId, out var newer) && newer.Id != m.VersionId)
+                    .Select(m => (m.ProjectId, (string?)latest[m.ProjectId].Id, m.Dependency)).ToList();
+                return updates.Count == 0 ? new List<Planned>() : await PlanAsync(target.Value, installed, updates, cancellationToken);
+            });
+            if (!planned.IsSuccess)
+            {
+                return planned.Error!;
+            }
+
+            plan.AddRange(planned.Value);
         }
 
-        return await ChangeAsync(server, installed, plan.Value, [], Change.Update, cancellationToken);
+        if (plan.Count == 0)
+        {
+            return ModErrors.NoUpdates;
+        }
+
+        return await ChangeAsync(server, installed, plan, [], Change.Update, cancellationToken);
     }
 
     /// <summary>Removes a mod; one another installed mod requires stays (<c>mods.required_by</c>).</summary>
@@ -287,7 +332,7 @@ public sealed partial class ServerMods(
         return await ChangeAsync(server, installed, [], [mod], Change.Remove, cancellationToken);
     }
 
-    /// <summary>The installed mods with a newer version for the server, as the catalog says (looked up by their files' SHA-512).</summary>
+    /// <summary>The installed mods with a newer version for the server, as their catalogs say (those the panel cannot ask now left out).</summary>
     public async Task<Result<ModUpdateList>> UpdatesAsync(ServerId id, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
@@ -296,27 +341,38 @@ public sealed partial class ServerMods(
             return ServerErrors.NotFound;
         }
 
-        var target = await TargetAsync(server, cancellationToken);
-        if (!target.IsSuccess)
-        {
-            return target.Error!;
-        }
-
         var installed = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == server.Id && m.State == ServerModState.Installed)
             .ToListAsync(cancellationToken);
-        if (installed.Count == 0)
+        var updates = new List<ModUpdateView>();
+        foreach (var bySource in installed.GroupBy(m => m.Source))
         {
-            return new ModUpdateList([]);
+            var target = await TargetAsync(server, SourceName(bySource.Key), cancellationToken);
+            if (!target.IsSuccess)
+            {
+                if (target.Error == ModErrors.CatalogNotConfigured)
+                {
+                    continue;
+                }
+
+                return target.Error!;
+            }
+
+            var found = await CatalogAsync(async () =>
+            {
+                var latest = await target.Value.Catalog.LatestVersionsAsync([.. bySource.Select(m => new CatalogInstalled(m.ProjectId, m.VersionId, m.Hash))],
+                    target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+                return bySource.Where(m => latest.TryGetValue(m.ProjectId, out var newer) && newer.Id != m.VersionId)
+                    .Select(m => new ModUpdateView(m.Id.Value, m.Name, m.VersionNumber, latest[m.ProjectId].Id, latest[m.ProjectId].VersionNumber)).ToList();
+            });
+            if (!found.IsSuccess)
+            {
+                return found.Error!;
+            }
+
+            updates.AddRange(found.Value);
         }
 
-        return await CatalogAsync(async () =>
-        {
-            var latest = await modrinth.LatestVersionsAsync([.. installed.Select(m => m.Sha512)], target.Value.Kind.Loaders, target.Value.GameVersion,
-                cancellationToken);
-            return new ModUpdateList([.. installed
-                .Where(m => latest.TryGetValue(m.Sha512, out var newer) && newer.Id != m.VersionId && newer.ProjectId == m.ProjectId)
-                .Select(m => new ModUpdateView(m.Id.Value, m.Name, m.VersionNumber, latest[m.Sha512].Id, latest[m.Sha512].VersionNumber))]);
-        });
+        return new ModUpdateList(updates);
     }
 
     /// <summary>
@@ -397,10 +453,10 @@ public sealed partial class ServerMods(
         db.ChangeTracker.Clear();
     }
 
-    private async Task<Result<(Target Target, List<ServerMod> Installed)>> PrepareAsync(Server server, CancellationToken cancellationToken)
+    private async Task<Result<(Target Target, List<ServerMod> Installed)>> PrepareAsync(Server server, string source, CancellationToken cancellationToken)
     {
         await SettleAsync(server.Id, cancellationToken);
-        var target = await TargetAsync(server, cancellationToken);
+        var target = await TargetAsync(server, source, cancellationToken);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -420,7 +476,7 @@ public sealed partial class ServerMods(
     /// there is one) and, recursively, the newest of each project it requires that the server does not have; one that is
     /// installed in that version already is left out. <c>Dependency</c> says how each asked-for project is recorded.
     /// </summary>
-    private async Task<Result<List<Planned>>> PlanAsync(Target target, IReadOnlyList<ServerMod> installed,
+    private static async Task<Result<List<Planned>>> PlanAsync(Target target, IReadOnlyList<ServerMod> installed,
         IReadOnlyList<(string Project, string? Version, bool Dependency)> asked, CancellationToken cancellationToken)
     {
         var plan = new List<Planned>();
@@ -440,19 +496,25 @@ public sealed partial class ServerMods(
                 continue;
             }
 
-            var existing = installed.FirstOrDefault(m => m.ProjectId == version.ProjectId);
+            var existing = installed.FirstOrDefault(m => m.Source == target.Source && m.ProjectId == version.ProjectId);
             if ((next.NeededBy is not null && existing is not null) || existing?.VersionId == version.Id)
             {
                 continue; // a requirement the server has (any version will do), or that version is installed
             }
 
+            if (version.DistributionForbidden)
+            {
+                return ModErrors.DistributionForbidden(version.Name);
+            }
+
             var file = version.Files.FirstOrDefault(f => f.Primary) ?? FirstOf(version.Files);
-            if (file is null || !ModFiles.IsFileName(file.FileName) || file.Sha512.Length != 128 || !file.Sha512.All(char.IsAsciiHexDigit))
+            if (file is null || !ModFiles.IsFileName(file.FileName) || !IsHash(file.Hash))
             {
                 return ModErrors.FileInvalid;
             }
 
-            plan.Add(new Planned(version, file, $"{target.Kind.Folder}/{file.FileName}", next.Dependency));
+            plan.Add(new Planned(target.Source, version, file with { Hash = file.Hash.ToLowerInvariant() }, $"{target.Kind.Folder}/{file.FileName}",
+                next.Dependency));
             if (plan.Count > MaxProjectsPerInstall)
             {
                 return ModErrors.TooMany;
@@ -460,14 +522,15 @@ public sealed partial class ServerMods(
 
             foreach (var dependency in version.Dependencies)
             {
-                if (dependency.Type == "incompatible" && dependency.ProjectId is { } other && installed.FirstOrDefault(m => m.ProjectId == other) is { } clash)
+                if (dependency.Type == "incompatible" && dependency.ProjectId is { } other
+                    && installed.FirstOrDefault(m => m.Source == target.Source && m.ProjectId == other) is { } clash)
                 {
                     return ModErrors.Incompatible(version.Name, clash.Name);
                 }
 
                 if (dependency.Type == "required" && (dependency.ProjectId ?? dependency.VersionId) is { } wanted && IsCatalogId(wanted))
                 {
-                    var project = dependency.ProjectId ?? await ProjectOfAsync(wanted, cancellationToken) ?? wanted;
+                    var project = dependency.ProjectId ?? await ProjectOfAsync(target, wanted, cancellationToken) ?? wanted;
                     pending.Enqueue((project, dependency.VersionId, true, version.Name));
                 }
             }
@@ -477,24 +540,26 @@ public sealed partial class ServerMods(
     }
 
     /// <summary>The version to install: the one asked for when it suits the server, else the project's newest that does (a release first).</summary>
-    private async Task<ModrinthVersion?> ChooseAsync(Target target, string projectId, string? versionId, CancellationToken cancellationToken)
+    private static async Task<CatalogVersion?> ChooseAsync(Target target, string projectId, string? versionId, CancellationToken cancellationToken)
     {
-        if (versionId is not null && await modrinth.VersionAsync(versionId, cancellationToken) is { } asked
+        if (versionId is not null && await target.Catalog.VersionAsync(versionId, cancellationToken) is { } asked
             && (asked.ProjectId == projectId || asked.Id == versionId) && Suits(target, asked))
         {
             return asked;
         }
 
-        var versions = await modrinth.VersionsAsync(projectId, target.Kind.Loaders, target.GameVersion, cancellationToken);
+        var versions = await target.Catalog.VersionsAsync(projectId, target.Kind.Loaders, target.GameVersion, cancellationToken);
         var suitable = versions.Where(v => Suits(target, v)).ToList();
         return suitable.FirstOrDefault(v => v.VersionType == "release") ?? suitable.FirstOrDefault();
     }
 
-    private async Task<string?> ProjectOfAsync(string versionId, CancellationToken cancellationToken) =>
-        (await modrinth.VersionAsync(versionId, cancellationToken))?.ProjectId;
+    private static async Task<string?> ProjectOfAsync(Target target, string versionId, CancellationToken cancellationToken) =>
+        (await target.Catalog.VersionAsync(versionId, cancellationToken))?.ProjectId;
 
-    private static bool Suits(Target target, ModrinthVersion version) =>
-        version.GameVersions.Contains(target.GameVersion) && version.Loaders.Any(l => target.Kind.Loaders.Contains(l));
+    /// <summary>For the game version and one of the type's loaders (CurseForge names no loader on Bukkit plugins: their class says it).</summary>
+    private static bool Suits(Target target, CatalogVersion version) =>
+        version.GameVersions.Contains(target.GameVersion)
+        && (version.Loaders.Any(l => target.Kind.Loaders.Contains(l)) || (version.Loaders.Count == 0 && target.Kind.ProjectType == "plugin"));
 
     /// <summary>Records the change and has the node make it: <paramref name="add"/> put on the server, <paramref name="remove"/> deleted.</summary>
     private async Task<Result<ModsView>> ChangeAsync(Server server, List<ServerMod> installed, IReadOnlyList<Planned> add, IReadOnlyList<ServerMod> remove,
@@ -517,11 +582,11 @@ public sealed partial class ServerMods(
         }
 
         // A project installed in another version is replaced; another project in the same file cannot be.
-        var replaced = installed.Where(m => add.Any(a => a.Version.ProjectId == m.ProjectId)).ToList();
+        var replaced = installed.Where(m => add.Any(a => a.Source == m.Source && a.Version.ProjectId == m.ProjectId)).ToList();
         foreach (var planned in add)
         {
-            if (installed.FirstOrDefault(m => string.Equals(m.Path, planned.Path, StringComparison.OrdinalIgnoreCase) && m.ProjectId != planned.Version.ProjectId)
-                is { } taken)
+            if (installed.FirstOrDefault(m => string.Equals(m.Path, planned.Path, StringComparison.OrdinalIgnoreCase)
+                    && (m.Source != planned.Source || m.ProjectId != planned.Version.ProjectId)) is { } taken)
             {
                 return ModErrors.PathTaken(taken.Path);
             }
@@ -536,7 +601,7 @@ public sealed partial class ServerMods(
         var now = clock.GetUtcNow();
         var operation = Operation.Create(OperationType.ModsChange, server.NodeId, server.Id, request.UserId, OperationRequester.User, now);
         var command = new ChangeModsCommand(server.Id.Value,
-            [.. add.Select(a => new ModDownload(a.Path, a.File.Url, a.File.Sha512.ToLowerInvariant(), a.File.Size))],
+            [.. add.Select(a => new ModDownload(a.Path, a.File.Url, a.File.Hash, a.File.Size))],
             [.. leaving.Where(m => !add.Any(a => string.Equals(a.Path, m.Path, StringComparison.OrdinalIgnoreCase))).Select(m => m.Path)]);
         var names = add.Count == 0 ? [] : await NamesAsync(add, cancellationToken);
         var run = await operations.RunAsync(server, operation, command, beforeSave: () =>
@@ -544,9 +609,9 @@ public sealed partial class ServerMods(
             foreach (var planned in add)
             {
                 var requires = planned.Version.Dependencies.Where(d => d.Type == "required" && d.ProjectId is not null).Select(d => d.ProjectId!).ToList();
-                db.ServerMods.Add(ServerMod.Installing(server.Id, ModSource.Modrinth, planned.Version.ProjectId, planned.Version.Id,
-                    names.GetValueOrDefault(planned.Version.ProjectId, planned.Version.Name), planned.Version.VersionNumber, planned.Path,
-                    planned.File.Sha512.ToLowerInvariant(), planned.File.Size, planned.Dependency, requires, operation.Id, now));
+                db.ServerMods.Add(ServerMod.Installing(server.Id, planned.Source, planned.Version.ProjectId, planned.Version.Id,
+                    names.GetValueOrDefault((planned.Source, planned.Version.ProjectId), planned.Version.Name), planned.Version.VersionNumber, planned.Path,
+                    planned.File.Hash, planned.File.Size, planned.Dependency, requires, operation.Id, now));
             }
 
             foreach (var mod in leaving)
@@ -561,8 +626,9 @@ public sealed partial class ServerMods(
                 _ => AuditActions.Server.ModsRemoveRequested,
             }, metadata: new
             {
-                added = add.Select(a => new { project = a.Version.ProjectId, version = a.Version.VersionNumber, file = a.Path }).ToArray(),
-                removed = leaving.Select(m => new { project = m.ProjectId, version = m.VersionNumber, file = m.Path }).ToArray(),
+                added = add.Select(a => new { source = SourceName(a.Source), project = a.Version.ProjectId, version = a.Version.VersionNumber, file = a.Path })
+                    .ToArray(),
+                removed = leaving.Select(m => new { source = SourceName(m.Source), project = m.ProjectId, version = m.VersionNumber, file = m.Path }).ToArray(),
             }).WithServer(server.Id, server.NodeId);
         }, cancellationToken);
         if (!run.IsSuccess)
@@ -582,38 +648,70 @@ public sealed partial class ServerMods(
     }
 
     /// <summary>The projects' titles (a version's own name is often only its number).</summary>
-    private async Task<Dictionary<string, string>> NamesAsync(IReadOnlyList<Planned> add, CancellationToken cancellationToken)
+    private async Task<Dictionary<(ModSource, string), string>> NamesAsync(IReadOnlyList<Planned> add, CancellationToken cancellationToken)
     {
-        try
+        var names = new Dictionary<(ModSource, string), string>();
+        foreach (var bySource in add.GroupBy(a => a.Source))
         {
-            var projects = await modrinth.ProjectsAsync([.. add.Select(a => a.Version.ProjectId).Distinct(StringComparer.Ordinal)], cancellationToken);
-            return projects.GroupBy(p => p.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Title, StringComparer.Ordinal);
+            try
+            {
+                var catalog = catalogs.For(SourceName(bySource.Key))!;
+                var projects = await catalog.ProjectsAsync([.. bySource.Select(a => a.Version.ProjectId).Distinct(StringComparer.Ordinal)], cancellationToken);
+                foreach (var project in projects)
+                {
+                    names.TryAdd((bySource.Key, project.Id), project.Title);
+                }
+            }
+            catch (ModCatalogUnavailableException)
+            {
+                // their versions' names will do
+            }
         }
-        catch (ModCatalogUnavailableException)
-        {
-            return []; // their versions' names will do
-        }
+
+        return names;
     }
 
-
-    private async Task<Result<Target>> TargetAsync(Server server, CancellationToken cancellationToken)
+    private async Task<Result<Target>> TargetAsync(Server server, string source, CancellationToken cancellationToken)
     {
         var manifest = await ManifestAsync(server, cancellationToken);
-        if (FirstOf(manifest.ModList) is not { } source)
+        if (manifest.ModList.FirstOrDefault(s => s.Source == source) is not { } definition || catalogs.For(source) is not { } catalog
+            || SourceOf(source) is not { } modSource)
         {
             return ModErrors.Unsupported;
         }
 
+        if (!await catalog.IsConfiguredAsync(cancellationToken))
+        {
+            return ModErrors.CatalogNotConfigured;
+        }
+
         var values = Values(server, manifest);
-        if (values.GetValueOrDefault(source.TypeVar) is not { } type || source.Types.GetValueOrDefault(type) is not { } kind)
+        if (values.GetValueOrDefault(definition.TypeVar) is not { } type || definition.Types.GetValueOrDefault(type) is not { } kind)
         {
             return ModErrors.TypeUnsupported;
         }
 
-        return GameVersion(server, source, values) is { } version
-            ? new Target(source, kind, version, ModFiles.Folders(manifest))
+        return GameVersion(server, definition, values) is { } version
+            ? new Target(catalog, modSource, definition, kind, version, ModFiles.Folders(manifest))
             : ModErrors.VersionUnknown;
     }
+
+    /// <summary>A catalog's source as manifests and the API name it.</summary>
+    internal static string SourceName(ModSource source) => source switch
+    {
+        ModSource.CurseForge => ModSourceDefinition.CurseForge,
+        _ => ModSourceDefinition.Modrinth,
+    };
+
+    internal static ModSource? SourceOf(string source) => source switch
+    {
+        ModSourceDefinition.Modrinth => ModSource.Modrinth,
+        ModSourceDefinition.CurseForge => ModSource.CurseForge,
+        _ => null,
+    };
+
+    /// <summary>A catalog's checksum: SHA-512 (Modrinth's) or SHA-1 (CurseForge's), as hex.</summary>
+    private static bool IsHash(string hash) => hash.Length is 128 or 40 && hash.All(char.IsAsciiHexDigit);
 
     /// <summary>The version the last install reported ("latest" stands for it), else the one set, unless that is "latest".</summary>
     private static string? GameVersion(Server server, ModSourceDefinition source, IReadOnlyDictionary<string, string?> values) =>
@@ -625,7 +723,7 @@ public sealed partial class ServerMods(
     private async Task<List<ServerModView>> ViewsAsync(ServerId serverId, CancellationToken cancellationToken)
     {
         var mods = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == serverId).OrderBy(m => m.Name).ToListAsync(cancellationToken);
-        return [.. mods.Select(m => new ServerModView(m.Id.Value, m.ProjectId, m.VersionId, m.Name, m.VersionNumber, m.Path, m.Size, m.Dependency, m.State,
+        return [.. mods.Select(m => new ServerModView(m.Id.Value, SourceName(m.Source), m.ProjectId, m.VersionId, m.Name, m.VersionNumber, m.Path, m.Size, m.Dependency, m.State,
             m.InstalledAt, [.. mods.Where(o => o.Id != m.Id && o.Requires.Contains(m.ProjectId)).Select(o => o.Name)]))];
     }
 
@@ -640,7 +738,7 @@ public sealed partial class ServerMods(
         }
         catch (ModCatalogUnavailableException ex)
         {
-            return ex.Busy ? ModErrors.CatalogBusy : ModErrors.CatalogUnavailable(ex.Message);
+            return ex.NotConfigured ? ModErrors.CatalogNotConfigured : ex.Busy ? ModErrors.CatalogBusy : ModErrors.CatalogUnavailable(ex.Message);
         }
     }
 

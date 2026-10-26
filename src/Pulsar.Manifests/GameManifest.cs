@@ -51,7 +51,7 @@ public sealed record GameManifest(
 /// Modrinth for Minecraft. What a server can take depends on its type: the type variable's options are keys of
 /// <see cref="Types"/> (an option without one takes nothing from the catalog).
 /// </summary>
-/// <param name="Source">The catalog: <c>modrinth</c>.</param>
+/// <param name="Source">The catalog: <c>modrinth</c> or <c>curseforge</c>.</param>
 /// <param name="VersionVar">The variable holding the game's version, the catalog's files are filtered by (when the install did not report it).</param>
 /// <param name="TypeVar">The enum variable holding the server's type.</param>
 /// <param name="Modpacks">The catalog's modpacks install on the game too (null: they do not).</param>
@@ -59,6 +59,9 @@ public sealed record ModSourceDefinition(string Source, string VersionVar, strin
     ModpacksDefinition? Modpacks = null)
 {
     public const string Modrinth = "modrinth";
+
+    /// <summary>CurseForge (Pulsar 1.0.9): its API needs the panel's administrator's own key.</summary>
+    public const string CurseForge = "curseforge";
 }
 
 /// <summary>

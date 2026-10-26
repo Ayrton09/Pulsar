@@ -437,6 +437,10 @@
         "settings_changed": "Alterou a verificação diária de atualizações",
         "requested": "Pediu a um nó que atualizasse o Pulsar",
         "finished": "Um nó terminou de atualizar o Pulsar"
+      },
+      "mod_catalogs": {
+        "curseforge_key_set": "Configurou a chave de API do CurseForge",
+        "curseforge_key_removed": "Removeu a chave de API do CurseForge"
       }
     }
   },
@@ -488,7 +492,11 @@
       "checksum_mismatch": "Um download não é o arquivo que o Modrinth publicou, então nada foi alterado: {{detail}}",
       "file_exists": "Já existe um arquivo com esse nome que o painel não colocou: apague-o ou renomeie-o primeiro. {{detail}}",
       "untrusted_host": "O Pulsar não baixa mods desse site: {{detail}}",
-      "write_failed": "Não foi possível gravar todos os mods: {{detail}}"
+      "write_failed": "Não foi possível gravar todos os mods: {{detail}}",
+      "catalog_not_configured": "O CurseForge precisa de uma chave de API: um administrador a configura em Jogos.",
+      "distribution_forbidden": "O autor só permite baixar pelo site do CurseForge: baixe lá e envie com o gerenciador de arquivos. {{detail}}",
+      "curseforge_key_invalid": "Uma chave de API do CurseForge é uma linha de até 256 caracteres visíveis.",
+      "curseforge_key_rejected": "O CurseForge não aceita essa chave de API."
     },
     "modpack": {
       "unsupported": "Este servidor não pode instalar modpacks: {{detail}}",
@@ -504,7 +512,8 @@
       "disk_full": "O nó não tem espaço livre suficiente para o modpack: {{detail}}",
       "download_failed": "Não foi possível baixar o modpack: {{detail}}",
       "checksum_mismatch": "Um download não é o arquivo que o modpack lista, então nada foi alterado: {{detail}}",
-      "write_failed": "Não foi possível gravar todo o modpack: {{detail}}"
+      "write_failed": "Não foi possível gravar todo o modpack: {{detail}}",
+      "no_server_pack": "O autor do modpack não publica arquivos de servidor para esta versão no CurseForge."
     },
     "api_key": {
       "name_invalid": "Dê à chave um nome de uma linha, com até 64 caracteres.",
@@ -1570,7 +1579,6 @@
       }
     },
     "catalog": {
-      "title": "Modrinth",
       "searchMods": "Procurar mods",
       "searchPlugins": "Procurar plugins",
       "empty": "Nada encontrado para o tipo e a versão do jogo deste servidor.",
@@ -1588,7 +1596,7 @@
       "runsOn": "{{loader}} {{loaderVersion}} no Minecraft {{gameVersion}}",
       "installedAt": "instalado em {{when}}",
       "search": "Procurar modpacks",
-      "installConfirm": "Instalar {{name}} em {{server}}? O servidor é instalado de novo com o tipo e a versão do Minecraft do pack, e os mods do pack anterior são substituídos. Faça um backup antes.",
+      "installConfirm": "Instalar {{name}} em {{server}}? O servidor é instalado de novo com o tipo e a versão do Minecraft do pack, e os arquivos do pack anterior são substituídos, incluindo a configuração dele (seus próprios arquivos ficam). Faça um backup antes.",
       "versionsHint": "Cada versão diz em que roda; instalar uma instala o servidor de novo com seu tipo e sua versão do Minecraft.",
       "versionRunsOn": "{{loader}} no Minecraft {{gameVersion}}",
       "notForServer": "Não serve para este servidor ({{loaders}}, {{gameVersions}})",
@@ -1602,7 +1610,27 @@
     "refused": {
       "required_by": "{{others}} precisa de {{name}}: remova-o primeiro."
     },
-    "removeConfirm": "Remover {{name}} de {{server}}? O arquivo dele é apagado; os arquivos de configuração e os mods de que precisava são mantidos."
+    "removeConfirm": "Remover {{name}} de {{server}}? O arquivo dele é apagado; os arquivos de configuração e os mods de que precisava são mantidos.",
+    "catalogs": {
+      "label": "Catálogo",
+      "modrinth": "Modrinth",
+      "curseforge": "CurseForge",
+      "needsKey": "O CurseForge precisa de uma chave de API.",
+      "setKey": "Configure em Jogos",
+      "needsKeyAskAdmin": "O CurseForge precisa de uma chave de API: peça a um administrador para configurá-la."
+    },
+    "curseForgeKey": {
+      "title": "CurseForge",
+      "hint": "Com sua própria chave de API, a aba Mods dos servidores também busca no CurseForge (os termos dele proíbem compartilhar uma). O Pulsar a verifica com o CurseForge, guarda criptografada e nunca a mostra de novo; os nós nunca a recebem. Obtenha uma em",
+      "configured": "Configurada",
+      "missing": "Não configurada",
+      "label": "Chave de API do CurseForge",
+      "replace": "Substituir a chave de API do CurseForge",
+      "save": "Salvar chave",
+      "remove": "Remover chave",
+      "removeConfirm": "Remover a chave de API do CurseForge? A aba Mods dos servidores deixa de buscar no CurseForge; o que foi instalado de lá continua.",
+      "saved": "O CurseForge aceitou a chave; ela foi salva."
+    }
   },
   "backups": {
     "title": "Backups",

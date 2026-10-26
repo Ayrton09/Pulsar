@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 
 namespace Pulsar.Contracts;
@@ -231,8 +232,18 @@ public sealed record ChangeModsCommand(Guid ServerId, IReadOnlyList<ModDownload>
 
 /// <param name="Path">Where it goes in the server's folder: <c>mods/lithium-fabric-0.18.1.jar</c>.</param>
 /// <param name="Url">An https address of the catalog's own download host.</param>
-/// <param name="Sha512">The catalog's checksum of the file, lowercase hex.</param>
-public sealed record ModDownload(string Path, string Url, string Sha512, long Size);
+/// <param name="Hash">
+/// The catalog's checksum of the file, lowercase hex: SHA-512 (128 characters, Modrinth's) or SHA-1 (40, CurseForge's,
+/// the only one it publishes).
+/// </param>
+public sealed record ModDownload(string Path, string Url, string Hash, long Size)
+{
+    /// <summary>The algorithm of <see cref="Hash"/>, by its length; null when it is not a lowercase hex checksum of either.</summary>
+    [JsonIgnore]
+    public HashAlgorithmName? Algorithm => Hash is { Length: 128 or 40 } hash && hash.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f')
+        ? hash.Length == 128 ? HashAlgorithmName.SHA512 : HashAlgorithmName.SHA1
+        : null;
+}
 
 /// <summary>
 /// Operation (Pulsar 1.0.9): installs a Modrinth modpack (<c>.mrpack</c>) on the stopped server. The agent checks the pack
@@ -242,11 +253,16 @@ public sealed record ModDownload(string Path, string Url, string Sha512, long Si
 /// and the index's loader version over the server's variables); deletes the previous pack's files; writes the new ones
 /// and the pack's overrides. Completes with a <see cref="ModpackResult"/>.
 /// </summary>
-/// <param name="Pack">The pack's file; its path is only a name.</param>
+/// <param name="Pack">The pack's file (a Modrinth <c>.mrpack</c>, or a CurseForge pack's zip); its path is only a name.</param>
 /// <param name="ServerType">The option of the manifest's server type variable the pack runs on.</param>
 /// <param name="Loader">The catalog's loader the pack is made for (<c>fabric</c>, <c>forge</c>, <c>neoforge</c>).</param>
 /// <param name="GameVersion">The game version the pack is made for.</param>
-public sealed record InstallModpackCommand(Guid ServerId, ModDownload Pack, string ServerType, string Loader, string GameVersion) : AgentCommand
+/// <param name="ServerPack">
+/// A CurseForge pack's server files, which its author publishes beside it: the files come from there, and the pack's own
+/// zip is read only for its <c>manifest.json</c>. Null for a Modrinth pack.
+/// </param>
+public sealed record InstallModpackCommand(Guid ServerId, ModDownload Pack, string ServerType, string Loader, string GameVersion,
+    ModDownload? ServerPack = null) : AgentCommand
 {
     public const string Type = "server.modpack_install";
 }

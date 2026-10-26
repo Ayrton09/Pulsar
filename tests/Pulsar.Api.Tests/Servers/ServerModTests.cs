@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
@@ -77,6 +78,9 @@ public sealed class FakeModrinth : HttpMessageHandler
         return version;
     }
 
+    /// <summary>CurseForge's API, faked beside Modrinth's (its CDN's files are in <see cref="Files"/> too).</summary>
+    public FakeCurseForge CurseForge { get; } = new();
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = request.RequestUri!;
@@ -86,11 +90,16 @@ public sealed class FakeModrinth : HttpMessageHandler
             Requests.Add($"{request.Method} {uri} {body}");
         }
 
-        if (uri.Host == "cdn.modrinth.com")
+        if (uri.Host is "cdn.modrinth.com" or "edge.forgecdn.net")
         {
             return Files.TryGetValue(uri.OriginalString, out var file)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(file) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+
+        if (uri.Host == "api.curseforge.com")
+        {
+            return CurseForge.Answer(request, body, Files);
         }
 
         if (Failure is { } failure)
@@ -123,6 +132,138 @@ public sealed class FakeModrinth : HttpMessageHandler
     }
 }
 
+/// <summary>
+/// CurseForge's Core API faked: its key (<see cref="Key"/>, anything else refused), search, files by mod and by id, mods by
+/// id with their index of latest files; files served from its CDN through <see cref="FakeModrinth.Files"/>.
+/// </summary>
+public sealed class FakeCurseForge
+{
+    public const string Key = "a-curseforge-key-for-tests";
+
+    public Dictionary<int, JsonObject> Mods { get; } = [];
+
+    /// <summary>Each file, newest last added.</summary>
+    public List<JsonObject> Files { get; } = [];
+
+    public JsonObject Mod(int id, string name, int classId = 6)
+    {
+        var mod = new JsonObject
+        {
+            ["id"] = id,
+            ["name"] = name,
+            ["slug"] = name.ToLowerInvariant().Replace(' ', '-'),
+            ["summary"] = $"{name}, for tests",
+            ["downloadCount"] = 1000,
+            ["classId"] = classId,
+            ["authors"] = new JsonArray(new JsonObject { ["name"] = "someone" }),
+            ["dateModified"] = "2026-10-20T10:00:00Z",
+        };
+        Mods[id] = mod;
+        return mod;
+    }
+
+    /// <summary>A file of a mod; null content: its author keeps it on CurseForge's site only (no address).</summary>
+    public JsonObject File(Dictionary<string, byte[]> cdn, int id, int modId, string fileName, byte[]? content, string gameVersion = "26.3",
+        string? loader = "Fabric", int? requires = null, int? serverPackFileId = null, bool isServerPack = false, string? environment = null)
+    {
+        string? url = null;
+        if (content is not null)
+        {
+            url = $"https://edge.forgecdn.net/files/{id / 1000}/{id % 1000}/{fileName}";
+            cdn[url] = content;
+        }
+
+        var versions = new JsonArray(gameVersion);
+        if (loader is not null)
+        {
+            versions.Add(loader);
+        }
+
+        if (environment is not null)
+        {
+            versions.Add(environment);
+        }
+
+        var file = new JsonObject
+        {
+            ["id"] = id,
+            ["modId"] = modId,
+            ["displayName"] = Path.GetFileNameWithoutExtension(fileName),
+            ["fileName"] = fileName,
+            ["releaseType"] = 1,
+            ["fileDate"] = DateTimeOffset.UtcNow.AddMinutes(Files.Count).ToString("O"),
+            ["fileLength"] = content?.Length ?? 10,
+            ["downloadUrl"] = url,
+            ["hashes"] = content is null ? new JsonArray() : new JsonArray(new JsonObject { ["value"] = Sha1(content), ["algo"] = 1 }),
+            ["gameVersions"] = versions,
+            ["dependencies"] = requires is null ? new JsonArray() : new JsonArray(new JsonObject { ["modId"] = requires, ["relationType"] = 3 }),
+            ["isServerPack"] = isServerPack,
+            ["serverPackFileId"] = serverPackFileId,
+        };
+        Files.Add(file);
+        return file;
+    }
+
+    public HttpResponseMessage Answer(HttpRequestMessage request, string body, Dictionary<string, byte[]> cdn)
+    {
+        if (!request.Headers.TryGetValues("x-api-key", out var keys) || keys.Single() != Key)
+        {
+            return new HttpResponseMessage(HttpStatusCode.Forbidden);
+        }
+
+        var uri = request.RequestUri!;
+        var path = uri.AbsolutePath;
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        object? answer = (request.Method.Method, path) switch
+        {
+            ("GET", "/v1/games/432") => new { data = new { id = 432, name = "Minecraft" } },
+            ("GET", "/v1/mods/search") => Page(Mods.Values.Where(m => m["classId"]!.GetValue<int>() == int.Parse(query["classId"]!, CultureInfo.InvariantCulture))
+                .Select(WithIndex)),
+            ("POST", "/v1/mods") => Page(JsonNode.Parse(body)!["modIds"]!.AsArray().Select(i => i!.GetValue<int>()).Where(Mods.ContainsKey)
+                .Select(i => WithIndex(Mods[i]))),
+            ("POST", "/v1/mods/files") => Page(JsonNode.Parse(body)!["fileIds"]!.AsArray().Select(i => i!.GetValue<int>())
+                .Select(i => Files.FirstOrDefault(f => f["id"]!.GetValue<int>() == i)).OfType<JsonObject>()),
+            _ when path.StartsWith("/v1/mods/", StringComparison.Ordinal) && path.EndsWith("/files", StringComparison.Ordinal) =>
+                Page(Files.Where(f => f["modId"]!.GetValue<int>() == int.Parse(path.Split('/')[3], CultureInfo.InvariantCulture)
+                    && (query["gameVersion"] is not { } version || f["gameVersions"]!.AsArray().Any(v => v!.GetValue<string>() == version)))
+                    .Reverse()),
+            _ => null,
+        };
+        return answer is null
+            ? new HttpResponseMessage(HttpStatusCode.NotFound)
+            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json") };
+    }
+
+    /// <summary>A mod with CurseForge's index of its latest files, newest first.</summary>
+    private JsonObject WithIndex(JsonObject mod)
+    {
+        var copy = mod.DeepClone().AsObject();
+        copy["latestFilesIndexes"] = new JsonArray([.. Files.Where(f => f["modId"]!.GetValue<int>() == mod["id"]!.GetValue<int>()).Reverse()
+            .Select(f => (JsonNode)new JsonObject
+            {
+                ["gameVersion"] = f["gameVersions"]![0]!.GetValue<string>(),
+                ["fileId"] = f["id"]!.GetValue<int>(),
+                ["filename"] = f["fileName"]!.GetValue<string>(),
+                ["releaseType"] = 1,
+                ["modLoader"] = f["gameVersions"]!.AsArray().Any(v => v!.GetValue<string>() == "Fabric") ? 4 : null,
+            })]);
+        return copy;
+    }
+
+    private static object Page(IEnumerable<JsonObject> items)
+    {
+        var list = items.Select(i => i.DeepClone()).ToList();
+        return new { data = list, pagination = new { index = 0, pageSize = list.Count, resultCount = list.Count, totalCount = list.Count } };
+    }
+
+    private static string Sha1(byte[] content)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        hash.AppendData(content);
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+}
+
 public sealed class ModrinthApiFactory : PulsarApiFactory
 {
     public FakeModrinth Modrinth { get; } = new();
@@ -131,7 +272,10 @@ public sealed class ModrinthApiFactory : PulsarApiFactory
     {
         base.ConfigureWebHost(builder);
         builder.ConfigureTestServices(services =>
-            services.AddHttpClient(ModrinthClient.ClientName).ConfigurePrimaryHttpMessageHandler(() => Modrinth));
+        {
+            services.AddHttpClient(ModrinthClient.ClientName).ConfigurePrimaryHttpMessageHandler(() => Modrinth);
+            services.AddHttpClient(CurseForgeClient.ClientName).ConfigurePrimaryHttpMessageHandler(() => Modrinth);
+        });
     }
 }
 
@@ -370,6 +514,172 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         factory.Modrinth.Version("quilt-pack", "qp1", "1.0", Mrpack("26.3", "0.29.0"), loader: "quilt", extension: "mrpack");
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("quilt-pack", "qp1")), HttpStatusCode.BadRequest,
             ModpackErrors.LoaderUnsupported.Code);
+    }
+
+    [DatabaseFact]
+    public async Task CurseForgeNeedsTheAdministratorsKeyKeptEncryptedAndNeverShown()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        using (var none = await admin.DeleteAsync("/api/v1/mod-catalogs/curseforge-key"))
+        {
+            await AccessScenario.EnsureSuccessAsync(none); // the fixture is shared: another test may have set it
+        }
+
+        await using var agent = await ConnectedAgentAsync(admin, "cfkey");
+        var server = await InstalledAsync(admin, agent, "CF key");
+        await SetAsync(admin, server, "fabric");
+
+        var view = await ModsAsync(admin, server);
+        Assert.Equal(["modrinth"], view.Catalogs);
+        Assert.Equal(["curseforge"], view.CatalogsNeedingKey);
+        await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/mods/search?source=curseforge"), HttpStatusCode.Conflict,
+            ModErrors.CatalogNotConfigured.Code);
+
+        await ProblemAsync(await admin.PutAsync("/api/v1/mod-catalogs/curseforge-key", new CurseForgeKeyRequest("not-the-key")), HttpStatusCode.BadRequest,
+            ModErrors.CurseForgeKeyRejected.Code);
+        using (var set = await admin.PutAsync("/api/v1/mod-catalogs/curseforge-key", new CurseForgeKeyRequest(FakeCurseForge.Key)))
+        {
+            await AccessScenario.EnsureSuccessAsync(set);
+            var body = await set.Content.ReadAsStringAsync(Ct);
+            Assert.Contains("\"curseForgeConfigured\":true", body, StringComparison.Ordinal);
+            Assert.DoesNotContain(FakeCurseForge.Key, body, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(["modrinth", "curseforge"], (await ModsAsync(admin, server)).Catalogs);
+
+        // Kept encrypted, audited without it, and only for whoever manages the panel's settings.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var stored = (await db.ModCatalogSettings.AsNoTracking().SingleAsync(Ct)).CurseForgeKey!;
+            Assert.DoesNotContain(FakeCurseForge.Key, Encoding.UTF8.GetString(stored), StringComparison.Ordinal);
+            var entries = await db.AuditLog.AsNoTracking().Where(e => e.Action == AuditActions.ModCatalogs.CurseForgeKeySet).ToListAsync(Ct);
+            Assert.NotEmpty(entries);
+            Assert.All(entries, e => Assert.DoesNotContain(FakeCurseForge.Key, e.Metadata, StringComparison.Ordinal));
+        }
+
+        using var viewer = await scenario.SignedInWithAsync("cf-viewer", Permissions.Server.View);
+        using (var refused = await viewer.PutAsync("/api/v1/mod-catalogs/curseforge-key", new CurseForgeKeyRequest(FakeCurseForge.Key)))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+
+        using (var refused = await viewer.GetAsync("/api/v1/mod-catalogs"))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+    }
+
+    [DatabaseFact]
+    public async Task CurseForgeModsInstallWithTheSha1ItPublishesAndWhatTheyRequire()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await KeyAsync(admin);
+        await using var agent = await ConnectedAgentAsync(admin, "cfmods");
+        var server = await InstalledAsync(admin, agent, "CF mods");
+        await SetAsync(admin, server, "fabric");
+        var curseForge = factory.Modrinth.CurseForge;
+        var cdn = factory.Modrinth.Files;
+        curseForge.Mod(306612, "Fabric API CF");
+        curseForge.Mod(238222, "JEI CF");
+        var fabricApi = Encoding.UTF8.GetBytes("fabric api from curseforge");
+        var jei = Encoding.UTF8.GetBytes("jei 1");
+        curseForge.File(cdn, 5001, 306612, "fabric-api-cf.jar", fabricApi);
+        curseForge.File(cdn, 5002, 238222, "jei-cf.jar", jei, requires: 306612);
+        curseForge.File(cdn, 5003, 238222, "jei-cf-client.jar", Encoding.UTF8.GetBytes("for players"), environment: "Client"); // newest, for players only
+
+        var found = await GetAsync<ModSearchView>(admin, $"/api/v1/servers/{server}/mods/search?source=curseforge&query=jei");
+        Assert.Contains(found.Hits, h => h.ProjectId == "238222" && h.Title == "JEI CF");
+        var search = factory.Modrinth.Requests.Last(r => r.Contains("api.curseforge.com/v1/mods/search", StringComparison.Ordinal));
+        Assert.Contains("classId=6", search, StringComparison.Ordinal);
+        Assert.Contains("modLoaderType=4", search, StringComparison.Ordinal);
+        Assert.Contains("gameVersion=26.3", search, StringComparison.Ordinal);
+
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("238222", null, "curseforge")));
+        var view = await SettledAsync(admin, server, list => list.Count == 2);
+        Assert.All(view.Installed, m => Assert.Equal("curseforge", m.Source));
+        Assert.Equal(("mods/jei-cf.jar", false), (view.Installed.Single(m => m.ProjectId == "238222").Path, view.Installed.Single(m => m.ProjectId == "238222").Dependency));
+        Assert.True(view.Installed.Single(m => m.ProjectId == "306612").Dependency);
+        var mods = Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId, "mods");
+        Assert.Equal(jei, await File.ReadAllBytesAsync(Path.Combine(mods, "jei-cf.jar"), Ct));
+        Assert.Equal(fabricApi, await File.ReadAllBytesAsync(Path.Combine(mods, "fabric-api-cf.jar"), Ct));
+
+        // A newer file, from CurseForge's index of each mod's latest files.
+        var jei2 = Encoding.UTF8.GetBytes("jei 2");
+        curseForge.File(cdn, 5004, 238222, "jei-cf-2.jar", jei2, requires: 306612);
+        var updates = await GetAsync<ModUpdateList>(admin, $"/api/v1/servers/{server}/mods/updates");
+        Assert.Equal(("JEI CF", "jei-cf-2"), (Assert.Single(updates.Updates).Name, updates.Updates[0].NewVersionNumber));
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods/update", new UpdateModsRequest(null)));
+        await SettledAsync(admin, server, list => list.Any(m => m.VersionNumber == "jei-cf-2"));
+        Assert.Equal(jei2, await File.ReadAllBytesAsync(Path.Combine(mods, "jei-cf-2.jar"), Ct));
+        Assert.False(File.Exists(Path.Combine(mods, "jei-cf.jar")));
+
+        // A file its author keeps on CurseForge's site only.
+        curseForge.Mod(4242, "Site Only");
+        curseForge.File(cdn, 5005, 4242, "site-only.jar", null);
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("4242", null, "curseforge")), HttpStatusCode.Conflict,
+            "mods.distribution_forbidden");
+    }
+
+    [DatabaseFact]
+    public async Task CurseForgePacksComeFromTheServerFilesTheirAuthorsPublish()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await KeyAsync(admin);
+        await using var agent = await ConnectedAgentAsync(admin, "cfpack");
+        var server = await InstalledAsync(admin, agent, "CF pack");
+        var curseForge = factory.Modrinth.CurseForge;
+        var cdn = factory.Modrinth.Files;
+        curseForge.Mod(900, "CF Pack", classId: 4471);
+        curseForge.File(cdn, 6002, 900, "CF-Pack-server.zip", Zip(("CF-Pack-server/mods/a.jar", "a"), ("CF-Pack-server/config/a.toml", "from the server pack"),
+            ("CF-Pack-server/start.sh", "java -jar server.jar")), isServerPack: true);
+        var manifest = new JsonObject
+        {
+            ["manifestType"] = "minecraftModpack",
+            ["manifestVersion"] = 1,
+            ["name"] = "CF Pack",
+            ["minecraft"] = new JsonObject { ["version"] = "26.3", ["modLoaders"] = new JsonArray(new JsonObject { ["id"] = "fabric-0.17.2", ["primary"] = true }) },
+            ["files"] = new JsonArray(),
+        }.ToJsonString();
+        curseForge.File(cdn, 6001, 900, "CF-Pack-1.0.zip", Zip(("manifest.json", manifest)), serverPackFileId: 6002);
+        curseForge.Mod(901, "No Server Files", classId: 4471);
+        curseForge.File(cdn, 6003, 901, "No-Server-Files.zip", Zip(("manifest.json", manifest)));
+
+        var versions = await GetAsync<ModpackVersionList>(admin, $"/api/v1/servers/{server}/modpacks/projects/900/versions?source=curseforge");
+        Assert.Equal(("6001", "fabric", "26.3"), (Assert.Single(versions.Versions).Id, versions.Versions[0].ServerType, versions.Versions[0].GameVersion));
+
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("900", null, "curseforge")));
+        var view = await PackSettledAsync(admin, server);
+        Assert.Equal(("curseforge", "CF Pack", "0.17.2"), (view.Modpack!.Source, view.Modpack.Name, view.Modpack.LoaderVersion));
+        var folder = Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId);
+        Assert.Equal("a", await File.ReadAllTextAsync(Path.Combine(folder, "mods", "a.jar"), Ct));
+        Assert.Equal("from the server pack", await File.ReadAllTextAsync(Path.Combine(folder, "config", "a.toml"), Ct));
+        Assert.False(File.Exists(Path.Combine(folder, "start.sh")));
+
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/modpacks", new InstallModRequest("901", null, "curseforge")),
+            HttpStatusCode.BadRequest, ModpackErrors.NoServerPack.Code);
+    }
+
+    private static async Task KeyAsync(PanelClient admin)
+    {
+        using var set = await admin.PutAsync("/api/v1/mod-catalogs/curseforge-key", new CurseForgeKeyRequest(FakeCurseForge.Key));
+        await AccessScenario.EnsureSuccessAsync(set);
+    }
+
+    private static byte[] Zip(params (string Name, string Content)[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in entries)
+            {
+                using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+                writer.Write(content);
+            }
+        }
+
+        return buffer.ToArray();
     }
 
     /// <summary>A .mrpack for Fabric on <paramref name="minecraft"/>, its files on Modrinth's CDN, with an override.</summary>

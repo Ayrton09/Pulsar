@@ -14,6 +14,7 @@ import { GameCard, GameRow } from './GameCard';
 import { newestOfEachGame } from './templateVersions';
 import { useArtworkShown } from '../games/api';
 import { ArtworkSetting } from '../games/ArtworkSetting';
+import { CurseForgeKeySetting } from '../mods/CurseForgeKeySetting';
 
 /**
  * Game templates (docs/architecture/04): the ones shipped with Pulsar and the ones administrators imported, the newest
@@ -44,6 +45,7 @@ export function TemplatesPage() {
         }
       />
       {can(me, Permission.SettingsManage) && <ArtworkSetting />}
+      {can(me, Permission.SettingsManage) && <CurseForgeKeySetting />}
       {templates.isPending && <Spinner label={t('common.loading')} />}
       {templates.isError && <Alert>{errorMessage(t, templates.error)}</Alert>}
       {templates.data && artwork === undefined && <Spinner label={t('common.loading')} />}

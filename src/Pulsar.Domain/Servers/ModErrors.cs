@@ -34,6 +34,20 @@ public static class ModErrors
 
     public static DomainError NoUpdates { get; } = new("mods.no_updates", "The catalog has nothing newer for those mods.");
 
+    public static DomainError CurseForgeKeyInvalid { get; } =
+        new("mods.curseforge_key_invalid", "A CurseForge API key is one line of up to 256 printable characters.");
+
+    public static DomainError CurseForgeKeyRejected { get; } =
+        new("mods.curseforge_key_rejected", "CurseForge does not accept that API key.");
+
+    /// <summary>A catalog that needs a key the panel does not have (CurseForge: the administrator's).</summary>
+    public static DomainError CatalogNotConfigured { get; } =
+        new("mods.catalog_not_configured", "CurseForge needs an API key: an administrator sets it in the panel's settings.");
+
+    /// <summary>The catalog has the file but its author lets it be downloaded from the catalog's own site only.</summary>
+    public static DomainError DistributionForbidden(string name) =>
+        new("mods.distribution_forbidden", $"{name}'s author lets it be downloaded from CurseForge's site only: download it there and upload it with the file manager.");
+
     public static DomainError RequirementMissing(string name) =>
         new("mods.requirement_missing", $"{name} requires a project that has no version for this server.");
 

@@ -48,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<ServerBackups>();
         services.AddScoped<ServerAddons>();
         services.AddScoped<ServerMods>();
+        services.AddScoped<ModCatalogs>();
+        services.AddScoped<CatalogSettings>();
         services.AddScoped<WorkshopLookup>();
         services.AddScoped<BackupStorages>();
         services.AddScoped<SteamAccounts>();

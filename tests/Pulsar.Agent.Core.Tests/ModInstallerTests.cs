@@ -61,6 +61,24 @@ public sealed class ModInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task CurseForgesFilesAreCheckedAgainstTheSha1ItPublishes()
+    {
+        const string Jei = "https://edge.forgecdn.net/files/6000/1/jei-1.21.8-fabric.jar";
+        var jei = Encoding.UTF8.GetBytes("jei");
+        _http.Routes[Jei] = jei;
+        using var sha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        sha1.AppendData(jei);
+        var hash = Convert.ToHexStringLower(sha1.GetHashAndReset());
+
+        await ChangeAsync([new ModDownload("mods/jei.jar", Jei, hash, jei.Length)], []);
+        Assert.Equal(jei, File.ReadAllBytes(Path.Combine(_root, "mods", "jei.jar")));
+
+        _http.Routes[Jei] = Encoding.UTF8.GetBytes("tampered");
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync([new ModDownload("mods/jei2.jar", Jei, hash, jei.Length)], []));
+        Assert.Equal("mods.checksum_mismatch", error.Code);
+    }
+
+    [Fact]
     public async Task AFileSomeoneElsePutThereStaysTheirs()
     {
         Directory.CreateDirectory(Path.Combine(_root, "mods"));

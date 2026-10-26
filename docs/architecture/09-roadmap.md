@@ -460,7 +460,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 1. **Game updates** · *done*: checks against Steam and Mojang, shown and notified, installed by themselves as a sequence (warn, stop, update, start again; when nobody plays if asked). Doc 05, "Implementation (1.0.9)"; doc 03, "Game update checks".
 2. **Scheduled tasks of several steps** · *done*: steps one after the other (message the players, command, wait, stop, start, restart, back up, update) with presets, conditions (only while running, only when nobody plays, only when a game update is out), cancel. Doc 05, "Implementation (1.0.9): scheduled tasks of several steps"; doc 07, "Schedules".
-3. Minecraft server types (Paper, Purpur, Fabric, Forge, NeoForge), plugins and modpacks (Modrinth, CurseForge).
+3. **Minecraft server types, mods, plugins and modpacks** · *done*: Paper, Purpur, Fabric, Forge and NeoForge besides Mojang's server (doc 04, "Server types"); mods and plugins from Modrinth and CurseForge with what they require, versions, updates and removal (doc 04, "Mods"); Modrinth modpacks and CurseForge packs through their authors' server files (doc 04, "Modpacks"); CurseForge with each administrator's own key. Follow-ups: list a modpack's own projects (from its files' checksums) so the catalog marks and refuses mods the pack already has; one catalog's project and the other's can still both be installed (the same mod twice).
 4. Player actions from the Players card: kick, ban, whitelist, operator.
 5. Compressing and extracting archives in the file manager.
 6. More games (Space Engineers, Conan Exiles, DayZ, Don't Starve Together, Terraria, Squad, Insurgency: Sandstorm, Soulmask, Icarus, Abiotic Factor, Euro Truck Simulator 2, Killing Floor 2…).

@@ -1092,7 +1092,7 @@ public sealed partial class ServerHost(
             {
                 var progress = new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent));
                 var installer = new ModpackInstaller(files, installOptions.HttpHandler);
-                using var prepared = await installer.PrepareAsync(command.Pack, command.Loader, command.GameVersion,
+                using var prepared = await installer.PrepareAsync(command.Pack, command.ServerPack, command.Loader, command.GameVersion,
                     version => VariableValues.Check(loaderVariable, version), progress.ReportAsync, cancellationToken);
                 server.Supervisor.Console.Note($"Modpack {prepared.Name ?? "?"}: {prepared.Count} files, {command.Loader} {prepared.LoaderVersion} on {command.GameVersion}",
                     clock.GetUtcNow());

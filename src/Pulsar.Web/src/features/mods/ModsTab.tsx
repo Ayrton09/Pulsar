@@ -8,11 +8,13 @@ import { Field, Input } from '../../components/ui/Form';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
-import { canOnServer, Permission } from '../../lib/permissions';
+import { can, canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import { failureReason, serverActions } from '../servers/serverStatus';
+import { Link } from 'react-router';
 import {
+  projectUrl,
   useInstallMod,
   useInstallModpack,
   useModpackSearch,
@@ -23,13 +25,21 @@ import {
   useModVersions,
   useRemoveMod,
   useUpdateMods,
+  type CatalogSource,
   type ModHitView,
   type ModpackView,
   type ModUpdateView,
   type ServerModView,
 } from './api';
 
-/** How long typing pauses before the catalog is asked: each search is a request to Modrinth. */
+/** A catalog's project, as the page refers to it. */
+interface Project {
+  source: CatalogSource;
+  projectId: string;
+  title: string;
+}
+
+/** How long typing pauses before the catalog is asked: each search is a request to it. */
 const searchDelay = 400;
 
 /**
@@ -46,8 +56,11 @@ export function ModsTab({ details }: { details: ServerDetails }) {
   const remove = useRemoveMod(server.id);
   const installPack = useInstallModpack(server.id);
   const [checking, setChecking] = useState(false);
-  const [versionsOf, setVersionsOf] = useState<{ projectId: string; title: string } | null>(null);
-  const [packVersionsOf, setPackVersionsOf] = useState<{ projectId: string; title: string } | null>(null);
+  // A project's versions, from the catalog it is from.
+  const [versionsOf, setVersionsOf] = useState<Project | null>(null);
+  const [packVersionsOf, setPackVersionsOf] = useState<Project | null>(null);
+  // The catalog searched: the first the server's game offers until another is chosen.
+  const [chosen, setChosen] = useState<CatalogSource | null>(null);
   const canChange = canOnServer(me, server, Permission.ServerInstall);
   // The same moment a reinstall is possible: connected, idle and stopped; and installed, as mods go into the game.
   const changeable = serverActions(server).reinstall && server.installState === 'installed';
@@ -72,6 +85,8 @@ export function ModsTab({ details }: { details: ServerDetails }) {
 
   const view = mods.data;
   const plugins = view.projectType === 'plugin';
+  const catalogs = view.catalogs as CatalogSource[];
+  const source: CatalogSource | undefined = chosen && catalogs.includes(chosen) ? chosen : catalogs[0];
   // A change on its way (rows still installing or removing, a pack installing) ends before another starts.
   const idle =
     changeable &&
@@ -106,20 +121,28 @@ export function ModsTab({ details }: { details: ServerDetails }) {
     remove.reset();
     installPack.reset();
   };
-  const installMod = (projectId: string, versionId?: string) => {
+  const installMod = (project: Project, versionId?: string) => {
     reset();
-    install.mutate(versionId ? { projectId, versionId } : { projectId }, { onSuccess: () => setVersionsOf(null) });
+    install.mutate(
+      versionId
+        ? { source: project.source, projectId: project.projectId, versionId }
+        : { source: project.source, projectId: project.projectId },
+      { onSuccess: () => setVersionsOf(null) },
+    );
   };
   const updateMods = (modIds: string[] | null) => {
     reset();
     update.mutate(modIds);
   };
-  const installModpack = (project: { projectId: string; title: string }, versionId?: string) => {
+  const installModpack = (project: Project, versionId?: string) => {
     if (window.confirm(t('mods.modpacks.installConfirm', { name: project.title, server: server.name }))) {
       reset();
-      installPack.mutate(versionId ? { projectId: project.projectId, versionId } : { projectId: project.projectId }, {
-        onSuccess: () => setPackVersionsOf(null),
-      });
+      installPack.mutate(
+        versionId
+          ? { source: project.source, projectId: project.projectId, versionId }
+          : { source: project.source, projectId: project.projectId },
+        { onSuccess: () => setPackVersionsOf(null) },
+      );
     }
   };
   const removeMod = (mod: ServerModView) => {
@@ -189,22 +212,43 @@ export function ModsTab({ details }: { details: ServerDetails }) {
               (remove.isPending && remove.variables === mod.id) ||
               (update.isPending && update.variables?.includes(mod.id) === true)
             }
-            onVersions={(mod) => setVersionsOf({ projectId: mod.projectId, title: mod.name })}
+            onVersions={(mod) =>
+              setVersionsOf({ source: mod.source as CatalogSource, projectId: mod.projectId, title: mod.name })
+            }
             onUpdate={(mod) => updateMods([mod.id])}
             onRemove={removeMod}
           />
         )}
       </section>
-      {canChange && usable && (
+      {canChange && view.catalogsNeedingKey.length > 0 && (
+        <p className="max-w-2xl text-sm text-muted">
+          {can(me, Permission.SettingsManage) ? (
+            <>
+              {t('mods.catalogs.needsKey')}{' '}
+              <Link to="/templates" className="text-accent hover:underline">
+                {t('mods.catalogs.setKey')}
+              </Link>
+            </>
+          ) : (
+            t('mods.catalogs.needsKeyAskAdmin')
+          )}
+        </p>
+      )}
+      {canChange && (usable || view.modpacks) && catalogs.length > 1 && source && (
+        <CatalogSwitch catalogs={catalogs} chosen={source} onChoose={setChosen} />
+      )}
+      {canChange && usable && source && (
         <Catalog
+          key={`mods-${source}`}
           kind="mods"
+          source={source}
           serverId={server.id}
           projectType={view.projectType ?? 'mod'}
-          onServer={new Set(installed.map((mod) => mod.projectId))}
+          onServer={new Set(installed.filter((mod) => mod.source === source).map((mod) => mod.projectId))}
           enabled={enabled}
           installing={install.isPending ? (install.variables?.projectId ?? null) : null}
-          onInstall={(hit) => installMod(hit.projectId)}
-          onVersions={(hit) => setVersionsOf({ projectId: hit.projectId, title: hit.title })}
+          onInstall={(hit) => installMod({ source, projectId: hit.projectId, title: hit.title })}
+          onVersions={(hit) => setVersionsOf({ source, projectId: hit.projectId, title: hit.title })}
         />
       )}
       {view.modpacks && (
@@ -212,16 +256,18 @@ export function ModsTab({ details }: { details: ServerDetails }) {
           <h2 className="text-lg font-semibold">{t('mods.modpacks.title')}</h2>
           <p className="max-w-2xl text-sm text-muted">{t('mods.modpacks.hint')}</p>
           <ModpackCard pack={view.modpack ?? null} installing={view.modpackInstalling ?? null} />
-          {canChange && (
+          {canChange && source && (
             <Catalog
+              key={`modpacks-${source}`}
               kind="modpacks"
+              source={source}
               serverId={server.id}
               projectType="modpack"
-              onServer={new Set(view.modpack ? [view.modpack.projectId] : [])}
+              onServer={new Set(view.modpack?.source === source ? [view.modpack.projectId] : [])}
               enabled={idle}
               installing={installPack.isPending ? (installPack.variables?.projectId ?? null) : null}
-              onInstall={(hit) => installModpack({ projectId: hit.projectId, title: hit.title })}
-              onVersions={(hit) => setPackVersionsOf({ projectId: hit.projectId, title: hit.title })}
+              onInstall={(hit) => installModpack({ source, projectId: hit.projectId, title: hit.title })}
+              onVersions={(hit) => setPackVersionsOf({ source, projectId: hit.projectId, title: hit.title })}
             />
           )}
         </section>
@@ -230,7 +276,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
         <ModpackVersionsDialog
           serverId={server.id}
           project={packVersionsOf}
-          current={view.modpack?.versionId ?? null}
+          current={view.modpack?.source === packVersionsOf.source ? view.modpack.versionId : null}
           enabled={idle}
           installing={installPack.isPending ? (installPack.variables?.versionId ?? null) : null}
           error={installPack.error}
@@ -246,7 +292,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
           enabled={enabled}
           installing={install.isPending ? (install.variables?.versionId ?? null) : null}
           error={install.error}
-          onInstall={(versionId) => installMod(versionsOf.projectId, versionId)}
+          onInstall={(versionId) => installMod(versionsOf, versionId)}
           onClose={() => setVersionsOf(null)}
         />
       )}
@@ -299,6 +345,11 @@ function InstalledTable({
                   <span className="font-medium">{mod.name}</span>
                   {mod.state !== 'installed' && <Badge tone="accent">{t(`mods.states.${mod.state}`)}</Badge>}
                   {mod.dependency && <Badge>{t('mods.dependency')}</Badge>}
+                  {mod.source !== 'modrinth' && (
+                    <span className="text-xs text-muted">
+                      {t(`mods.catalogs.${mod.source}`, { defaultValue: mod.source })}
+                    </span>
+                  )}
                 </div>
                 {mod.requiredBy.length > 0 && (
                   <p className="mt-1 text-xs text-muted">
@@ -352,6 +403,7 @@ function InstalledTable({
 /** The catalog's search: mods or plugins for the server's type and game version, or modpacks for any of its mod types. */
 function Catalog({
   kind,
+  source,
   serverId,
   projectType,
   onServer,
@@ -361,6 +413,7 @@ function Catalog({
   onVersions,
 }: {
   kind: 'mods' | 'modpacks';
+  source: CatalogSource;
   serverId: string;
   projectType: string;
   /** From the server's list, not the hits: it is current after a change, the search may be minutes old. */
@@ -377,8 +430,8 @@ function Catalog({
     const timer = setTimeout(() => setQuery(text.trim()), searchDelay);
     return () => clearTimeout(timer);
   }, [text]);
-  const mods = useModSearch(serverId, query, kind === 'mods');
-  const modpacks = useModpackSearch(serverId, query, kind === 'modpacks');
+  const mods = useModSearch(serverId, source, query, kind === 'mods');
+  const modpacks = useModpackSearch(serverId, source, query, kind === 'modpacks');
   const search = kind === 'mods' ? mods : modpacks;
   const hits = search.data?.pages.flatMap((page) => page.hits) ?? [];
   const label =
@@ -390,7 +443,7 @@ function Catalog({
 
   return (
     <section className="space-y-3">
-      {kind === 'mods' && <h2 className="text-lg font-semibold">{t('mods.catalog.title')}</h2>}
+      {kind === 'mods' && <h2 className="text-lg font-semibold">{t(`mods.catalogs.${source}`)}</h2>}
       <Field label={t(label)}>
         {(control) => (
           <Input {...control} type="search" maxLength={100} value={text} onChange={(e) => setText(e.target.value)} />
@@ -406,6 +459,7 @@ function Catalog({
           {hits.map((hit) => (
             <HitCard
               key={hit.projectId}
+              source={source}
               hit={hit}
               projectType={projectType}
               installed={onServer.has(hit.projectId)}
@@ -427,6 +481,7 @@ function Catalog({
 }
 
 function HitCard({
+  source,
   hit,
   projectType,
   installed,
@@ -435,6 +490,7 @@ function HitCard({
   onInstall,
   onVersions,
 }: {
+  source: CatalogSource;
   hit: ModHitView;
   projectType: string;
   installed: boolean;
@@ -453,7 +509,7 @@ function HitCard({
           <div className="min-w-0">
             <h3 className="font-semibold break-words">
               <a
-                href={`https://modrinth.com/${encodeURIComponent(projectType)}/${encodeURIComponent(hit.slug)}`}
+                href={projectUrl(source, projectType, hit.slug)}
                 target="_blank"
                 rel="noreferrer noopener"
                 aria-describedby={noteId}
@@ -500,7 +556,7 @@ function VersionsDialog({
   onClose,
 }: {
   serverId: string;
-  project: { projectId: string; title: string };
+  project: Project;
   installed: ServerModView[];
   enabled: boolean;
   installing: string | null;
@@ -510,7 +566,7 @@ function VersionsDialog({
 }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
-  const versions = useModVersions(serverId, project.projectId);
+  const versions = useModVersions(serverId, project.source, project.projectId);
   const current = installed.find((mod) => mod.projectId === project.projectId)?.versionId;
   return (
     <Dialog
@@ -581,6 +637,9 @@ function ModpackCard({ pack, installing }: { pack: ModpackView | null; installin
           <p className="flex flex-wrap items-center gap-2 font-medium">
             <span className="break-words">{pack.name}</span>
             <span className="text-muted">{pack.versionNumber}</span>
+            <span className="text-xs text-muted">
+              {t(`mods.catalogs.${pack.source}`, { defaultValue: pack.source })}
+            </span>
           </p>
           <p className="text-xs text-muted">
             {t('mods.modpacks.runsOn', {
@@ -609,7 +668,7 @@ function ModpackVersionsDialog({
   onClose,
 }: {
   serverId: string;
-  project: { projectId: string; title: string };
+  project: Project;
   current: string | null;
   enabled: boolean;
   installing: string | null;
@@ -619,7 +678,7 @@ function ModpackVersionsDialog({
 }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
-  const versions = useModpackVersions(serverId, project.projectId);
+  const versions = useModpackVersions(serverId, project.source, project.projectId);
   return (
     <Dialog
       open
@@ -684,5 +743,33 @@ function ModpackVersionsDialog({
         </ul>
       )}
     </Dialog>
+  );
+}
+
+/** Which catalog the searches ask, when the server's game takes more than one. */
+function CatalogSwitch({
+  catalogs,
+  chosen,
+  onChoose,
+}: {
+  catalogs: CatalogSource[];
+  chosen: CatalogSource;
+  onChoose: (source: CatalogSource) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div role="group" aria-label={t('mods.catalogs.label')} className="flex flex-wrap gap-2">
+      {catalogs.map((source) => (
+        <Button
+          key={source}
+          size="sm"
+          variant={source === chosen ? 'primary' : 'secondary'}
+          aria-pressed={source === chosen}
+          onClick={() => onChoose(source)}
+        >
+          {t(`mods.catalogs.${source}`)}
+        </Button>
+      ))}
+    </div>
   );
 }

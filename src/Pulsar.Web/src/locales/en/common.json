@@ -437,6 +437,10 @@
         "settings_changed": "Changed the daily check for updates",
         "requested": "Asked a node to update Pulsar",
         "finished": "A node finished updating Pulsar"
+      },
+      "mod_catalogs": {
+        "curseforge_key_set": "Set the CurseForge API key",
+        "curseforge_key_removed": "Removed the CurseForge API key"
       }
     }
   },
@@ -488,7 +492,11 @@
       "checksum_mismatch": "A download is not the file Modrinth published, so nothing was changed: {{detail}}",
       "file_exists": "{{detail}}",
       "untrusted_host": "{{detail}}",
-      "write_failed": "{{detail}}"
+      "write_failed": "{{detail}}",
+      "catalog_not_configured": "CurseForge needs an API key: an administrator sets it in Games.",
+      "distribution_forbidden": "{{detail}}",
+      "curseforge_key_invalid": "A CurseForge API key is one line of up to 256 printable characters.",
+      "curseforge_key_rejected": "CurseForge does not accept that API key."
     },
     "modpack": {
       "unsupported": "{{detail}}",
@@ -504,7 +512,8 @@
       "disk_full": "{{detail}}",
       "download_failed": "{{detail}}",
       "checksum_mismatch": "A download is not the file the modpack lists, so nothing was changed: {{detail}}",
-      "write_failed": "{{detail}}"
+      "write_failed": "{{detail}}",
+      "no_server_pack": "The modpack's author publishes no server files for this version on CurseForge."
     },
     "api_key": {
       "name_invalid": "Give the key a name of one line, up to 64 characters.",
@@ -1570,7 +1579,6 @@
       }
     },
     "catalog": {
-      "title": "Modrinth",
       "searchMods": "Search mods",
       "searchPlugins": "Search plugins",
       "empty": "Nothing found for this server's type and game version.",
@@ -1588,7 +1596,7 @@
       "runsOn": "{{loader}} {{loaderVersion}} on Minecraft {{gameVersion}}",
       "installedAt": "installed on {{when}}",
       "search": "Search modpacks",
-      "installConfirm": "Install {{name}} on {{server}}? The server is installed again as the pack's type and Minecraft version, and the previous pack's mods are replaced. Back the server up first.",
+      "installConfirm": "Install {{name}} on {{server}}? The server is installed again as the pack's type and Minecraft version, and the previous pack's files are replaced, its configuration included (your own files stay). Back the server up first.",
       "versionsHint": "Each version says what it runs on; installing one installs the server again as its type and Minecraft version.",
       "versionRunsOn": "{{loader}} on Minecraft {{gameVersion}}",
       "notForServer": "Not for this server ({{loaders}}, {{gameVersions}})",
@@ -1602,7 +1610,27 @@
     "refused": {
       "required_by": "{{others}} needs {{name}}: remove it first."
     },
-    "removeConfirm": "Remove {{name}} from {{server}}? Its file is deleted; its configuration files and the mods it needed are kept."
+    "removeConfirm": "Remove {{name}} from {{server}}? Its file is deleted; its configuration files and the mods it needed are kept.",
+    "catalogs": {
+      "label": "Catalog",
+      "modrinth": "Modrinth",
+      "curseforge": "CurseForge",
+      "needsKey": "CurseForge needs an API key.",
+      "setKey": "Set it in Games",
+      "needsKeyAskAdmin": "CurseForge needs an API key: ask an administrator to set it."
+    },
+    "curseForgeKey": {
+      "title": "CurseForge",
+      "hint": "With your own API key the servers' Mods tabs search CurseForge too (its terms forbid sharing one). Pulsar checks it with CurseForge, keeps it encrypted and never shows it again; nodes never get it. Get one at",
+      "configured": "Set",
+      "missing": "Not set",
+      "label": "CurseForge API key",
+      "replace": "Replace the CurseForge API key",
+      "save": "Save key",
+      "remove": "Remove key",
+      "removeConfirm": "Remove the CurseForge API key? The servers' Mods tabs stop searching CurseForge; what was installed from it stays.",
+      "saved": "CurseForge accepted the key; it is saved."
+    }
   },
   "backups": {
     "title": "Backups",
