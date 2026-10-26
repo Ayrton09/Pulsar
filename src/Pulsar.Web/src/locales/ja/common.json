@@ -388,7 +388,8 @@
         "game_updates_changed": "サーバーのゲームアップデートの扱いを変更",
         "game_update_check_requested": "ゲームのアップデート確認を依頼",
         "game_update_started": "ゲームのアップデートを開始",
-        "game_update_cancelled": "ゲームのアップデートをキャンセル"
+        "game_update_cancelled": "ゲームのアップデートをキャンセル",
+        "template_update_started": "サーバーの新しいテンプレートへの移行を開始しました"
       },
       "template": {
         "imported": "ゲームテンプレートをインポート"
@@ -737,7 +738,8 @@
       "players_unknown": "誰かがプレイしているか分かりませんでした。ゲームのクエリが応答していませんでした。",
       "no_update": "ゲームの更新はありませんでした。",
       "update_checks_off": "このサーバーのゲーム更新は確認されなくなりました。設定で確認をオンにしてください。",
-      "action_invalid": "パネルはこのタスクのアクションを認識できません。"
+      "action_invalid": "パネルはこのタスクのアクションを認識できません。",
+      "template_install_failed": "新しいテンプレートでサーバーを再インストールできませんでした。"
     },
     "notifications": {
       "not_found": "その通知チャンネルは存在しません。",
@@ -1383,7 +1385,9 @@
       "neverStarted": "一度も起動していません"
     },
     "actionsFor": "{{name}}の操作",
-    "commandFor": "{{name}}を{{command}}"
+    "commandFor": "{{name}}を{{command}}",
+    "templateUpgradeAuto": "サーバーの更新設定に従い、Pulsar が自動で移行します。",
+    "templateUpgradeImported": "このバージョンはここでインポートされました。Pulsar が自動で移行するのは、更新に含まれるバージョンだけです。"
   },
   "panelKeys": {
     "title": "パネルの署名キー",
@@ -5737,7 +5741,8 @@
       "start": "サーバーを起動中",
       "restart": "サーバーを再起動中",
       "backup": "バックアップ中",
-      "update": "ゲームを更新中"
+      "update": "ゲームを更新中",
+      "upgradeTemplate": "新しいテンプレートに移行中"
     },
     "waitingForPlayers": "誰もプレイしていなくなるまでアップデートを待ちます（現在オンライン: {{players}}）。",
     "waiting": "サーバーが空き次第アップデートを始めます。",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} は残り時間（5 min、1 min、10 s）になります。送信されるのは文字、数字、空白と . , ! ? : ' ( ) - のみです。",
       "noBroadcast": "このゲームにはプレイヤーにメッセージを送るコマンドがないため、通知されません。",
       "saved": "保存しました。",
-      "invalid": "0〜60 の範囲です。"
+      "invalid": "0〜60 の範囲です。",
+      "templatePolicy": "ゲームのテンプレートに新しいバージョンがあるとき",
+      "templateHint": "Pulsar の更新にはゲームテンプレートの新しいバージョンが含まれます。移行してもサーバーのファイルと設定はそのままです。自動で適用されるのはそれだけで、ここでインポートしたバージョンへは手動で移行します。",
+      "save": "更新設定を保存"
     },
-    "notBefore": "次の自動アップデートは {{when}} から開始できます（1 時間に 1 回まで）。"
+    "notBefore": "次の自動アップデートは {{when}} から開始できます（1 時間に 1 回まで）。",
+    "runningTemplate": "新しいテンプレートに移行中: ステップ {{step}} / {{steps}}（{{what}}）",
+    "templateWaitingForPlayers": "テンプレート {{version}} への移行は、誰もプレイしていなくなるまで待機します（現在のオンライン: {{players}}）。",
+    "templateWaiting": "テンプレート {{version}} への移行は、サーバーが空き次第始まります。",
+    "lastTemplateRun": {
+      "failed": "前回の新しいテンプレートへの自動移行に失敗しました: {{error}}",
+      "cancelled": "前回の新しいテンプレートへの自動移行はキャンセルされました。"
+    },
+    "cancelTemplate": "移行をキャンセル",
+    "skipTemplate": "このテンプレートのバージョンをスキップ",
+    "cancelTemplateConfirm": "この自動移行を止めますか？ サーバーの再インストールがすでに始まっている場合、それは最後まで続きます。",
+    "templatePolicies": {
+      "off": "何もしない",
+      "notify": "知らせる（サーバーページに表示）",
+      "install": "適用する（警告、停止、再インストール、再起動）"
+    }
   }
 }

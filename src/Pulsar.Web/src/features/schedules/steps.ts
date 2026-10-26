@@ -9,7 +9,7 @@ export const MAX_COMMAND_LENGTH = 512;
 export const MAX_MESSAGE_LENGTH = 128;
 const MAX_WAIT_SECONDS = 24 * 60 * 60;
 
-/** Every step kind, as the editor offers them, and the permission each one needs (the panel checks it too). */
+/** Every step kind and the permission each one needs (the panel checks it too). */
 export const stepPermissions: Record<SequenceStepKind, string | null> = {
   broadcast: Permission.ServerConsoleWrite,
   command: Permission.ServerConsoleWrite,
@@ -19,9 +19,13 @@ export const stepPermissions: Record<SequenceStepKind, string | null> = {
   restart: Permission.ServerRestart,
   backup: Permission.ServerBackupsCreate,
   update: Permission.ServerInstall,
+  upgradeTemplate: Permission.ServerInstall,
 };
 
-export const stepKinds = Object.keys(stepPermissions) as SequenceStepKind[];
+/** The kinds the editor offers: moving to a newer template is the template updates' own step, never a task's. */
+export const stepKinds = (Object.keys(stepPermissions) as SequenceStepKind[]).filter(
+  (kind) => kind !== 'upgradeTemplate',
+);
 
 /** A step being edited: a wait in seconds or minutes, as typed. */
 export interface StepDraft {

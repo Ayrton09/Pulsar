@@ -225,7 +225,10 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
         }
     }
 
-    private bool IsOffered(GameTemplate template) => template.Key != ManifestValidator.TestGameKey || options.EnableTestGame;
+    private bool IsOffered(GameTemplate template) => Offers(template.Key);
+
+    /// <summary>Whether this panel offers the game <paramref name="key"/> (the test game only where it is enabled).</summary>
+    public bool Offers(string key) => key != ManifestValidator.TestGameKey || options.EnableTestGame;
 
     internal static TemplateView View(GameTemplate t) =>
         new(t.Id.Value, t.Key, t.Version, t.Name, t.Description, t.Key == ManifestValidator.TestGameKey, t.Source);

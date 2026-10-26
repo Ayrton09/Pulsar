@@ -12,16 +12,19 @@ namespace Pulsar.Api.Servers;
 /// <param name="WhenEmpty">An automatic update waits until nobody plays (games with a query only).</param>
 /// <param name="WarningMinutes">How long before stopping the players are warned (0: no warning; games with a broadcast command).</param>
 /// <param name="WarningMessage">What they are told, with {time} for how long is left; empty: the default.</param>
+/// <param name="TemplatePolicy">What a newer version of the game's template does (1.0.10); absent: unchanged.</param>
 public sealed record GameUpdateSettingsRequest(
     GameUpdatePolicy Policy,
     bool WhenEmpty,
     [property: Range(0, GameUpdateWatch.MaxWarningMinutes)] int WarningMinutes,
-    [property: StringLength(GameUpdateWatch.MaxWarningMessageLength)] string? WarningMessage);
+    [property: StringLength(GameUpdateWatch.MaxWarningMessageLength)] string? WarningMessage,
+    GameUpdatePolicy? TemplatePolicy = null);
 
 /// <summary>
 /// A server's game updates (Pulsar 1.0.9): what the last check found and how updates are followed (off, notified or
 /// installed by themselves), a check now, an update installed now the way an automatic one is (warn, stop, update,
-/// start again), and cancelling one. Installing by itself also needs the rights it uses, checked by the service.
+/// start again), and cancelling one. Since 1.0.10 newer versions of the game's template too. Installing by itself also
+/// needs the rights it uses, checked by the service.
 /// </summary>
 public static class GameUpdateEndpoints
 {
@@ -31,7 +34,8 @@ public static class GameUpdateEndpoints
         updates.MapGet("/", async (Guid id, GameUpdates u, CancellationToken ct) => (await u.GetAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.View);
         updates.MapPut("/", async (Guid id, GameUpdateSettingsRequest request, GameUpdates u, CancellationToken ct) =>
-                (await u.ChangeAsync(new ServerId(id), request.Policy, request.WhenEmpty, request.WarningMinutes, request.WarningMessage, ct)).ToHttp())
+                (await u.ChangeAsync(new ServerId(id), request.Policy, request.WhenEmpty, request.WarningMinutes, request.WarningMessage, ct,
+                    request.TemplatePolicy)).ToHttp())
             .RequirePermission(Permissions.Server.Install);
         updates.MapPost("/check", async (Guid id, GameUpdates u, CancellationToken ct) => (await u.CheckNowAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.Install);

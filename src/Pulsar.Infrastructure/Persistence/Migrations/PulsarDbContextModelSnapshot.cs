@@ -1914,7 +1914,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_sequences", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule')");
+                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule', 'template_update')");
 
                             t.HasCheckConstraint("ck_server_sequences_status", "status IN ('cancelled', 'failed', 'running', 'succeeded')");
                         });
@@ -2213,6 +2213,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("attempted_latest");
 
+                    b.Property<string>("AttemptedTemplate")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("attempted_template");
+
                     b.Property<DateTimeOffset?>("AutoUpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("auto_updated_at");
@@ -2262,6 +2267,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("notified_latest");
 
+                    b.Property<string>("NotifiedTemplate")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("notified_template");
+
                     b.Property<string>("Policy")
                         .IsRequired()
                         .HasColumnType("text")
@@ -2270,6 +2280,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SequenceId")
                         .HasColumnType("uuid")
                         .HasColumnName("sequence_id");
+
+                    b.Property<string>("TemplatePolicy")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("template_policy");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -2307,6 +2322,8 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("game_update_watches", null, t =>
                         {
                             t.HasCheckConstraint("ck_game_update_watches_policy", "policy IN ('install', 'notify', 'off')");
+
+                            t.HasCheckConstraint("ck_game_update_watches_template_policy", "template_policy IN ('install', 'notify', 'off')");
 
                             t.HasCheckConstraint("ck_game_update_watches_warning_minutes", "warning_minutes BETWEEN 0 AND 60");
                         });

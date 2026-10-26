@@ -22,7 +22,8 @@ import {
 
 /**
  * What the last check of the server's game found (Pulsar 1.0.9): up to date, an update and what it brings, a check that
- * failed; the automatic update while it runs or waits. Games whose updates cannot be checked show nothing.
+ * failed; the automatic update while it runs or waits, and since 1.0.10 the automatic move to a newer template of the
+ * game. Games whose updates cannot be checked show only that move.
  */
 export function GameUpdatesCard({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
@@ -34,7 +35,10 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
   const install = useInstallGameUpdate(server.id);
   const cancel = useCancelGameUpdate(server.id);
   const view = updates.data;
-  if (!view?.supported || server.installState !== 'installed') {
+  const running = view?.running?.status === 'running' ? view.running : null;
+  // A move to a newer template installs the server again: it is shown while it does.
+  const checks = view?.supported === true && server.installState === 'installed';
+  if (!view || !(checks || running?.template === true || view.templatePending)) {
     return null;
   }
 
@@ -42,8 +46,8 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
   // Updating the way an automatic update does stops and starts the server.
   const canRestart =
     canInstall && canOnServer(me, server, Permission.ServerStop) && canOnServer(me, server, Permission.ServerStart);
-  const running = view.running?.status === 'running' ? view.running : null;
   const error = check.error ?? install.error ?? cancel.error;
+  const last = !running && view.running && view.running.status !== 'succeeded' ? view.running : null;
   return (
     <Card className="p-6">
       <div role="region" aria-labelledby="game-updates" className="space-y-3">
@@ -51,22 +55,29 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
           <h2 id="game-updates" className="text-lg font-semibold">
             {t('gameUpdates.title')}
           </h2>
-          <Status view={view} />
+          {checks && <Status view={view} />}
         </div>
         {error && <Alert>{errorMessage(t, error)}</Alert>}
-        <Builds view={view} />
-        {view.checkErrorCode && (
+        {checks && <Builds view={view} />}
+        {checks && view.checkErrorCode && (
           <p className="text-sm text-danger">
             {t('gameUpdates.checkFailed', { error: view.checkError ?? view.checkErrorCode })}
           </p>
         )}
         {running && (
           <p role="status" className="text-sm">
-            {t('gameUpdates.running', {
+            {t(running.template ? 'gameUpdates.runningTemplate' : 'gameUpdates.running', {
               step: running.step + 1,
               steps: running.steps,
               what: t(`gameUpdates.steps.${running.stepKind ?? 'wait'}`),
             })}
+          </p>
+        )}
+        {!running && view.templatePending && view.autoTemplate && (
+          <p role="status" className="text-sm">
+            {view.whenEmpty && view.playersOnline != null && view.playersOnline > 0
+              ? t('gameUpdates.templateWaitingForPlayers', { version: view.autoTemplate, players: view.playersOnline })
+              : t('gameUpdates.templateWaiting', { version: view.autoTemplate })}
           </p>
         )}
         {!running && view.pending && (
@@ -79,30 +90,36 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
         {!running && view.notBefore && (
           <p className="text-sm text-muted">{t('gameUpdates.notBefore', { when: formatDate(view.notBefore) })}</p>
         )}
-        {!running && view.running && view.running.status !== 'succeeded' && (
+        {last && (
           <p className="text-sm text-muted">
-            {t(`gameUpdates.lastRun.${view.running.status}`, { error: view.running.message ?? view.running.errorCode })}
+            {t(`gameUpdates.${last.template ? 'lastTemplateRun' : 'lastRun'}.${last.status}`, {
+              error: last.message ?? last.errorCode,
+            })}
           </p>
         )}
-        <p className="text-xs text-muted">
-          {view.policy === 'off'
-            ? t('gameUpdates.notChecked')
-            : view.checkedAt
-              ? t('gameUpdates.checkedAt', { when: formatDate(view.checkedAt) })
-              : t('gameUpdates.neverChecked')}
-        </p>
+        {checks && (
+          <p className="text-xs text-muted">
+            {view.policy === 'off'
+              ? t('gameUpdates.notChecked')
+              : view.checkedAt
+                ? t('gameUpdates.checkedAt', { when: formatDate(view.checkedAt) })
+                : t('gameUpdates.neverChecked')}
+          </p>
+        )}
         {canInstall && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              icon={RefreshCw}
-              busy={check.isPending}
-              disabled={view.checking}
-              onClick={() => check.mutate()}
-            >
-              {view.checking ? t('gameUpdates.checking') : t('gameUpdates.checkNow')}
-            </Button>
-            {view.available && !running && canRestart && (
+            {checks && (
+              <Button
+                variant="secondary"
+                icon={RefreshCw}
+                busy={check.isPending}
+                disabled={view.checking}
+                onClick={() => check.mutate()}
+              >
+                {view.checking ? t('gameUpdates.checking') : t('gameUpdates.checkNow')}
+              </Button>
+            )}
+            {checks && view.available && !running && canRestart && (
               <Button
                 icon={Download}
                 busy={install.isPending}
@@ -113,13 +130,19 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
                 {t('gameUpdates.installNow')}
               </Button>
             )}
-            {(running || view.pending) && (
+            {(running || view.pending || view.templatePending) && (
               <Button
                 variant="secondary"
                 busy={cancel.isPending}
-                onClick={() => window.confirm(t('gameUpdates.cancelConfirm')) && cancel.mutate()}
+                onClick={() =>
+                  window.confirm(
+                    t(running?.template ? 'gameUpdates.cancelTemplateConfirm' : 'gameUpdates.cancelConfirm'),
+                  ) && cancel.mutate()
+                }
               >
-                {running ? t('gameUpdates.cancel') : t('gameUpdates.skip')}
+                {running
+                  ? t(running.template ? 'gameUpdates.cancelTemplate' : 'gameUpdates.cancel')
+                  : t(view.pending ? 'gameUpdates.skip' : 'gameUpdates.skipTemplate')}
               </Button>
             )}
           </div>
@@ -160,21 +183,22 @@ function Builds({ view }: { view: GameUpdateView }) {
 }
 
 /**
- * How the server follows its game's updates: not at all, shown (and notified), or installed by themselves (warning the
- * players first, when nobody plays if asked). Changing it takes the right to update the server; installing by itself
- * also the rights to stop and start it, and to send console commands to warn.
+ * How the server follows its game's updates and, since 1.0.10, the newer versions of its game's template: not at all,
+ * shown (and notified), or installed by themselves (warning the players first, when nobody plays if asked). Every game
+ * has templates; only some have updates Pulsar can check. Changing it takes the right to update the server; installing
+ * by itself also the rights to stop and start it, and to send console commands to warn.
  */
 export function GameUpdateSettingsCard({ details }: { details: ServerDetails }) {
   const updates = useGameUpdates(details.server.id);
   const save = useChangeGameUpdates(details.server.id);
-  if (!updates.data?.supported) {
+  if (!updates.data) {
     return null;
   }
   // Keyed on what is stored: a save starts the form again from what the panel kept.
-  const { policy, whenEmpty, warningMinutes, warningMessage } = updates.data;
+  const { policy, templatePolicy, whenEmpty, warningMinutes, warningMessage } = updates.data;
   return (
     <GameUpdateSettingsForm
-      key={JSON.stringify({ policy, whenEmpty, warningMinutes, warningMessage })}
+      key={JSON.stringify({ policy, templatePolicy, whenEmpty, warningMinutes, warningMessage })}
       details={details}
       view={updates.data}
       save={save}
@@ -196,11 +220,12 @@ function GameUpdateSettingsForm({
   const { server } = details;
   const canEdit = canOnServer(me, server, Permission.ServerInstall);
   const [policy, setPolicy] = useState<GameUpdatePolicy>(view.policy);
+  const [templatePolicy, setTemplatePolicy] = useState<GameUpdatePolicy>(view.templatePolicy ?? 'notify');
   const [whenEmpty, setWhenEmpty] = useState(view.whenEmpty);
   const [minutes, setMinutes] = useState(view.warningMinutes.toString());
   const [message, setMessage] = useState(view.warningMessage);
   const [invalid, setInvalid] = useState(false);
-  const installs = policy === 'install';
+  const installs = (view.supported && policy === 'install') || templatePolicy === 'install';
   return (
     <Card className="p-6">
       <div role="region" aria-labelledby="game-update-settings" className="space-y-4">
@@ -208,7 +233,11 @@ function GameUpdateSettingsForm({
           <h2 id="game-update-settings" className="text-lg font-semibold">
             {t('gameUpdates.settings.title')}
           </h2>
-          <p className="mt-1 text-sm text-muted">{t('gameUpdates.settings.hint')}</p>
+          <p className="mt-1 text-sm text-muted">
+            {view.supported
+              ? `${t('gameUpdates.settings.hint')} ${t('gameUpdates.settings.templateHint')}`
+              : t('gameUpdates.settings.templateHint')}
+          </p>
         </div>
         {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
         {save.isSuccess && (
@@ -226,16 +255,33 @@ function GameUpdateSettingsForm({
               const bad = !Number.isInteger(warning) || warning < 0 || warning > 60 || message.length > 100;
               setInvalid(bad);
               if (!bad) {
-                save.mutate({ policy, whenEmpty, warningMinutes: warning, warningMessage: message });
+                save.mutate({ policy, templatePolicy, whenEmpty, warningMinutes: warning, warningMessage: message });
               }
             }}
           >
-            <Field label={t('gameUpdates.settings.policy')}>
+            {view.supported && (
+              <Field label={t('gameUpdates.settings.policy')}>
+                {(ids) => (
+                  <Select {...ids} value={policy} onChange={(e) => setPolicy(e.target.value as GameUpdatePolicy)}>
+                    {gameUpdatePolicies.map((p) => (
+                      <option key={p} value={p}>
+                        {t(`gameUpdates.policies.${p}`)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+            <Field label={t('gameUpdates.settings.templatePolicy')}>
               {(ids) => (
-                <Select {...ids} value={policy} onChange={(e) => setPolicy(e.target.value as GameUpdatePolicy)}>
+                <Select
+                  {...ids}
+                  value={templatePolicy}
+                  onChange={(e) => setTemplatePolicy(e.target.value as GameUpdatePolicy)}
+                >
                   {gameUpdatePolicies.map((p) => (
                     <option key={p} value={p}>
-                      {t(`gameUpdates.policies.${p}`)}
+                      {t(`gameUpdates.templatePolicies.${p}`)}
                     </option>
                   ))}
                 </Select>
@@ -287,12 +333,15 @@ function GameUpdateSettingsForm({
             )}
             <div className="flex justify-end">
               <Button type="submit" busy={save.isPending}>
-                {t('actions.save')}
+                {t('gameUpdates.settings.save')}
               </Button>
             </div>
           </form>
         ) : (
-          <p className="text-sm">{t(`gameUpdates.policies.${view.policy}`)}</p>
+          <div className="space-y-1 text-sm">
+            {view.supported && <p>{t(`gameUpdates.policies.${view.policy}`)}</p>}
+            <p>{t(`gameUpdates.templatePolicies.${view.templatePolicy ?? 'notify'}`)}</p>
+          </div>
         )}
       </div>
     </Card>

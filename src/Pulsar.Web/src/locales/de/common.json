@@ -388,7 +388,8 @@
         "game_updates_changed": "Hat geändert, wie ein Server Spiel-Updates folgt",
         "game_update_check_requested": "Hat eine Prüfung auf ein Spiel-Update angefordert",
         "game_update_started": "Hat ein Spiel-Update gestartet",
-        "game_update_cancelled": "Hat ein Spiel-Update abgebrochen"
+        "game_update_cancelled": "Hat ein Spiel-Update abgebrochen",
+        "template_update_started": "Umstellung eines Servers auf eine neuere Vorlage gestartet"
       },
       "template": {
         "imported": "Spielvorlage importiert"
@@ -737,7 +738,8 @@
       "players_unknown": "Es ließ sich nicht sagen, ob jemand spielte: Die Abfrage des Spiels hatte nicht geantwortet.",
       "no_update": "Es war kein Spielupdate verfügbar.",
       "update_checks_off": "Die Spielupdates dieses Servers werden nicht mehr geprüft: Schalten Sie die Prüfung in seinen Einstellungen ein.",
-      "action_invalid": "Die Aktion der Aufgabe kennt das Panel nicht."
+      "action_invalid": "Die Aktion der Aufgabe kennt das Panel nicht.",
+      "template_install_failed": "Der Server konnte nicht mit der neuen Vorlage neu installiert werden."
     },
     "notifications": {
       "not_found": "Dieser Benachrichtigungskanal existiert nicht.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Nie gestartet"
     },
     "actionsFor": "Aktionen für {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar stellt ihn selbst um, wie seine Updates eingestellt sind.",
+    "templateUpgradeImported": "Diese Version wurde hier importiert: Pulsar stellt Server nur auf die Versionen selbst um, die seine Updates mitbringen."
   },
   "panelKeys": {
     "title": "Signaturschlüssel des Panels",
@@ -5737,7 +5741,8 @@
       "start": "startet den Server",
       "restart": "startet den Server neu",
       "backup": "erstellt ein Backup",
-      "update": "aktualisiert das Spiel"
+      "update": "aktualisiert das Spiel",
+      "upgradeTemplate": "Umstellung auf die neuere Vorlage"
     },
     "waitingForPlayers": "Das Update wartet, bis niemand spielt (jetzt online: {{players}}).",
     "waiting": "Das Update beginnt, sobald der Server frei ist.",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} wird zur verbleibenden Zeit (5 min, 1 min, 10 s). Gesendet werden nur Buchstaben, Ziffern, Leerzeichen und . , ! ? : ' ( ) -",
       "noBroadcast": "Dieses Spiel hat keinen Befehl für Nachrichten an die Spieler, sie werden daher nicht gewarnt.",
       "saved": "Gespeichert.",
-      "invalid": "Von 0 bis 60."
+      "invalid": "Von 0 bis 60.",
+      "templatePolicy": "Wenn die Vorlage des Spiels eine neuere Version hat",
+      "templateHint": "Pulsar-Updates bringen neuere Versionen der Spielvorlagen; der Server behält seine Dateien und Einstellungen, wenn er auf eine umgestellt wird. Nur diese werden selbst angewendet: Auf eine hier importierte Version wird von Hand umgestellt.",
+      "save": "Update-Einstellungen speichern"
     },
-    "notBefore": "Das nächste automatische Update kann um {{when}} beginnen (höchstens eines pro Stunde)."
+    "notBefore": "Das nächste automatische Update kann um {{when}} beginnen (höchstens eines pro Stunde).",
+    "runningTemplate": "Umstellung auf die neuere Vorlage: Schritt {{step}} von {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "Die Umstellung auf Vorlage {{version}} wartet, bis niemand spielt (gerade online: {{players}}).",
+    "templateWaiting": "Die Umstellung auf Vorlage {{version}} beginnt, sobald der Server frei ist.",
+    "lastTemplateRun": {
+      "failed": "Die letzte automatische Umstellung auf eine neuere Vorlage ist fehlgeschlagen: {{error}}",
+      "cancelled": "Die letzte automatische Umstellung auf eine neuere Vorlage wurde abgebrochen."
+    },
+    "cancelTemplate": "Umstellung abbrechen",
+    "skipTemplate": "Diese Vorlagenversion überspringen",
+    "cancelTemplateConfirm": "Diese automatische Umstellung anhalten? Wird der Server schon neu installiert, läuft das bis zum Ende weiter.",
+    "templatePolicies": {
+      "off": "Nichts tun",
+      "notify": "Mich informieren (auf der Serverseite anzeigen)",
+      "install": "Anwenden (warnen, stoppen, damit neu installieren, wieder starten)"
+    }
   }
 }

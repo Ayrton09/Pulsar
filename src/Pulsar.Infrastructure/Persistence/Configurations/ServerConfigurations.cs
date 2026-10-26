@@ -328,12 +328,16 @@ internal sealed class GameUpdateWatchConfiguration : IEntityTypeConfiguration<Ga
         builder.ToTable("game_update_watches", t =>
         {
             t.HasCheckConstraint("ck_game_update_watches_policy", SnakeCaseEnum<GameUpdatePolicy>.CheckConstraint("policy"));
+            t.HasCheckConstraint("ck_game_update_watches_template_policy", SnakeCaseEnum<GameUpdatePolicy>.CheckConstraint("template_policy"));
             t.HasCheckConstraint("ck_game_update_watches_warning_minutes", $"warning_minutes BETWEEN 0 AND {GameUpdateWatch.MaxWarningMinutes}");
         });
 
         builder.HasKey(w => w.ServerId);
         builder.Property(w => w.ServerId).ValueGeneratedNever();
         builder.Property(w => w.Policy).HasConversion<SnakeCaseEnumConverter<GameUpdatePolicy>>();
+        builder.Property(w => w.TemplatePolicy).HasConversion<SnakeCaseEnumConverter<GameUpdatePolicy>>();
+        builder.Property(w => w.NotifiedTemplate).HasMaxLength(GameUpdateWatch.MaxBuildLength);
+        builder.Property(w => w.AttemptedTemplate).HasMaxLength(GameUpdateWatch.MaxBuildLength);
         builder.Property(w => w.WarningMessage).HasMaxLength(GameUpdateWatch.MaxWarningMessageLength);
         builder.Property(w => w.Installed).HasMaxLength(GameUpdateWatch.MaxBuildLength);
         builder.Property(w => w.Latest).HasMaxLength(GameUpdateWatch.MaxBuildLength);

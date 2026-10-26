@@ -58,6 +58,10 @@ export const publicIpCertificateOff: Schemas['PublicIpCertificateResponse'] = {
 /** A game whose updates cannot be checked: what tests about something else get. */
 export const noGameUpdates: Schemas['GameUpdateView'] = {
   policy: 'notify',
+  templatePolicy: 'notify',
+  newerTemplate: null,
+  templatePending: false,
+  autoTemplate: null,
   whenEmpty: false,
   warningMinutes: 0,
   warningMessage: 'Restarting in {time} for a game update',

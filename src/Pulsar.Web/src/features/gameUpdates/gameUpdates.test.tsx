@@ -168,17 +168,83 @@ describe('game updates', () => {
     const minutes = within(card).getByLabelText('Warn the players (minutes before)');
     await userEvent.clear(minutes);
     await userEvent.type(minutes, '5');
-    await userEvent.click(within(card).getByRole('button', { name: 'Save' }));
+    await userEvent.click(within(card).getByRole('button', { name: 'Save update settings' }));
 
     await waitFor(() =>
       expect(saved).toEqual([
         {
           policy: 'install',
+          templatePolicy: 'notify',
           whenEmpty: true,
           warningMinutes: 5,
           warningMessage: 'Restarting in {time} for a game update',
         },
       ]),
     );
+  });
+
+  it("follows a game's newer templates even when its updates cannot be checked, and shows a move while it runs", async () => {
+    const saved: unknown[] = [];
+    let view: Schemas['GameUpdateView'] = { ...noGameUpdates, canWarn: true };
+    fakeApi({
+      'GET /api/v1/auth/session': session(updater),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({ variables: [], extraArguments: [], allowExtraArguments: false, autoStart: false, restartOnCrash: true }),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json(view),
+      [`PUT /api/v1/servers/${serverId}/game-updates`]: async (request) => {
+        saved.push(await request.json());
+        view = { ...view, templatePolicy: 'install', warningMinutes: 1 };
+        return json(view);
+      },
+    });
+
+    const router = renderAt(`/servers/${serverId}?tab=settings`);
+
+    const card = await screen.findByRole('region', { name: 'Game updates' });
+    // Its game's own updates are not offered: only its templates.
+    expect(within(card).queryByLabelText('When the game has an update')).not.toBeInTheDocument();
+    await userEvent.selectOptions(
+      within(card).getByLabelText("When the game's template has a newer version"),
+      'install',
+    );
+    const minutes = within(card).getByLabelText('Warn the players (minutes before)');
+    await userEvent.clear(minutes);
+    await userEvent.type(minutes, '1');
+    await userEvent.click(within(card).getByRole('button', { name: 'Save update settings' }));
+    await waitFor(() =>
+      expect(saved).toEqual([
+        {
+          policy: 'notify',
+          templatePolicy: 'install',
+          whenEmpty: false,
+          warningMinutes: 1,
+          warningMessage: 'Restarting in {time} for a game update',
+        },
+      ]),
+    );
+
+    // The move runs: the overview says where it is, while the server installs again.
+    view = {
+      ...view,
+      newerTemplate: '1.3.0',
+      running: {
+        id: '0192f1a0-0000-7000-8000-0000000000c3',
+        status: 'running',
+        step: 4,
+        steps: 6,
+        stepKind: 'upgradeTemplate',
+        wakeAt: null,
+        createdAt: '2026-10-26T00:00:00Z',
+        errorCode: null,
+        message: null,
+        template: true,
+      },
+    };
+    await router.navigate(`/servers/${serverId}`);
+    const status = await screen.findByText('Moving to the newer template: step 5 of 6 (moving to the newer template)');
+    expect(status).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel the move' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check now' })).not.toBeInTheDocument();
   });
 });

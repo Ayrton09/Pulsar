@@ -111,6 +111,7 @@ public static class AuditActions
         public const string GameUpdateCheckRequested = "server.game_update_check_requested";
         public const string GameUpdateStarted = "server.game_update_started";
         public const string GameUpdateCancelled = "server.game_update_cancelled";
+        public const string TemplateUpdateStarted = "server.template_update_started";
     }
 
     public static class Template

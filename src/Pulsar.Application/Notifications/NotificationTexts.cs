@@ -59,6 +59,25 @@ public static partial class NotificationTexts
         new(Text(language, "gameUpdateFailed.title", ("server", server.Name)), Text(language, "gameUpdateFailed.text"), NotificationSeverity.Error,
             ServerFields(language, server, (Text(language, "fields.latest"), latest), (Text(language, "fields.error"), error)), link);
 
+    public static NotificationMessage TemplateUpdateAvailable(string language, ServerFacts server, string current, string newer, bool installs,
+        string? link) =>
+        new(Text(language, "templateUpdateAvailable.title", ("server", server.Name)),
+            Text(language, installs ? "templateUpdateAvailable.installs" : "templateUpdateAvailable.text"), NotificationSeverity.Warning,
+            ServerFields(language, server, (Text(language, "fields.template"), current), (Text(language, "fields.newTemplate"), newer)), link);
+
+    public static NotificationMessage TemplateUpdateInstalled(string language, ServerFacts server, string? version, string? link) =>
+        new(Text(language, "templateUpdateInstalled.title", ("server", server.Name)), Text(language, "templateUpdateInstalled.text"),
+            NotificationSeverity.Recovered, ServerFields(language, server, (Text(language, "fields.template"), version)), link);
+
+    public static NotificationMessage TemplateUpdateRefused(string language, ServerFacts server, string version, string? reason, string? link) =>
+        new(Text(language, "templateUpdateRefused.title", ("server", server.Name)), Text(language, "templateUpdateRefused.text"),
+            NotificationSeverity.Warning,
+            ServerFields(language, server, (Text(language, "fields.newTemplate"), version), (Text(language, "fields.error"), reason)), link);
+
+    public static NotificationMessage TemplateUpdateFailed(string language, ServerFacts server, string? version, string? error, string? link) =>
+        new(Text(language, "templateUpdateFailed.title", ("server", server.Name)), Text(language, "templateUpdateFailed.text"), NotificationSeverity.Error,
+            ServerFields(language, server, (Text(language, "fields.newTemplate"), version), (Text(language, "fields.error"), error)), link);
+
     public static NotificationMessage NodeOffline(string language, string nodeName, DateTimeOffset since, string? link) =>
         new(Text(language, "nodeOffline.title", ("node", nodeName)), Text(language, "nodeOffline.text"), NotificationSeverity.Warning,
             [new(Text(language, "fields.node"), nodeName), new(Text(language, "fields.lastSeen"), Moment(since))], link);

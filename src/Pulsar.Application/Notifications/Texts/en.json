@@ -12,7 +12,9 @@
     "currentCertificateExpires": "The current certificate expires",
     "expires": "Expires",
     "installed": "Installed",
-    "latest": "Latest"
+    "latest": "Latest",
+    "template": "Template",
+    "newTemplate": "Newer template"
   },
   "serverOutOfMemory": {
     "title": "{server} ran out of memory",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "The automatic update of {server} failed",
     "text": "Pulsar could not install its game's update. The server was started again if it was running. Check its console."
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} has a newer template",
+    "text": "A newer version of its game's template is in the panel. Move the server to it from its page when it suits you.",
+    "installs": "A newer version of its game's template is in the panel. Pulsar moves the server to it by itself, as the server's updates are set."
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} moved to a newer template",
+    "text": "Pulsar installed the server again with the newer version of its game's template, its files and settings kept."
+  },
+  "templateUpdateRefused": {
+    "title": "{server} was not moved to a newer template",
+    "text": "The newer version of its game's template cannot be applied to the server as it is, so Pulsar left it untouched. Move it by hand from its page once that is fixed."
+  },
+  "templateUpdateFailed": {
+    "title": "Moving {server} to a newer template failed",
+    "text": "Pulsar could not install the server again with the newer version of its game's template. Check its page: it may need to be installed again."
   },
   "publicIpCertificateFailed": {
     "title": "The public IP certificate could not be renewed",

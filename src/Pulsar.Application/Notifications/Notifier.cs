@@ -44,6 +44,24 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
         ForServerAsync(server, NotificationEvent.GameUpdateFailed, $"game_update:{latest}",
             (language, facts, link) => NotificationTexts.GameUpdateFailed(language, facts, latest, error, link), cancellationToken);
 
+    /// <summary>A newer version of the server's game template (1.0.10): told with the game updates' events.</summary>
+    public Task TemplateUpdateAvailableAsync(Server server, string current, string newer, bool installs, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateAvailable, $"template_update:{newer}",
+            (language, facts, link) => NotificationTexts.TemplateUpdateAvailable(language, facts, current, newer, installs, link), cancellationToken);
+
+    public Task TemplateUpdateInstalledAsync(Server server, string? version, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateAvailable, $"template_update_installed:{version}",
+            (language, facts, link) => NotificationTexts.TemplateUpdateInstalled(language, facts, version, link), cancellationToken);
+
+    /// <summary>A newer template the server could not be moved to as it is: it was not touched.</summary>
+    public Task TemplateUpdateRefusedAsync(Server server, string version, string? reason, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateFailed, $"template_update:{version}",
+            (language, facts, link) => NotificationTexts.TemplateUpdateRefused(language, facts, version, reason, link), cancellationToken);
+
+    public Task TemplateUpdateFailedAsync(Server server, string? version, string? error, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.GameUpdateFailed, $"template_update:{version}",
+            (language, facts, link) => NotificationTexts.TemplateUpdateFailed(language, facts, version, error, link), cancellationToken);
+
     public Task NodeOfflineAsync(Node node, DateTimeOffset lastSeen, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(node);

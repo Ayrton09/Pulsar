@@ -314,7 +314,9 @@ public sealed class ScheduledTask
     /// </summary>
     private static List<SequenceStep>? Normalized(IReadOnlyList<SequenceStep>? steps)
     {
-        if (steps is null || steps.Count is 0 or > ServerSequence.MaxSteps || steps.Any(s => s is null || !ServerSequence.IsValid(s)))
+        // A move to another template is the panel's own step (its template updates), never a scheduled task's.
+        if (steps is null || steps.Count is 0 or > ServerSequence.MaxSteps
+            || steps.Any(s => s is null || s.Kind == SequenceStepKind.UpgradeTemplate || !ServerSequence.IsValid(s)))
         {
             return null;
         }

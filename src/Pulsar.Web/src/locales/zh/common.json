@@ -388,7 +388,8 @@
         "game_updates_changed": "更改了服务器跟随游戏更新的方式",
         "game_update_check_requested": "请求检查游戏更新",
         "game_update_started": "开始了游戏更新",
-        "game_update_cancelled": "取消了游戏更新"
+        "game_update_cancelled": "取消了游戏更新",
+        "template_update_started": "开始将服务器切换到较新的模板"
       },
       "template": {
         "imported": "导入了游戏模板"
@@ -737,7 +738,8 @@
       "players_unknown": "无法确定是否有人在玩：游戏查询没有响应。",
       "no_update": "没有可用的游戏更新。",
       "update_checks_off": "此服务器的游戏更新不再被检查：请在设置中开启检查。",
-      "action_invalid": "面板不认识该任务的操作。"
+      "action_invalid": "面板不认识该任务的操作。",
+      "template_install_failed": "无法使用新模板重新安装服务器。"
     },
     "notifications": {
       "not_found": "该通知渠道不存在。",
@@ -1383,7 +1385,9 @@
       "neverStarted": "从未启动"
     },
     "actionsFor": "{{name}} 的操作",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar 会按服务器的更新设置自动切换。",
+    "templateUpgradeImported": "此版本是在这里导入的：Pulsar 只会自动切换到其更新带来的版本。"
   },
   "panelKeys": {
     "title": "面板签名密钥",
@@ -5737,7 +5741,8 @@
       "start": "启动服务器",
       "restart": "重启服务器",
       "backup": "备份",
-      "update": "更新游戏"
+      "update": "更新游戏",
+      "upgradeTemplate": "正在切换到较新的模板"
     },
     "waitingForPlayers": "更新会等到没有人在玩（当前在线：{{players}}）。",
     "waiting": "服务器一空闲就开始更新。",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} 会替换为剩余时间（5 min、1 min、10 s）。只发送字母、数字、空格和 . , ! ? : ' ( ) -",
       "noBroadcast": "此游戏没有给玩家发消息的命令，因此不会通知他们。",
       "saved": "已保存。",
-      "invalid": "0 到 60。"
+      "invalid": "0 到 60。",
+      "templatePolicy": "当游戏模板有较新版本时",
+      "templateHint": "Pulsar 更新会带来游戏模板的较新版本；切换后服务器的文件和设置保持不变。只有这些会自动应用：在这里导入的版本需要手动切换。",
+      "save": "保存更新设置"
     },
-    "notBefore": "下一次自动更新最早可在 {{when}} 开始（每小时最多一次）。"
+    "notBefore": "下一次自动更新最早可在 {{when}} 开始（每小时最多一次）。",
+    "runningTemplate": "正在切换到较新的模板：第 {{step}} 步，共 {{steps}} 步（{{what}}）",
+    "templateWaitingForPlayers": "切换到模板 {{version}} 会等到没有人在玩（当前在线：{{players}}）。",
+    "templateWaiting": "服务器空闲后即开始切换到模板 {{version}}。",
+    "lastTemplateRun": {
+      "failed": "上次自动切换到较新模板失败：{{error}}",
+      "cancelled": "上次自动切换到较新模板已取消。"
+    },
+    "cancelTemplate": "取消切换",
+    "skipTemplate": "跳过此模板版本",
+    "cancelTemplateConfirm": "停止这次自动切换？如果服务器已在重新安装，安装会继续到结束。",
+    "templatePolicies": {
+      "off": "什么都不做",
+      "notify": "提醒我（在服务器页面显示）",
+      "install": "自动应用（提醒、停止、重新安装、重新启动）"
+    }
   }
 }

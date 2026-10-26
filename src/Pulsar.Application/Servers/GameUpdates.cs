@@ -37,7 +37,14 @@ internal sealed class NoServerPlayers : IServerPlayers
 /// <param name="Checking">The node is asking now.</param>
 /// <param name="Pending">An automatic update is due and waits (for the players to leave, for the server to be free).</param>
 /// <param name="NotBefore">An automatic update waits for this: one starts at most once an hour.</param>
-/// <param name="Running">The automatic update running now.</param>
+/// <param name="Running">The automatic update running now (or the last one): of the game, or to a newer template.</param>
+/// <param name="TemplatePolicy">What a newer version of the game's template does (1.0.10).</param>
+/// <param name="NewerTemplate">The newest version of the game's template above the server's, when the panel has one.</param>
+/// <param name="TemplatePending">An automatic move to <paramref name="AutoTemplate"/> is due and waits.</param>
+/// <param name="AutoTemplate">
+/// The version an automatic move would go to: the newest one a Pulsar update brought (not an imported one, not a
+/// pre-release), when it is above the server's.
+/// </param>
 public sealed record GameUpdateView(
     GameUpdatePolicy Policy,
     bool WhenEmpty,
@@ -57,20 +64,28 @@ public sealed record GameUpdateView(
     bool Pending,
     int? PlayersOnline,
     GameUpdateRunView? Running,
-    DateTimeOffset? NotBefore = null);
+    DateTimeOffset? NotBefore = null,
+    GameUpdatePolicy TemplatePolicy = GameUpdatePolicy.Notify,
+    string? NewerTemplate = null,
+    bool TemplatePending = false,
+    string? AutoTemplate = null);
 
 /// <param name="Step">The step being done, from 0.</param>
+/// <param name="Template">A move to a newer template (1.0.10); false: a game update.</param>
 public sealed record GameUpdateRunView(Guid Id, SequenceStatus Status, int Step, int Steps, SequenceStepKind? StepKind, DateTimeOffset? WakeAt,
-    DateTimeOffset CreatedAt, string? ErrorCode, string? Message);
+    DateTimeOffset CreatedAt, string? ErrorCode, string? Message, bool Template = false);
 
 /// <summary>
-/// A server's game updates (Pulsar 1.0.9), as AMP, TCAdmin and WindowsGSM follow them: every
-/// <see cref="GameUpdateWatch.CheckInterval"/> the server's node asks the publisher (Steam through SteamCMD, Mojang)
-/// whether there is something newer than what the server has. A new one is shown and notified once; with
-/// <see cref="GameUpdatePolicy.Install"/> it is installed as a sequence (<see cref="ServerSequences"/>): the players are
-/// warned, the server stops (when nobody plays, if asked), updates and starts again if it was running. Installing by
-/// itself needs the rights it uses (update, stop, start, and console commands to warn): it cannot do what its author
-/// could not.
+/// A server's game updates (Pulsar 1.0.9): every <see cref="GameUpdateWatch.CheckInterval"/> the server's node asks the
+/// publisher (Steam through SteamCMD, Mojang) whether there is something newer than what the server has. A new one is
+/// shown and notified once; with <see cref="GameUpdatePolicy.Install"/> it is installed as a sequence
+/// (<see cref="ServerSequences"/>): the players are warned, the server stops (when nobody plays, if asked), updates and
+/// starts again if it was running. Installing by itself needs the rights it uses (update, stop, start, and console
+/// commands to warn): it cannot do what its author could not. Since 1.0.10 a newer version of the server's game template
+/// (a Pulsar update brings them, or an administrator imports one) is followed the same way
+/// (<see cref="GameUpdateWatch.TemplatePolicy"/>): notified once, or moved to by itself with the same warnings. Only
+/// the versions Pulsar's updates bring are moved to by themselves (an imported one is reviewed and moved to by hand),
+/// and only once the move's own checks pass: nobody is warned or stopped for a move that could not be made.
 /// </summary>
 public sealed partial class GameUpdates(
     IPulsarDbContext db,
@@ -78,6 +93,7 @@ public sealed partial class GameUpdates(
     AgentSessionStore sessions,
     IServerPlayers players,
     ServerManagement servers,
+    TemplateCatalog templates,
     IPermissionEvaluator permissions,
     IRowLocks locks,
     Notifier notifier,
@@ -118,8 +134,9 @@ public sealed partial class GameUpdates(
         return await ViewAsync(server, watch, cancellationToken);
     }
 
+    /// <param name="templatePolicy">What a newer template version does; null keeps what is set.</param>
     public async Task<Result<GameUpdateView>> ChangeAsync(ServerId id, GameUpdatePolicy policy, bool whenEmpty, int warningMinutes, string? warningMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, GameUpdatePolicy? templatePolicy = null)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -127,20 +144,23 @@ public sealed partial class GameUpdates(
             return ServerErrors.NotFound;
         }
 
+        var stored = await db.GameUpdateWatches.AsNoTracking().SingleOrDefaultAsync(w => w.ServerId == id, cancellationToken);
+        var template = templatePolicy ?? stored?.TemplatePolicy ?? GameUpdatePolicy.Notify;
         var manifest = await ManifestAsync(server, cancellationToken);
-        if (policy != GameUpdatePolicy.Off && !IsCheckable(manifest))
+        // A game whose updates cannot be checked keeps what it has (its templates are followed all the same).
+        if (policy != GameUpdatePolicy.Off && policy != (stored?.Policy ?? GameUpdatePolicy.Notify) && !IsCheckable(manifest))
         {
             return ServerErrors.GameUpdatesUnsupported;
         }
 
-        if (policy == GameUpdatePolicy.Install && whenEmpty && manifest.Query is null)
+        var installs = policy == GameUpdatePolicy.Install || template == GameUpdatePolicy.Install;
+        if (installs && whenEmpty && manifest.Query is null)
         {
             return ServerErrors.WhenEmptyUnsupported;
         }
 
         // It acts as the game updates later: whoever sets it must be allowed what it does.
-        if (policy == GameUpdatePolicy.Install && !await MayInstallAsync(server, warningMinutes > 0 && manifest.Commands?.Broadcast is not null,
-                cancellationToken))
+        if (installs && !await MayInstallAsync(server, warningMinutes > 0 && manifest.Commands?.Broadcast is not null, cancellationToken))
         {
             return ServerErrors.GameUpdatesForbidden;
         }
@@ -148,17 +168,24 @@ public sealed partial class GameUpdates(
         return await RetriedAsync<GameUpdateView>(async () =>
         {
             var watch = await TrackedAsync(id, cancellationToken);
-            var before = (watch.Policy, watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage);
-            var changed = watch.Change(policy, whenEmpty, warningMinutes, warningMessage, clock.GetUtcNow());
+            var before = (watch.Policy, watch.TemplatePolicy, watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage);
+            var changed = watch.Change(policy, template, whenEmpty, warningMinutes, warningMessage, clock.GetUtcNow());
             if (!changed.IsSuccess)
             {
                 return changed.Error!;
             }
 
-            if (before != (watch.Policy, watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage))
+            if (before != (watch.Policy, watch.TemplatePolicy, watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage))
             {
                 audit.Record(AuditActions.Server.GameUpdatesChanged,
-                        metadata: new { policy = watch.Policy.ToString(), watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage })
+                        metadata: new
+                        {
+                            policy = watch.Policy.ToString(),
+                            templatePolicy = watch.TemplatePolicy.ToString(),
+                            watch.WhenEmpty,
+                            watch.WarningMinutes,
+                            watch.WarningMessage,
+                        })
                     .WithServer(server.Id, server.NodeId);
             }
 
@@ -264,19 +291,35 @@ public sealed partial class GameUpdates(
                 : null;
             var now = clock.GetUtcNow();
             var operation = sequence?.OperationId;
+            string? template = null;
             if (sequence is null || !sequence.Cancel(now).IsSuccess)
             {
-                if (!watch.AutoUpdateDue)
+                // Not started yet (waiting for the players): this build, or this template, is not installed by itself.
+                if (watch.AutoUpdateDue)
+                {
+                    watch.Skip(now);
+                }
+                else if ((await TemplatesAboveAsync(server, cancellationToken)).Auto is { } newer && watch.TemplateUpgradeDue(newer.Version))
+                {
+                    watch.SkipTemplate(newer.Version, now);
+                    template = newer.Version;
+                }
+                else
                 {
                     return ScheduleErrors.SequenceOver;
                 }
 
-                // Not started yet (waiting for the players): this build is not installed by itself.
-                watch.Skip(now);
+                operation = null;
+            }
+            else if (sequence.Origin == SequenceOrigin.TemplateUpdate)
+            {
+                // Its provisioning and install go on to their end: a server left half moved would not start.
+                template = watch.AttemptedTemplate;
                 operation = null;
             }
 
-            audit.Record(AuditActions.Server.GameUpdateCancelled, metadata: new { latest = watch.Latest }).WithServer(server.Id, server.NodeId);
+            audit.Record(AuditActions.Server.GameUpdateCancelled, metadata: template is null ? new { latest = watch.Latest } : new { template })
+                .WithServer(server.Id, server.NodeId);
             await db.SaveChangesAsync(cancellationToken);
             if (operation is { } inFlight && await db.Operations.AsNoTracking()
                     .AnyAsync(o => o.Id == inFlight && (o.Status == OperationStatus.Queued || o.Status == OperationStatus.Running), cancellationToken))
@@ -333,10 +376,19 @@ public sealed partial class GameUpdates(
             {
                 // Another pass, the node's answer or a user got there first: the next pass looks again.
             }
+            catch (DomainErrorException ex)
+            {
+                // Its template no longer passes this panel's checks: the others go on, and it is looked at again only rarely
+                // (it would stay due and fill the passes otherwise).
+                LogServerSkipped(id, ex.Error.Code);
+                await PostponeAsync(id, now + s_unsupportedRetry, cancellationToken);
+            }
         }
 
         db.ChangeTracker.Clear();
         await StartDueUpdatesAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+        await TemplatesDueAsync(cancellationToken);
         return sent;
     }
 
@@ -442,7 +494,7 @@ public sealed partial class GameUpdates(
     public async Task SequenceEndedAsync(ServerSequence sequence, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        if (sequence.Origin != SequenceOrigin.GameUpdate)
+        if (sequence.Origin is not (SequenceOrigin.GameUpdate or SequenceOrigin.TemplateUpdate))
         {
             return;
         }
@@ -457,13 +509,21 @@ public sealed partial class GameUpdates(
             }
 
             watch.AutoUpdateEnded(clock.GetUtcNow());
-            if (sequence.Status == SequenceStatus.Failed)
+            var error = sequence.Message ?? sequence.ErrorCode;
+            switch (sequence.Status, sequence.Origin)
             {
-                await notifier.GameUpdateFailedAsync(server, watch.Latest, sequence.Message ?? sequence.ErrorCode, cancellationToken);
-            }
-            else if (sequence.Status == SequenceStatus.Succeeded)
-            {
-                await notifier.GameUpdateInstalledAsync(server, watch.Latest, cancellationToken);
+                case (SequenceStatus.Failed, SequenceOrigin.TemplateUpdate):
+                    await notifier.TemplateUpdateFailedAsync(server, watch.AttemptedTemplate, error, cancellationToken);
+                    break;
+                case (SequenceStatus.Succeeded, SequenceOrigin.TemplateUpdate):
+                    await notifier.TemplateUpdateInstalledAsync(server, watch.AttemptedTemplate, cancellationToken);
+                    break;
+                case (SequenceStatus.Failed, _):
+                    await notifier.GameUpdateFailedAsync(server, watch.Latest, error, cancellationToken);
+                    break;
+                case (SequenceStatus.Succeeded, _):
+                    await notifier.GameUpdateInstalledAsync(server, watch.Latest, cancellationToken);
+                    break;
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -494,6 +554,31 @@ public sealed partial class GameUpdates(
     /// <summary>The steps of an update as the watch asks: warnings while the game runs, stop, update, start again if it ran.</summary>
     public static IReadOnlyList<SequenceStep> Steps(GameUpdateWatch watch, bool canWarn, bool running)
     {
+        var steps = Warnings(watch, canWarn, running);
+        steps.Add(new SequenceStep(SequenceStepKind.Stop));
+        steps.Add(new SequenceStep(SequenceStepKind.Update));
+        // Back online even when the update failed: SteamCMD leaves the previous build in place.
+        steps.Add(new SequenceStep(SequenceStepKind.Start, OnlyIfWasRunning: true, Always: true));
+        return steps;
+    }
+
+    /// <summary>
+    /// The steps of a move to the template <paramref name="templateId"/> (1.0.10): the same warnings, stop, the move (the
+    /// server provisioned and installed again with it), start again if it ran, after a cancel too (after a failed move the
+    /// server is not installed and cannot start: the move's failure is what the sequence reports).
+    /// </summary>
+    public static IReadOnlyList<SequenceStep> TemplateSteps(GameUpdateWatch watch, bool canWarn, bool running, Guid templateId)
+    {
+        var steps = Warnings(watch, canWarn, running);
+        steps.Add(new SequenceStep(SequenceStepKind.Stop));
+        steps.Add(new SequenceStep(SequenceStepKind.UpgradeTemplate, templateId.ToString()));
+        steps.Add(new SequenceStep(SequenceStepKind.Start, OnlyIfWasRunning: true, Always: true));
+        return steps;
+    }
+
+    /// <summary>The players warned while the game runs (5 min, 1 min, 10 s, as the watch says), when the game can tell them.</summary>
+    private static List<SequenceStep> Warnings(GameUpdateWatch watch, bool canWarn, bool running)
+    {
         ArgumentNullException.ThrowIfNull(watch);
         var steps = new List<SequenceStep>();
         if (canWarn && running && watch.WarningMinutes > 0)
@@ -513,10 +598,6 @@ public sealed partial class GameUpdates(
             steps.Add(new SequenceStep(SequenceStepKind.Wait, Seconds: 10));
         }
 
-        steps.Add(new SequenceStep(SequenceStepKind.Stop));
-        steps.Add(new SequenceStep(SequenceStepKind.Update));
-        // Back online even when the update failed: SteamCMD leaves the previous build in place.
-        steps.Add(new SequenceStep(SequenceStepKind.Start, OnlyIfWasRunning: true, Always: true));
         return steps;
     }
 
@@ -549,7 +630,21 @@ public sealed partial class GameUpdates(
                 continue;
             }
 
-            var started = await StartSequenceAsync(server, await ManifestAsync(server, cancellationToken), watch, cancellationToken);
+            GameManifest manifest;
+            try
+            {
+                manifest = await ManifestAsync(server, cancellationToken);
+            }
+            catch (DomainErrorException ex)
+            {
+                // Its template no longer passes this panel's checks: this build is not installed by itself (a newer one is tried).
+                LogServerSkipped(server.Id, ex.Error.Code);
+                watch.Skip(clock.GetUtcNow());
+                await SaveQuietlyAsync(cancellationToken);
+                continue;
+            }
+
+            var started = await StartSequenceAsync(server, manifest, watch, cancellationToken);
             if (!started.IsSuccess && started.Error != ScheduleErrors.SequenceRunning)
             {
                 LogAutoUpdateNotStarted(server.Id, started.Error!.Code);
@@ -593,6 +688,192 @@ public sealed partial class GameUpdates(
     }
 
     /// <summary>
+    /// Newer template versions (1.0.10): notified once each, and moved to by themselves where the watch says so and the
+    /// server allows it now (installed, free, its node connected, empty when the watch waits for that). The panel knows
+    /// them without asking anyone: two queries a pass, then only the servers with something to do.
+    /// </summary>
+    private async Task TemplatesDueAsync(CancellationToken cancellationToken)
+    {
+        var watched = await (
+                from w in db.GameUpdateWatches.AsNoTracking()
+                where w.TemplatePolicy != GameUpdatePolicy.Off && w.SequenceId == null
+                join s in db.Servers.AsNoTracking() on w.ServerId equals s.Id
+                where s.InstallState == InstallState.Installed
+                join t in db.GameTemplates.AsNoTracking() on s.TemplateId equals t.Id
+                select new { w.ServerId, w.TemplatePolicy, w.NotifiedTemplate, w.AttemptedTemplate, t.Key, t.Version })
+            .ToListAsync(cancellationToken);
+        if (watched.Count == 0)
+        {
+            return;
+        }
+
+        var newest = await NewestTemplatesAsync(cancellationToken);
+        foreach (var candidate in watched)
+        {
+            var (any, auto) = Above(newest, candidate.Key, candidate.Version);
+            var notify = any is { } shown && shown.Version != candidate.NotifiedTemplate;
+            var move = auto is { } target && candidate.TemplatePolicy == GameUpdatePolicy.Install && target.Version != candidate.AttemptedTemplate;
+            if (!notify && !move)
+            {
+                continue; // nothing newer, or nothing left to do about it
+            }
+
+            try
+            {
+                await TemplateDueAsync(candidate.ServerId, candidate.Version, any, auto, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // A user or another pass changed it: the next pass looks again.
+            }
+            catch (DomainErrorException ex)
+            {
+                LogServerSkipped(candidate.ServerId, ex.Error.Code); // its template no longer passes this panel's checks: the others go on
+            }
+        }
+    }
+
+    /// <summary>One server's newer template versions: notified, and moved to by itself when it may be now.</summary>
+    private async Task TemplateDueAsync(ServerId id, string current, (TemplateId Id, string Version)? any, (TemplateId Id, string Version)? auto,
+        CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return;
+        }
+
+        var watch = await TrackedAsync(server.Id, cancellationToken);
+        var now = clock.GetUtcNow();
+        if (any is { } newer && watch.TemplateNoticed(newer.Version, now))
+        {
+            await notifier.TemplateUpdateAvailableAsync(server, current, newer.Version,
+                watch.TemplatePolicy == GameUpdatePolicy.Install && auto?.Version == newer.Version, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (auto is not { } target || !watch.TemplateUpgradeMayStart(target.Version, now) || server.ActiveOperationId is not null
+            || Connection(server.NodeId) is null)
+        {
+            return; // later, or never by itself
+        }
+
+        var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
+        if (watch.WhenEmpty && running && players.Online(server.Id) is not 0)
+        {
+            return; // someone plays, or nobody can tell yet
+        }
+
+        // The move's own checks first: nobody is warned or stopped for a move that could not be made. One that cannot is
+        // not tried again by itself (a newer version is); the server's page offers it by hand, saying why.
+        var rehearsed = await servers.RehearseTemplateUpgradeAsync(server.Id, target.Id.Value, cancellationToken);
+        watch = await TrackedAsync(server.Id, cancellationToken);
+        if (!watch.TemplateUpgradeMayStart(target.Version, clock.GetUtcNow()))
+        {
+            return;
+        }
+
+        if (rehearsed.Error is { } refusal)
+        {
+            if (refusal == ServerErrors.Busy || refusal == ServerErrors.NotFound || refusal == NodeErrors.NotConnected)
+            {
+                return; // for now: the next pass looks again
+            }
+
+            watch.SkipTemplate(target.Version, clock.GetUtcNow());
+            await notifier.TemplateUpdateRefusedAsync(server, target.Version, refusal.Message, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            LogTemplateUpdateRefused(server.Id, target.Version, refusal.Code);
+            return;
+        }
+
+        // The warnings use the game's broadcast command as the server's template has it; one the panel no longer reads (the
+        // very servers a newer version mends) is moved without warning anyone.
+        GameManifest? manifest;
+        try
+        {
+            manifest = await ManifestAsync(server, cancellationToken);
+        }
+        catch (DomainErrorException)
+        {
+            manifest = null;
+        }
+
+        var started = await StartTemplateSequenceAsync(server, manifest, watch, target.Id.Value, target.Version, cancellationToken);
+        if (!started.IsSuccess && started.Error != ScheduleErrors.SequenceRunning)
+        {
+            LogAutoUpdateNotStarted(server.Id, started.Error!.Code);
+        }
+    }
+
+    /// <summary>A template version as the template updates compare them.</summary>
+    private sealed record TemplateRow(TemplateId Id, string Key, string Version, TemplateSource Source);
+
+    /// <summary>Every version of every game's template this panel offers.</summary>
+    private async Task<List<TemplateRow>> NewestTemplatesAsync(CancellationToken cancellationToken)
+    {
+        var all = await db.GameTemplates.AsNoTracking().Select(t => new TemplateRow(t.Id, t.Key, t.Version, t.Source)).ToListAsync(cancellationToken);
+        return [.. all.Where(t => templates.Offers(t.Key))];
+    }
+
+    /// <summary>
+    /// Above <paramref name="version"/> of <paramref name="key"/>: the newest version (shown and notified), and the newest
+    /// one an automatic move may go to: one a Pulsar update brought (bundled), not a pre-release. An imported version is
+    /// the administrator's to review: servers are moved to it by hand.
+    /// </summary>
+    private static ((TemplateId Id, string Version)? Any, (TemplateId Id, string Version)? Auto) Above(List<TemplateRow> all, string key, string version)
+    {
+        var newer = all.Where(t => t.Key == key && GameTemplate.CompareVersions(t.Version, version) > 0)
+            .OrderByDescending(t => t.Version, Comparer<string>.Create(GameTemplate.CompareVersions))
+            .ToList();
+        var any = newer.FirstOrDefault();
+        var auto = newer.FirstOrDefault(t => t.Source == TemplateSource.Bundled && !t.Version.Contains('-', StringComparison.Ordinal));
+        return (any is null ? null : (any.Id, any.Version), auto is null ? null : (auto.Id, auto.Version));
+    }
+
+    /// <summary>The server's newer template versions (<see cref="Above"/>).</summary>
+    private async Task<((TemplateId Id, string Version)? Any, (TemplateId Id, string Version)? Auto)> TemplatesAboveAsync(Server server,
+        CancellationToken cancellationToken)
+    {
+        var current = await db.GameTemplates.AsNoTracking().Where(t => t.Id == server.TemplateId).Select(t => new { t.Key, t.Version })
+            .SingleAsync(cancellationToken);
+        return Above(await NewestTemplatesAsync(cancellationToken), current.Key, current.Version);
+    }
+
+    /// <summary>Starts the move of the watch's server to the template <paramref name="templateId"/> and records it (audited as the game updates).</summary>
+    private async Task<Result<ServerSequence>> StartTemplateSequenceAsync(Server server, GameManifest? manifest, GameUpdateWatch watch, Guid templateId,
+        string version, CancellationToken cancellationToken)
+    {
+        var now = clock.GetUtcNow();
+        var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var started = await ServerSequences.StartAsync(db, locks, server, SequenceOrigin.TemplateUpdate, ActorName,
+            TemplateSteps(watch, manifest?.Commands?.Broadcast is not null, running, templateId), now, cancellationToken);
+        if (!started.IsSuccess)
+        {
+            return started.Error!;
+        }
+
+        watch.TemplateUpgradeStarted(started.Value.Id, version, now);
+        audit.Record(AuditActions.Server.TemplateUpdateStarted, metadata: new { template = version }).WithServer(server.Id, server.NodeId);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ScheduleErrors.SequenceRunning; // the watch changed meanwhile: the next pass looks again
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        LogTemplateUpdateStarted(server.Id, version);
+        signal.Notify();
+        return started;
+    }
+
+    /// <summary>
     /// Asks the node. The question is stored before it is sent: a node can answer before its ack is back, and an answer
     /// to a question the panel has no record of is not taken.
     /// </summary>
@@ -630,9 +911,11 @@ public sealed partial class GameUpdates(
         var manifest = await ManifestAsync(server, cancellationToken);
         // The one running, or the last one with its outcome.
         var sequence = await db.ServerSequences.AsNoTracking()
-            .Where(s => s.ServerId == server.Id && s.Origin == SequenceOrigin.GameUpdate)
+            .Where(s => s.ServerId == server.Id && (s.Origin == SequenceOrigin.GameUpdate || s.Origin == SequenceOrigin.TemplateUpdate))
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+        var (newer, auto) = await TemplatesAboveAsync(server, cancellationToken);
+        var templatePending = auto is { } next && server.InstallState == InstallState.Installed && watch.TemplateUpgradeDue(next.Version);
         var now = clock.GetUtcNow();
         return new GameUpdateView(watch.Policy, watch.WhenEmpty, watch.WarningMinutes, watch.WarningMessage ?? GameUpdateWatch.DefaultWarningMessage,
             IsCheckable(manifest), manifest.Query is not null, manifest.Commands?.Broadcast is not null, watch.Installed, watch.Latest, watch.Available,
@@ -642,8 +925,10 @@ public sealed partial class GameUpdates(
             sequence is null
                 ? null
                 : new GameUpdateRunView(sequence.Id.Value, sequence.Status, sequence.StepIndex, sequence.Steps.Count, sequence.Current?.Kind,
-                    sequence.Status == SequenceStatus.Running ? sequence.WakeAt : null, sequence.CreatedAt, sequence.ErrorCode, sequence.Message),
-            watch.AutoUpdateDue && watch.AutoUpdateNotBefore is { } notBefore && notBefore > now ? notBefore : null);
+                    sequence.Status == SequenceStatus.Running ? sequence.WakeAt : null, sequence.CreatedAt, sequence.ErrorCode, sequence.Message,
+                    sequence.Origin == SequenceOrigin.TemplateUpdate),
+            (watch.AutoUpdateDue || templatePending) && watch.AutoUpdateNotBefore is { } notBefore && notBefore > now ? notBefore : null,
+            watch.TemplatePolicy, newer?.Version, templatePending, auto?.Version);
     }
 
     /// <summary>Watches for installed servers that have none yet (checked and notified, the default).</summary>
@@ -672,6 +957,29 @@ public sealed partial class GameUpdates(
         catch (DbUpdateException)
         {
             db.ChangeTracker.Clear(); // another pass (or a user) added one meanwhile: next pass
+        }
+    }
+
+    /// <summary>The server's watch is not looked at before <paramref name="until"/> (a write another one beats is left to the next pass).</summary>
+    private async Task PostponeAsync(ServerId id, DateTimeOffset until, CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+        if (await db.GameUpdateWatches.SingleOrDefaultAsync(w => w.ServerId == id, cancellationToken) is { } watch)
+        {
+            watch.Postpone(until);
+            await SaveQuietlyAsync(cancellationToken);
+        }
+    }
+
+    private async Task SaveQuietlyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Someone else wrote it meanwhile: the next pass looks again.
         }
     }
 
@@ -748,4 +1056,14 @@ public sealed partial class GameUpdates(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the automatic game update could not start ({Code})")]
     private partial void LogAutoUpdateNotStarted(ServerId serverId, string code);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: automatic move to version {Version} of its template started")]
+    private partial void LogTemplateUpdateStarted(ServerId serverId, string version);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: version {Version} of its template cannot be moved to ({Code}); it is not tried by itself again")]
+    private partial void LogTemplateUpdateRefused(ServerId serverId, string version, string code);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: skipped by this pass of the game updates ({Code})")]
+    private partial void LogServerSkipped(ServerId serverId, string code);
 }

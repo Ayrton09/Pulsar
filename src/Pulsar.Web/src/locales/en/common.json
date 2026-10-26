@@ -388,7 +388,8 @@
         "game_updates_changed": "Changed how a server follows game updates",
         "game_update_check_requested": "Asked to check for a game update",
         "game_update_started": "Started a game update",
-        "game_update_cancelled": "Cancelled a game update"
+        "game_update_cancelled": "Cancelled a game update",
+        "template_update_started": "Started moving a server to a newer template"
       },
       "template": {
         "imported": "Imported a game template"
@@ -737,7 +738,8 @@
       "players_unknown": "Nobody could tell whether someone was playing: the game's query had not answered.",
       "no_update": "No game update was available.",
       "update_checks_off": "The server's game updates are no longer checked: turn the checks on in its settings.",
-      "action_invalid": "The task's action is not one the panel knows."
+      "action_invalid": "The task's action is not one the panel knows.",
+      "template_install_failed": "The server could not be installed again with the new template."
     },
     "notifications": {
       "not_found": "That notification channel does not exist.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Never started"
     },
     "actionsFor": "Actions for {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar moves it by itself, as its updates are set.",
+    "templateUpgradeImported": "This version was imported here: Pulsar moves servers by itself only to the versions its updates bring."
   },
   "panelKeys": {
     "title": "Panel signing key",
@@ -2383,7 +2387,8 @@
       "start": "starting the server",
       "restart": "restarting the server",
       "backup": "taking a backup",
-      "update": "updating the game"
+      "update": "updating the game",
+      "upgradeTemplate": "moving to the newer template"
     },
     "waitingForPlayers": "The update waits until nobody plays (online now: {{players}}).",
     "waiting": "The update starts as soon as the server is free.",
@@ -2417,8 +2422,26 @@
       "warningMessageHint": "{time} becomes the time left (5 min, 1 min, 10 s). Only letters, digits, spaces and . , ! ? : ' ( ) - are sent.",
       "noBroadcast": "This game has no command to message its players, so they are not warned.",
       "saved": "Saved.",
-      "invalid": "From 0 to 60."
+      "invalid": "From 0 to 60.",
+      "templatePolicy": "When the game's template has a newer version",
+      "templateHint": "Pulsar updates bring newer versions of the games' templates; the server keeps its files and settings when it moves to one. Only those are applied by themselves: a version imported here is moved to by hand.",
+      "save": "Save update settings"
     },
-    "notBefore": "The next automatic update can start at {{when}} (one an hour at most)."
+    "notBefore": "The next automatic update can start at {{when}} (one an hour at most).",
+    "runningTemplate": "Moving to the newer template: step {{step}} of {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "The move to template {{version}} waits until nobody plays (online now: {{players}}).",
+    "templateWaiting": "The move to template {{version}} starts as soon as the server is free.",
+    "lastTemplateRun": {
+      "failed": "The last automatic move to a newer template failed: {{error}}",
+      "cancelled": "The last automatic move to a newer template was cancelled."
+    },
+    "cancelTemplate": "Cancel the move",
+    "skipTemplate": "Skip this template version",
+    "cancelTemplateConfirm": "Stop this automatic move? Once the server is being installed again, that goes on to its end.",
+    "templatePolicies": {
+      "off": "Do nothing",
+      "notify": "Tell me (show it on the server page)",
+      "install": "Apply it (warn, stop, install again with it, start again)"
+    }
   }
 }

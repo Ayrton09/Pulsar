@@ -26,6 +26,12 @@ public enum SequenceStepKind
 
     /// <summary>Updates the game (the server must be stopped) and waits for it.</summary>
     Update,
+
+    /// <summary>
+    /// Moves the server to a newer version of its game's template (<see cref="SequenceStep.Text"/>: its id; the server must
+    /// be stopped) and waits until it is installed again with it. The panel's own: scheduled tasks cannot have it.
+    /// </summary>
+    UpgradeTemplate,
 }
 
 /// <param name="Text">The console command, or the message to broadcast.</param>
@@ -60,6 +66,9 @@ public enum SequenceOrigin
 
     /// <summary>An automatic game update (warn the players, stop, update, start again).</summary>
     GameUpdate,
+
+    /// <summary>An automatic move to a newer version of the server's template (warn, stop, move, start again).</summary>
+    TemplateUpdate,
 }
 
 /// <summary>
@@ -157,7 +166,9 @@ public sealed class ServerSequence
             return ScheduleErrors.NameInvalid;
         }
 
-        if (steps.Count is 0 or > MaxSteps || steps.Any(s => !IsValid(s)))
+        // A move to another template is the template updates' own step.
+        if (steps.Count is 0 or > MaxSteps || steps.Any(s => !IsValid(s))
+            || (origin != SequenceOrigin.TemplateUpdate && steps.Any(s => s.Kind == SequenceStepKind.UpgradeTemplate)))
         {
             return ScheduleErrors.StepsInvalid;
         }
@@ -174,6 +185,7 @@ public sealed class ServerSequence
             SequenceStepKind.Command or SequenceStepKind.Broadcast => !string.IsNullOrEmpty(text) && !text.Any(char.IsControl)
                 && text.Length <= (step.Kind == SequenceStepKind.Command ? SequenceStep.MaxTextLength : SequenceStep.MaxMessageLength),
             SequenceStepKind.Wait => step.Seconds is > 0 and <= SequenceStep.MaxWaitSeconds,
+            SequenceStepKind.UpgradeTemplate => Guid.TryParse(text, out var template) && template != Guid.Empty,
             _ => Enum.IsDefined(step.Kind),
         };
     }

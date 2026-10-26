@@ -12,7 +12,9 @@
     "currentCertificateExpires": "El certificado actual vence",
     "expires": "Vence",
     "installed": "Instalado",
-    "latest": "Último"
+    "latest": "Último",
+    "template": "Plantilla",
+    "newTemplate": "Plantilla nueva"
   },
   "serverOutOfMemory": {
     "title": "{server} se quedó sin memoria",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "Falló la actualización automática de {server}",
     "text": "Pulsar no pudo instalar la actualización de su juego. Si el servidor estaba encendido, se volvió a iniciar. Revisá su consola."
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} tiene una plantilla más nueva",
+    "text": "El panel tiene una versión más nueva de la plantilla de su juego. Pasá el servidor a ella desde su página cuando te convenga.",
+    "installs": "El panel tiene una versión más nueva de la plantilla de su juego. Pulsar pasa el servidor a ella solo, como están configuradas sus actualizaciones."
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} pasó a una plantilla más nueva",
+    "text": "Pulsar volvió a instalar el servidor con la versión más nueva de la plantilla de su juego; sus archivos y su configuración se conservan."
+  },
+  "templateUpdateRefused": {
+    "title": "{server} no se pasó a una plantilla más nueva",
+    "text": "La versión más nueva de la plantilla de su juego no se puede aplicar al servidor tal como está, así que Pulsar no lo tocó. Pasalo a mano desde su página cuando eso esté resuelto."
+  },
+  "templateUpdateFailed": {
+    "title": "Falló el paso de {server} a una plantilla más nueva",
+    "text": "Pulsar no pudo volver a instalar el servidor con la versión más nueva de la plantilla de su juego. Revisá su página: puede que haya que instalarlo de nuevo."
   },
   "publicIpCertificateFailed": {
     "title": "No se pudo renovar el certificado de la IP pública",

@@ -12,7 +12,9 @@
     "currentCertificateExpires": "現在の証明書の有効期限",
     "expires": "有効期限",
     "installed": "インストール済み",
-    "latest": "最新"
+    "latest": "最新",
+    "template": "テンプレート",
+    "newTemplate": "新しいテンプレート"
   },
   "serverOutOfMemory": {
     "title": "{server} のメモリが不足しました",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "{server} の自動アップデートに失敗しました",
     "text": "Pulsar はゲームのアップデートをインストールできませんでした。サーバーが起動していた場合は再起動しました。コンソールを確認してください。"
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} に新しいテンプレートがあります",
+    "text": "パネルにこのゲームのテンプレートの新しいバージョンがあります。都合のよいときにサーバーのページから移行してください。",
+    "installs": "パネルにこのゲームのテンプレートの新しいバージョンがあります。サーバーの更新設定に従い、Pulsar が自動で移行します。"
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} を新しいテンプレートに移行しました",
+    "text": "Pulsar はゲームのテンプレートの新しいバージョンでサーバーを再インストールしました。ファイルと設定はそのままです。"
+  },
+  "templateUpdateRefused": {
+    "title": "{server} は新しいテンプレートに移行されませんでした",
+    "text": "ゲームのテンプレートの新しいバージョンは現在の状態のサーバーに適用できないため、Pulsar はサーバーに触れていません。解決したらサーバーのページから手動で移行してください。"
+  },
+  "templateUpdateFailed": {
+    "title": "{server} の新しいテンプレートへの移行に失敗しました",
+    "text": "Pulsar はゲームのテンプレートの新しいバージョンでサーバーを再インストールできませんでした。サーバーのページを確認してください。再インストールが必要な場合があります。"
   },
   "publicIpCertificateFailed": {
     "title": "パブリック IP の証明書を更新できませんでした",

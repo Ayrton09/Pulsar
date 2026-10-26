@@ -330,7 +330,12 @@ public sealed class Server
     /// it is stopped and nothing else runs on it. Values of variables the new version no longer has are dropped; the
     /// caller checks the rest against the new manifest and installs the server again with it.
     /// </summary>
-    public Result ChangeTemplate(GameTemplate current, GameTemplate next, IReadOnlyCollection<string> variables, DateTimeOffset now)
+    /// <param name="rehearsal">
+    /// The move checked before the server is stopped for it (1.0.10's template updates, on a copy nothing saves): whether
+    /// the game runs is not looked at.
+    /// </param>
+    public Result ChangeTemplate(GameTemplate current, GameTemplate next, IReadOnlyCollection<string> variables, DateTimeOffset now,
+        bool rehearsal = false)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(next);
@@ -345,7 +350,7 @@ public sealed class Server
             return ServerErrors.Busy;
         }
 
-        if (RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        if (!rehearsal && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;
         }

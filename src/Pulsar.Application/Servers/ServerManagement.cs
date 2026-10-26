@@ -315,10 +315,76 @@ public sealed partial class ServerManagement(
     /// its values are checked against the new version (values of removed variables are dropped, new required ports get
     /// an allocation), then the server is provisioned and installed again with it, its files kept.
     /// </summary>
-    public Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, CancellationToken cancellationToken) =>
-        UpgradeTemplateAsync(id, templateId, attempt: 0, cancellationToken);
+    public async Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, CancellationToken cancellationToken)
+    {
+        var upgraded = await UpgradeTemplateAsync(id, templateId, OperationRequester.User, attempt: 0, cancellationToken);
+        return upgraded.IsSuccess ? await DetailsAsync(upgraded.Value.Server, cancellationToken) : upgraded.Error!;
+    }
 
-    private async Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, int attempt, CancellationToken cancellationToken)
+    /// <summary>
+    /// <see cref="UpgradeTemplateAsync(ServerId, Guid, CancellationToken)"/> for the template updates' sequence (1.0.10):
+    /// the provisioning it starts, whose install follows.
+    /// </summary>
+    public Task<Result<(Server Server, Operation Operation)>> RequestTemplateUpgradeAsync(ServerId id, Guid templateId, OperationRequester via,
+        CancellationToken cancellationToken) =>
+        UpgradeTemplateAsync(id, templateId, via, attempt: 0, cancellationToken);
+
+    /// <summary>
+    /// Whether the server could move to the template now, but for being stopped: the move's own checks (its node reads the
+    /// version, a Steam account if it needs one, the values and ports it would have), on a copy nothing saves. 1.0.10's
+    /// template updates make it before they warn and stop anyone. Everything the context tracked is let go.
+    /// </summary>
+    public async Task<Result> RehearseTemplateUpgradeAsync(ServerId id, Guid templateId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var prepared = await PrepareTemplateUpgradeAsync(id, templateId, rehearsal: true, cancellationToken);
+            return prepared.IsSuccess ? Result.Success() : prepared.Error!;
+        }
+        finally
+        {
+            db.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task<Result<(Server Server, Operation Operation)>> UpgradeTemplateAsync(ServerId id, Guid templateId, OperationRequester via,
+        int attempt, CancellationToken cancellationToken)
+    {
+        var prepared = await PrepareTemplateUpgradeAsync(id, templateId, rehearsal: false, cancellationToken);
+        if (!prepared.IsSuccess)
+        {
+            return prepared.Error!;
+        }
+
+        var (server, current, next) = prepared.Value;
+        audit.Record(AuditActions.Server.TemplateChanged, metadata: new { key = next.Key, from = current.Version, to = next.Version })
+            .WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex) when (attempt < 2 && ex.Entries.Any(e => e.Entity is Server))
+        {
+            // The agent reported a state change in between: upgrade the fresh row (its checks run again).
+            db.ChangeTracker.Clear();
+            return await UpgradeTemplateAsync(id, templateId, via, attempt + 1, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // An allocation was taken by another server meanwhile (version check or unique index).
+            return ServerErrors.AllocationUnavailable;
+        }
+
+        var operation = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
+            via, clock.GetUtcNow());
+        var run = await operations.RunAsync(server, operation,
+            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, next, cancellationToken)), beforeSave: null, cancellationToken);
+        return run.IsSuccess ? (server, run.Value) : run.Error!;
+    }
+
+    /// <summary>The move made on the tracked server (not saved): its checks, the template switched, its values and ports as the new version needs them.</summary>
+    private async Task<Result<(Server Server, GameTemplate Current, GameTemplate Next)>> PrepareTemplateUpgradeAsync(ServerId id, Guid templateId,
+        bool rehearsal, CancellationToken cancellationToken)
     {
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -349,7 +415,7 @@ public sealed partial class ServerManagement(
         }
 
         var now = clock.GetUtcNow();
-        var changed = server.ChangeTemplate(current, next, [.. manifest.VariableList.Select(v => v.Key)], now);
+        var changed = server.ChangeTemplate(current, next, [.. manifest.VariableList.Select(v => v.Key)], now, rehearsal);
         if (!changed.IsSuccess)
         {
             return changed.Error!;
@@ -369,33 +435,7 @@ public sealed partial class ServerManagement(
         }
 
         var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
-        if (!valid.IsSuccess)
-        {
-            return valid.Error!;
-        }
-
-        audit.Record(AuditActions.Server.TemplateChanged, metadata: new { key = next.Key, from = current.Version, to = next.Version })
-            .WithServer(server.Id, server.NodeId);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException ex) when (attempt < 2 && ex.Entries.Any(e => e.Entity is Server))
-        {
-            // The agent reported a state change in between: upgrade the fresh row (its checks run again).
-            db.ChangeTracker.Clear();
-            return await UpgradeTemplateAsync(id, templateId, attempt + 1, cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            // An allocation was taken by another server meanwhile (version check or unique index).
-            return ServerErrors.AllocationUnavailable;
-        }
-
-        var result = await RunOperationAsync(server, OperationType.ServerProvision,
-            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, next, cancellationToken)), request.UserId,
-            OperationRequester.User, cancellationToken);
-        return result.IsSuccess ? await DetailsAsync(server, cancellationToken) : result.Error!;
+        return valid.IsSuccess ? (server, current, next) : valid.Error!;
     }
 
     /// <summary>The install that follows a successful provisioning (started by the panel itself).</summary>

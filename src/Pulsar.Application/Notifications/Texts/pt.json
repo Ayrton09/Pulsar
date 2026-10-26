@@ -12,7 +12,9 @@
     "currentCertificateExpires": "O certificado atual expira",
     "expires": "Expira",
     "installed": "Instalado",
-    "latest": "Mais recente"
+    "latest": "Mais recente",
+    "template": "Modelo",
+    "newTemplate": "Modelo mais novo"
   },
   "serverOutOfMemory": {
     "title": "{server} ficou sem memória",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "A atualização automática de {server} falhou",
     "text": "O Pulsar não conseguiu instalar a atualização do jogo. O servidor foi iniciado de novo se estava ligado. Veja o console dele."
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} tem um modelo mais novo",
+    "text": "O painel tem uma versão mais nova do modelo do jogo. Passe o servidor para ela pela página dele quando for conveniente.",
+    "installs": "O painel tem uma versão mais nova do modelo do jogo. O Pulsar passa o servidor para ela sozinho, como as atualizações do servidor estão configuradas."
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} passou para um modelo mais novo",
+    "text": "O Pulsar instalou o servidor de novo com a versão mais nova do modelo do jogo, mantendo seus arquivos e configurações."
+  },
+  "templateUpdateRefused": {
+    "title": "{server} não foi passado para um modelo mais novo",
+    "text": "A versão mais nova do modelo do jogo não pode ser aplicada ao servidor como ele está, então o Pulsar não mexeu nele. Passe-o à mão pela página dele quando isso estiver resolvido."
+  },
+  "templateUpdateFailed": {
+    "title": "A passagem de {server} para um modelo mais novo falhou",
+    "text": "O Pulsar não conseguiu instalar o servidor de novo com a versão mais nova do modelo do jogo. Veja a página dele: talvez seja preciso instalá-lo de novo."
   },
   "publicIpCertificateFailed": {
     "title": "Não foi possível renovar o certificado do IP público",

@@ -388,7 +388,8 @@
         "game_updates_changed": "Cambió cómo un servidor sigue las actualizaciones del juego",
         "game_update_check_requested": "Pidió revisar si hay una actualización del juego",
         "game_update_started": "Inició una actualización del juego",
-        "game_update_cancelled": "Canceló una actualización del juego"
+        "game_update_cancelled": "Canceló una actualización del juego",
+        "template_update_started": "Empezó a pasar un servidor a una plantilla más nueva"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -737,7 +738,8 @@
       "players_unknown": "No se pudo saber si había alguien jugando: la consulta del juego no había respondido.",
       "no_update": "No había ninguna actualización del juego.",
       "update_checks_off": "Las actualizaciones del juego de este servidor ya no se revisan: activá la revisión en su configuración.",
-      "action_invalid": "El panel no conoce la acción de la tarea."
+      "action_invalid": "El panel no conoce la acción de la tarea.",
+      "template_install_failed": "No se pudo volver a instalar el servidor con la plantilla nueva."
     },
     "notifications": {
       "not_found": "Ese canal de notificaciones no existe.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Nunca se inició"
     },
     "actionsFor": "Acciones de {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar lo pasa solo, como están configuradas sus actualizaciones.",
+    "templateUpgradeImported": "Esta versión se importó acá: Pulsar pasa los servidores solo a las versiones que traen sus actualizaciones."
   },
   "panelKeys": {
     "title": "Clave de firma del panel",
@@ -5737,7 +5741,8 @@
       "start": "iniciando el servidor",
       "restart": "reiniciando el servidor",
       "backup": "haciendo un backup",
-      "update": "actualizando el juego"
+      "update": "actualizando el juego",
+      "upgradeTemplate": "pasando a la plantilla más nueva"
     },
     "waitingForPlayers": "La actualización espera a que no juegue nadie (conectados ahora: {{players}}).",
     "waiting": "La actualización empieza apenas el servidor quede libre.",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} se cambia por el tiempo que falta (5 min, 1 min, 10 s). Solo se envían letras, números, espacios y . , ! ? : ' ( ) -",
       "noBroadcast": "Este juego no tiene un comando para mandarles mensajes a los jugadores, así que no se les avisa.",
       "saved": "Guardado.",
-      "invalid": "De 0 a 60."
+      "invalid": "De 0 a 60.",
+      "templatePolicy": "Cuando la plantilla del juego tiene una versión más nueva",
+      "templateHint": "Las actualizaciones de Pulsar traen versiones más nuevas de las plantillas de los juegos; el servidor conserva sus archivos y su configuración al pasar a una. Solo esas se aplican solas: a una versión importada acá se pasa a mano.",
+      "save": "Guardar actualizaciones"
     },
-    "notBefore": "La próxima actualización automática puede empezar a las {{when}} (una por hora como máximo)."
+    "notBefore": "La próxima actualización automática puede empezar a las {{when}} (una por hora como máximo).",
+    "runningTemplate": "Pasando a la plantilla más nueva: paso {{step}} de {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "El paso a la plantilla {{version}} espera a que no juegue nadie (conectados ahora: {{players}}).",
+    "templateWaiting": "El paso a la plantilla {{version}} empieza en cuanto el servidor esté libre.",
+    "lastTemplateRun": {
+      "failed": "Falló el último paso automático a una plantilla más nueva: {{error}}",
+      "cancelled": "Se canceló el último paso automático a una plantilla más nueva."
+    },
+    "cancelTemplate": "Cancelar el paso",
+    "skipTemplate": "Saltear esta versión de la plantilla",
+    "cancelTemplateConfirm": "¿Frenar este paso automático? Si el servidor ya se está volviendo a instalar, eso sigue hasta terminar.",
+    "templatePolicies": {
+      "off": "No hacer nada",
+      "notify": "Avisarme (mostrarlo en la página del servidor)",
+      "install": "Aplicarla (avisar, detener, reinstalar con ella, volver a arrancar)"
+    }
   }
 }

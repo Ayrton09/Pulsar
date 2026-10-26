@@ -20,7 +20,7 @@
 | Steam accounts | **SteamAccount** | Accounts SteamCMD signs in with for servers whose game needs one (Phase 13); a server points at one or none. |
 | Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun, **ServerSequence** | Typed action + cron + IANA time zone; sequences of steps the panel moves on (1.0.9). |
-| Game updates | **GameUpdateWatch** | How a server follows its game's updates and what the last check found (1.0.9). |
+| Game updates | **GameUpdateWatch** | How a server follows its game's updates and what the last check found (1.0.9), and the newer versions of its game's template (1.0.10). |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
 | Metric history | ServerMetricBucket, NodeMetricBucket | Usage per minute and per hour, written by the panel from the samples agents send (Phase 13). |
@@ -142,6 +142,8 @@ docs/guides/sftp.md, "SSH keys").
 ### Template upgrades (Phase 12)
 
 A server keeps the template version it was created with (templates never change). When a newer version of its game's template exists (same key, a higher semantic version, a pre-release before its release, pre-releases by SemVer's rules: `beta.2` before `beta.10`), the server's details say so and `PUT /api/v1/servers/{id}/template` (`server.install`) moves a stopped server, with nothing else running on it, to that version: values of variables the new version no longer has are dropped, the others (and the new defaults) must still be valid (a value kept in clear for a variable the new version makes secret is encrypted by the upgrade), new required ports get an allocation, and the server is provisioned and installed again with the new manifest, its files kept (install steps such as SteamCMD only check them). Audited as `server.template_changed`. Never back to an older version.
+
+*Template updates (1.0.10).* A server's game updates settings also say what a newer version of its game's template does (`template_policy`): nothing, shown and notified (the default), or moved to by itself. The panel knows its templates, so nothing is asked of the node: each pass of the game updates (doc 05) compares every followed, installed server's template with the newest version of its game the panel offers (the test game's only where it is enabled). A newer one is notified once per version (on the *game updates* events), and, when it is one a Pulsar update brought (bundled, not a pre-release: an imported version is the administrator's to review, and servers are moved to it by hand), moved to by itself as a sequence of origin `template_update`, once the move's own checks pass on a copy nothing saves (a move they refuse is not tried by itself again, and is notified): the game updates' warnings, stop, the move (`upgrade_template`, a step the panel's own: scheduled tasks cannot have it), start again if it ran. The move is this section's upgrade, provisioning then installing again, and the step is over once the server is installed; if that fails, the server is left as a failed install says. Each version is moved to by itself once, and automatic moves share the game updates' hour (one automatic update of either kind an hour). Setting it needs what the game updates' installing does (`server.install`, `server.stop`, `server.start`, and `server.console.write` to warn); a user can skip a move before it starts, or cancel one that runs (once the server installs again, that goes on to its end).
 
 ### Metric history (Phase 13)
 
@@ -673,7 +675,7 @@ CREATE INDEX ix_task_runs_running ON scheduled_task_runs (started_at) WHERE stat
 CREATE TABLE server_sequences (
     id                      uuid PRIMARY KEY,
     server_id               uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    origin                  text NOT NULL CHECK (origin IN ('schedule','game_update')),
+    origin                  text NOT NULL CHECK (origin IN ('schedule','game_update','template_update')),
     name                    varchar(128) NOT NULL,      -- who acts in the audit log
     steps                   jsonb NOT NULL,             -- [{"kind":"broadcast","text":"…"},{"kind":"wait","seconds":50},{"kind":"stop"},…]
     step_index              integer NOT NULL,
@@ -699,6 +701,7 @@ CREATE UNIQUE INDEX ix_server_sequences_running ON server_sequences (server_id) 
 CREATE TABLE game_update_watches (
     server_id          uuid PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
     policy             text NOT NULL CHECK (policy IN ('off','notify','install')),
+    template_policy    text NOT NULL CHECK (template_policy IN ('off','notify','install')),  -- 1.0.10: newer template versions
     when_empty         boolean NOT NULL,
     warning_minutes    integer NOT NULL CHECK (warning_minutes BETWEEN 0 AND 60),
     warning_message    varchar(100),                -- with {time}; NULL: the default
@@ -713,7 +716,9 @@ CREATE TABLE game_update_watches (
     notified_latest    varchar(64),
     notified_at        timestamptz,                 -- at most one notification an hour
     attempted_latest   varchar(64),                 -- a build is installed by itself once
-    sequence_id        uuid REFERENCES server_sequences(id) ON DELETE SET NULL,
+    notified_template  varchar(64),                 -- 1.0.10: each newer template version is notified once
+    attempted_template varchar(64),                 -- and moved to by itself once
+    sequence_id        uuid REFERENCES server_sequences(id) ON DELETE SET NULL,  -- a game update or a move to a newer template
     auto_updated_at    timestamptz,                 -- automatic updates start at most once an hour
     updated_at         timestamptz NOT NULL
 );

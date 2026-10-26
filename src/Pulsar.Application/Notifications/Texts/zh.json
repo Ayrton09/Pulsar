@@ -12,7 +12,9 @@
     "currentCertificateExpires": "当前证书到期时间",
     "expires": "到期时间",
     "installed": "已安装",
-    "latest": "最新"
+    "latest": "最新",
+    "template": "模板",
+    "newTemplate": "较新的模板"
   },
   "serverOutOfMemory": {
     "title": "{server} 内存不足",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "{server} 的自动更新失败",
     "text": "Pulsar 无法安装游戏更新。如果服务器之前在运行，已重新启动。请查看其控制台。"
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} 有较新的模板",
+    "text": "面板中有该游戏模板的较新版本。方便时请在服务器页面将其切换过去。",
+    "installs": "面板中有该游戏模板的较新版本。Pulsar 会按服务器的更新设置自动切换。"
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} 已切换到较新的模板",
+    "text": "Pulsar 已使用游戏模板的较新版本重新安装服务器，文件和设置均保留。"
+  },
+  "templateUpdateRefused": {
+    "title": "{server} 未切换到较新的模板",
+    "text": "游戏模板的较新版本无法应用于服务器当前的状态，因此 Pulsar 没有改动它。问题解决后，请在服务器页面手动切换。"
+  },
+  "templateUpdateFailed": {
+    "title": "{server} 切换到较新模板失败",
+    "text": "Pulsar 无法使用游戏模板的较新版本重新安装服务器。请查看其页面：可能需要重新安装。"
   },
   "publicIpCertificateFailed": {
     "title": "公网 IP 证书续期失败",

@@ -388,7 +388,8 @@
         "game_updates_changed": "Mudou como um servidor segue as atualizações do jogo",
         "game_update_check_requested": "Pediu para verificar uma atualização do jogo",
         "game_update_started": "Iniciou uma atualização do jogo",
-        "game_update_cancelled": "Cancelou uma atualização do jogo"
+        "game_update_cancelled": "Cancelou uma atualização do jogo",
+        "template_update_started": "Começou a passar um servidor para um modelo mais novo"
       },
       "template": {
         "imported": "Importou um modelo de jogo"
@@ -737,7 +738,8 @@
       "players_unknown": "Não foi possível saber se alguém estava jogando: a consulta do jogo não tinha respondido.",
       "no_update": "Não havia atualização do jogo.",
       "update_checks_off": "As atualizações do jogo deste servidor não são mais verificadas: ligue a verificação nas configurações dele.",
-      "action_invalid": "O painel não conhece a ação da tarefa."
+      "action_invalid": "O painel não conhece a ação da tarefa.",
+      "template_install_failed": "Não foi possível instalar o servidor de novo com o modelo novo."
     },
     "notifications": {
       "not_found": "Esse canal de notificação não existe.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Nunca iniciado"
     },
     "actionsFor": "Ações para {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "O Pulsar o passa sozinho, como as atualizações dele estão configuradas.",
+    "templateUpgradeImported": "Esta versão foi importada aqui: o Pulsar passa os servidores sozinho só para as versões que suas atualizações trazem."
   },
   "panelKeys": {
     "title": "Chave de assinatura do painel",
@@ -5737,7 +5741,8 @@
       "start": "iniciando o servidor",
       "restart": "reiniciando o servidor",
       "backup": "fazendo um backup",
-      "update": "atualizando o jogo"
+      "update": "atualizando o jogo",
+      "upgradeTemplate": "passando para o modelo mais novo"
     },
     "waitingForPlayers": "A atualização espera até ninguém estar jogando (online agora: {{players}}).",
     "waiting": "A atualização começa assim que o servidor ficar livre.",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} vira o tempo que falta (5 min, 1 min, 10 s). Só são enviados letras, números, espaços e . , ! ? : ' ( ) -",
       "noBroadcast": "Este jogo não tem um comando para mandar mensagens aos jogadores, então eles não são avisados.",
       "saved": "Salvo.",
-      "invalid": "De 0 a 60."
+      "invalid": "De 0 a 60.",
+      "templatePolicy": "Quando o modelo do jogo tem uma versão mais nova",
+      "templateHint": "As atualizações do Pulsar trazem versões mais novas dos modelos dos jogos; o servidor mantém seus arquivos e configurações ao passar para uma. Só essas são aplicadas sozinhas: para uma versão importada aqui, passe à mão.",
+      "save": "Salvar atualizações"
     },
-    "notBefore": "A próxima atualização automática pode começar às {{when}} (no máximo uma por hora)."
+    "notBefore": "A próxima atualização automática pode começar às {{when}} (no máximo uma por hora).",
+    "runningTemplate": "Passando para o modelo mais novo: etapa {{step}} de {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "A passagem para o modelo {{version}} espera até ninguém jogar (online agora: {{players}}).",
+    "templateWaiting": "A passagem para o modelo {{version}} começa assim que o servidor estiver livre.",
+    "lastTemplateRun": {
+      "failed": "A última passagem automática para um modelo mais novo falhou: {{error}}",
+      "cancelled": "A última passagem automática para um modelo mais novo foi cancelada."
+    },
+    "cancelTemplate": "Cancelar a passagem",
+    "skipTemplate": "Pular esta versão do modelo",
+    "cancelTemplateConfirm": "Parar esta passagem automática? Se o servidor já está sendo instalado de novo, isso continua até o fim.",
+    "templatePolicies": {
+      "off": "Não fazer nada",
+      "notify": "Avisar-me (mostrar na página do servidor)",
+      "install": "Aplicar (avisar, parar, instalar de novo com ele, iniciar de novo)"
+    }
   }
 }

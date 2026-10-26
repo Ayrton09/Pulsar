@@ -16122,6 +16122,10 @@
               "null",
               "string"
             ]
+          },
+          "template": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -16152,6 +16156,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "templatePolicy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GameUpdatePolicy"
+              }
             ]
           }
         }
@@ -16274,6 +16288,25 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "templatePolicy": {
+            "$ref": "#/components/schemas/GameUpdatePolicy"
+          },
+          "newerTemplate": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "templatePending": {
+            "type": "boolean",
+            "default": false
+          },
+          "autoTemplate": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -18769,7 +18802,8 @@
           "start",
           "restart",
           "backup",
-          "update"
+          "update",
+          "upgradeTemplate"
         ]
       },
       "SequenceStepRequest": {

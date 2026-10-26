@@ -2,7 +2,7 @@ using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Servers;
 
-/// <summary>What the panel does when a server's game has an update.</summary>
+/// <summary>What the panel does when a server's game has an update (or its template a newer version).</summary>
 public enum GameUpdatePolicy
 {
     /// <summary>Never checked.</summary>
@@ -16,9 +16,11 @@ public enum GameUpdatePolicy
 }
 
 /// <summary>
-/// How a server follows its game's updates (Pulsar 1.0.9), as AMP and WindowsGSM do: its node asks the publisher (Steam
-/// through SteamCMD, Mojang) every <see cref="CheckInterval"/>, and the panel shows, notifies or installs what is new.
-/// One per server, made the first time it is needed; a server without one is checked and notified.
+/// How a server follows its game's updates (Pulsar 1.0.9): its node asks the publisher (Steam through SteamCMD, Mojang)
+/// every <see cref="CheckInterval"/>, and the panel shows, notifies or installs what is new. Since 1.0.10 it follows the
+/// newer versions of its game's template too (<see cref="TemplatePolicy"/>; the panel knows them without asking the
+/// node): shown and notified, or applied by themselves the same way, with the same warnings. One per server, made the
+/// first time it is needed; a server without one is checked and notified.
 /// </summary>
 public sealed class GameUpdateWatch
 {
@@ -61,6 +63,7 @@ public sealed class GameUpdateWatch
     {
         ServerId = serverId;
         Policy = GameUpdatePolicy.Notify;
+        TemplatePolicy = GameUpdatePolicy.Notify;
         NextCheckAt = now;
         UpdatedAt = now;
     }
@@ -68,6 +71,9 @@ public sealed class GameUpdateWatch
     public ServerId ServerId { get; private set; }
 
     public GameUpdatePolicy Policy { get; private set; }
+
+    /// <summary>What a newer version of the server's game template does (1.0.10): nothing, notified, or applied by itself.</summary>
+    public GameUpdatePolicy TemplatePolicy { get; private set; }
 
     /// <summary>An automatic update waits until nobody is playing (the game's query says so).</summary>
     public bool WhenEmpty { get; private set; }
@@ -107,7 +113,13 @@ public sealed class GameUpdateWatch
     /// <summary>The latest build an automatic update was started for: one that failed is not tried again until a newer one.</summary>
     public string? AttemptedLatest { get; private set; }
 
-    /// <summary>The automatic update running now.</summary>
+    /// <summary>The template version a notification was sent for (each newer one is notified once).</summary>
+    public string? NotifiedTemplate { get; private set; }
+
+    /// <summary>The template version an automatic move was started for: one that failed is not tried again until a newer one.</summary>
+    public string? AttemptedTemplate { get; private set; }
+
+    /// <summary>The automatic update running now: of the game, or to a newer template (its sequence's origin says which).</summary>
     public ServerSequenceId? SequenceId { get; private set; }
 
     /// <summary>When the last automatic update started (one an hour at most).</summary>
@@ -124,12 +136,24 @@ public sealed class GameUpdateWatch
     /// <summary>An automatic update is due and may start at <paramref name="now"/>.</summary>
     public bool AutoUpdateMayStart(DateTimeOffset now) => AutoUpdateDue && (AutoUpdateNotBefore is not { } notBefore || now >= notBefore);
 
+    /// <summary>A move to <paramref name="newer"/>, the newest version of the server's template, should start (when the server allows it).</summary>
+    public bool TemplateUpgradeDue(string newer) =>
+        TemplatePolicy == GameUpdatePolicy.Install && SequenceId is null && !string.Equals(newer, AttemptedTemplate, StringComparison.Ordinal);
+
+    /// <summary>A move to <paramref name="newer"/> is due and may start at <paramref name="now"/> (one automatic update an hour, of either kind).</summary>
+    public bool TemplateUpgradeMayStart(string newer, DateTimeOffset now) =>
+        TemplateUpgradeDue(newer) && (AutoUpdateNotBefore is not { } notBefore || now >= notBefore);
+
     public static GameUpdateWatch Create(ServerId serverId, DateTimeOffset now) => new(serverId, now);
 
-    public Result Change(GameUpdatePolicy policy, bool whenEmpty, int warningMinutes, string? warningMessage, DateTimeOffset now)
+    public Result Change(GameUpdatePolicy policy, bool whenEmpty, int warningMinutes, string? warningMessage, DateTimeOffset now) =>
+        Change(policy, TemplatePolicy, whenEmpty, warningMinutes, warningMessage, now);
+
+    public Result Change(GameUpdatePolicy policy, GameUpdatePolicy templatePolicy, bool whenEmpty, int warningMinutes, string? warningMessage,
+        DateTimeOffset now)
     {
         var message = string.IsNullOrWhiteSpace(warningMessage) ? null : warningMessage.Trim();
-        if (!Enum.IsDefined(policy) || warningMinutes is < 0 or > MaxWarningMinutes
+        if (!Enum.IsDefined(policy) || !Enum.IsDefined(templatePolicy) || warningMinutes is < 0 or > MaxWarningMinutes
             || message is { Length: > MaxWarningMessageLength } || (message is not null && !DisplayNames.IsDisplayable(message)))
         {
             return ServerErrors.GameUpdatesInvalid;
@@ -141,6 +165,7 @@ public sealed class GameUpdateWatch
         }
 
         Policy = policy;
+        TemplatePolicy = templatePolicy;
         WhenEmpty = whenEmpty;
         WarningMinutes = warningMinutes;
         WarningMessage = message == DefaultWarningMessage ? null : message;
@@ -238,6 +263,42 @@ public sealed class GameUpdateWatch
     {
         SequenceId = sequence;
         AttemptedLatest = Latest;
+        if (byItself)
+        {
+            AutoUpdatedAt = now;
+        }
+
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="newer"/>, a newer version of the server's template, should be notified now (and notes that
+    /// it is): each version once.
+    /// </summary>
+    public bool TemplateNoticed(string newer, DateTimeOffset now)
+    {
+        if (TemplatePolicy == GameUpdatePolicy.Off || string.Equals(newer, NotifiedTemplate, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        NotifiedTemplate = Cut(newer, MaxBuildLength);
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>The move to <paramref name="version"/> is not made by itself (a user cancelled it before it began); a newer one will be.</summary>
+    public void SkipTemplate(string version, DateTimeOffset now)
+    {
+        AttemptedTemplate = Cut(version, MaxBuildLength);
+        UpdatedAt = now;
+    }
+
+    /// <param name="byItself">An automatic move (counted in the hourly limit); false: a user asked for it.</param>
+    public void TemplateUpgradeStarted(ServerSequenceId sequence, string version, DateTimeOffset now, bool byItself = true)
+    {
+        SequenceId = sequence;
+        AttemptedTemplate = Cut(version, MaxBuildLength);
         if (byItself)
         {
             AutoUpdatedAt = now;

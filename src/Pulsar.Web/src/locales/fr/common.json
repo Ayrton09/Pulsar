@@ -388,7 +388,8 @@
         "game_updates_changed": "A changé la façon dont un serveur suit les mises à jour du jeu",
         "game_update_check_requested": "A demandé de vérifier une mise à jour du jeu",
         "game_update_started": "A lancé une mise à jour du jeu",
-        "game_update_cancelled": "A annulé une mise à jour du jeu"
+        "game_update_cancelled": "A annulé une mise à jour du jeu",
+        "template_update_started": "A commencé à passer un serveur à un modèle plus récent"
       },
       "template": {
         "imported": "Importation d'un modèle de jeu"
@@ -737,7 +738,8 @@
       "players_unknown": "Impossible de savoir si quelqu'un jouait : la requête du jeu n'avait pas répondu.",
       "no_update": "Aucune mise à jour du jeu n'était disponible.",
       "update_checks_off": "Les mises à jour du jeu de ce serveur ne sont plus vérifiées : activez la vérification dans ses paramètres.",
-      "action_invalid": "Le panneau ne connaît pas l'action de la tâche."
+      "action_invalid": "Le panneau ne connaît pas l'action de la tâche.",
+      "template_install_failed": "Le serveur n'a pas pu être réinstallé avec le nouveau modèle."
     },
     "notifications": {
       "not_found": "Ce canal de notification n'existe pas.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Jamais démarré"
     },
     "actionsFor": "Actions pour {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar l’y passe tout seul, comme ses mises à jour sont réglées.",
+    "templateUpgradeImported": "Cette version a été importée ici : Pulsar ne passe les serveurs tout seul qu'aux versions apportées par ses mises à jour."
   },
   "panelKeys": {
     "title": "Clé de signature du panneau",
@@ -5737,7 +5741,8 @@
       "start": "démarrage du serveur",
       "restart": "redémarrage du serveur",
       "backup": "sauvegarde",
-      "update": "mise à jour du jeu"
+      "update": "mise à jour du jeu",
+      "upgradeTemplate": "passage au modèle plus récent"
     },
     "waitingForPlayers": "La mise à jour attend que personne ne joue (en ligne : {{players}}).",
     "waiting": "La mise à jour commence dès que le serveur est libre.",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} devient le temps restant (5 min, 1 min, 10 s). Seuls les lettres, chiffres, espaces et . , ! ? : ' ( ) - sont envoyés.",
       "noBroadcast": "Ce jeu n'a pas de commande pour écrire aux joueurs : ils ne sont pas avertis.",
       "saved": "Enregistré.",
-      "invalid": "De 0 à 60."
+      "invalid": "De 0 à 60.",
+      "templatePolicy": "Quand le modèle du jeu a une version plus récente",
+      "templateHint": "Les mises à jour de Pulsar apportent des versions plus récentes des modèles de jeux ; le serveur garde ses fichiers et ses réglages en y passant. Seules celles-ci s'appliquent toutes seules : une version importée ici se fait à la main.",
+      "save": "Enregistrer les mises à jour"
     },
-    "notBefore": "La prochaine mise à jour automatique peut commencer à {{when}} (une par heure au plus)."
+    "notBefore": "La prochaine mise à jour automatique peut commencer à {{when}} (une par heure au plus).",
+    "runningTemplate": "Passage au modèle plus récent : étape {{step}} sur {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "Le passage au modèle {{version}} attend que personne ne joue (en ligne : {{players}}).",
+    "templateWaiting": "Le passage au modèle {{version}} commence dès que le serveur est libre.",
+    "lastTemplateRun": {
+      "failed": "Le dernier passage automatique à un modèle plus récent a échoué : {{error}}",
+      "cancelled": "Le dernier passage automatique à un modèle plus récent a été annulé."
+    },
+    "cancelTemplate": "Annuler le passage",
+    "skipTemplate": "Ignorer cette version du modèle",
+    "cancelTemplateConfirm": "Arrêter ce passage automatique ? Si le serveur est déjà en cours de réinstallation, cela continue jusqu'au bout.",
+    "templatePolicies": {
+      "off": "Ne rien faire",
+      "notify": "Me prévenir (l’afficher sur la page du serveur)",
+      "install": "L’appliquer (prévenir, arrêter, réinstaller avec, redémarrer)"
+    }
   }
 }

@@ -59,6 +59,7 @@ import { AddressChip } from './ServerCard';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { failureReason, serverActions } from './serverStatus';
 import { GameUpdatesCard } from '../gameUpdates/GameUpdates';
+import { useGameUpdates } from '../gameUpdates/api';
 
 const allTabs = [
   'overview',
@@ -585,6 +586,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const remove = useDeleteServer();
   const update = useUpdateGame();
   const upgrade = useUpgradeTemplate();
+  const templateUpdates = useGameUpdates(details.server.id);
   const [validate, setValidate] = useState(false);
   const { server } = details;
   const available = serverActions(server);
@@ -604,6 +606,14 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
           <p className="text-sm">
             {t('servers.templateUpgrade', { current: details.templateVersion, next: next.version })}
+            {templateUpdates.data?.templatePolicy === 'install' && (
+              <>
+                {' '}
+                {templateUpdates.data.autoTemplate === next.version
+                  ? t('servers.templateUpgradeAuto')
+                  : t('servers.templateUpgradeImported')}
+              </>
+            )}
           </p>
           <Button
             variant="secondary"

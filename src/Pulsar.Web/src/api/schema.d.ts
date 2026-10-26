@@ -14348,6 +14348,8 @@ export interface components {
             createdAt: string;
             errorCode: null | string;
             message: null | string;
+            /** @default false */
+            template: boolean;
         };
         GameUpdateSettingsRequest: {
             policy: components["schemas"]["GameUpdatePolicy"];
@@ -14355,6 +14357,7 @@ export interface components {
             /** Format: int32 */
             warningMinutes: number;
             warningMessage: null | string;
+            templatePolicy?: null | components["schemas"]["GameUpdatePolicy"];
         };
         GameUpdateView: {
             policy: components["schemas"]["GameUpdatePolicy"];
@@ -14381,6 +14384,11 @@ export interface components {
             running: null | components["schemas"]["GameUpdateRunView"];
             /** Format: date-time */
             notBefore?: null | string;
+            templatePolicy?: components["schemas"]["GameUpdatePolicy"];
+            newerTemplate?: null | string;
+            /** @default false */
+            templatePending: boolean;
+            autoTemplate?: null | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -14982,7 +14990,7 @@ export interface components {
             always: boolean;
         };
         /** @enum {unknown} */
-        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update";
+        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | "upgradeTemplate";
         SequenceStepRequest: {
             kind: components["schemas"]["SequenceStepKind"];
             text?: null | string;

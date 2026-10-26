@@ -388,7 +388,8 @@
         "game_updates_changed": "Ha cambiato come un server segue gli aggiornamenti del gioco",
         "game_update_check_requested": "Ha chiesto di controllare un aggiornamento del gioco",
         "game_update_started": "Ha avviato un aggiornamento del gioco",
-        "game_update_cancelled": "Ha annullato un aggiornamento del gioco"
+        "game_update_cancelled": "Ha annullato un aggiornamento del gioco",
+        "template_update_started": "Ha iniziato a passare un server a un modello più recente"
       },
       "template": {
         "imported": "Ha importato un modello di gioco"
@@ -737,7 +738,8 @@
       "players_unknown": "Non si è potuto sapere se qualcuno giocava: la query del gioco non aveva risposto.",
       "no_update": "Non c'era nessun aggiornamento del gioco.",
       "update_checks_off": "Gli aggiornamenti del gioco di questo server non vengono più controllati: attiva il controllo nelle sue impostazioni.",
-      "action_invalid": "Il pannello non conosce l'azione dell'attività."
+      "action_invalid": "Il pannello non conosce l'azione dell'attività.",
+      "template_install_failed": "Non è stato possibile reinstallare il server con il nuovo modello."
     },
     "notifications": {
       "not_found": "Questo canale di notifica non esiste.",
@@ -1383,7 +1385,9 @@
       "neverStarted": "Mai avviato"
     },
     "actionsFor": "Azioni per {{name}}",
-    "commandFor": "{{command}} {{name}}"
+    "commandFor": "{{command}} {{name}}",
+    "templateUpgradeAuto": "Pulsar lo passa da solo, come sono impostati i suoi aggiornamenti.",
+    "templateUpgradeImported": "Questa versione è stata importata qui: Pulsar passa i server da solo solo alle versioni portate dai suoi aggiornamenti."
   },
   "panelKeys": {
     "title": "Chiave di firma del pannello",
@@ -5737,7 +5741,8 @@
       "start": "avvio del server",
       "restart": "riavvio del server",
       "backup": "backup",
-      "update": "aggiornamento del gioco"
+      "update": "aggiornamento del gioco",
+      "upgradeTemplate": "passaggio al modello più recente"
     },
     "waitingForPlayers": "L'aggiornamento aspetta che non giochi nessuno (online ora: {{players}}).",
     "waiting": "L'aggiornamento parte appena il server è libero.",
@@ -5771,8 +5776,26 @@
       "warningMessageHint": "{time} diventa il tempo rimasto (5 min, 1 min, 10 s). Si inviano solo lettere, cifre, spazi e . , ! ? : ' ( ) -",
       "noBroadcast": "Questo gioco non ha un comando per scrivere ai giocatori, quindi non vengono avvisati.",
       "saved": "Salvato.",
-      "invalid": "Da 0 a 60."
+      "invalid": "Da 0 a 60.",
+      "templatePolicy": "Quando il modello del gioco ha una versione più recente",
+      "templateHint": "Gli aggiornamenti di Pulsar portano versioni più recenti dei modelli dei giochi; il server mantiene file e impostazioni quando passa a una di esse. Solo quelle si applicano da sole: a una versione importata qui si passa a mano.",
+      "save": "Salva aggiornamenti"
     },
-    "notBefore": "Il prossimo aggiornamento automatico può iniziare alle {{when}} (al massimo uno all'ora)."
+    "notBefore": "Il prossimo aggiornamento automatico può iniziare alle {{when}} (al massimo uno all'ora).",
+    "runningTemplate": "Passaggio al modello più recente: passo {{step}} di {{steps}} ({{what}})",
+    "templateWaitingForPlayers": "Il passaggio al modello {{version}} aspetta che nessuno giochi (online ora: {{players}}).",
+    "templateWaiting": "Il passaggio al modello {{version}} inizia appena il server è libero.",
+    "lastTemplateRun": {
+      "failed": "L'ultimo passaggio automatico a un modello più recente non è riuscito: {{error}}",
+      "cancelled": "L'ultimo passaggio automatico a un modello più recente è stato annullato."
+    },
+    "cancelTemplate": "Annulla il passaggio",
+    "skipTemplate": "Salta questa versione del modello",
+    "cancelTemplateConfirm": "Fermare questo passaggio automatico? Se il server è già in reinstallazione, quella continua fino alla fine.",
+    "templatePolicies": {
+      "off": "Non fare nulla",
+      "notify": "Avvisami (mostralo nella pagina del server)",
+      "install": "Applicalo (avvisa, ferma, reinstalla con esso, riavvia)"
+    }
   }
 }

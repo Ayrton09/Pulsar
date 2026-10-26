@@ -12,7 +12,9 @@
     "currentCertificateExpires": "Le certificat actuel expire",
     "expires": "Expire",
     "installed": "Installée",
-    "latest": "Dernière"
+    "latest": "Dernière",
+    "template": "Modèle",
+    "newTemplate": "Modèle plus récent"
   },
   "serverOutOfMemory": {
     "title": "{server} n'a plus de mémoire",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "La mise à jour automatique de {server} a échoué",
     "text": "Pulsar n'a pas pu installer la mise à jour de son jeu. Le serveur a été redémarré s'il tournait. Consultez sa console."
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} a un modèle plus récent",
+    "text": "Le panneau a une version plus récente du modèle de son jeu. Passez le serveur dessus depuis sa page quand cela vous convient.",
+    "installs": "Le panneau a une version plus récente du modèle de son jeu. Pulsar y passe le serveur tout seul, comme ses mises à jour sont réglées."
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} est passé à un modèle plus récent",
+    "text": "Pulsar a réinstallé le serveur avec la version plus récente du modèle de son jeu, en gardant ses fichiers et ses réglages."
+  },
+  "templateUpdateRefused": {
+    "title": "{server} n'est pas passé à un modèle plus récent",
+    "text": "La version plus récente du modèle de son jeu ne peut pas s'appliquer au serveur tel qu'il est, Pulsar n'y a donc pas touché. Passez-le à la main depuis sa page une fois cela corrigé."
+  },
+  "templateUpdateFailed": {
+    "title": "Le passage de {server} à un modèle plus récent a échoué",
+    "text": "Pulsar n'a pas pu réinstaller le serveur avec la version plus récente du modèle de son jeu. Consultez sa page : il faudra peut-être le réinstaller."
   },
   "publicIpCertificateFailed": {
     "title": "Le certificat de l'IP publique n'a pas pu être renouvelé",

@@ -474,6 +474,12 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 14. Actions on several servers at once.
 15. Hosting: quotas per user, users creating their servers within them, suspending servers, billing integration.
 
+## 1.0.10 — Fixes and template updates (2026-10-26)
+
+- A server prepared again (moving it to a newer template, say) no longer refuses the account the agent made for it (doc 06, "Isolation").
+- Template updates: newer versions of a server's game template are notified once, or moved to by themselves with the game updates' warnings (doc 02, "Template upgrades"; doc 05).
+- A release page shows its version once (the notes alone under its title).
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

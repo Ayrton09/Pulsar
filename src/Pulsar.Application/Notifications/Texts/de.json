@@ -12,7 +12,9 @@
     "currentCertificateExpires": "Das aktuelle Zertifikat läuft ab",
     "expires": "Läuft ab",
     "installed": "Installiert",
-    "latest": "Neueste"
+    "latest": "Neueste",
+    "template": "Vorlage",
+    "newTemplate": "Neuere Vorlage"
   },
   "serverOutOfMemory": {
     "title": "{server} hat keinen Speicher mehr",
@@ -71,6 +73,23 @@
   "gameUpdateFailed": {
     "title": "Das automatische Update von {server} ist fehlgeschlagen",
     "text": "Pulsar konnte das Update des Spiels nicht installieren. Der Server wurde wieder gestartet, falls er lief. Sieh in seine Konsole."
+  },
+  "templateUpdateAvailable": {
+    "title": "{server} hat eine neuere Vorlage",
+    "text": "Das Panel hat eine neuere Version der Vorlage seines Spiels. Stelle den Server auf seiner Seite darauf um, wenn es passt.",
+    "installs": "Das Panel hat eine neuere Version der Vorlage seines Spiels. Pulsar stellt den Server selbst darauf um, wie seine Updates eingestellt sind."
+  },
+  "templateUpdateInstalled": {
+    "title": "{server} nutzt eine neuere Vorlage",
+    "text": "Pulsar hat den Server mit der neueren Version der Vorlage seines Spiels neu installiert; Dateien und Einstellungen bleiben erhalten."
+  },
+  "templateUpdateRefused": {
+    "title": "{server} wurde nicht auf eine neuere Vorlage umgestellt",
+    "text": "Die neuere Version der Vorlage seines Spiels lässt sich auf den Server in seinem jetzigen Zustand nicht anwenden, daher hat Pulsar ihn nicht angerührt. Stelle ihn auf seiner Seite von Hand um, sobald das behoben ist."
+  },
+  "templateUpdateFailed": {
+    "title": "Umstellen von {server} auf eine neuere Vorlage fehlgeschlagen",
+    "text": "Pulsar konnte den Server nicht mit der neueren Version der Vorlage seines Spiels neu installieren. Sieh auf seiner Seite nach: Er muss eventuell neu installiert werden."
   },
   "publicIpCertificateFailed": {
     "title": "Das Zertifikat der öffentlichen IP konnte nicht erneuert werden",

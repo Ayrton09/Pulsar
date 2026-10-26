@@ -1,4 +1,5 @@
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Domain.Tests.Servers;
@@ -162,5 +163,62 @@ public sealed class GameUpdateWatchTests
         watch.Change(GameUpdatePolicy.Notify, false, 0, null, s_now.AddHours(2));
 
         Assert.True(watch.CheckDue(s_now.AddHours(2)));
+    }
+
+    [Fact]
+    public void ANewerTemplateIsNotifiedOnceAndMovedToOncePerVersion()
+    {
+        var watch = GameUpdateWatch.Create(ServerId.New(), s_now);
+        Assert.Equal(GameUpdatePolicy.Notify, watch.TemplatePolicy);
+        Assert.False(watch.TemplateUpgradeDue("1.4.0")); // notified only
+
+        Assert.True(watch.TemplateNoticed("1.4.0", s_now));
+        Assert.False(watch.TemplateNoticed("1.4.0", s_now.AddHours(5)));
+        Assert.True(watch.TemplateNoticed("1.5.0", s_now.AddHours(6)));
+
+        // The game's own policy is left as it is.
+        Assert.True(watch.Change(GameUpdatePolicy.Off, GameUpdatePolicy.Install, false, 0, null, s_now).IsSuccess);
+        Assert.Equal((GameUpdatePolicy.Off, GameUpdatePolicy.Install), (watch.Policy, watch.TemplatePolicy));
+        Assert.True(watch.TemplateUpgradeMayStart("1.5.0", s_now));
+        watch.TemplateUpgradeStarted(ServerSequenceId.New(), "1.5.0", s_now);
+        Assert.False(watch.TemplateUpgradeDue("1.5.0")); // one runs
+        Assert.False(watch.AutoUpdateDue);
+
+        // It ended (failed, say): not tried again for that version, a newer one is, an hour after the last at most.
+        watch.AutoUpdateEnded(s_now.AddMinutes(10));
+        Assert.False(watch.TemplateUpgradeDue("1.5.0"));
+        Assert.True(watch.TemplateUpgradeDue("1.6.0"));
+        Assert.False(watch.TemplateUpgradeMayStart("1.6.0", s_now.AddMinutes(30)));
+        Assert.True(watch.TemplateUpgradeMayStart("1.6.0", s_now.AddHours(1)));
+
+        // Skipped by a user before it began: that version is not moved to by itself.
+        watch.SkipTemplate("1.6.0", s_now.AddHours(1));
+        Assert.False(watch.TemplateUpgradeDue("1.6.0"));
+
+        // Off: nothing is notified or moved to.
+        watch.Change(GameUpdatePolicy.Off, GameUpdatePolicy.Off, false, 0, null, s_now.AddHours(2));
+        Assert.False(watch.TemplateNoticed("1.7.0", s_now.AddHours(2)));
+        Assert.False(watch.TemplateUpgradeDue("1.7.0"));
+    }
+
+    [Fact]
+    public void OnlyTheTemplateUpdatesMoveAServerToAnotherTemplate()
+    {
+        SequenceStep[] steps = [new(SequenceStepKind.Stop), new(SequenceStepKind.UpgradeTemplate, Guid.NewGuid().ToString())];
+
+        Assert.True(ServerSequence.Start(ServerId.New(), SequenceOrigin.TemplateUpdate, "Game updates", steps, true, s_now).IsSuccess);
+        Assert.Equal(ScheduleErrors.StepsInvalid, ServerSequence.Start(ServerId.New(), SequenceOrigin.GameUpdate, "Game updates", steps, true, s_now).Error);
+        Assert.Equal(ScheduleErrors.StepsInvalid, ServerSequence.Start(ServerId.New(), SequenceOrigin.Schedule, "A task", steps, true, s_now).Error);
+        Assert.Equal(ScheduleErrors.StepsInvalid, ServerSequence.Start(ServerId.New(), SequenceOrigin.TemplateUpdate, "Game updates",
+            [new SequenceStep(SequenceStepKind.UpgradeTemplate, "not a template")], true, s_now).Error);
+    }
+
+    [Fact]
+    public void ATemplatePolicyThatIsNoneOfThemIsRefused()
+    {
+        var watch = GameUpdateWatch.Create(ServerId.New(), s_now);
+
+        Assert.Equal(ServerErrors.GameUpdatesInvalid, watch.Change(GameUpdatePolicy.Notify, (GameUpdatePolicy)7, false, 0, null, s_now).Error);
+        Assert.Equal(GameUpdatePolicy.Notify, watch.TemplatePolicy);
     }
 }

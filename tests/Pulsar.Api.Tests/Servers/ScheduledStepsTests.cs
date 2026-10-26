@@ -255,6 +255,10 @@ public sealed class ScheduledStepsTests(PulsarApiFactory factory) : IClassFixtur
             ScheduleErrors.CommandSensitive.Code);
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/schedules",
             Steps("Too short", ScheduledConditions.None, new SequenceStep(SequenceStepKind.Wait))), HttpStatusCode.BadRequest, ScheduleErrors.StepsInvalid.Code);
+        // Moving to another template is the template updates' own step.
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/schedules",
+            Steps("Move", ScheduledConditions.None, new SequenceStep(SequenceStepKind.UpgradeTemplate, Guid.NewGuid().ToString()))), HttpStatusCode.BadRequest,
+            ScheduleErrors.StepsInvalid.Code);
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/schedules",
             new ScheduledTaskRequest("No steps", "0 4 * * *", "UTC", ScheduledAction.Sequence, null, false, false, true)), HttpStatusCode.BadRequest,
             ScheduleErrors.StepsInvalid.Code);

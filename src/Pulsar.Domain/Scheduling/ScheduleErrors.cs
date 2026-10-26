@@ -92,6 +92,9 @@ public static class ScheduleErrors
     /// <summary>The server stopped (failed to start, crashed, was stopped) while a step waited for it to run.</summary>
     public static DomainError StartFailed { get; } = new("schedules.start_failed", "The server did not start.");
 
+    /// <summary>The server could not be installed again with the newer template a template update moved it to.</summary>
+    public static DomainError TemplateInstallFailed { get; } = new("schedules.template_install_failed", "The server could not be installed again with the new template.");
+
     /// <summary>The server was started again or stopped by someone else while a step waited for it.</summary>
     public static DomainError StepInterfered { get; } = new("schedules.step_interfered", "The server did not do what the step asked.");
 

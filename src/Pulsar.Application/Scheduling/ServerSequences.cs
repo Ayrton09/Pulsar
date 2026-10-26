@@ -220,6 +220,9 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
                 case SequenceStepKind.Backup or SequenceStepKind.Update:
                     await OperationAsync(services, db, sequence, server, step, now, cancellationToken);
                     break;
+                case SequenceStepKind.UpgradeTemplate:
+                    await TemplateAsync(services, db, sequence, server, step, now, cancellationToken);
+                    break;
                 default:
                     sequence.StepFailed("schedules.step_unknown", $"Unknown step {step.Kind}.", now);
                     break;
@@ -424,6 +427,61 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
             default:
                 sequence.WaitUntil(now + PollInterval);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// A move to another version of the server's template (1.0.10): the server is provisioned again with it, and installed
+    /// again (the install follows the provisioning by itself); over once it is installed.
+    /// </summary>
+    private static async Task TemplateAsync(IServiceProvider services, IPulsarDbContext db, ServerSequence sequence, Server server, SequenceStep step,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!sequence.StepBegun)
+        {
+            var via = sequence.Origin == SequenceOrigin.Schedule ? OperationRequester.Schedule : OperationRequester.System;
+            var moved = await services.GetRequiredService<ServerManagement>()
+                .RequestTemplateUpgradeAsync(server.Id, Guid.Parse(step.Text!), via, cancellationToken);
+            if (!moved.IsSuccess)
+            {
+                sequence.StepFailed(moved.Error!.Code, moved.Error.Message, now);
+                return;
+            }
+
+            sequence.Began(now, Observed(server), moved.Value.Operation.Id);
+            sequence.WaitUntil(now + PollInterval);
+            return;
+        }
+
+        var provision = await db.Operations.AsNoTracking().SingleOrDefaultAsync(o => o.Id == sequence.OperationId, cancellationToken);
+        switch (provision?.Status)
+        {
+            case OperationStatus.Failed or OperationStatus.Cancelled or OperationStatus.Interrupted or null:
+                sequence.StepFailed(provision?.ErrorCode ?? (provision is null ? "operation.not_found" : "operation.cancelled"),
+                    provision?.ErrorMessage ?? "The server could not be provisioned with the new template.", now);
+                return;
+            case not OperationStatus.Succeeded:
+                sequence.WaitUntil(now + PollInterval);
+                return;
+        }
+
+        // Provisioned (the server stays installing until then): the install that follows decides.
+        if (server.InstallState == InstallState.Installed && server.ActiveOperationId is null)
+        {
+            sequence.StepDone(now);
+        }
+        else if (server.InstallState is InstallState.Failed or InstallState.NotInstalled)
+        {
+            var install = await db.Operations.AsNoTracking()
+                .Where(o => o.ServerId == server.Id && o.Type == OperationType.ServerInstall && o.CreatedAt >= provision.CreatedAt)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            sequence.StepFailed(install?.ErrorCode ?? ScheduleErrors.TemplateInstallFailed.Code,
+                install?.ErrorMessage ?? ScheduleErrors.TemplateInstallFailed.Message, now);
+        }
+        else
+        {
+            sequence.WaitUntil(now + PollInterval);
         }
     }
 

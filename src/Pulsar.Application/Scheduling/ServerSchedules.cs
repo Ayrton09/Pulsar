@@ -393,7 +393,7 @@ public sealed class ServerSchedules(
         SequenceStepKind.Start => Permissions.Server.Start,
         SequenceStepKind.Restart => Permissions.Server.Restart,
         SequenceStepKind.Backup => Permissions.Server.BackupsCreate,
-        SequenceStepKind.Update => Permissions.Server.Install,
+        SequenceStepKind.Update or SequenceStepKind.UpgradeTemplate => Permissions.Server.Install,
         SequenceStepKind.Wait => null,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
@@ -412,7 +412,8 @@ public sealed class ServerSchedules(
             return ScheduleErrors.ActionInvalid;
         }
 
-        if (definition.Action == ScheduledAction.Sequence && definition.Steps?.Any(s => s is not null && !Enum.IsDefined(s.Kind)) == true)
+        if (definition.Action == ScheduledAction.Sequence
+            && definition.Steps?.Any(s => s is not null && (!Enum.IsDefined(s.Kind) || s.Kind == SequenceStepKind.UpgradeTemplate)) == true)
         {
             return ScheduleErrors.StepsInvalid;
         }

@@ -25,11 +25,17 @@ internal sealed partial class SequenceService(IServiceScopeFactory scopes, Serve
             TimeSpan sleep;
             try
             {
-                await using (var scope = scopes.CreateAsyncScope())
+                // The game updates' pass on its own: whatever stops it, the sequences already running go on.
+                try
                 {
+                    await using var scope = scopes.CreateAsyncScope();
                     // Before anything resolves the request context: what the pass starts is audited as the game updates.
                     scope.ServiceProvider.GetRequiredService<RequestContextOverride>().Context = new SystemRequestContext(GameUpdates.ActorName);
                     await scope.ServiceProvider.GetRequiredService<GameUpdates>().RunDueAsync(clock.GetUtcNow(), stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    LogUpdatesPassFailed(ex);
                 }
 
                 var pass = await sequences.RunDueAsync(clock.GetUtcNow(), stoppingToken);
@@ -64,4 +70,7 @@ internal sealed partial class SequenceService(IServiceScopeFactory scopes, Serve
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Game updates and sequences could not run; trying again in {Delay}")]
     private partial void LogPassFailed(Exception exception, TimeSpan delay);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The game updates' pass failed; the sequences go on")]
+    private partial void LogUpdatesPassFailed(Exception exception);
 }
