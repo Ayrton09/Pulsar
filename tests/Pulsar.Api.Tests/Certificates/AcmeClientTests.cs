@@ -84,8 +84,10 @@ public sealed class AcmeClientTests : IAsyncLifetime
         Assert.True(key.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(csr.PublicKey.ExportSubjectPublicKeyInfo()));
         Assert.Equal(issued.ChainPem, AcmeIssuance.ChainPem(AcmeIssuance.ParseChain(issued.ChainPem)));
 
-        // Nothing is answered on port 80 once the order is done: the connection is closed on arrival.
-        await Assert.ThrowsAsync<HttpRequestException>(() => ChallengeStatusAsync(answer!.Split('.')[0]));
+        // Nothing is answered on port 80 once the order is done: the connection is closed on arrival (on Linux the closed
+        // socket can come out as the SocketException itself, before the client wraps it).
+        var refused = await Record.ExceptionAsync(() => ChallengeStatusAsync(answer!.Split('.')[0]));
+        Assert.True(refused is HttpRequestException or System.Net.Sockets.SocketException, $"{refused}");
     }
 
     [Fact]

@@ -11,20 +11,20 @@ public sealed class ServerAccountAdoptionTests
 {
     private const string Description = "Pulsar game server k3x7m2qa (managed by the Pulsar agent)";
 
-    private static readonly SecurityIdentifier s_users = new(WellKnownSidType.BuiltinUsersSid, null);
-    private static readonly SecurityIdentifier s_administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
-    private static readonly SecurityIdentifier s_guests = new(WellKnownSidType.BuiltinGuestsSid, null);
-
-    [Fact]
+    [WindowsFact]
     public void OnlyAnAccountPulsarMadeInNoOtherGroupIsTakenOver()
     {
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var guests = new SecurityIdentifier(WellKnownSidType.BuiltinGuestsSid, null);
+
         // Pulsar's own accounts are in no group (NetUserAdd adds them to none), or in Users if someone added them.
         Assert.Null(WindowsServerAccounts.RefusalToAdopt([], Description, Description));
-        Assert.Null(WindowsServerAccounts.RefusalToAdopt([s_users], Description, Description));
+        Assert.Null(WindowsServerAccounts.RefusalToAdopt([users], Description, Description));
 
-        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([s_administrators], Description, Description));
-        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([s_users, s_administrators], Description, Description));
-        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([s_guests], Description, Description));
+        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([administrators], Description, Description));
+        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([users, administrators], Description, Description));
+        Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([guests], Description, Description));
         Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([null], Description, Description)); // a group whose SID is unknown
         Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([], "Made by hand", Description));
         Assert.NotNull(WindowsServerAccounts.RefusalToAdopt([], null, Description));
