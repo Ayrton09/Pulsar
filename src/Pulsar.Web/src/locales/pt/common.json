@@ -44,6 +44,7 @@
     "login": {
       "title": "Entrar",
       "subtitle": "Gerenciamento de servidores de jogos, feito para Windows.",
+      "remember": "Lembrar de mim neste dispositivo",
       "submit": "Entrar"
     },
     "setup": {

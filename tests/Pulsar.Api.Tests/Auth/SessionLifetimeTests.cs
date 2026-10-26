@@ -147,6 +147,79 @@ public sealed class SessionLifetimeTests(TwoFactorApiFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.Unauthorized, await StatusAsync(user.Http));
     }
 
+    [DatabaseFact]
+    public async Task ARememberedSessionOutlivesTheBrowserAndLastsWhileItIsUsed()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("lifetime-remembered");
+        using var user = await PanelClient.CreateAsync(factory);
+        using (var login = await user.PostAsync("/api/v1/auth/login", new LoginRequest("lifetime-remembered", AccessScenario.Password, RememberMe: true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+            // A persistent cookie, for as long as the session may go unused.
+            var expires = Expiry(login);
+            Assert.NotNull(expires);
+            Assert.InRange(expires!.Value - factory.Clock.GetUtcNow(), SessionLifetime.RememberFor - TimeSpan.FromMinutes(1),
+                SessionLifetime.RememberFor + TimeSpan.FromMinutes(1));
+        }
+
+        // Used every few days, it lasts past the maximum age of the others.
+        for (var day = 0; day < 40; day += 5)
+        {
+            factory.Clock.Advance(TimeSpan.FromDays(5));
+            Assert.Equal(HttpStatusCode.OK, await StatusAsync(user.Http));
+        }
+
+        // Left unused for longer than it is remembered, it ends.
+        factory.Clock.Advance(SessionLifetime.RememberFor + TimeSpan.FromDays(1));
+        Assert.Equal(HttpStatusCode.Unauthorized, await StatusAsync(user.Http));
+    }
+
+    [DatabaseFact]
+    public async Task ARememberedSessionStillEndsWhenTheUserSignsOut()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("lifetime-remembered-out");
+        using var user = await PanelClient.CreateAsync(factory);
+        using (var login = await user.PostAsync("/api/v1/auth/login", new LoginRequest("lifetime-remembered-out", AccessScenario.Password, RememberMe: true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        await user.GetSessionAsync();
+        using var copy = Copy(user);
+        Assert.Equal(HttpStatusCode.OK, await StatusAsync(copy));
+        using (var logout = await user.PostAsync("/api/v1/auth/logout"))
+        {
+            await AccessScenario.EnsureSuccessAsync(logout);
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await StatusAsync(copy));
+    }
+
+    [DatabaseFact]
+    public async Task ASessionNotRememberedEndsWithTheBrowser()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("lifetime-browser");
+        using var user = await PanelClient.CreateAsync(factory);
+        using var login = await user.LoginAsync("lifetime-browser", AccessScenario.Password);
+        await AccessScenario.EnsureSuccessAsync(login);
+
+        Assert.Null(Expiry(login)); // a cookie without an expiry: the browser drops it when it closes
+    }
+
+    /// <summary>The expiry the answer gives the session cookie; null for a cookie that lasts as long as the browser.</summary>
+    private static DateTimeOffset? Expiry(HttpResponseMessage response)
+    {
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.Contains("pulsar-session=", StringComparison.Ordinal));
+        var expires = cookie.Split(';').Select(p => p.Trim()).FirstOrDefault(p => p.StartsWith("expires=", StringComparison.OrdinalIgnoreCase));
+        return expires is null ? null : DateTimeOffset.Parse(expires["expires=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private HttpClient Copy(PanelClient client)
     {
         var copy = factory.CreateDefaultClient(new Uri("https://localhost"));

@@ -44,6 +44,7 @@
     "login": {
       "title": "Iniciar sesión",
       "subtitle": "Administración de servidores de juegos, pensada para Windows.",
+      "remember": "Recordarme en este equipo",
       "submit": "Ingresar"
     },
     "setup": {

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Display';
-import { Field, Input } from '../../components/ui/Form';
+import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useLogin, useLoginTwoFactor } from './api';
 import { AuthCard } from './AuthCard';
@@ -13,33 +13,41 @@ import { AuthCard } from './AuthCard';
 const schema = z.object({
   userName: z.string().trim().min(1, 'validation.required'),
   password: z.string().min(1, 'validation.required'),
+  rememberMe: z.boolean(),
 });
 
 type Values = z.infer<typeof schema>;
 
 export function LoginPage() {
   const login = useLogin();
-  const [secondStep, setSecondStep] = useState(false);
+  // The second step asks for the code only: whether to remember the device was chosen with the password.
+  const [secondStep, setSecondStep] = useState<{ rememberMe: boolean } | null>(null);
   if (secondStep) {
-    return <SecondFactor onBack={() => setSecondStep(false)} />;
+    return <SecondFactor rememberMe={secondStep.rememberMe} onBack={() => setSecondStep(null)} />;
   }
   return (
     <PasswordStep
       login={login}
-      onSecondStep={() => {
+      onSecondStep={(rememberMe) => {
         // The password is not kept while the code is asked for: the mutation forgets what it sent.
         login.reset();
-        setSecondStep(true);
+        setSecondStep({ rememberMe });
       }}
     />
   );
 }
 
-function PasswordStep({ login, onSecondStep }: { login: ReturnType<typeof useLogin>; onSecondStep: () => void }) {
+function PasswordStep({
+  login,
+  onSecondStep,
+}: {
+  login: ReturnType<typeof useLogin>;
+  onSecondStep: (rememberMe: boolean) => void;
+}) {
   const { t } = useTranslation();
   const { register, handleSubmit, formState } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { userName: '', password: '' },
+    defaultValues: { userName: '', password: '', rememberMe: false },
   });
 
   // On success the session reloads and the PublicOnly guard redirects to the return address.
@@ -47,7 +55,7 @@ function PasswordStep({ login, onSecondStep }: { login: ReturnType<typeof useLog
     login.mutate(values, {
       onSuccess: (answer) => {
         if (answer.twoFactorRequired) {
-          onSecondStep();
+          onSecondStep(values.rememberMe);
         }
       },
     }),
@@ -69,6 +77,7 @@ function PasswordStep({ login, onSecondStep }: { login: ReturnType<typeof useLog
         >
           {(ids) => <Input {...ids} {...register('password')} type="password" autoComplete="current-password" />}
         </Field>
+        <Checkbox {...register('rememberMe')} label={t('auth.login.remember')} />
         <Button type="submit" className="w-full" busy={login.isPending}>
           {t('auth.login.submit')}
         </Button>
@@ -78,7 +87,7 @@ function PasswordStep({ login, onSecondStep }: { login: ReturnType<typeof useLog
 }
 
 /** After the right password: a code from the authenticator app, or a recovery code. */
-function SecondFactor({ onBack }: { onBack: () => void }) {
+function SecondFactor({ rememberMe, onBack }: { rememberMe: boolean; onBack: () => void }) {
   const { t } = useTranslation();
   const verify = useLoginTwoFactor();
   const [recovery, setRecovery] = useState(false);
@@ -88,7 +97,9 @@ function SecondFactor({ onBack }: { onBack: () => void }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     verify.mutate(
-      recovery ? { code: null, recoveryCode: value.trim() } : { code: value.replace(/[\s-]/g, ''), recoveryCode: null },
+      recovery
+        ? { code: null, recoveryCode: value.trim(), rememberMe }
+        : { code: value.replace(/[\s-]/g, ''), recoveryCode: null, rememberMe },
     );
   };
   const switchMethod = () => {

@@ -44,6 +44,7 @@
     "login": {
       "title": "Accedi",
       "subtitle": "Gestione di server di gioco, pensata per Windows.",
+      "remember": "Ricordami su questo dispositivo",
       "submit": "Accedi"
     },
     "setup": {

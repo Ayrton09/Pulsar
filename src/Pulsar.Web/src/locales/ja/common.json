@@ -44,6 +44,7 @@
     "login": {
       "title": "サインイン",
       "subtitle": "Windows向けのゲームサーバー管理。",
+      "remember": "このデバイスでログイン状態を保持する",
       "submit": "サインイン"
     },
     "setup": {

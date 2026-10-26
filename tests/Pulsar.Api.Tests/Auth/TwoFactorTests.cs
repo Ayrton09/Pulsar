@@ -159,6 +159,33 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task RememberingTheDeviceIsTheSecondStepsToo()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("remember-2fa");
+        var (key, codes) = await EnableAsync(scenario, "remember-2fa");
+
+        // Remembered with the code or with a recovery code (Identity's own sign-in of the latter is never persistent).
+        foreach (var recovery in new[] { false, true })
+        {
+            using var client = await PanelClient.CreateAsync(factory);
+            using (var password = await client.PostAsync("/api/v1/auth/login", new LoginRequest("remember-2fa", AccessScenario.Password, RememberMe: true)))
+            {
+                await AccessScenario.EnsureSuccessAsync(password);
+                Assert.DoesNotContain(password.Headers.TryGetValues("Set-Cookie", out var early) ? early : [], c => c.Contains("pulsar-session=", StringComparison.Ordinal));
+            }
+
+            factory.Clock.Advance(TimeSpan.FromSeconds(30));
+            using var second = await client.PostAsync("/api/v1/auth/login/two-factor",
+                recovery ? new TwoFactorLoginRequest(null, codes[1], RememberMe: true) : new TwoFactorLoginRequest(Code(key), null, RememberMe: true));
+            await AccessScenario.EnsureSuccessAsync(second);
+            var cookie = second.Headers.GetValues("Set-Cookie").Single(c => c.Contains("pulsar-session=", StringComparison.Ordinal));
+            Assert.Contains("expires=", cookie, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [DatabaseFact]
     public async Task DisablingAndNewRecoveryCodesNeedThePassword()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

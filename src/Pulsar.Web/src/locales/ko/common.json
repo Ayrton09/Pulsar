@@ -44,6 +44,7 @@
     "login": {
       "title": "로그인",
       "subtitle": "Windows를 위한 게임 서버 관리.",
+      "remember": "이 기기에서 로그인 상태 유지",
       "submit": "로그인"
     },
     "setup": {

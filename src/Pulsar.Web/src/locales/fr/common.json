@@ -44,6 +44,7 @@
     "login": {
       "title": "Connexion",
       "subtitle": "La gestion de serveurs de jeu, conçue pour Windows.",
+      "remember": "Se souvenir de moi sur cet appareil",
       "submit": "Se connecter"
     },
     "setup": {

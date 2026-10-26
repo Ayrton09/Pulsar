@@ -198,6 +198,7 @@ public static class AuthEndpoints
         // Whether Identity answers before hashing the password, decided now: the attempt that locks the account hashes
         // it and only then answers "locked out", so the result alone would make that attempt hash twice.
         var blocked = await users.IsLockedOutAsync(user) || !await signIn.CanSignInAsync(user);
+        SessionLifetime.Remember(http, request.RememberMe);
         var result = await signIn.PasswordSignInAsync(user, request.Password, isPersistent: false, lockoutOnFailure: true);
         if (result.RequiresTwoFactor)
         {

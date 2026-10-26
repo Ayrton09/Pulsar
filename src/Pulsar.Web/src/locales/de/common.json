@@ -44,6 +44,7 @@
     "login": {
       "title": "Anmelden",
       "subtitle": "Verwaltung von Spielservern, gemacht für Windows.",
+      "remember": "Auf diesem Gerät angemeldet bleiben",
       "submit": "Anmelden"
     },
     "setup": {

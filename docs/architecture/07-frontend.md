@@ -167,7 +167,7 @@ The server page has a fixed header (name, status, power actions, live CPU/RAM) a
 
 ## Two-factor authentication
 
-- Sign-in: after a correct password, a user with two-factor authentication gives a code from their authenticator app or one of their recovery codes (`POST /api/v1/auth/login` answers `twoFactorRequired`; `POST /api/v1/auth/login/two-factor` signs in).
+- Sign-in: after a correct password, a user with two-factor authentication gives a code from their authenticator app or one of their recovery codes (`POST /api/v1/auth/login` answers `twoFactorRequired`; `POST /api/v1/auth/login/two-factor` signs in). "Remember me on this device" (1.0.9, off by default) keeps the session after the browser closes, until the user signs out (doc 08, "Users and web"); the second step sends the choice made with the password.
 - `/account`: setting it up asks for the current password (a new key ends the user's other sessions), then shows a QR code (drawn as SVG by `uqr`, so the CSP needs nothing new) and the key as text; a code from the app, sent with that password, turns it on and shows ten recovery codes once, with Copy (which says so when the browser refuses the clipboard, as on plain HTTP) and "I saved them". With it on, the page shows how many codes are left and offers new codes and turning it off (both with the password).
 - A user whose role requires it (`/admin/roles`: a switch per role, the Administrator role included) sees only the setup screen and Sign out until it is on; the API agrees (`403 auth.two_factor_required` anywhere else).
 - `/admin/users`: a badge for users with it on, and turning it off for a user who lost their phone (asked first; their sessions end).

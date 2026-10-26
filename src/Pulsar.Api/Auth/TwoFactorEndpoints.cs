@@ -72,6 +72,7 @@ public static class TwoFactorEndpoints
         // Under the account's lock, as the password step: parallel guesses each count and keep their audit entries.
         using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
         await db.Entry(user).ReloadAsync(ct);
+        SessionLifetime.Remember(http, request.RememberMe);
         var recovery = !string.IsNullOrWhiteSpace(request.RecoveryCode);
         SignInResult result;
         if (await users.IsLockedOutAsync(user))

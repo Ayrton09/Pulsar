@@ -65,16 +65,20 @@ describe('two-factor sign-in', () => {
     await user.click(screen.getByRole('button', { name: 'Verify' }));
 
     expect(await screen.findByText('Welcome, Ada Admin.')).toBeInTheDocument();
-    expect(sent.at(-1)).toEqual({ code: '123456', recoveryCode: null });
+    expect(sent.at(-1)).toEqual({ code: '123456', recoveryCode: null, rememberMe: false });
   });
 
   it('takes a recovery code instead', async () => {
     let signedIn = false;
     let sent: Record<string, unknown> = {};
+    let password: Record<string, unknown> = {};
     fakeApi({
       'GET /api/v1/auth/session': () =>
         json({ setupRequired: false, user: signedIn ? adminUser : null, insecureConnection: false }),
-      'POST /api/v1/auth/login': () => json({ twoFactorRequired: true, user: null }),
+      'POST /api/v1/auth/login': async (request) => {
+        password = await body(request);
+        return json({ twoFactorRequired: true, user: null });
+      },
       'POST /api/v1/auth/login/two-factor': async (request) => {
         sent = await body(request);
         signedIn = true;
@@ -86,13 +90,16 @@ describe('two-factor sign-in', () => {
 
     await user.type(await screen.findByLabelText('User name'), 'admin');
     await user.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    // Chosen with the password, it goes with the second step's code too.
+    await user.click(screen.getByLabelText('Remember me on this device'));
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     await user.click(await screen.findByRole('button', { name: 'Use a recovery code' }));
     await user.type(screen.getByLabelText('Recovery code'), 'abcde-fghij');
     await user.click(screen.getByRole('button', { name: 'Verify' }));
 
     expect(await screen.findByText('Welcome, Ada Admin.')).toBeInTheDocument();
-    expect(sent).toEqual({ code: null, recoveryCode: 'abcde-fghij' });
+    expect(sent).toEqual({ code: null, recoveryCode: 'abcde-fghij', rememberMe: true });
+    expect(password).toEqual({ userName: 'admin', password: 'correct horse battery staple', rememberMe: true });
   });
 
   it('goes back to the password, which it keeps nowhere while it asks for the code', async () => {

@@ -44,6 +44,7 @@
     "login": {
       "title": "登录",
       "subtitle": "专为 Windows 打造的游戏服务器管理面板。",
+      "remember": "在此设备上记住我",
       "submit": "登录"
     },
     "setup": {

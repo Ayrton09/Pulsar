@@ -41,9 +41,9 @@ describe('api client', () => {
     );
     const client = createApiClient({ baseUrl: 'http://panel.test', fetch: fetchMock as unknown as typeof fetch });
 
-    const error = await unwrap(client.POST('/api/v1/auth/login', { body: { userName: 'a', password: 'b' } })).catch(
-      (e: unknown) => e,
-    );
+    const error = await unwrap(
+      client.POST('/api/v1/auth/login', { body: { userName: 'a', password: 'b', rememberMe: false } }),
+    ).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 401, code: 'auth.invalid_credentials' });
@@ -65,9 +65,9 @@ describe('api client', () => {
     );
     const client = createApiClient({ baseUrl: 'http://panel.test', fetch: fetchMock as unknown as typeof fetch });
 
-    const error = (await unwrap(client.POST('/api/v1/auth/login', { body: { userName: 'a', password: 'b' } })).catch(
-      (e: unknown) => e,
-    )) as ApiError;
+    const error = (await unwrap(
+      client.POST('/api/v1/auth/login', { body: { userName: 'a', password: 'b', rememberMe: false } }),
+    ).catch((e: unknown) => e)) as ApiError;
 
     expect(error.errors).toEqual({ password: ['Too short'] });
   });

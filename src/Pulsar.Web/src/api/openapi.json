@@ -16118,6 +16118,10 @@
             "maxLength": 256,
             "minLength": 0,
             "type": "string"
+          },
+          "rememberMe": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -19978,6 +19982,10 @@
               "null",
               "string"
             ]
+          },
+          "rememberMe": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

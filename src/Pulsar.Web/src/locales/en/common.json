@@ -44,6 +44,7 @@
     "login": {
       "title": "Sign in",
       "subtitle": "Game server management, built for Windows.",
+      "remember": "Remember me on this device",
       "submit": "Sign in"
     },
     "setup": {

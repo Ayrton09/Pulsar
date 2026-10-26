@@ -14167,6 +14167,8 @@ export interface components {
         LoginRequest: {
             userName: string;
             password: string;
+            /** @default false */
+            rememberMe: boolean;
         };
         LoginResponse: {
             twoFactorRequired: boolean;
@@ -15107,6 +15109,8 @@ export interface components {
         TwoFactorLoginRequest: {
             code: null | string;
             recoveryCode: null | string;
+            /** @default false */
+            rememberMe: boolean;
         };
         TwoFactorSetupResponse: {
             sharedKey: string;

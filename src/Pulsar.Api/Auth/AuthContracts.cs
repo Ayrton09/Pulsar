@@ -37,9 +37,11 @@ public sealed record ScopedPermissions(Guid Id, IReadOnlyList<string> Permission
 public sealed record LoginResponse(bool TwoFactorRequired, CurrentUserResponse? User);
 
 /// <summary>The second sign-in step: a code from the authenticator app, or one of the recovery codes.</summary>
+/// <param name="RememberMe">The password step's choice, carried to this one: the session outlives the browser (<see cref="SessionLifetime"/>).</param>
 public sealed record TwoFactorLoginRequest(
     [property: StringLength(16)] string? Code,
-    [property: StringLength(32)] string? RecoveryCode);
+    [property: StringLength(32)] string? RecoveryCode,
+    bool RememberMe = false);
 
 public sealed record TwoFactorStatusResponse(bool Enabled, bool Required, int RecoveryCodesLeft);
 
@@ -65,9 +67,11 @@ public sealed record ChangePasswordRequest(
     [property: Required, StringLength(256)] string CurrentPassword,
     [property: Required, StringLength(256)] string NewPassword);
 
+/// <param name="RememberMe">Keep the session on this device until the user signs out (<see cref="SessionLifetime"/>).</param>
 public sealed record LoginRequest(
     [property: Required, StringLength(64)] string UserName,
-    [property: Required, StringLength(256)] string Password);
+    [property: Required, StringLength(256)] string Password,
+    bool RememberMe = false);
 
 public sealed record SetupRequest(
     [property: Required, StringLength(128)] string Token,
