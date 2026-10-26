@@ -83,6 +83,7 @@ public static class AuditActions
         public const string PortsChanged = "server.ports_changed";
         public const string OperationCancelRequested = "server.operation_cancel_requested";
         public const string ConsoleCommand = "server.console_command";
+        public const string PlayerAction = "server.player_action";
         public const string FileWritten = "server.file_written";
         public const string FileDownloaded = "server.file_downloaded";
         public const string FileMoved = "server.file_moved";

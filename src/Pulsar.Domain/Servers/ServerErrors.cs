@@ -51,6 +51,17 @@ public static class ServerErrors
 
     public static DomainError NotRunning { get; } = new("server.not_running", "The server is not running.");
 
+    /// <summary>The server's game has no command for that (its template may have one in a newer version).</summary>
+    public static DomainError PlayerActionUnsupported { get; } =
+        new("players.unsupported", "This game cannot do that to a player from the panel.");
+
+    public static DomainError PlayerInvalid { get; } = new("players.invalid",
+        "A player is 1 to 64 letters, digits and _ - . (and spaces, if the game takes them), as the game names them.");
+
+    /// <summary>A game's admin (Minecraft's operator) runs its commands in game, so making one is as much as a console command.</summary>
+    public static DomainError PlayerAdminForbidden { get; } = new("players.admin_forbidden",
+        "Making a player the game's admin, or taking it away, also needs the permission to send console commands.");
+
     public static DomainError ConsoleInputInvalid { get; } =
         new("console.invalid_input", "A console command is one line of 1 to 512 characters, without control characters.");
 

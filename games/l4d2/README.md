@@ -18,3 +18,7 @@ through a development panel and agent:
 Only `sv_*` cvars that AMP's template lists without a plugin requirement: tags, region, lobby search key, LAN only, cheats, voice, slots shown in the browser, pure, consistency, fast download URL and pausable, in `left4dead2/cfg/server.cfg`. No `mp_*` cvars (they need SourceMod) and no slots variable.
 
 None was tried on a real server: as with `sv_alltalk`, a cvar this server does not know is ignored by the game, so check the console (`find <name>`) if one seems to do nothing.
+
+## Players (1.0.11)
+
+The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.

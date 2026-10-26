@@ -20,6 +20,7 @@ export const Permission = {
   ServerKill: 'server.kill',
   ServerConsoleView: 'server.console.view',
   ServerConsoleWrite: 'server.console.write',
+  ServerPlayersManage: 'server.players.manage',
   ServerFilesView: 'server.files.view',
   ServerFilesEdit: 'server.files.edit',
   ServerBackupsView: 'server.backups.view',

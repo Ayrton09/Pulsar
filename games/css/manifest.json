@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -156,5 +156,5 @@
     "include": ["cstrike/cfg/**", "cstrike/addons/**", "cstrike/custom/**", "cstrike/maps/**", "cstrike/mapcycle.txt", "cstrike/motd.txt"],
     "exclude": ["**/*.log", "**/*.dmp"]
   },
-  "commands": { "broadcast": "say {{message}}" }
+  "commands": { "broadcast": "say {{message}}", "players": { "kick": "kick \"{{player}}\"", "spaces": true } }
 }

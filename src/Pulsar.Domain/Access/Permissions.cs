@@ -15,6 +15,9 @@ public static class Permissions
         public const string Kill = "server.kill";
         public const string ConsoleView = "server.console.view";
         public const string ConsoleWrite = "server.console.write";
+
+        /// <summary>Kick, ban and whitelist players (Pulsar 1.0.11); making one the game's admin also needs <see cref="ConsoleWrite"/>.</summary>
+        public const string PlayersManage = "server.players.manage";
         public const string FilesView = "server.files.view";
         public const string FilesEdit = "server.files.edit";
         public const string BackupsView = "server.backups.view";

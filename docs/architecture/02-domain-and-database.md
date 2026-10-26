@@ -70,6 +70,7 @@ public sealed class Server
 |---|---|
 | `server.view` `server.start` `server.stop` `server.restart` `server.kill` | server, node, global |
 | `server.console.view` `server.console.write` | server, node, global |
+| `server.players.manage` (kick, ban and whitelist players; making one the game's admin also needs `server.console.write`; 1.0.11) | server, node, global |
 | `server.files.view` `server.files.edit` | server, node, global |
 | `server.backups.view` `server.backups.create` `server.backups.restore` `server.backups.delete` | server, node, global |
 | `server.schedules.view` `server.schedules.edit` | server, node, global |

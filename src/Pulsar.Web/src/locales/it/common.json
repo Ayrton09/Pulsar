@@ -206,6 +206,9 @@
         "view": "Visualizzare la console",
         "write": "Inviare comandi alla console"
       },
+      "players": {
+        "manage": "Espellere, bannare e gestire la whitelist"
+      },
       "files": {
         "view": "Visualizzare i file",
         "edit": "Modificare i file"
@@ -355,6 +358,7 @@
         "ports_changed": "Ha modificato le porte di un server",
         "operation_cancel_requested": "Ha chiesto di annullare un'operazione",
         "console_command": "Ha eseguito un comando della console",
+        "player_action": "Ha agito su un giocatore",
         "file_written": "Ha scritto un file",
         "file_downloaded": "Ha scaricato un file",
         "file_moved": "Ha spostato o rinominato un file",
@@ -916,6 +920,12 @@
       "development": "Un agent di sviluppo si aggiorna con una nuova build, non dalle release.",
       "not_service": "Questo agent non è in esecuzione come servizio PulsarAgent: aggiornarlo con i programmi di installazione.",
       "invalid": "La richiesta di aggiornamento non era ben formata."
+    },
+    "players": {
+      "unsupported": "Questo gioco non può fare questo a un giocatore dal pannello.",
+      "invalid": "Un giocatore è da 1 a 64 lettere, cifre e _ - . (e spazi, se il gioco li accetta), come lo chiama il gioco.",
+      "admin_forbidden": "Rendere un giocatore admin del gioco, o toglierglielo, richiede anche il permesso di inviare comandi alla console.",
+      "list_unreadable": "Non è stato possibile leggere il file del gioco con questa lista."
     }
   },
   "account": {
@@ -5796,6 +5806,54 @@
       "off": "Non fare nulla",
       "notify": "Avvisami (mostralo nella pagina del server)",
       "install": "Applicalo (avvisa, ferma, reinstalla con esso, riavvia)"
+    }
+  },
+  "players": {
+    "actions": "Azioni",
+    "sent": "Inviato al gioco: la sua risposta è nella console.",
+    "nameUnusable": "Questo nome contiene caratteri che la console del gioco non accetta.",
+    "notRunning": "Avvia il server per inviare comandi ai suoi giocatori.",
+    "invalid": "Solo lettere, cifre e _ - ., fino a 64.",
+    "invalidSpaces": "Solo lettere, cifre, spazi singoli e _ - ., fino a 64.",
+    "confirm": {
+      "ban": "Bannare {{name}}? Non potrà rientrare finché non viene sbannato.",
+      "adminAdd": "Rendere {{name}} admin del gioco? Potrà usare i comandi del gioco.",
+      "unban": "Sbannare {{name}}?",
+      "whitelistRemove": "Togliere {{name}} dalla whitelist?",
+      "adminRemove": "Togliere l'admin a {{name}}?"
+    },
+    "rowActions": {
+      "kick": "Espelli {{name}}",
+      "ban": "Banna {{name}}",
+      "unban": "Sbanna {{name}}",
+      "whitelistAdd": "Aggiungi {{name}} alla whitelist",
+      "whitelistRemove": "Togli {{name}} dalla whitelist",
+      "adminAdd": "Rendi {{name}} admin",
+      "adminRemove": "Togli l'admin a {{name}}"
+    },
+    "names": {
+      "kick": "Espelli",
+      "ban": "Banna",
+      "unban": "Sbanna",
+      "whitelistAdd": "Aggiungi alla whitelist",
+      "whitelistRemove": "Togli dalla whitelist",
+      "adminAdd": "Rendi admin",
+      "adminRemove": "Togli l'admin"
+    },
+    "byName": {
+      "title": "Qualsiasi giocatore",
+      "name": "Nome del giocatore",
+      "id": "ID del giocatore",
+      "action": "Azione",
+      "send": "Invia",
+      "hint": "Che stia giocando o no: per sbannare qualcuno o aggiungerlo alla whitelist prima che entri."
+    },
+    "lists": {
+      "title": "Le liste del gioco",
+      "banned": "Bannati",
+      "whitelist": "Whitelist",
+      "admins": "Admin",
+      "empty": "Nessuno."
     }
   }
 }

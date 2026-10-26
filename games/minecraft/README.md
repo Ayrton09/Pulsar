@@ -42,3 +42,7 @@ CurseForge is the second catalog (`curseforge`): mods by its loader types, Bukki
 Max tick time, signed chat keys, world border radius, entity range, pause when empty, and the resource pack (URL, SHA-1, required, message), in `server.properties`. The description of `pvp` now says it only applies to 1.21.8 and older: newer versions moved it to a game rule that Pulsar cannot patch.
 
 They come from the Minecraft wiki's `server.properties` table; none was tried on a real server.
+
+## Players (1.0.11)
+
+The Players card kicks, bans and unbans (`pardon`), adds to and takes off the whitelist, and makes and unmakes operators (`op`, `deop`) by name, and shows `banned-players.json`, `whitelist.json` and `ops.json` with a button that takes a player off each. The whitelist applies once **Whitelist** is on in the server's settings. Checked on 2026-10-26 on Windows 11 Pro with a Mojang 26.3 server, a real agent and the published panel: whitelist, op and ban from the card's field reached the console ("Added Notch to the whitelist", "Made Notch a server operator", "Banned Notch"), the three lists showed Notch, and unban, deop and a whitelist add from the card emptied and filled them again; a kick of a player who was not there answered "No player was found". Every action is in the audit log.

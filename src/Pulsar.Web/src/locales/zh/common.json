@@ -206,6 +206,9 @@
         "view": "查看控制台",
         "write": "发送控制台命令"
       },
+      "players": {
+        "manage": "踢出、封禁玩家并管理白名单"
+      },
       "files": {
         "view": "查看文件",
         "edit": "编辑文件"
@@ -355,6 +358,7 @@
         "ports_changed": "更改了服务器端口",
         "operation_cancel_requested": "请求取消操作",
         "console_command": "执行了控制台命令",
+        "player_action": "对玩家执行了操作",
         "file_written": "写入了文件",
         "file_downloaded": "下载了文件",
         "file_moved": "移动或重命名了文件",
@@ -916,6 +920,12 @@
       "development": "开发版代理需用新构建更新，而不是通过发行版。",
       "not_service": "此代理未以 PulsarAgent 服务运行：请使用安装程序更新。",
       "invalid": "更新请求格式不正确。"
+    },
+    "players": {
+      "unsupported": "此游戏无法从面板对玩家执行该操作。",
+      "invalid": "玩家是游戏中名称的 1 到 64 个字母、数字和 _ - .（游戏接受时也可含空格）。",
+      "admin_forbidden": "让玩家成为游戏管理员或取消管理员，还需要向控制台发送命令的权限。",
+      "list_unreadable": "无法读取此名单的游戏文件。"
     }
   },
   "account": {
@@ -5796,6 +5806,54 @@
       "off": "什么都不做",
       "notify": "提醒我（在服务器页面显示）",
       "install": "自动应用（提醒、停止、重新安装、重新启动）"
+    }
+  },
+  "players": {
+    "actions": "操作",
+    "sent": "已发送给游戏：它的回应在控制台中。",
+    "nameUnusable": "此名称包含游戏控制台不接受的字符。",
+    "notRunning": "启动服务器后才能向其玩家发送命令。",
+    "invalid": "仅限字母、数字和 _ - .，最多 64 个。",
+    "invalidSpaces": "仅限字母、数字、单个空格和 _ - .，最多 64 个。",
+    "confirm": {
+      "ban": "封禁 {{name}}？解除封禁前其无法再加入。",
+      "adminAdd": "让 {{name}} 成为游戏管理员？其将能执行游戏的命令。",
+      "unban": "解除 {{name}} 的封禁？",
+      "whitelistRemove": "将 {{name}} 移出白名单？",
+      "adminRemove": "取消 {{name}} 的管理员？"
+    },
+    "rowActions": {
+      "kick": "踢出 {{name}}",
+      "ban": "封禁 {{name}}",
+      "unban": "解除 {{name}} 的封禁",
+      "whitelistAdd": "将 {{name}} 加入白名单",
+      "whitelistRemove": "将 {{name}} 移出白名单",
+      "adminAdd": "让 {{name}} 成为管理员",
+      "adminRemove": "取消 {{name}} 的管理员"
+    },
+    "names": {
+      "kick": "踢出",
+      "ban": "封禁",
+      "unban": "解除封禁",
+      "whitelistAdd": "加入白名单",
+      "whitelistRemove": "移出白名单",
+      "adminAdd": "设为管理员",
+      "adminRemove": "取消管理员"
+    },
+    "byName": {
+      "title": "任意玩家",
+      "name": "玩家名称",
+      "id": "玩家 ID",
+      "action": "操作",
+      "send": "发送",
+      "hint": "无论是否在玩：用于解除封禁，或在其加入前加入白名单。"
+    },
+    "lists": {
+      "title": "游戏的名单",
+      "banned": "已封禁",
+      "whitelist": "白名单",
+      "admins": "管理员",
+      "empty": "无人。"
     }
   }
 }

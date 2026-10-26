@@ -320,10 +320,49 @@
     "CommandsDefinition": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console or RCON.",
+      "description": "Console commands the panel sends for the game's players (Pulsar 1.0.9; players 1.0.11), through the server's console or RCON.",
       "properties": {
         "broadcast": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{message\\}\\}[^\\u0000-\\u001f]*$", "description": "Tells everyone playing a message: {{message}} stands for it (say {{message}}). The panel keeps only letters, digits, spaces and . , ! ? : ' ( ) - of a message." },
-        "messageSpaces": { "enum": ["_", "-", "."], "description": "What stands for a space in the message, for a game whose command takes one word." }
+        "messageSpaces": { "enum": ["_", "-", "."], "description": "What stands for a space in the message, for a game whose command takes one word." },
+        "players": { "$ref": "#/$defs/PlayerCommandsDefinition" }
+      }
+    },
+    "PlayerCommandsDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What the panel does to one player (Pulsar 1.0.11): each command has {{player}} once where the player goes. The panel refuses a player that is not 1 to 64 letters, digits and _ - . (and single spaces, with 'spaces'); it never cleans one.",
+      "properties": {
+        "kick": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Puts the player out of the game (kick {{player}})." },
+        "ban": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Keeps the player out for good." },
+        "unban": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Lets a banned player in again." },
+        "whitelistAdd": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Adds the player to the list of who may join." },
+        "whitelistRemove": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Takes the player off that list." },
+        "adminAdd": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Makes the player the game's operator or admin (the panel asks for the right to send console commands too)." },
+        "adminRemove": { "type": "string", "maxLength": 256, "pattern": "^[^\\u0000-\\u001f]*\\{\\{player\\}\\}[^\\u0000-\\u001f]*$", "description": "Takes that away." },
+        "byId": { "type": "boolean", "default": false, "description": "The commands take an id (a Steam ID), not the name the game's query lists." },
+        "spaces": { "type": "boolean", "default": false, "description": "A name may have spaces: the commands' arguments do not end at one (quoted, or ended by another character)." },
+        "lists": { "$ref": "#/$defs/PlayerListsDefinition" }
+      }
+    },
+    "PlayerListsDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The game's files listing who is banned, on its whitelist, or its admins, for the panel to show.",
+      "properties": {
+        "banned": { "$ref": "#/$defs/PlayerListFile" },
+        "whitelist": { "$ref": "#/$defs/PlayerListFile" },
+        "admins": { "$ref": "#/$defs/PlayerListFile" }
+      }
+    },
+    "PlayerListFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "field"],
+      "description": "A JSON file holding an array of objects, each naming a player in 'field' (Minecraft's ops.json).",
+      "properties": {
+        "file": { "$ref": "#/$defs/RelativePath" },
+        "field": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$" }
       }
     },
     "ModSourceDefinition": {

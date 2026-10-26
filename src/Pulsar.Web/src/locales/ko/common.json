@@ -206,6 +206,9 @@
         "view": "콘솔 보기",
         "write": "콘솔 명령 보내기"
       },
+      "players": {
+        "manage": "플레이어 추방, 차단, 화이트리스트"
+      },
       "files": {
         "view": "파일 보기",
         "edit": "파일 편집"
@@ -355,6 +358,7 @@
         "ports_changed": "서버 포트 변경",
         "operation_cancel_requested": "작업 취소 요청",
         "console_command": "콘솔 명령 실행",
+        "player_action": "플레이어에게 작업함",
         "file_written": "파일 쓰기",
         "file_downloaded": "파일 다운로드",
         "file_moved": "파일 이동 또는 이름 변경",
@@ -916,6 +920,12 @@
       "development": "개발용 에이전트는 릴리스가 아닌 새 빌드로 업데이트합니다.",
       "not_service": "이 에이전트는 PulsarAgent 서비스로 실행되고 있지 않습니다. 설치 프로그램으로 업데이트하세요.",
       "invalid": "업데이트 요청 형식이 올바르지 않습니다."
+    },
+    "players": {
+      "unsupported": "이 게임은 패널에서 플레이어에게 그 작업을 할 수 없습니다.",
+      "invalid": "플레이어는 게임에서 쓰는 이름 그대로 1~64자의 문자, 숫자, _ - . (게임이 받으면 공백도)입니다.",
+      "admin_forbidden": "플레이어를 게임 관리자로 만들거나 빼려면 콘솔에 명령을 보낼 권한도 필요합니다.",
+      "list_unreadable": "이 목록의 게임 파일을 읽을 수 없습니다."
     }
   },
   "account": {
@@ -5796,6 +5806,54 @@
       "off": "아무것도 하지 않음",
       "notify": "알려주기 (서버 페이지에 표시)",
       "install": "적용하기 (경고, 중지, 다시 설치, 다시 시작)"
+    }
+  },
+  "players": {
+    "actions": "작업",
+    "sent": "게임에 보냈습니다. 응답은 콘솔에 있습니다.",
+    "nameUnusable": "이 이름에는 게임 콘솔이 받지 않는 문자가 있습니다.",
+    "notRunning": "플레이어에게 명령을 보내려면 서버를 시작하세요.",
+    "invalid": "문자, 숫자, _ - . 만, 최대 64자.",
+    "invalidSpaces": "문자, 숫자, 한 칸 공백, _ - . 만, 최대 64자.",
+    "confirm": {
+      "ban": "{{name}}을(를) 차단할까요? 차단을 해제할 때까지 접속할 수 없습니다.",
+      "adminAdd": "{{name}}을(를) 게임 관리자로 만들까요? 게임 명령을 실행할 수 있게 됩니다.",
+      "unban": "{{name}}의 차단을 해제할까요?",
+      "whitelistRemove": "{{name}}을(를) 화이트리스트에서 뺄까요?",
+      "adminRemove": "{{name}}의 관리자 권한을 뺄까요?"
+    },
+    "rowActions": {
+      "kick": "{{name}} 추방",
+      "ban": "{{name}} 차단",
+      "unban": "{{name}} 차단 해제",
+      "whitelistAdd": "{{name}}을(를) 화이트리스트에 추가",
+      "whitelistRemove": "{{name}}을(를) 화이트리스트에서 빼기",
+      "adminAdd": "{{name}}을(를) 관리자로 만들기",
+      "adminRemove": "{{name}}의 관리자 권한 빼기"
+    },
+    "names": {
+      "kick": "추방",
+      "ban": "차단",
+      "unban": "차단 해제",
+      "whitelistAdd": "화이트리스트에 추가",
+      "whitelistRemove": "화이트리스트에서 빼기",
+      "adminAdd": "관리자로 만들기",
+      "adminRemove": "관리자 권한 빼기"
+    },
+    "byName": {
+      "title": "아무 플레이어",
+      "name": "플레이어 이름",
+      "id": "플레이어 ID",
+      "action": "작업",
+      "send": "보내기",
+      "hint": "플레이 중이든 아니든: 차단을 해제하거나 접속 전에 화이트리스트에 추가할 때 씁니다."
+    },
+    "lists": {
+      "title": "게임의 목록",
+      "banned": "차단됨",
+      "whitelist": "화이트리스트",
+      "admins": "관리자",
+      "empty": "아무도 없습니다."
     }
   }
 }

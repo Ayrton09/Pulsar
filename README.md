@@ -44,6 +44,7 @@ best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk 
   account and Steam Guard for games that need one).
 - Live console with commands and history, search and filters; RCON where the game has it.
 - CPU, memory, uptime and players live, a usage history, and CPU and memory limits per server.
+- Kick, ban, whitelist and make admins from the server's player list (or by name), with the game's own commands.
 - Restart after a crash, start with the machine, and server templates you can tweak or write yourself.
 
 **Files and data**

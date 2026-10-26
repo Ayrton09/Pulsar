@@ -1,8 +1,8 @@
 namespace Pulsar.Manifests;
 
 /// <summary>
-/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7, 1.0.8 or 1.0.9): they refuse such a
-/// manifest, so the panel gives it only to agents that announce they read it.
+/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7, 1.0.8, 1.0.9 or 1.0.11): they
+/// refuse such a manifest, so the panel gives it only to agents that announce they read it.
 /// </summary>
 public static class ManifestFeatures
 {
@@ -65,6 +65,13 @@ public static class ManifestFeatures
     {
         ArgumentNullException.ThrowIfNull(manifest);
         return manifest.Commands is not null;
+    }
+
+    /// <summary>The commands for one player of Pulsar 1.0.11 (<see cref="CommandsDefinition.Players"/>).</summary>
+    public static bool UsesPlayerCommands(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Commands?.Players is not null;
     }
 
     private static IEnumerable<ArgumentCondition> Conditions(IEnumerable<ArgumentTemplate> arguments) =>

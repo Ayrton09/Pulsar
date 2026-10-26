@@ -177,7 +177,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("bedrock-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
                 AgentCapabilities.ManifestCommands }, true),
             ("bedrock-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
-                AgentCapabilities.MinecraftBedrock, AgentCapabilities.ManifestCommands }, false),
+                AgentCapabilities.MinecraftBedrock, AgentCapabilities.ManifestCommands, AgentCapabilities.PlayerCommands }, false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);
@@ -200,12 +200,14 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
             .Single(t => t.Key == "css");
 
-        // An agent before 1.0.9 refuses a manifest with a "commands" section at the start.
+        // An agent before 1.0.9 refuses a manifest with a "commands" section at the start, one before 1.0.11 its commands for one player.
         foreach (var (name, capabilities, refused) in new[]
         {
             ("commands-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats }, true),
+            ("commands-no-players", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
+                AgentCapabilities.ManifestCommands }, true),
             ("commands-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
-                AgentCapabilities.ManifestCommands }, false),
+                AgentCapabilities.ManifestCommands, AgentCapabilities.PlayerCommands }, false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);
@@ -228,7 +230,8 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             .Single(t => t.Key == "minecraft" && t.Source == TemplateSource.Bundled);
 
         // An agent before 1.0.9 would install Mojang's server whatever the type, and start it with an empty jar name.
-        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands];
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands,
+            AgentCapabilities.PlayerCommands];
         // Its mod catalog and its modpacks (also 1.0.9) are what an agent that does not install them would not read.
         foreach (var (name, capabilities, refused) in new[]
         {

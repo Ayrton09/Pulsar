@@ -49,6 +49,11 @@ public sealed class SchemaTests
     [InlineData("""{"configFiles": [{"path": "cstrike/server.cfg ", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
     [InlineData("""{"configFiles": [{"path": "cstrike/ server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
     [InlineData("""{"configFiles": [{"path": "cstrike/ser\u0001ver.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    // A player's command has {{player}} once; its lists are files of the server's folder, read by a property's name.
+    [InlineData("""{"commands": {"players": {"kick": "kick"}}}""")]
+    [InlineData("""{"commands": {"players": {"kick": "kick {{player}}", "lists": {"banned": {"file": "../banned.json", "field": "name"}}}}}""")]
+    [InlineData("""{"commands": {"players": {"kick": "kick {{player}}", "lists": {"banned": {"file": "banned.json", "field": "1name"}}}}}""")]
+    [InlineData("""{"commands": {"players": {"kick": "kick {{player}}", "mute": "mute {{player}}"}}}""")]
     // A fixed release is not a pre-release.
     [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x", "tag": "v1", "prerelease": true}}]}""")]
     public void TheSchemaRefusesWhatTheParserRefuses(string overlay)

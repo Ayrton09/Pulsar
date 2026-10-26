@@ -18,3 +18,7 @@ through a development panel and agent:
 Day length (`Cycle`), chat delay (`Chatrate`), ping timeout (`Timeout`), decay time (`Decay`) and starting items (`Loadout`), in `Commands.dat`. The gameplay file (`Config.txt`) is not covered: Pulsar has no format for it.
 
 They come from AMP's template and the game's server documentation; none was tried on a real server.
+
+## Players (1.0.11)
+
+The Players card kicks (`Kick`) and makes or unmakes admins (`Admin`, `Unadmin`) by name; names may have spaces, since Unturned's arguments end at `/`. Its ban's default length differs between sources, so the template has none yet. From the game's and hosting providers' documentation; not run on a server yet.

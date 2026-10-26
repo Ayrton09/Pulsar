@@ -206,6 +206,9 @@
         "view": "コンソールの表示",
         "write": "コンソールコマンドの送信"
       },
+      "players": {
+        "manage": "プレイヤーのキック、BAN、ホワイトリスト"
+      },
       "files": {
         "view": "ファイルの表示",
         "edit": "ファイルの編集"
@@ -355,6 +358,7 @@
         "ports_changed": "サーバーのポートを変更",
         "operation_cancel_requested": "操作のキャンセルを要求",
         "console_command": "コンソールコマンドを実行",
+        "player_action": "プレイヤーを操作しました",
         "file_written": "ファイルを書き込み",
         "file_downloaded": "ファイルをダウンロード",
         "file_moved": "ファイルを移動または名前変更",
@@ -916,6 +920,12 @@
       "development": "開発用エージェントは、リリースからではなく新しいビルドで更新します。",
       "not_service": "このエージェントはPulsarAgentサービスとして動作していません。セットアップで更新してください。",
       "invalid": "更新リクエストの形式が正しくありません。"
+    },
+    "players": {
+      "unsupported": "このゲームはパネルからプレイヤーにその操作を行えません。",
+      "invalid": "プレイヤーは、ゲームでの名前どおりの 1～64 文字の文字、数字、_ - .（ゲームが受け付ける場合はスペースも）です。",
+      "admin_forbidden": "プレイヤーをゲームの管理者にする、または外すには、コンソールにコマンドを送る権限も必要です。",
+      "list_unreadable": "このリストのゲームのファイルを読み取れませんでした。"
     }
   },
   "account": {
@@ -5796,6 +5806,54 @@
       "off": "何もしない",
       "notify": "知らせる（サーバーページに表示）",
       "install": "適用する（警告、停止、再インストール、再起動）"
+    }
+  },
+  "players": {
+    "actions": "操作",
+    "sent": "ゲームに送信しました。応答はコンソールに表示されます。",
+    "nameUnusable": "この名前にはゲームのコンソールが受け付けない文字が含まれています。",
+    "notRunning": "プレイヤーにコマンドを送るにはサーバーを起動してください。",
+    "invalid": "文字、数字、_ - . のみ、64 文字まで。",
+    "invalidSpaces": "文字、数字、単一のスペース、_ - . のみ、64 文字まで。",
+    "confirm": {
+      "ban": "{{name}} を BAN しますか？解除するまで参加できなくなります。",
+      "adminAdd": "{{name}} をゲームの管理者にしますか？ゲームのコマンドを実行できるようになります。",
+      "unban": "{{name}} の BAN を解除しますか？",
+      "whitelistRemove": "{{name}} をホワイトリストから外しますか？",
+      "adminRemove": "{{name}} の管理者権限を外しますか？"
+    },
+    "rowActions": {
+      "kick": "{{name}} をキック",
+      "ban": "{{name}} を BAN",
+      "unban": "{{name}} の BAN を解除",
+      "whitelistAdd": "{{name}} をホワイトリストに追加",
+      "whitelistRemove": "{{name}} をホワイトリストから外す",
+      "adminAdd": "{{name}} を管理者にする",
+      "adminRemove": "{{name}} の管理者権限を外す"
+    },
+    "names": {
+      "kick": "キック",
+      "ban": "BAN",
+      "unban": "BAN 解除",
+      "whitelistAdd": "ホワイトリストに追加",
+      "whitelistRemove": "ホワイトリストから外す",
+      "adminAdd": "管理者にする",
+      "adminRemove": "管理者権限を外す"
+    },
+    "byName": {
+      "title": "任意のプレイヤー",
+      "name": "プレイヤー名",
+      "id": "プレイヤー ID",
+      "action": "操作",
+      "send": "送信",
+      "hint": "プレイ中かどうかに関係なく、BAN の解除や参加前のホワイトリスト追加に使えます。"
+    },
+    "lists": {
+      "title": "ゲームのリスト",
+      "banned": "BAN 済み",
+      "whitelist": "ホワイトリスト",
+      "admins": "管理者",
+      "empty": "いません。"
     }
   }
 }

@@ -776,9 +776,11 @@ public sealed partial class GameUpdates(
 
         if (rehearsed.Error is { } refusal)
         {
-            if (refusal == ServerErrors.Busy || refusal == ServerErrors.NotFound || refusal == NodeErrors.NotConnected)
+            // For now: the next pass looks again. A node whose agent does not read the newer version yet (its Pulsar update
+            // comes after the panel's) moves once it does.
+            if (refusal == ServerErrors.Busy || refusal == ServerErrors.NotFound || refusal == NodeErrors.NotConnected || refusal == ServerErrors.TemplateUnsupported)
             {
-                return; // for now: the next pass looks again
+                return;
             }
 
             watch.SkipTemplate(target.Version, clock.GetUtcNow());

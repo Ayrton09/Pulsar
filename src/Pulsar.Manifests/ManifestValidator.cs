@@ -240,6 +240,51 @@ public static partial class ManifestValidator
         {
             error("commands.messageSpaces", "One of _ - .");
         }
+
+        if (commands.Players is { } players)
+        {
+            ValidatePlayerCommands(players, error);
+        }
+    }
+
+    private static void ValidatePlayerCommands(PlayerCommandsDefinition players, Action<string, string> error)
+    {
+        var declared = 0;
+        foreach (var action in Enum.GetValues<PlayerAction>())
+        {
+            if (GameCommands.Template(players, action) is not { } template)
+            {
+                continue;
+            }
+
+            declared++;
+            if (!IsCommand(template) || !GameCommands.HasOnlyPlayer(template))
+            {
+                error($"commands.players.{JsonNamingPolicy.CamelCase.ConvertName(action.ToString())}",
+                    "A single line of up to 256 characters with {{player}} once, and no other placeholder.");
+            }
+        }
+
+        var lists = players.Lists ?? new PlayerListsDefinition();
+        var files = new (PlayerListFile? File, string Name)[] { (lists.Banned, "banned"), (lists.Whitelist, "whitelist"), (lists.Admins, "admins") };
+        foreach (var (file, name) in files)
+        {
+            if (file is null)
+            {
+                continue;
+            }
+
+            ValidateRelativePath($"commands.players.lists.{name}.file", file.File, error);
+            if (!ListFieldPattern().IsMatch(file.Field))
+            {
+                error($"commands.players.lists.{name}.field", "Use 1–32 letters, digits and underscores, starting with a letter.");
+            }
+        }
+
+        if (declared == 0)
+        {
+            error("commands.players", "At least one command.");
+        }
     }
 
     private static void ValidateAddons(IReadOnlyList<AddonDefinition> addons, Action<string, string> error)
@@ -1263,6 +1308,10 @@ public static partial class ManifestValidator
 
     [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex VariableKeyPattern();
+
+    // A player list's JSON property (name, xuid).
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,31}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ListFieldPattern();
 
     [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex OptionValuePattern();

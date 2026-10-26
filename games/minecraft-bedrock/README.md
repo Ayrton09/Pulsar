@@ -22,3 +22,7 @@ development panel and agent:
 - There is no query: the classic RakNet ping is gone with NetherNet, so the panel shows no player count.
 
 The EULA option records that whoever creates the server accepts Mojang's terms; Bedrock's server has no file for it.
+
+## Players (1.0.11)
+
+The Players card kicks (`kick "…"`), adds to and takes off the allowlist (`allowlist add|remove "…"`, which applies once `allow-list` is on in the server's settings) and makes operators (`op`/`deop`); gamertags may have spaces. It shows `allowlist.json`. Bedrock has no ban command, and keeps its operators in `permissions.json` by Xbox user id only, so that list is not shown. Bedrock answers no query listing its players, so the card acts by name. From the game's and hosting providers' documentation; not run on a server yet.

@@ -20,3 +20,7 @@ published panel and a development agent:
 Version 1.2.0 adds 21 options to the server `.ini`: maps, announce deaths, no fire, safehouse rules (claiming, looting, entering, fire, respawn, days to claim), loot respawn, PvP status, PvP melee and firearm damage, sleep, accounts per Steam user, backups (count, at start, period), factions and the Lua checksum. The sandbox variables (zombies, loot, XP, day length) live in `SandboxVars.lua`, which Pulsar cannot patch yet.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Players (1.0.11)
+
+The Players card kicks (`kickuser`), bans and unbans (`banuser`, `unbanuser`) and makes or unmakes admins (`setaccesslevel "…" admin|none`) by user name. From the game's and hosting providers' documentation; not run on a server yet.

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "name": "Minecraft: Java Edition",
   "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang (or Paper, Purpur, Fabric, Forge or NeoForge from their publishers), with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version, and the same mods on Fabric, Forge or NeoForge.",
   "authors": ["Pulsar contributors"],
@@ -170,7 +170,19 @@
       "plugins/**", "mods/**", "config/**", "defaultconfigs/**"],
     "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
   },
-  "commands": { "broadcast": "say {{message}}" },
+  "commands": {
+    "broadcast": "say {{message}}",
+    "players": {
+      "kick": "kick {{player}}", "ban": "ban {{player}}", "unban": "pardon {{player}}",
+      "whitelistAdd": "whitelist add {{player}}", "whitelistRemove": "whitelist remove {{player}}",
+      "adminAdd": "op {{player}}", "adminRemove": "deop {{player}}",
+      "lists": {
+        "banned": { "file": "banned-players.json", "field": "name" },
+        "whitelist": { "file": "whitelist.json", "field": "name" },
+        "admins": { "file": "ops.json", "field": "name" }
+      }
+    }
+  },
   "mods": [
     { "source": "modrinth", "versionVar": "version", "typeVar": "serverType",
       "types": {

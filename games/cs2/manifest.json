@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -257,5 +257,5 @@
       "target": "game/csgo",
       "requires": ["metamod"] }
   ],
-  "commands": { "broadcast": "say {{message}}" }
+  "commands": { "broadcast": "say {{message}}", "players": { "kick": "kick \"{{player}}\"", "spaces": true } }
 }

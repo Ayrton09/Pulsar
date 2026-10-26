@@ -21,3 +21,7 @@ second start was ready.
 Map type (the map is now a choice, Procedural by default as before), game mode, tick rate, map salt, custom map URL, max team size, radiation, upkeep period, save backups kept and Rust+ logo URL, all launch arguments.
 
 They come from LinuxGSM's configuration, the Facepunch wiki and public server guides; none was tried on a real server.
+
+## Players (1.0.11)
+
+The Players card kicks and bans a player who is on the server by name (`kick "…"`, `ban "…"`). Unbanning and owners take a Steam ID (`unban`, `ownerid`): use the console. From the game's and hosting providers' documentation; not run on a server yet.

@@ -2,7 +2,7 @@ using System.Text;
 
 namespace Pulsar.Manifests.Tests;
 
-/// <summary>The console commands a manifest declares for the players (Pulsar 1.0.9): broadcasts so far.</summary>
+/// <summary>The console commands a manifest declares for the players: broadcasts (Pulsar 1.0.9) and one player's (1.0.11).</summary>
 public sealed class GameCommandsTests
 {
     [Theory]
@@ -62,6 +62,82 @@ public sealed class GameCommandsTests
         Assert.True(ManifestFeatures.UsesCommands(Manifest("say {{message}}", null)));
         Assert.False(ManifestFeatures.UsesCommands(Manifest(null, null) with { Commands = null }));
     }
+
+    [Theory]
+    [InlineData("kick {{player}}", false, "Notch", "kick Notch")]
+    [InlineData("kick {{player}}", false, "  Steve_2  ", "kick Steve_2")]
+    [InlineData("kick \"{{player}}\"", true, "Big Bob", "kick \"Big Bob\"")]
+    [InlineData("ban add \"{{player}}\" 10 years", true, "José.M-1", "ban add \"José.M-1\" 10 years")]
+    [InlineData("Kick {{player}}", true, "Ñandú 99", "Kick Ñandú 99")]
+    public void APlayersCommandCarriesTheName(string template, bool spaces, string player, string expected)
+    {
+        Assert.Equal(expected, GameCommands.Player(Players(new PlayerCommandsDefinition(Kick: template, Spaces: spaces)), PlayerAction.Kick, player));
+    }
+
+    [Theory]
+    // Minecraft's selectors are everyone (@a), quotes end an argument, Source's ';' ends a command, Unturned's '/' starts an argument.
+    [InlineData("@a", true)]
+    [InlineData("Bob\" ; quit", true)]
+    [InlineData("Bob;quit", true)]
+    [InlineData("Bob/Griefing/0", true)]
+    [InlineData("-ip", true)]
+    [InlineData("Bob\nstop", true)]
+    [InlineData("Bob‮evil", true)]
+    [InlineData("Bob Smith", false)]
+    [InlineData("Bob  Smith", true)]
+    [InlineData("Bob\tSmith", true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("\U0001F600", true)]
+    public void ANameTheConsoleWouldReadAsMoreIsRefusedNotCleaned(string player, bool spaces)
+    {
+        Assert.Null(GameCommands.PlayerName(player, spaces));
+        Assert.Null(GameCommands.Player(Players(new PlayerCommandsDefinition(Kick: "kick {{player}}", Spaces: spaces)), PlayerAction.Kick, player));
+    }
+
+    [Fact]
+    public void ANameIsBoundedAndOnlyTheGamesCommandsAreSent()
+    {
+        Assert.NotNull(GameCommands.PlayerName(new string('a', GameCommands.MaxPlayerLength), false));
+        Assert.Null(GameCommands.PlayerName(new string('a', GameCommands.MaxPlayerLength + 1), false));
+        var manifest = Players(new PlayerCommandsDefinition(Kick: "kick {{player}}", AdminAdd: "op {{player}}"));
+        Assert.Null(GameCommands.Player(manifest, PlayerAction.Ban, "Notch"));
+        Assert.Null(GameCommands.Player(Manifest("say {{message}}", null), PlayerAction.Kick, "Notch"));
+        Assert.Equal([PlayerAction.Kick, PlayerAction.AdminAdd], GameCommands.Actions(manifest));
+    }
+
+    [Theory]
+    [InlineData("kick", "commands.players.kick")]
+    [InlineData("kick {{player}} {{player}}", "commands.players.kick")]
+    [InlineData("kick {{player}} {{rcon.password}}", "commands.players.kick")]
+    [InlineData("kick {{player}}\nstop", "commands.players.kick")]
+    public void APlayersCommandHasThePlayerOnceAndNothingElse(string kick, string path)
+    {
+        Assert.Contains(ManifestValidator.Validate(Players(new PlayerCommandsDefinition(Kick: kick))), e => e.Path == path);
+    }
+
+    [Fact]
+    public void PlayerCommandsNeedACommandAndListsInTheServersFolder()
+    {
+        Assert.Contains(ManifestValidator.Validate(Players(new PlayerCommandsDefinition(Spaces: true))), e => e.Path == "commands.players");
+        var lists = new PlayerListsDefinition(Banned: new PlayerListFile("../banned.json", "name"), Admins: new PlayerListFile("ops.json", "na-me"));
+        var errors = ManifestValidator.Validate(Players(new PlayerCommandsDefinition(Kick: "kick {{player}}", Lists: lists)));
+
+        Assert.Contains(errors, e => e.Path == "commands.players.lists.banned.file");
+        Assert.Contains(errors, e => e.Path == "commands.players.lists.admins.field");
+        Assert.DoesNotContain(ManifestValidator.Validate(Players(new PlayerCommandsDefinition(Kick: "kick {{player}}",
+            Lists: new PlayerListsDefinition(Whitelist: new PlayerListFile("whitelist.json", "name"))))), e => e.Path.StartsWith("commands", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AManifestWithPlayerCommandsGoesOnlyToAgentsThatReadThem()
+    {
+        Assert.True(ManifestFeatures.UsesPlayerCommands(Players(new PlayerCommandsDefinition(Kick: "kick {{player}}"))));
+        Assert.False(ManifestFeatures.UsesPlayerCommands(Manifest("say {{message}}", null)));
+    }
+
+    private static GameManifest Players(PlayerCommandsDefinition players) =>
+        Manifest(null, null) with { Commands = new CommandsDefinition(Players: players) };
 
     private static GameManifest Manifest(string? broadcast, string? spaces)
     {

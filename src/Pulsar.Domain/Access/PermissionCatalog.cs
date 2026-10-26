@@ -27,6 +27,7 @@ public static class PermissionCatalog
         new(Permissions.Server.Kill, s_serverNodeGlobal),
         new(Permissions.Server.ConsoleView, s_serverNodeGlobal),
         new(Permissions.Server.ConsoleWrite, s_serverNodeGlobal),
+        new(Permissions.Server.PlayersManage, s_serverNodeGlobal),
         new(Permissions.Server.FilesView, s_serverNodeGlobal),
         new(Permissions.Server.FilesEdit, s_serverNodeGlobal),
         new(Permissions.Server.BackupsView, s_serverNodeGlobal),

@@ -41,7 +41,8 @@ import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
 import { ServerUsageHistory } from '../metrics/UsageHistory';
-import type { ServerMetrics, ServerQuery } from '../live/types';
+import type { ServerMetrics } from '../live/types';
+import { PlayersCard } from '../players/PlayersCard';
 import {
   useDeleteServer,
   useReinstallServer,
@@ -180,7 +181,10 @@ function ServerView({ id }: { id: string }) {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <OverviewCard details={details.data} />
               <GameUpdatesCard details={details.data} />
-              {server.runtimeState === 'running' && metrics?.query && <PlayersCard query={metrics.query} />}
+              {((server.runtimeState === 'running' && metrics?.query) ||
+                (details.data.players && canOnServer(me, server, Permission.ServerPlayersManage))) && (
+                <PlayersCard details={details.data} query={metrics?.query} />
+              )}
               <OperationsCard operations={details.data.recentOperations} />
             </div>
             <ServerUsageHistory serverId={server.id} />
@@ -490,52 +494,6 @@ const statusTones = {
   cancelled: 'neutral',
   interrupted: 'danger',
 } as const;
-
-/** Who is playing, as the game answered its query: names are the players' own, shown as text. */
-function PlayersCard({ query }: { query: ServerQuery }) {
-  const { t } = useTranslation();
-  const formatDuration = useFormatDuration();
-  return (
-    <Card className="p-6">
-      <h2 className="text-lg font-semibold">{t('servers.players.title')}</h2>
-      {(query.name || query.version) && (
-        <p className="mt-1 text-sm break-words text-muted">
-          {[query.name, query.version && t('servers.players.version', { version: query.version })]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-      )}
-      <div className="mt-4">
-        {query.playerList.length === 0 ? (
-          <p className="text-sm text-muted">
-            {query.players > 0 ? t('servers.players.notListed') : t('servers.players.empty')}
-          </p>
-        ) : (
-          <Table label={t('servers.players.title')}>
-            <thead>
-              <tr>
-                <Th>{t('servers.players.name')}</Th>
-                <Th>{t('servers.players.score')}</Th>
-                <Th>{t('servers.players.time')}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.playerList.map((player, index) => (
-                <tr key={index}>
-                  <Td className="break-all">{player.name}</Td>
-                  <Td className="tabular-nums">{player.score ?? '—'}</Td>
-                  <Td className="tabular-nums">
-                    {player.connectedSeconds === null ? '—' : formatDuration(player.connectedSeconds)}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </div>
-    </Card>
-  );
-}
 
 function OperationsCard({ operations }: { operations: OperationView[] }) {
   const { t } = useTranslation();

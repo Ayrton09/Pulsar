@@ -480,6 +480,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Template updates: newer versions of a server's game template are notified once, or moved to by themselves with the game updates' warnings (doc 02, "Template upgrades"; doc 05).
 - A release page shows its version once (the notes alone under its title).
 
+## 1.0.11 — Players and files (2026-10-26, at the user's request)
+
+- Players from the panel: kick, ban, whitelist and admins with the game's own commands, from the Players card or by name, and the game's lists (doc 04, "Players"; doc 07; doc 08, "Player actions"). New permission `server.players.manage`; agent capability `manifest.player_commands`.
+- A node whose agent does not read a newer template yet keeps it pending (its servers move once the node updates) instead of refusing it.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

@@ -206,6 +206,9 @@
         "view": "View console",
         "write": "Send console commands"
       },
+      "players": {
+        "manage": "Kick, ban and whitelist players"
+      },
       "files": {
         "view": "View files",
         "edit": "Edit files"
@@ -355,6 +358,7 @@
         "ports_changed": "Changed a server's ports",
         "operation_cancel_requested": "Asked to cancel an operation",
         "console_command": "Ran a console command",
+        "player_action": "Acted on a player",
         "file_written": "Wrote a file",
         "file_downloaded": "Downloaded a file",
         "file_moved": "Moved or renamed a file",
@@ -916,6 +920,12 @@
       "development": "A development agent is updated with a new build, not from the releases.",
       "not_service": "This agent does not run as the PulsarAgent service: update it with the setups.",
       "invalid": "The update request was malformed."
+    },
+    "players": {
+      "unsupported": "This game cannot do that to a player from the panel.",
+      "invalid": "A player is 1 to 64 letters, digits and _ - . (and spaces, if the game takes them), as the game names them.",
+      "admin_forbidden": "Making a player the game's admin, or taking it away, also needs the permission to send console commands.",
+      "list_unreadable": "The game's file for this list could not be read."
     }
   },
   "account": {
@@ -2442,6 +2452,54 @@
       "off": "Do nothing",
       "notify": "Tell me (show it on the server page)",
       "install": "Apply it (warn, stop, install again with it, start again)"
+    }
+  },
+  "players": {
+    "actions": "Actions",
+    "sent": "Sent to the game: its answer is in the console.",
+    "nameUnusable": "This name has characters the game's console does not take.",
+    "notRunning": "Start the server to send commands to its players.",
+    "invalid": "Letters, digits and _ - . only, up to 64.",
+    "invalidSpaces": "Letters, digits, single spaces and _ - . only, up to 64.",
+    "confirm": {
+      "ban": "Ban {{name}}? They cannot join again until unbanned.",
+      "adminAdd": "Make {{name}} the game's admin? They can run the game's commands.",
+      "unban": "Unban {{name}}?",
+      "whitelistRemove": "Take {{name}} off the whitelist?",
+      "adminRemove": "Take {{name}}'s admin away?"
+    },
+    "rowActions": {
+      "kick": "Kick {{name}}",
+      "ban": "Ban {{name}}",
+      "unban": "Unban {{name}}",
+      "whitelistAdd": "Add {{name}} to the whitelist",
+      "whitelistRemove": "Take {{name}} off the whitelist",
+      "adminAdd": "Make {{name}} admin",
+      "adminRemove": "Take {{name}}'s admin away"
+    },
+    "names": {
+      "kick": "Kick",
+      "ban": "Ban",
+      "unban": "Unban",
+      "whitelistAdd": "Add to the whitelist",
+      "whitelistRemove": "Take off the whitelist",
+      "adminAdd": "Make admin",
+      "adminRemove": "Take admin away"
+    },
+    "byName": {
+      "title": "Any player",
+      "name": "Player name",
+      "id": "Player ID",
+      "action": "Action",
+      "send": "Send",
+      "hint": "Playing or not: to unban someone, or whitelist them before they join."
+    },
+    "lists": {
+      "title": "The game's lists",
+      "banned": "Banned",
+      "whitelist": "Whitelist",
+      "admins": "Admins",
+      "empty": "Nobody."
     }
   }
 }

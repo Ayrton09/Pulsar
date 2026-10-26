@@ -2,12 +2,18 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -360,5 +366,86 @@ public sealed class ImportedTemplateUpdateTests(PulsarApiFactory factory) : ICla
         var details = (await ServerApi.GetAsync(admin, server))!;
         Assert.Equal((ServerRuntimeState.Running, imported), (details.Server.RuntimeState, details.TemplateUpgrade!.Version));
         Assert.Null(watch!.AttemptedTemplate); // told, never tried
+    }
+}
+
+/// <summary>
+/// A node whose agent does not read a newer version yet (its Pulsar update comes after the panel's): the move waits, and
+/// happens once the agent does, rather than being refused for good (Pulsar 1.0.11).
+/// </summary>
+public sealed class OlderAgentTemplateUpdateTests(OlderAgentApiFactory factory) : IClassFixture<OlderAgentApiFactory>
+{
+    [DatabaseFact]
+    public async Task AMoveWaitsForAnAgentThatReadsTheNewerVersion()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await TemplateUpdateTests.ConnectedAgentAsync(factory, admin, "older");
+        var server = await TemplateUpdateTests.RunningCssAsync(admin, agent, "27080-27085");
+        using (var set = await admin.PutAsync($"/api/v1/servers/{server}/game-updates",
+                   new GameUpdateSettingsRequest(GameUpdatePolicy.Notify, false, 0, null, GameUpdatePolicy.Install)))
+        {
+            await AccessScenario.EnsureSuccessAsync(set);
+        }
+
+        // As an agent of 1.0.10 would: it does not say it reads commands for one player, which the newer version has.
+        factory.HiddenCapability = AgentCapabilities.PlayerCommands;
+        var newer = await TemplateUpdateTests.ShipNewerAsync(factory, admin, "css");
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            await SequenceDriver.GameUpdatesPassAsync(factory);
+            return (await WatchAsync(server)).NotifiedTemplate == newer;
+        }, "notified");
+        await SequenceDriver.GameUpdatesPassAsync(factory);
+
+        Assert.Null((await WatchAsync(server)).AttemptedTemplate); // not refused: tried again next pass
+        Assert.Equal(newer, (await SequenceDriver.GameUpdatesAsync(admin, server)).AutoTemplate);
+        Assert.NotEqual(newer, (await ServerApi.GetAsync(admin, server))!.TemplateVersion);
+
+        factory.HiddenCapability = null;
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            await SequenceDriver.DriveAsync(factory);
+            return (await ServerApi.GetAsync(admin, server))!.TemplateVersion == newer;
+        }, "moved once the agent reads it");
+    }
+
+    private async Task<GameUpdateWatch> WatchAsync(Guid server)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().GameUpdateWatches.AsNoTracking()
+            .SingleAsync(w => w.ServerId == new ServerId(server), TestContext.Current.CancellationToken);
+    }
+}
+
+/// <summary>The panel, seeing its agents without <see cref="HiddenCapability"/> while it is set.</summary>
+public sealed class OlderAgentApiFactory : PulsarApiFactory
+{
+    public string? HiddenCapability { get; set; }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IAgentConnections>();
+            services.AddSingleton<IAgentConnections>(sp => new Hiding(sp.GetRequiredService<AgentConnectionRegistry>(), this));
+        });
+    }
+
+    private sealed class Hiding(IAgentConnections inner, OlderAgentApiFactory factory) : IAgentConnections
+    {
+        public AgentConnectionInfo? Find(NodeId node) =>
+            inner.Find(node) is { } live && factory.HiddenCapability is { } hidden
+                ? live with { Capabilities = [.. live.Capabilities.Where(c => c != hidden)] }
+                : inner.Find(node);
+
+        public void Disconnect(NodeId node) => inner.Disconnect(node);
+
+        public void DisconnectEnded(NodeId node) => inner.DisconnectEnded(node);
+
+        public Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken, Guid? operationId = null) =>
+            inner.SendAsync(node, command, actor, cancellationToken, operationId);
+
+        public Task<int> UpdatePanelKeysAsync(NodeId? node, CancellationToken cancellationToken) => inner.UpdatePanelKeysAsync(node, cancellationToken);
     }
 }

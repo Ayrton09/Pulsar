@@ -19,3 +19,7 @@ through a development panel and agent:
 Server tags, region, LAN only, cheats, stalemate (sudden death and its time), spectators, dead-player camera, no damage spread, fast download URL, allow downloads, pure server and slots shown in the browser, all in `tf/cfg/server.cfg`.
 
 They come from AMP's template; none was tried on a real server.
+
+## Players (1.0.11)
+
+The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.

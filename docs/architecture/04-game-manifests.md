@@ -321,7 +321,29 @@ Nothing on the server changes before step 4. On success the panel sets the serve
 "commands": { "broadcast": "say {{message}}" }
 ```
 
-Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console like typed ones (over RCON when the console uses it). `broadcast` tells everyone playing a message, with `{{message}}` where it goes, once, and no other placeholder: the warnings before an automatic game update (doc 05). The panel keeps only letters, digits, spaces and `. , ! ? : ' ( ) -` of a message, on one line, at most 128 characters: what a console reads as more than text (Source's `;` ends a command and starts another, Unturned's `/` starts an argument, a quote ends one, a line break sends the line) never gets through. `messageSpaces` (`_`, `-` or `.`) stands for the spaces of a game whose command takes a single word (Palworld's `Broadcast`). A manifest with `commands` goes only to agents of 1.0.9 or newer (`manifest.commands`), which read it. Bundled: `say {{message}}` for CS2, CS:S, TF2, L4D2, Minecraft and Minecraft: Bedrock Edition; `say "{{message}}"` for Rust and 7 Days to Die; `ServerChat` for ARK: Survival Ascended, `servermsg "…"` for Project Zomboid, `Say` for Unturned, `announce` for V Rising and `Broadcast` with underscores for Palworld (from the games' and hosting providers' documentation; not every one was run). Games whose console takes no commands (Valheim, Enshrouded, Sons of the Forest, Arma Reforger) have none, and SCP: Secret Laboratory's LocalAdmin syntax for Remote Admin commands was not confirmed, so it has none yet. Later versions add the players' commands (kick, ban, whitelist).
+Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console like typed ones (over RCON when the console uses it). `broadcast` tells everyone playing a message, with `{{message}}` where it goes, once, and no other placeholder: the warnings before an automatic game update (doc 05). The panel keeps only letters, digits, spaces and `. , ! ? : ' ( ) -` of a message, on one line, at most 128 characters: what a console reads as more than text (Source's `;` ends a command and starts another, Unturned's `/` starts an argument, a quote ends one, a line break sends the line) never gets through. `messageSpaces` (`_`, `-` or `.`) stands for the spaces of a game whose command takes a single word (Palworld's `Broadcast`). A manifest with `commands` goes only to agents of 1.0.9 or newer (`manifest.commands`), which read it. Bundled: `say {{message}}` for CS2, CS:S, TF2, L4D2, Minecraft and Minecraft: Bedrock Edition; `say "{{message}}"` for Rust and 7 Days to Die; `ServerChat` for ARK: Survival Ascended, `servermsg "…"` for Project Zomboid, `Say` for Unturned, `announce` for V Rising and `Broadcast` with underscores for Palworld (from the games' and hosting providers' documentation; not every one was run). Games whose console takes no commands (Valheim, Enshrouded, Sons of the Forest, Arma Reforger) have none, and SCP: Secret Laboratory's LocalAdmin syntax for Remote Admin commands was not confirmed, so it has none yet.
+
+### Players (1.0.11)
+
+```json
+"commands": {
+  "broadcast": "say {{message}}",
+  "players": {
+    "kick": "kick {{player}}", "ban": "ban {{player}}", "unban": "pardon {{player}}",
+    "whitelistAdd": "whitelist add {{player}}", "whitelistRemove": "whitelist remove {{player}}",
+    "adminAdd": "op {{player}}", "adminRemove": "deop {{player}}",
+    "lists": {
+      "banned": { "file": "banned-players.json", "field": "name" },
+      "whitelist": { "file": "whitelist.json", "field": "name" },
+      "admins": { "file": "ops.json", "field": "name" }
+    }
+  }
+}
+```
+
+What the panel does to one player, with the game's own commands, through its console like a typed one: `kick`, `ban` (for good), `unban`, `whitelistAdd` and `whitelistRemove` (the list of who may join: Minecraft's whitelist, Bedrock's allowlist), `adminAdd` and `adminRemove` (the game's operator or admin, who runs its commands in game). Each has `{{player}}` once and no other placeholder; a game declares only those it has (at least one). Unlike a broadcast's message, a player's name is never cleaned, since a cleaned name may be someone else's: the panel refuses one that is not 1 to 64 letters, digits and `_ - .` not starting with `-`, so no quote, `;`, `/`, line break, option (`-ip`) or Minecraft selector (`@a` is everyone) reaches a console. `spaces: true` lets a name have single spaces, for a game whose arguments do not end at one (the template quotes `"{{player}}"`, or its arguments end at another character, as Unturned's `/`). `byId: true` says the commands take an id (a Steam ID) rather than the name the game's query lists: the Players card then offers no buttons next to the names, only the field for an id. `lists` names the game's own files listing who is banned, whitelisted or admin (a JSON array of objects, each naming a player in `field`), which the panel reads from the server's folder to show them, at most 256 KiB and 1,000 names each, any other content left out. A manifest with `players` goes only to agents of 1.0.11 or newer (`manifest.player_commands`), which read it.
+
+Bundled: every command and the three lists for Minecraft (`pardon`, `whitelist`, `op`); `kick`, `allowlist`, `op` (quoted, with spaces) and the allowlist for Minecraft: Bedrock Edition, which has no ban command and keeps its operators by Xbox user id only; `kick "…"` for CS2, CS:S, TF2 and L4D2 (their bans take a user id or Steam ID the query does not list); `kick` and `ban` for Rust; `kick` and a ten-year `ban add` for 7 Days to Die; `kickuser`, `banuser`, `unbanuser` and `setaccesslevel … admin|none` for Project Zomboid; `Kick`, `Admin` and `Unadmin` for Unturned. From the games' and hosting providers' documentation; Minecraft's were run on a real server (`games/minecraft/README.md`).
 
 ### Reserved for later versions
 

@@ -206,6 +206,9 @@
         "view": "Konsole anzeigen",
         "write": "Konsolenbefehle senden"
       },
+      "players": {
+        "manage": "Spieler rauswerfen, sperren und auf die Whitelist setzen"
+      },
       "files": {
         "view": "Dateien anzeigen",
         "edit": "Dateien bearbeiten"
@@ -355,6 +358,7 @@
         "ports_changed": "Ports eines Servers geändert",
         "operation_cancel_requested": "Abbruch eines Vorgangs angefordert",
         "console_command": "Konsolenbefehl ausgeführt",
+        "player_action": "Hat auf einen Spieler eingewirkt",
         "file_written": "Datei geschrieben",
         "file_downloaded": "Datei heruntergeladen",
         "file_moved": "Datei verschoben oder umbenannt",
@@ -916,6 +920,12 @@
       "development": "Ein Entwicklungs-Agent wird mit einem neuen Build aktualisiert, nicht über die Releases.",
       "not_service": "Dieser Agent läuft nicht als Dienst PulsarAgent: Aktualisieren Sie ihn mit den Setups.",
       "invalid": "Die Aktualisierungsanfrage war fehlerhaft."
+    },
+    "players": {
+      "unsupported": "Dieses Spiel kann das mit einem Spieler nicht über das Panel tun.",
+      "invalid": "Ein Spieler besteht aus 1 bis 64 Buchstaben, Ziffern und _ - . (und Leerzeichen, wenn das Spiel sie annimmt), so wie das Spiel ihn nennt.",
+      "admin_forbidden": "Einen Spieler zum Admin des Spiels zu machen oder ihm das zu nehmen, erfordert auch die Berechtigung, Konsolenbefehle zu senden.",
+      "list_unreadable": "Die Datei des Spiels mit dieser Liste konnte nicht gelesen werden."
     }
   },
   "account": {
@@ -5796,6 +5806,54 @@
       "off": "Nichts tun",
       "notify": "Mich informieren (auf der Serverseite anzeigen)",
       "install": "Anwenden (warnen, stoppen, damit neu installieren, wieder starten)"
+    }
+  },
+  "players": {
+    "actions": "Aktionen",
+    "sent": "An das Spiel gesendet: seine Antwort steht in der Konsole.",
+    "nameUnusable": "Dieser Name enthält Zeichen, die die Konsole des Spiels nicht annimmt.",
+    "notRunning": "Starte den Server, um seinen Spielern Befehle zu senden.",
+    "invalid": "Nur Buchstaben, Ziffern und _ - ., bis zu 64.",
+    "invalidSpaces": "Nur Buchstaben, Ziffern, einzelne Leerzeichen und _ - ., bis zu 64.",
+    "confirm": {
+      "ban": "{{name}} sperren? Der Spieler kann erst nach dem Entsperren wieder beitreten.",
+      "adminAdd": "{{name}} zum Admin des Spiels machen? Er kann dann die Befehle des Spiels ausführen.",
+      "unban": "{{name}} entsperren?",
+      "whitelistRemove": "{{name}} von der Whitelist nehmen?",
+      "adminRemove": "{{name}} die Adminrechte nehmen?"
+    },
+    "rowActions": {
+      "kick": "{{name}} rauswerfen",
+      "ban": "{{name}} sperren",
+      "unban": "{{name}} entsperren",
+      "whitelistAdd": "{{name}} zur Whitelist hinzufügen",
+      "whitelistRemove": "{{name}} von der Whitelist nehmen",
+      "adminAdd": "{{name}} zum Admin machen",
+      "adminRemove": "{{name}} die Adminrechte nehmen"
+    },
+    "names": {
+      "kick": "Rauswerfen",
+      "ban": "Sperren",
+      "unban": "Entsperren",
+      "whitelistAdd": "Zur Whitelist hinzufügen",
+      "whitelistRemove": "Von der Whitelist nehmen",
+      "adminAdd": "Zum Admin machen",
+      "adminRemove": "Adminrechte nehmen"
+    },
+    "byName": {
+      "title": "Beliebiger Spieler",
+      "name": "Spielername",
+      "id": "Spieler-ID",
+      "action": "Aktion",
+      "send": "Senden",
+      "hint": "Ob er spielt oder nicht: um jemanden zu entsperren oder vor dem Beitritt auf die Whitelist zu setzen."
+    },
+    "lists": {
+      "title": "Die Listen des Spiels",
+      "banned": "Gesperrt",
+      "whitelist": "Whitelist",
+      "admins": "Admins",
+      "empty": "Niemand."
     }
   }
 }

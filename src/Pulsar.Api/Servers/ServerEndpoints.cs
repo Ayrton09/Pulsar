@@ -11,6 +11,7 @@ using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
+using Pulsar.Manifests;
 
 namespace Pulsar.Api.Servers;
 
@@ -71,6 +72,9 @@ public sealed record ServerLimitsRequest(
 
 public sealed record ConsoleCommandRequest([property: Required, StringLength(Pulsar.Contracts.ConsoleInput.MaxLength, MinimumLength = 1)] string Command);
 
+/// <param name="Player">The player's name as the game has it (or its id, for a game whose commands take one).</param>
+public sealed record PlayerActionRequest(PlayerAction Action, [property: Required, StringLength(GameCommands.MaxPlayerLength, MinimumLength = 1)] string Player);
+
 public sealed record TemplateContentRequest([property: Required, StringLength(Pulsar.Manifests.ManifestParser.MaximumSize)] string Content);
 
 public static class ServerEndpoints
@@ -127,6 +131,12 @@ public static class ServerEndpoints
         servers.MapPost("/{id:guid}/console", (Guid id, ConsoleCommandRequest request, ConsoleCommands console, CancellationToken ct) =>
                 CommandAsync(console.SendAsync(new ServerId(id), request.Command, ct)))
             .RequirePermission(Permissions.Server.ConsoleWrite);
+        // Making a player the game's admin also needs server.console.write (checked by the action).
+        servers.MapPost("/{id:guid}/players", (Guid id, PlayerActionRequest request, ServerPlayers players, CancellationToken ct) =>
+                CommandAsync(players.ActAsync(new ServerId(id), request.Action, request.Player, ct)))
+            .RequirePermission(Permissions.Server.PlayersManage);
+        servers.MapGet("/{id:guid}/players/lists", async (Guid id, ServerPlayers players, CancellationToken ct) => (await players.ListsAsync(new ServerId(id), ct)).ToHttp())
+            .RequirePermission(Permissions.Server.PlayersManage);
         // Installs and updates need server.install, backups server.backups.create (checked by the operation's type).
         servers.MapPost("/{id:guid}/operations/{operationId:guid}/cancel", (Guid id, Guid operationId, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CancelOperationAsync(new ServerId(id), operationId, ct)))

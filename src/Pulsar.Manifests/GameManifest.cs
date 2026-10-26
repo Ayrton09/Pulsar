@@ -89,7 +89,64 @@ public sealed record ModTargetDefinition(string ProjectType, IReadOnlyList<strin
 /// of a message and drops anything else, so it can never end the command or start another.
 /// </param>
 /// <param name="MessageSpaces">What stands for a space in the message, for a game whose command takes a single word (Palworld's).</param>
-public sealed record CommandsDefinition(string? Broadcast = null, string? MessageSpaces = null);
+/// <param name="Players">What the panel does to one player at a time (Pulsar 1.0.11).</param>
+public sealed record CommandsDefinition(string? Broadcast = null, string? MessageSpaces = null, PlayerCommandsDefinition? Players = null);
+
+/// <summary>
+/// The commands for one player (Pulsar 1.0.11; docs/architecture/04, "Players"), each with <c>{{player}}</c> where the
+/// player goes (<c>kick {{player}}</c>). The panel never cleans a player's name: one with anything but letters, digits and
+/// <c>_ - .</c> (and spaces, when <see cref="Spaces"/>) is refused, so it can never end the command or start another, and a
+/// command never reaches a player it was not meant for.
+/// </summary>
+/// <param name="Kick">Puts the player out of the game.</param>
+/// <param name="Ban">Keeps the player out for good.</param>
+/// <param name="Unban">Lets a banned player in again.</param>
+/// <param name="WhitelistAdd">Adds the player to the list of who may join (Minecraft's whitelist, Bedrock's allowlist).</param>
+/// <param name="WhitelistRemove">Takes the player off that list.</param>
+/// <param name="AdminAdd">Makes the player the game's operator or admin, who runs its commands in game.</param>
+/// <param name="AdminRemove">Takes that away.</param>
+/// <param name="ById">The commands take an id (a Steam ID), not the name the game's query lists.</param>
+/// <param name="Spaces">A name may have spaces: the commands' arguments do not end at one (they are quoted, or end at another character).</param>
+/// <param name="Lists">Where the game keeps who is banned, whitelisted or admin, for the panel to show.</param>
+public sealed record PlayerCommandsDefinition(
+    string? Kick = null,
+    string? Ban = null,
+    string? Unban = null,
+    string? WhitelistAdd = null,
+    string? WhitelistRemove = null,
+    string? AdminAdd = null,
+    string? AdminRemove = null,
+    bool ById = false,
+    bool Spaces = false,
+    PlayerListsDefinition? Lists = null);
+
+/// <summary>The game's files that list who is banned, on its whitelist, or its admins.</summary>
+public sealed record PlayerListsDefinition(PlayerListFile? Banned = null, PlayerListFile? Whitelist = null, PlayerListFile? Admins = null);
+
+/// <summary>A JSON file in the server's folder holding an array of objects, each naming a player in <see cref="Field"/> (Minecraft's <c>ops.json</c>).</summary>
+/// <param name="File">The file, relative to the server's folder.</param>
+/// <param name="Field">The objects' property holding the player.</param>
+public sealed record PlayerListFile(string File, string Field);
+
+/// <summary>What the panel can do to a player (<see cref="PlayerCommandsDefinition"/>).</summary>
+public enum PlayerAction
+{
+    Kick,
+    Ban,
+    Unban,
+    WhitelistAdd,
+    WhitelistRemove,
+    AdminAdd,
+    AdminRemove,
+}
+
+/// <summary>A list of players the game keeps (<see cref="PlayerListsDefinition"/>).</summary>
+public enum PlayerListKind
+{
+    Banned,
+    Whitelist,
+    Admins,
+}
 
 /// <summary>What a node should have for the game; shown when creating a server, not enforced.</summary>
 public sealed record RequirementsDefinition(int? MinDiskGb = null, int? MinMemoryMb = null);

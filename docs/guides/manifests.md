@@ -105,6 +105,8 @@ Then:
 
 If the game's console has a command that tells everyone playing a message, give it in `commands.broadcast` with `{{message}}` where the message goes (`"commands": { "broadcast": "say {{message}}" }`): the panel uses it to warn the players before an automatic update. It cleans each message first (letters, digits, spaces and `. , ! ? : ' ( ) -`), so the template does not need to quote anything for safety; quote it only if the game needs quotes to take several words. A game whose command takes one word gets `"messageSpaces": "_"`. Check it on a running server from the console tab before you send the manifest.
 
+Give the game's commands for one player in `commands.players` (`kick`, `ban`, `unban`, `whitelistAdd`, `whitelistRemove`, `adminAdd`, `adminRemove`), each with `{{player}}` where the name goes, only those the game has: the server's Players card offers them. The panel refuses a name that is not letters, digits and `_ - .`, so templates need no quoting for safety; add `"spaces": true` only when the command takes a name with spaces (`kick "{{player}}"`, or Unturned's arguments, which end at `/`), and `"byId": true` when the commands take a Steam ID rather than the name. If the game keeps who is banned, whitelisted or admin in a JSON file of objects (Minecraft's `ops.json`), name it in `lists` with the property holding the player, and the card shows it. Try each command on a running server first.
+
 ## Check it
 
 1. `dotnet test --project tests/Pulsar.Manifests.Tests` loads every manifest under `games/` and fails on any error:

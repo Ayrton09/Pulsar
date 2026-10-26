@@ -7,3 +7,7 @@
 - Launch: Workshop map (`+host_workshop_map`, used instead of `+map` when set), Workshop collection (`+host_workshop_collection`) and map group (`+mapgroup`).
 
 They come from AMP's template (tags, LAN, cheats, Workshop and map group) and from public CS2 cvar lists (the match rules); none was tried on a real server.
+
+## Players (1.0.11)
+
+The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.

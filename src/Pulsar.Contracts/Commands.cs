@@ -699,6 +699,12 @@ public static class AgentCapabilities
     public const string ManifestCommands = "manifest.commands";
 
     /// <summary>
+    /// Not a command: the agent reads manifests with commands for one player (Pulsar 1.0.11, <c>commands.players</c>); an
+    /// older one refuses them.
+    /// </summary>
+    public const string PlayerCommands = "manifest.player_commands";
+
+    /// <summary>
     /// Not a command: the agent installs Minecraft's server types (Paper, Purpur, Fabric, Forge, NeoForge) and reads
     /// conditions on what an enum's option maps (Pulsar 1.0.9); an older one refuses manifests that use them.
     /// </summary>
