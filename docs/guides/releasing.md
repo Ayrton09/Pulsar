@@ -62,7 +62,9 @@ already, see [Key rotation](#key-rotation)).
 ## Building a release
 
 Pick the version, exactly `major.minor.patch` (for example `1.0.1`), and write the release notes in a plain text file
-(UTF-8, at most 16 KB, shown as text to the administrator who decides to update). Then, in PowerShell:
+(UTF-8, at most 16 KB, shown as text to the administrator who decides to update). Start them with what is new, not
+with a "Pulsar 1.0.1" line: the panel's Updates page and the GitHub release show the version above them already. Then, in
+PowerShell:
 
 ```powershell
 .\scripts\release\Build-Release.ps1 -Version 1.0.1 -RequireSetups -UpdateSigningKey D:\keys\pulsar-update.key -ReleaseNotes notes.txt

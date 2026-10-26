@@ -3374,9 +3374,11 @@ Check 'key: the built signer is run directly (not through dotnet), and its folde
 
 $publishPath = Join-Path $PSScriptRoot '..\release\Publish-GitHubRelease.ps1'
 $publishText = Get-Content -Raw -LiteralPath $publishPath
-$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady', 'Get-RecordedCommit', 'Assert-CommitRecorded', 'Resolve-TargetCommit') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
+$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady', 'Get-RecordedCommit', 'Assert-CommitRecorded', 'Resolve-TargetCommit', 'Get-ReleaseBody') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
 foreach ($part in $publishParts.Values) { . ([scriptblock]::Create($part)) }
 Check 'publish: only the project''s own repository' ($Repository -ceq 'Ayrton09/Pulsar' -and $publishText -match "'--repo', \`$Repository")
+Check 'publish: the release''s text is the notes alone (GitHub shows the version as its title), or the title without notes' (
+    (Get-ReleaseBody '1.2.3' "Fixes a thing.`nAnd another.") -ceq "Fixes a thing.`nAnd another." -and (Get-ReleaseBody '1.2.3' $null) -ceq 'Pulsar 1.2.3')
 
 $publishRoot = Join-Path $Scratch ('pulsar-publish-tests-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory $publishRoot

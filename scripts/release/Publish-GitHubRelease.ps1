@@ -132,6 +132,13 @@ function Resolve-TargetCommit([string] $target) {
 
 # What must be true on GitHub before the upload: the repository is public (or -AllowPrivate says it may not be) and neither the
 # release nor its tag exist. Throws what is not.
+# The release's text on GitHub: the manifest's notes as they are (GitHub shows "Pulsar <version>" as the title above them),
+# or that title alone when there are none.
+function Get-ReleaseBody([string] $version, [string] $notes) {
+    if ($notes) { return $notes }
+    return "Pulsar $version"
+}
+
 function Assert-GitHubReady([string] $repository, [string] $tag, [bool] $allowPrivate) {
     if (-not (Test-GhInstalled)) { throw 'The GitHub CLI (gh) is not installed or not on the path: https://cli.github.com, then gh auth login.' }
     $visibility = Invoke-Gh @('repo', 'view', $repository, '--json', 'visibility')
@@ -160,16 +167,14 @@ try {
     Assert-CommitRecorded (Get-RecordedCommit $release.Manifest $Folder $Version) $Target
     Assert-GitHubReady $Repository $tag ([bool]$AllowPrivate)
 
-    # The notes: the given file, or the manifest's, under a title.
+    # The notes: the given file, or the manifest's.
     $notesFile = $Notes
     if ($Notes) {
         if (-not (Test-Path -LiteralPath $Notes -PathType Leaf)) { throw "-Notes must name an existing text file ($Notes)." }
     }
     else {
         $notesFile = Join-Path $work 'notes.md'
-        $text = "Pulsar $Version"
-        if ($release.Manifest.notes) { $text += "$([Environment]::NewLine)$([Environment]::NewLine)$($release.Manifest.notes)" }
-        [IO.File]::WriteAllText($notesFile, $text, (New-Object Text.UTF8Encoding $false))
+        [IO.File]::WriteAllText($notesFile, (Get-ReleaseBody $Version $release.Manifest.notes), (New-Object Text.UTF8Encoding $false))
     }
 
     Write-Host "Publishing $tag of $Repository at $Target with $($release.Files.Count) file(s):"
