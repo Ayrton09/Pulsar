@@ -15,15 +15,13 @@ internal static class FailedCheckTime
     public static async Task WaitOutAsync(TimeProvider clock, long from, TimeSpan time, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(clock);
-        var rest = time - clock.GetElapsedTime(from);
-        if (rest <= TimeSpan.Zero)
-        {
-            return;
-        }
-
         try
         {
-            await Task.Delay(rest, clock, cancellationToken);
+            // Again for what is left: Windows' timers can end a wait a fraction of a millisecond early.
+            for (var rest = time - clock.GetElapsedTime(from); rest > TimeSpan.Zero; rest = time - clock.GetElapsedTime(from))
+            {
+                await Task.Delay(rest, clock, cancellationToken);
+            }
         }
         catch (OperationCanceledException)
         {
