@@ -232,6 +232,31 @@ public sealed class ServerProvisioningTests : IDisposable
     }
 
     [AccountFact]
+    public void AServerPreparedAgainKeepsItsAccountUnlessTheAccountIsInAnotherGroup()
+    {
+        var provisioner = Provisioner(development: false);
+        var shortId = NewShortId();
+        var server = provisioner.Provision(_root, shortId);
+
+        // Prepared again (a template update, a reinstalled agent): Pulsar's own account is taken over.
+        Assert.Equal(server, provisioner.Provision(_root, shortId));
+
+        // Not once it is an administrator's: the server's processes would keep that group.
+        var name = WindowsServerAccounts.AccountName(shortId);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Translate(typeof(NTAccount)).Value.Split('\\')[^1];
+        LocalGroup(administrators, name, add: true);
+        try
+        {
+            var refused = Assert.Throws<GameProcessException>(() => provisioner.Provision(_root, shortId));
+            Assert.Equal("server.account_unusable", refused.Code);
+        }
+        finally
+        {
+            LocalGroup(administrators, name, add: false);
+        }
+    }
+
+    [AccountFact]
     public void TheAccountLogsOnWithItsOwnProfileAndNoPrivilegesButChangeNotify()
     {
         var accounts = TestAccounts.Create();
@@ -276,6 +301,18 @@ public sealed class ServerProvisioningTests : IDisposable
 
     private static WindowsServerProvisioner Provisioner(bool development) => new(TestAccounts.Create(),
         development, NullLogger<WindowsServerProvisioner>.Instance);
+
+    private static void LocalGroup(string group, string account, bool add)
+    {
+        using var net = Process.Start(new ProcessStartInfo("net.exe", ["localgroup", group, account, add ? "/add" : "/delete"])
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        })!;
+        net.WaitForExit();
+        Assert.Equal(0, net.ExitCode);
+    }
 
     private string NewShortId()
     {

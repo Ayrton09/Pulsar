@@ -30,6 +30,8 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     private const uint ProfileNoUi = 0x00000001; // PI_NOUI
     private const uint UserExists = 2224; // NERR_UserExists
     private const uint UserNotFound = 2221; // NERR_UserNotFound
+    private const uint IncludeIndirect = 0x00000001; // LG_INCLUDE_INDIRECT
+    private const uint PreferredLength = uint.MaxValue; // MAX_PREFERRED_LENGTH
     private const int ProfileDeleteAttempts = 4;
 
     private static readonly TimeSpan s_profileDeleteRetry = TimeSpan.FromSeconds(1);
@@ -77,8 +79,8 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
             if (status == UserExists)
             {
                 // Looked at before anything of it changes (its rights, its password).
-                var (privilege, comment) = ExistingAccount(name);
-                if (RefusalToAdopt(privilege, comment, description) is { } refusal)
+                var (groups, comment) = ExistingAccount(name);
+                if (RefusalToAdopt(groups, comment, description) is { } refusal)
                 {
                     throw new GameProcessException("server.account_unusable",
                         $"The account {name} exists already and {refusal}: Pulsar does not run a server as it. Delete or rename that account.");
@@ -137,17 +139,21 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
 
     /// <summary>
     /// Why an existing account of a server's name is not taken over, or null when it may be: Pulsar made it (its comment
-    /// is the one Pulsar sets: a provisioning that stopped halfway, a reinstalled agent), and it is no administrator,
-    /// whose group the server's processes would keep (their token drops privileges, not groups).
+    /// is the one Pulsar sets: a provisioning that stopped halfway, a reinstalled agent, a server prepared again), and it
+    /// is in no local group but Users (<paramref name="groups"/>; null for one whose SID is unknown), since the server's
+    /// processes would keep an administrator's groups (their token drops privileges, not groups). Not the privilege level
+    /// <c>NetUserGetInfo</c> reports: <c>NetUserAdd</c> puts Pulsar's accounts in no group (spike 0002), and Windows then
+    /// calls them guests.
     /// </summary>
-    internal static string? RefusalToAdopt(USER_PRIV privilege, string? comment, string description) =>
-        privilege != USER_PRIV.USER_PRIV_USER ? "is an administrator's or a guest's"
+    internal static string? RefusalToAdopt(IReadOnlyCollection<SecurityIdentifier?> groups, string? comment, string description) =>
+        groups.Any(g => g is null || !g.IsWellKnown(WellKnownSidType.BuiltinUsersSid)) ? "is in a local group besides Users (Administrators, say)"
         : !string.Equals(comment, description, StringComparison.Ordinal) ? "was not made by Pulsar"
         : null;
 
-    private static unsafe (USER_PRIV Privilege, string? Comment) ExistingAccount(string name)
+    private static unsafe (IReadOnlyCollection<SecurityIdentifier?> Groups, string? Comment) ExistingAccount(string name)
     {
         byte* buffer = null;
+        string? comment;
         fixed (char* namePtr = name)
         {
             var status = PInvoke.NetUserGetInfo(null, namePtr, 1, &buffer);
@@ -159,12 +165,52 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
 
         try
         {
-            var info = (USER_INFO_1*)buffer;
-            return (info->usri1_priv, info->usri1_comment.ToString());
+            comment = ((USER_INFO_1*)buffer)->usri1_comment.ToString();
         }
         finally
         {
             _ = PInvoke.NetApiBufferFree(buffer);
+        }
+
+        // Its local groups, those it is in through a global group included.
+        buffer = null;
+        uint read;
+        uint total;
+        fixed (char* namePtr = name)
+        {
+            var status = PInvoke.NetUserGetLocalGroups(null, namePtr, 0, IncludeIndirect, &buffer, PreferredLength, &read, &total);
+            if (status != 0)
+            {
+                throw new Win32Exception((int)status, $"Cannot read the groups of the account {name}.");
+            }
+        }
+
+        try
+        {
+            var groups = new List<SecurityIdentifier?>();
+            var entries = (LOCALGROUP_USERS_INFO_0*)buffer;
+            for (var i = 0; i < read; i++)
+            {
+                groups.Add(GroupSid(entries[i].lgrui0_name.ToString()));
+            }
+
+            return (groups, comment);
+        }
+        finally
+        {
+            _ = PInvoke.NetApiBufferFree(buffer);
+        }
+    }
+
+    private static SecurityIdentifier? GroupSid(string group)
+    {
+        try
+        {
+            return (SecurityIdentifier)new NTAccount(group).Translate(typeof(SecurityIdentifier));
+        }
+        catch (IdentityNotMappedException)
+        {
+            return null;
         }
     }
 

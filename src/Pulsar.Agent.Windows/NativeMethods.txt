@@ -71,9 +71,11 @@ NetUserAdd
 NetUserDel
 NetUserSetInfo
 NetUserGetInfo
+NetUserGetLocalGroups
 NetApiBufferFree
 USER_INFO_1
 USER_INFO_1003
+LOCALGROUP_USERS_INFO_0
 LsaOpenPolicy
 LsaAddAccountRights
 LsaRemoveAccountRights
