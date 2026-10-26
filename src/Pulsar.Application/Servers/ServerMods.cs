@@ -109,6 +109,9 @@ public sealed partial class ServerMods(
         // Settled first: a pack settled now changes the server's type and versions, which the view is made from.
         await SettleAsync(id, cancellationToken);
         await SettleModpacksAsync(id, cancellationToken);
+
+        // The packs before the server: a pack settled between the two reads is then seen installing, never installed on the old type.
+        var packs = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == id).ToListAsync(cancellationToken);
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
@@ -136,7 +139,6 @@ public sealed partial class ServerMods(
         var kind = values.GetValueOrDefault(source.TypeVar) is { } type ? source.Types.GetValueOrDefault(type) : null;
         var version = GameVersion(server, source, values);
         var unavailable = kind is null ? ModErrors.TypeUnsupported.Code : version is null ? ModErrors.VersionUnknown.Code : null;
-        var packs = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == server.Id).ToListAsync(cancellationToken);
         return new ModsView(true, usable, needingKey, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed,
             manifest.ModList.Any(s => s.Modpacks is not null), ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installed)),
             ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installing)));

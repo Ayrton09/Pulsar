@@ -111,7 +111,7 @@ public sealed class FakeModrinth : HttpMessageHandler
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         object? answer = path switch
         {
-            "/v2/search" => new { hits = Hits, offset = 0, limit = 20, total_hits = Hits.Count },
+            "/v2/search" => Search(query["query"]),
             "/v2/projects" => JsonSerializer.Deserialize<string[]>(query["ids"]!)!.Where(Titles.ContainsKey)
                 .Select(id => new { id, slug = id, title = Titles[id] }),
             "/v2/version_files/update" => JsonNode.Parse(body)!["hashes"]!.AsArray().Select(h => h!.GetValue<string>()).Where(Latest.ContainsKey)
@@ -129,6 +129,14 @@ public sealed class FakeModrinth : HttpMessageHandler
         return answer is null
             ? new HttpResponseMessage(HttpStatusCode.NotFound)
             : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json") };
+    }
+
+    // As Modrinth does, only the hits whose title has the words: the class's tests share these, in any order.
+    private object Search(string? words)
+    {
+        var hits = Hits.Where(h => string.IsNullOrEmpty(words)
+            || JsonSerializer.SerializeToNode(h)!["title"]!.GetValue<string>().Contains(words, StringComparison.OrdinalIgnoreCase)).ToList();
+        return new { hits, offset = 0, limit = 20, total_hits = hits.Count };
     }
 }
 
