@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerPlayers>();
         services.AddScoped<ServerFiles>();
+        services.AddScoped<ServerArchives>();
         services.AddSingleton<FileTransfers>();
         services.TryAddSingleton(new FileManagerOptions());
         services.AddScoped<ServerSpecs>();

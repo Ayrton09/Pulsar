@@ -168,7 +168,7 @@
   "backup": {
     "include": ["world/**", "world_nether/**", "world_the_end/**", "*.properties", "*.json", "*.yml", "*.yaml", "*.toml",
       "plugins/**", "mods/**", "config/**", "defaultconfigs/**"],
-    "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
+    "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: (System chat: )?Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
   },
   "commands": {
     "broadcast": "say {{message}}",

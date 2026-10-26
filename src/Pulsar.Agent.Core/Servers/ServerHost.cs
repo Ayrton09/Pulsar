@@ -88,7 +88,8 @@ public sealed partial class ServerHost(
     GameHostManager? hosts = null,
     AgentShutdown? shutdown = null,
     IVolumeSnapshots? snapshots = null,
-    PanelBlockKeeper? panelBlock = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
+    PanelBlockKeeper? panelBlock = null,
+    FileArchives? archives = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
 {
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
@@ -163,6 +164,12 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
             yield return AgentCapabilities.InstallModpack;
+            if (archives is not null)
+            {
+                yield return AgentCapabilities.CompressFiles;
+                yield return AgentCapabilities.ExtractArchive;
+            }
+
             // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
             if (installOptions.CodeSignatures is not null)
             {
@@ -637,6 +644,8 @@ public sealed partial class ServerHost(
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
             CancelOperationCommand cancel => Cancel(envelope, cancel),
             CreateBackupCommand create => CreateBackup(envelope, create),
+            CompressFilesCommand compress => CompressFiles(envelope, compress),
+            ExtractArchiveCommand extract => ExtractArchive(envelope, extract),
             RestoreBackupCommand restore => RestoreBackup(envelope, restore),
             DeleteBackupCommand delete => await DeleteBackupAsync(envelope, delete),
             SendBackupCommand send => await SendBackupAsync(envelope, send),
@@ -1400,6 +1409,44 @@ public sealed partial class ServerHost(
             }
 
             return command.Remote is { } remote ? await backups.CopyToRemoteAsync(location, made, remote, progress, cancellationToken) : made;
+        });
+    }
+
+    /// <summary>
+    /// The file manager's zip of files and folders (Pulsar 1.0.11), while the server may keep running: read as the file
+    /// manager reads, so a backup's rules play no part.
+    /// </summary>
+    private CommandAck CompressFiles(CommandEnvelope envelope, CompressFilesCommand command) =>
+        ArchiveOperation(envelope, command.ServerId, "Zipping files", (provisioned, progress, cancellationToken) =>
+            archives!.CompressAsync(provisioned, command.Directory, command.Names ?? [], command.Archive, progress, cancellationToken));
+
+    /// <summary>A zip's files written into a folder of the server (Pulsar 1.0.11), while the server may keep running.</summary>
+    private CommandAck ExtractArchive(CommandEnvelope envelope, ExtractArchiveCommand command) =>
+        ArchiveOperation(envelope, command.ServerId, "Unzipping a file", (provisioned, progress, cancellationToken) =>
+            archives!.ExtractAsync(provisioned, command.Archive, command.Destination, command.Overwrite, progress, cancellationToken));
+
+    private CommandAck ArchiveOperation(CommandEnvelope envelope, Guid serverId, string what,
+        Func<ProvisionedServer, BackupProgress, CancellationToken, Task<ArchiveResult>> work)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", $"{what} is an operation.");
+        }
+
+        if (archives is null)
+        {
+            return new CommandAck(envelope.CommandId, AckStatus.UnsupportedCommand, "command.unsupported", null);
+        }
+
+        if (!_servers.TryGetValue(serverId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        return RunOperation(envelope, serverId, operationId, exclusive: false, async cancellationToken =>
+        {
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            return await work(provisioned, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
         });
     }
 

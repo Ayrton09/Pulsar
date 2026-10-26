@@ -364,6 +364,8 @@
         "file_moved": "移动或重命名了文件",
         "file_deleted": "删除了文件",
         "directory_created": "创建了文件夹",
+        "files_compress_requested": "请求压缩文件",
+        "files_extract_requested": "请求解压文件",
         "backup_requested": "请求创建备份",
         "backup_restore_requested": "请求还原备份",
         "backup_deleted": "删除了备份",
@@ -691,7 +693,9 @@
       "invalid_version": "文件版本无效。请重新加载文件。",
       "open_failed": "节点无法打开该文件：{{detail}}",
       "delete_failed": "节点无法删除它：{{detail}}",
-      "invalid_ticket": "节点拒绝了此传输。请重试。"
+      "invalid_ticket": "节点拒绝了此传输。请重试。",
+      "archive_invalid": "无法解压该 zip：{{detail}}",
+      "archive_unsupported": "此节点的代理无法压缩或解压文件。请在该节点上更新 Pulsar。"
     },
     "backups": {
       "not_found": "该备份不存在。",
@@ -1179,7 +1183,9 @@
         "addonInstall": "安装模组",
         "addonRemove": "移除模组",
         "modsChange": "更改模组",
-        "modpackInstall": "安装整合包"
+        "modpackInstall": "安装整合包",
+        "filesCompress": "压缩文件",
+        "filesExtract": "解压文件"
       },
       "statuses": {
         "queued": "排队中",
@@ -1273,6 +1279,7 @@
       "archiving": "压缩中",
       "checking": "正在检查压缩包",
       "restoring": "正在还原文件",
+      "extracting": "解压中",
       "saving": "正在请求游戏保存",
       "snapshotting": "正在创建磁盘快照",
       "cleaning": "正在删除较新的文件",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "删除 {{name}}",
     "deleteConfirm": "删除 {{name}}？此操作无法撤销。",
     "deleteFolderConfirm": "删除文件夹 {{name}} 及其中的所有内容？此操作无法撤销。",
+    "archives": {
+      "compress": "压缩",
+      "compressNamed": "压缩 {{name}}",
+      "compressTitle": "压缩 {{name}}",
+      "compressHint": "在旁边生成一个 zip，如果是文件夹则包含其全部内容。服务器可以继续运行；游戏占用打开的文件会被跳过。",
+      "zipName": "zip 名称",
+      "extract": "解压",
+      "extractNamed": "解压 {{name}}",
+      "extractTitle": "解压 {{name}}",
+      "extractHint": "将 zip 中的文件写入一个文件夹。服务器可以继续运行。",
+      "folder": "目标文件夹",
+      "folderHint": "此处的一个文件夹，不存在则创建。留空则解压到当前文件夹。",
+      "overwrite": "替换已存在的文件（否则只要有一个已存在就什么也不写）"
+    },
     "busy": "有操作正在更改此服务器的文件：在其结束前，更改会被阻止。",
     "nodeOffline": "节点已离线：重新连接前无法更改文件。",
     "nameProblems": {

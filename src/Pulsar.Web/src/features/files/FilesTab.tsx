@@ -7,7 +7,7 @@ import { endsSession } from '../../app/queryClient';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
-import { Field, Input } from '../../components/ui/Form';
+import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
@@ -16,9 +16,12 @@ import type { ServerDetails } from '../servers/api';
 import {
   downloadUrl,
   fileKeys,
+  isZip,
   MAX_EDITABLE_BYTES,
+  useCompressFiles,
   useCreateDirectory,
   useDeleteFile,
+  useExtractArchive,
   useFileListing,
   useMoveFile,
   writeFile,
@@ -79,8 +82,10 @@ export function FilesTab({ details }: { details: ServerDetails }) {
         path={path}
         canEdit={canEdit}
         // Operations that rewrite files (provision, install, update, restore, delete): the node refuses changes meanwhile.
-        // A backup only reads them.
-        busy={server.activeOperation !== null && server.activeOperation.type !== 'backupCreate'}
+        // A backup only reads them, and the file manager's zips work beside other changes.
+        busy={server.activeOperation !== null && !besideFileChanges.has(server.activeOperation.type)}
+        // The panel runs one operation at a time on a server: a zip waits for the one under way.
+        operating={server.activeOperation !== null}
         connected={server.nodeConnected}
         onOpenFolder={(folder) => go({ path: folder })}
         onOpenFile={(target) => go({ file: target })}
@@ -95,6 +100,8 @@ interface FileBrowserProps {
   path: string;
   canEdit: boolean;
   busy: boolean;
+  /** An operation runs on the server: no zip can start meanwhile. */
+  operating: boolean;
   /** Changes go through the node: none while it is disconnected. */
   connected: boolean;
   onOpenFolder: (path: string) => void;
@@ -103,13 +110,33 @@ interface FileBrowserProps {
 
 type NameAction = { kind: 'folder' } | { kind: 'file' } | { kind: 'rename'; entry: FileEntry };
 
-function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, onOpenFile }: FileBrowserProps) {
+type ArchiveAction = { kind: 'compress'; entry: FileEntry } | { kind: 'extract'; entry: FileEntry };
+
+/** Operations during which the node still takes changes to the files. */
+const besideFileChanges = new Set(['backupCreate', 'filesCompress', 'filesExtract']);
+
+/** Pulsar's own folder (by its name or its 8.3 short name): Pulsar changes it, and never zips it. */
+function inPulsarFolder(path: string): boolean {
+  return /^(\.pulsar|pulsar~[0-9]+)$/i.test(path.split('/')[0] ?? '');
+}
+
+function FileBrowser({
+  serverId,
+  path,
+  canEdit,
+  busy,
+  operating,
+  connected,
+  onOpenFolder,
+  onOpenFile,
+}: FileBrowserProps) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const formatSize = useFormatFileSize();
   const listing = useFileListing(serverId, path);
   const remove = useDeleteFile(serverId);
   const [naming, setNaming] = useState<NameAction | null>(null);
+  const [archiving, setArchiving] = useState<ArchiveAction | null>(null);
   const uploads = useUploads(serverId, path);
   const input = useRef<HTMLInputElement>(null);
   const blocked = busy || !connected;
@@ -278,6 +305,28 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                         )}
                         {canEdit && (
                           <>
+                            {isZip(entry) && !inPulsarFolder(target) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={blocked || operating}
+                                aria-label={t('files.archives.extractNamed', { name: visibleName(entry.name) })}
+                                onClick={() => setArchiving({ kind: 'extract', entry })}
+                              >
+                                {t('files.archives.extract')}
+                              </Button>
+                            )}
+                            {entry.kind !== 'link' && !inPulsarFolder(target) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={blocked || operating}
+                                aria-label={t('files.archives.compressNamed', { name: visibleName(entry.name) })}
+                                onClick={() => setArchiving({ kind: 'compress', entry })}
+                              >
+                                {t('files.archives.compress')}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -308,6 +357,9 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
         </>
       )}
 
+      {archiving && (
+        <ArchiveDialog serverId={serverId} directory={path} action={archiving} onDone={() => setArchiving(null)} />
+      )}
       {naming && (
         <NameDialog
           serverId={serverId}
@@ -405,6 +457,112 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
           </Button>
           <Button type="submit" busy={pending}>
             {action.kind === 'rename' ? t('files.rename') : t('actions.create')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+interface ArchiveDialogProps {
+  serverId: string;
+  directory: string;
+  action: ArchiveAction;
+  onDone: () => void;
+}
+
+/** A name without its last extension: "world" for "world.zip", "server" for "server.properties". */
+function stem(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/**
+ * Zips a file or folder into a new zip beside it, or writes a zip's files into a folder (by default a new one named
+ * like the zip; empty: this folder). The node does it as an operation: the server's page shows how far it got.
+ */
+function ArchiveDialog({ serverId, directory, action, onDone }: ArchiveDialogProps) {
+  const { t } = useTranslation();
+  const compress = useCompressFiles(serverId);
+  const extract = useExtractArchive(serverId);
+  const { entry } = action;
+  const [target, setTarget] = useState(
+    action.kind === 'compress' ? `${entry.kind === 'directory' ? entry.name : stem(entry.name)}.zip` : stem(entry.name),
+  );
+  const [overwrite, setOverwrite] = useState(false);
+  const [touched, setTouched] = useState(false);
+  // A zip's name is required; the folder it is written into may be this one (empty).
+  const problem = action.kind === 'compress' || target !== '' ? nameProblem(target) : null;
+  const shown = visibleName(target);
+  const error = compress.error ?? extract.error;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setTouched(true);
+    if (problem) {
+      return;
+    }
+    try {
+      if (action.kind === 'compress') {
+        await compress.mutateAsync({ directory, names: [entry.name], archive: joinPath(directory, target) });
+      } else {
+        await extract.mutateAsync({
+          archive: joinPath(directory, entry.name),
+          destination: target === '' ? directory : joinPath(directory, target),
+          overwrite,
+        });
+      }
+      onDone();
+    } catch {
+      // Shown in the dialog.
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onDone()}
+      title={t(action.kind === 'compress' ? 'files.archives.compressTitle' : 'files.archives.extractTitle', {
+        name: visibleName(entry.name),
+      })}
+      description={t(action.kind === 'compress' ? 'files.archives.compressHint' : 'files.archives.extractHint')}
+    >
+      <form onSubmit={(event) => void submit(event)} className="space-y-4" noValidate>
+        {error && <Alert>{errorMessage(t, error)}</Alert>}
+        <Field
+          label={t(action.kind === 'compress' ? 'files.archives.zipName' : 'files.archives.folder')}
+          error={touched && problem ? t(`files.nameProblems.${problem}`) : undefined}
+          hint={
+            shown !== target
+              ? t('files.hiddenInName', { name: shown })
+              : action.kind === 'extract'
+                ? t('files.archives.folderHint')
+                : undefined
+          }
+        >
+          {(ids) => (
+            <Input
+              {...ids}
+              autoFocus
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className="font-mono"
+            />
+          )}
+        </Field>
+        {action.kind === 'extract' && (
+          <Checkbox
+            label={t('files.archives.overwrite')}
+            checked={overwrite}
+            onChange={(e) => setOverwrite(e.target.checked)}
+          />
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onDone}>
+            {t('actions.cancel')}
+          </Button>
+          <Button type="submit" busy={compress.isPending || extract.isPending}>
+            {t(action.kind === 'compress' ? 'files.archives.compress' : 'files.archives.extract')}
           </Button>
         </div>
       </form>

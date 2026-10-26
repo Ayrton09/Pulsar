@@ -364,6 +364,8 @@
         "file_moved": "Datei verschoben oder umbenannt",
         "file_deleted": "Datei gelöscht",
         "directory_created": "Ordner erstellt",
+        "files_compress_requested": "Hat das Zippen von Dateien angefordert",
+        "files_extract_requested": "Hat das Entpacken einer Datei angefordert",
         "backup_requested": "Backup angefordert",
         "backup_restore_requested": "Wiederherstellung eines Backups angefordert",
         "backup_deleted": "Backup gelöscht",
@@ -691,7 +693,9 @@
       "invalid_version": "Die Dateiversion ist ungültig. Laden Sie die Datei neu.",
       "open_failed": "Der Node konnte die Datei nicht öffnen: {{detail}}",
       "delete_failed": "Der Node konnte sie nicht löschen: {{detail}}",
-      "invalid_ticket": "Die Übertragung wurde vom Node abgelehnt. Versuchen Sie es erneut."
+      "invalid_ticket": "Die Übertragung wurde vom Node abgelehnt. Versuchen Sie es erneut.",
+      "archive_invalid": "Das Zip lässt sich nicht entpacken: {{detail}}",
+      "archive_unsupported": "Der Agent dieses Knotens kann keine Dateien zippen oder entpacken. Aktualisiere Pulsar dort."
     },
     "backups": {
       "not_found": "Dieses Backup existiert nicht.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Mod installieren",
         "addonRemove": "Mod entfernen",
         "modsChange": "Mods ändern",
-        "modpackInstall": "Modpack installieren"
+        "modpackInstall": "Modpack installieren",
+        "filesCompress": "Dateien zippen",
+        "filesExtract": "Eine Datei entpacken"
       },
       "statuses": {
         "queued": "In der Warteschlange",
@@ -1273,6 +1279,7 @@
       "archiving": "wird komprimiert",
       "checking": "Archiv wird geprüft",
       "restoring": "Dateien werden wiederhergestellt",
+      "extracting": "entpacken",
       "saving": "Spiel wird zum Speichern aufgefordert",
       "snapshotting": "Snapshot des Datenträgers wird erstellt",
       "cleaning": "neuere Dateien werden gelöscht",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "{{name}} löschen",
     "deleteConfirm": "{{name}} löschen? Dies kann nicht rückgängig gemacht werden.",
     "deleteFolderConfirm": "Ordner {{name}} und alles darin löschen? Dies kann nicht rückgängig gemacht werden.",
+    "archives": {
+      "compress": "Zippen",
+      "compressNamed": "{{name}} zippen",
+      "compressTitle": "{{name}} zippen",
+      "compressHint": "Erstellt daneben ein Zip, bei einem Ordner mit allem darin. Der Server kann weiterlaufen; Dateien, die das Spiel offen hält, werden ausgelassen.",
+      "zipName": "Name des Zips",
+      "extract": "Entpacken",
+      "extractNamed": "{{name}} entpacken",
+      "extractTitle": "{{name}} entpacken",
+      "extractHint": "Schreibt die Dateien des Zips in einen Ordner. Der Server kann weiterlaufen.",
+      "folder": "In den Ordner",
+      "folderHint": "Ein Ordner hier, wird bei Bedarf erstellt. Leer lassen, um in diesen Ordner zu entpacken.",
+      "overwrite": "Vorhandene Dateien ersetzen (sonst wird nichts geschrieben, wenn eine existiert)"
+    },
     "busy": "Ein Vorgang ändert die Dateien dieses Servers: Änderungen sind gesperrt, bis er beendet ist.",
     "nodeOffline": "Der Node ist offline: Dateien können erst geändert werden, wenn er sich wieder verbindet.",
     "nameProblems": {

@@ -364,6 +364,8 @@
         "file_moved": "Moveu ou renomeou um arquivo",
         "file_deleted": "Excluiu um arquivo",
         "directory_created": "Criou uma pasta",
+        "files_compress_requested": "Pediu para compactar arquivos",
+        "files_extract_requested": "Pediu para descompactar um arquivo",
         "backup_requested": "Pediu um backup",
         "backup_restore_requested": "Pediu para restaurar um backup",
         "backup_deleted": "Excluiu um backup",
@@ -691,7 +693,9 @@
       "invalid_version": "A versão do arquivo não é válida. Recarregue o arquivo.",
       "open_failed": "O nó não conseguiu abrir o arquivo: {{detail}}",
       "delete_failed": "O nó não conseguiu excluí-lo: {{detail}}",
-      "invalid_ticket": "A transferência foi recusada pelo nó. Tente novamente."
+      "invalid_ticket": "A transferência foi recusada pelo nó. Tente novamente.",
+      "archive_invalid": "Não é possível descompactar o zip: {{detail}}",
+      "archive_unsupported": "O agente deste nó não pode compactar nem descompactar arquivos. Atualize o Pulsar nele."
     },
     "backups": {
       "not_found": "Esse backup não existe.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Instalar mod",
         "addonRemove": "Remover mod",
         "modsChange": "Alterar mods",
-        "modpackInstall": "Instalar modpack"
+        "modpackInstall": "Instalar modpack",
+        "filesCompress": "Compactar arquivos",
+        "filesExtract": "Descompactar um arquivo"
       },
       "statuses": {
         "queued": "Na fila",
@@ -1273,6 +1279,7 @@
       "archiving": "compactando",
       "checking": "verificando o arquivo compactado",
       "restoring": "restaurando arquivos",
+      "extracting": "descompactando",
       "saving": "pedindo ao jogo que salve",
       "snapshotting": "criando um instantâneo do disco",
       "cleaning": "excluindo arquivos mais novos",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "Excluir {{name}}",
     "deleteConfirm": "Excluir {{name}}? Isso não pode ser desfeito.",
     "deleteFolderConfirm": "Excluir a pasta {{name}} e tudo o que há nela? Isso não pode ser desfeito.",
+    "archives": {
+      "compress": "Compactar",
+      "compressNamed": "Compactar {{name}}",
+      "compressTitle": "Compactar {{name}}",
+      "compressHint": "Cria um zip ao lado, com tudo o que houver dentro se for uma pasta. O servidor pode continuar rodando; arquivos que o jogo mantém abertos ficam de fora.",
+      "zipName": "Nome do zip",
+      "extract": "Descompactar",
+      "extractNamed": "Descompactar {{name}}",
+      "extractTitle": "Descompactar {{name}}",
+      "extractHint": "Grava os arquivos do zip em uma pasta. O servidor pode continuar rodando.",
+      "folder": "Na pasta",
+      "folderHint": "Uma pasta aqui, criada se não existir. Deixe vazio para descompactar nesta pasta.",
+      "overwrite": "Substituir arquivos que já existem (senão nada é gravado se algum existir)"
+    },
     "busy": "Uma operação está alterando os arquivos deste servidor: as alterações ficam bloqueadas até ela terminar.",
     "nodeOffline": "O nó está offline: os arquivos não podem ser alterados até ele se reconectar.",
     "nameProblems": {

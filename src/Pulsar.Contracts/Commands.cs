@@ -56,6 +56,8 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
 [JsonDerivedType(typeof(ChangeModsCommand), ChangeModsCommand.Type)]
 [JsonDerivedType(typeof(InstallModpackCommand), InstallModpackCommand.Type)]
+[JsonDerivedType(typeof(CompressFilesCommand), CompressFilesCommand.Type)]
+[JsonDerivedType(typeof(ExtractArchiveCommand), ExtractArchiveCommand.Type)]
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 [JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
@@ -265,6 +267,36 @@ public sealed record InstallModpackCommand(Guid ServerId, ModDownload Pack, stri
     ModDownload? ServerPack = null) : AgentCommand
 {
     public const string Type = "server.modpack_install";
+}
+
+/// <summary>
+/// Operation: zips files and folders of one folder of the server into a new zip (Pulsar 1.0.11; docs/architecture/03,
+/// "Archives"), read and written as the file manager does (as the server's account, links never followed, files the game
+/// holds open skipped and counted). Each goes into the zip under its name, a folder with everything in it. The server may
+/// keep running. Completes with an <see cref="ArchiveResult"/>.
+/// </summary>
+/// <param name="Directory">The folder the files are in (<see cref="ServerFilePath.Root"/>: the server's folder).</param>
+/// <param name="Names">The files and folders, each a single segment of <paramref name="Directory"/>; at most <see cref="MaxNames"/>.</param>
+/// <param name="Archive">The new zip's path; it must not exist.</param>
+public sealed record CompressFilesCommand(Guid ServerId, string Directory, IReadOnlyList<string> Names, string Archive) : AgentCommand
+{
+    public const string Type = "server.files_compress";
+    public const int MaxNames = 100;
+}
+
+/// <summary>
+/// Operation: writes a zip's files into a folder of the server (Pulsar 1.0.11; docs/architecture/03, "Archives"), as the
+/// file manager does. Every entry is checked first: each must name a plain path below the folder (entries written with
+/// <c>\</c>, as some Windows tools do, are read with <c>/</c>), outside Pulsar's own files, once by any case, and all of
+/// them must fit on the disk above its floor; anything else refuses the whole zip before a file is written. An entry
+/// longer than it declares is damaged. The server may keep running. Completes with an <see cref="ArchiveResult"/>.
+/// </summary>
+/// <param name="Archive">The zip's path.</param>
+/// <param name="Destination">The folder the files go into; created when missing.</param>
+/// <param name="Overwrite">Files the folder has are replaced; otherwise any one of them refuses the whole zip first.</param>
+public sealed record ExtractArchiveCommand(Guid ServerId, string Archive, string Destination, bool Overwrite) : AgentCommand
+{
+    public const string Type = "server.files_extract";
 }
 
 /// <summary>Cancels a running operation (an install or update kills SteamCMD); it then completes as cancelled.</summary>
@@ -523,6 +555,7 @@ public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Tick
 [JsonDerivedType(typeof(AddonsResult), "addons.changed")]
 [JsonDerivedType(typeof(InstalledResult), "server.installed")]
 [JsonDerivedType(typeof(ModpackResult), "server.modpack_installed")]
+[JsonDerivedType(typeof(ArchiveResult), "files.archive")]
 [JsonDerivedType(typeof(PortsInUseResult), "node.ports_in_use")]
 public abstract record CommandResult;
 
@@ -545,6 +578,13 @@ public sealed record InstalledResult(string? GameVersion, IReadOnlyList<AddonRel
 /// in, the loader version the pack's index names, and how many of its files went on the server.
 /// </summary>
 public sealed record ModpackResult(string? GameVersion, string LoaderVersion, int Files) : CommandResult;
+
+/// <summary>
+/// A zip made (<see cref="CompressFilesCommand"/>: its size, the files it holds and those left out) or written out
+/// (<see cref="ExtractArchiveCommand"/>: the zip's size and the files written), Pulsar 1.0.11.
+/// </summary>
+/// <param name="Skipped">Files left out: held open by the game, or named so no path can name them.</param>
+public sealed record ArchiveResult(long Size, int Files, int Skipped = 0) : CommandResult;
 
 /// <summary>The ports in use on the node's machine (<see cref="ListPortsInUseCommand"/>), each once, at most <see cref="MaxPorts"/>.</summary>
 /// <param name="Truncated">There were more: the lowest numbers are the ones listed.</param>
@@ -722,6 +762,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string InstallModpack = InstallModpackCommand.Type;
 
+    /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
+    public const string CompressFiles = CompressFilesCommand.Type;
+
+    /// <summary>The agent writes a zip's files into a server (<see cref="ExtractArchiveCommand"/>, Pulsar 1.0.11).</summary>
+    public const string ExtractArchive = ExtractArchiveCommand.Type;
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 
@@ -802,6 +848,8 @@ public static class AgentCapabilities
         RemoveAddonCommand => RemoveAddon,
         ChangeModsCommand => ChangeMods,
         InstallModpackCommand => InstallModpack,
+        CompressFilesCommand => CompressFiles,
+        ExtractArchiveCommand => ExtractArchive,
         ForgetSteamLoginCommand => ForgetSteamLogin,
         UseAgentsAddressCommand => UseAgentsAddress,
         UpdatePulsarCommand => UpdatePulsar,

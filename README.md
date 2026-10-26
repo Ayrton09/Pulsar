@@ -48,8 +48,8 @@ best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk 
 - Restart after a crash, start with the machine, and server templates you can tweak or write yourself.
 
 **Files and data**
-- File manager in the browser with a code editor, uploads and downloads, and SFTP access (passwords or SSH keys) for
-  your favourite client.
+- File manager in the browser with a code editor, uploads and downloads, zip and unzip, and SFTP access (passwords or
+  SSH keys) for your favourite client.
 - Backups on the node or on S3-compatible storage, on demand or on a schedule, that ask the game to save first;
   restores in place or clean.
 - MySQL/MariaDB databases for game plugins, created per server.

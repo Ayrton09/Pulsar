@@ -89,6 +89,8 @@ public static class AuditActions
         public const string FileMoved = "server.file_moved";
         public const string FileDeleted = "server.file_deleted";
         public const string DirectoryCreated = "server.directory_created";
+        public const string FilesCompressRequested = "server.files_compress_requested";
+        public const string FilesExtractRequested = "server.files_extract_requested";
         public const string BackupRequested = "server.backup_requested";
         public const string BackupRestoreRequested = "server.backup_restore_requested";
         public const string BackupDeleted = "server.backup_deleted";

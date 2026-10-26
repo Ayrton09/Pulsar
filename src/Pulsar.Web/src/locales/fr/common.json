@@ -364,6 +364,8 @@
         "file_moved": "Déplacement ou renommage d'un fichier",
         "file_deleted": "Suppression d'un fichier",
         "directory_created": "Création d'un dossier",
+        "files_compress_requested": "A demandé de compresser des fichiers",
+        "files_extract_requested": "A demandé de décompresser un fichier",
         "backup_requested": "Demande de sauvegarde",
         "backup_restore_requested": "Demande de restauration d'une sauvegarde",
         "backup_deleted": "Suppression d'une sauvegarde",
@@ -691,7 +693,9 @@
       "invalid_version": "La version du fichier n'est pas valide. Rechargez le fichier.",
       "open_failed": "Le nœud n'a pas pu ouvrir le fichier : {{detail}}",
       "delete_failed": "Le nœud n'a pas pu le supprimer : {{detail}}",
-      "invalid_ticket": "Le transfert a été refusé par le nœud. Réessayez."
+      "invalid_ticket": "Le transfert a été refusé par le nœud. Réessayez.",
+      "archive_invalid": "Impossible de décompresser le zip : {{detail}}",
+      "archive_unsupported": "L'agent de ce nœud ne peut pas compresser ni décompresser de fichiers. Mettez Pulsar à jour sur ce nœud."
     },
     "backups": {
       "not_found": "Cette sauvegarde n'existe pas.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Installation d'un mod",
         "addonRemove": "Retrait d'un mod",
         "modsChange": "Modifier les mods",
-        "modpackInstall": "Installer un modpack"
+        "modpackInstall": "Installer un modpack",
+        "filesCompress": "Compresser des fichiers",
+        "filesExtract": "Décompresser un fichier"
       },
       "statuses": {
         "queued": "En file d'attente",
@@ -1273,6 +1279,7 @@
       "archiving": "compression",
       "checking": "vérification de l'archive",
       "restoring": "restauration des fichiers",
+      "extracting": "décompression",
       "saving": "demande de sauvegarde au jeu",
       "snapshotting": "capture d'un instantané du disque",
       "cleaning": "suppression des fichiers plus récents",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "Supprimer {{name}}",
     "deleteConfirm": "Supprimer {{name}} ? Cette action est irréversible.",
     "deleteFolderConfirm": "Supprimer le dossier {{name}} et tout son contenu ? Cette action est irréversible.",
+    "archives": {
+      "compress": "Compresser",
+      "compressNamed": "Compresser {{name}}",
+      "compressTitle": "Compresser {{name}}",
+      "compressHint": "Crée un zip à côté, avec tout son contenu s'il s'agit d'un dossier. Le serveur peut continuer à tourner ; les fichiers que le jeu garde ouverts sont laissés de côté.",
+      "zipName": "Nom du zip",
+      "extract": "Décompresser",
+      "extractNamed": "Décompresser {{name}}",
+      "extractTitle": "Décompresser {{name}}",
+      "extractHint": "Écrit les fichiers du zip dans un dossier. Le serveur peut continuer à tourner.",
+      "folder": "Dans le dossier",
+      "folderHint": "Un dossier ici, créé s'il n'existe pas. Laissez vide pour décompresser dans ce dossier.",
+      "overwrite": "Remplacer les fichiers qui existent déjà (sinon rien n'est écrit si l'un d'eux existe)"
+    },
     "busy": "Une opération modifie les fichiers de ce serveur : les modifications sont bloquées jusqu'à sa fin.",
     "nodeOffline": "Le nœud est hors ligne : les fichiers ne peuvent pas être modifiés tant qu'il ne se reconnecte pas.",
     "nameProblems": {

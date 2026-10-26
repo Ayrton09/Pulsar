@@ -18,6 +18,12 @@ public enum OperationType
 
     /// <summary>A modpack from a mod catalog installed, with the server type and game version it runs on (Pulsar 1.0.9).</summary>
     ModpackInstall,
+
+    /// <summary>Files and folders of the server zipped from the file manager (Pulsar 1.0.11).</summary>
+    FilesCompress,
+
+    /// <summary>A zip's files written into a folder of the server from the file manager (Pulsar 1.0.11).</summary>
+    FilesExtract,
 }
 
 public enum OperationStatus
@@ -96,7 +102,13 @@ public sealed class Operation
     public DateTimeOffset? CancelRequestedAt { get; private set; }
 
     public bool IsCancellable => IsActive && Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupCreate
-        or OperationType.AddonInstall or OperationType.ModpackInstall;
+        or OperationType.AddonInstall or OperationType.ModpackInstall or OperationType.FilesCompress or OperationType.FilesExtract;
+
+    /// <summary>
+    /// The game may run meanwhile, and start or stop: a backup and the file manager's zips read and write files as the
+    /// file manager does (doc 05). Every other operation keeps the server stopped.
+    /// </summary>
+    public static bool RunsBesideTheGame(OperationType type) => type is OperationType.BackupCreate or OperationType.FilesCompress or OperationType.FilesExtract;
 
     public bool IsActive => Status is OperationStatus.Queued or OperationStatus.Running;
 

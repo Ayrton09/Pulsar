@@ -279,6 +279,9 @@ public static class FileErrors
     /// <summary>A download asked to start before the beginning of the file (<see cref="SendFileCommand.Offset"/>).</summary>
     public const string InvalidOffset = "files.invalid_offset";
     public const string Failed = "files.failed";
+
+    /// <summary>A zip that cannot be written out as it is: damaged, encrypted, or naming a path it may not (Pulsar 1.0.11).</summary>
+    public const string ArchiveInvalid = "files.archive_invalid";
 }
 
 /// <summary>Error codes of backup commands and operations (besides <see cref="FileErrors"/> from reading and writing server files).</summary>

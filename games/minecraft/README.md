@@ -46,3 +46,7 @@ They come from the Minecraft wiki's `server.properties` table; none was tried on
 ## Players (1.0.11)
 
 The Players card kicks, bans and unbans (`pardon`), adds to and takes off the whitelist, and makes and unmakes operators (`op`, `deop`) by name, and shows `banned-players.json`, `whitelist.json` and `ops.json` with a button that takes a player off each. The whitelist applies once **Whitelist** is on in the server's settings. Checked on 2026-10-26 on Windows 11 Pro with a Mojang 26.3 server, a real agent and the published panel: whitelist, op and ban from the card's field reached the console ("Added Notch to the whitelist", "Made Notch a server operator", "Banned Notch"), the three lists showed Notch, and unban, deop and a whitelist add from the card emptied and filled them again; a kick of a player who was not there answered "No player was found". Every action is in the audit log.
+
+## Backups of a running server (1.0.11)
+
+Newer versions print the save's confirmation as `System chat: Saved the game`: the template takes both forms (still not a player's chat line), so a backup goes on as soon as the game saved instead of waiting its two minutes. Read live (no snapshot), a backup or a zip leaves out `world/session.lock`, which the game keeps locked. Checked on 2026-10-26 with a Mojang 26.3 server and the dev agent (no snapshot): the save was confirmed, 31 files backed up and 1 left out, in a third of a second; the world zipped from the file manager while the server ran (25 files, `session.lock` left out) and unzipped into another folder.

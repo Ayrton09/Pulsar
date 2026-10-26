@@ -484,6 +484,8 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Players from the panel: kick, ban, whitelist and admins with the game's own commands, from the Players card or by name, and the game's lists (doc 04, "Players"; doc 07; doc 08, "Player actions"). New permission `server.players.manage`; agent capability `manifest.player_commands`.
 - A node whose agent does not read a newer template yet keeps it pending (its servers move once the node updates) instead of refusing it.
+- A backup read live (no snapshot) leaves out a file the game keeps locked (Minecraft's `session.lock`) instead of failing; Minecraft's template takes the save confirmation newer versions print (`System chat: Saved the game`), so a backup no longer waits two minutes for it.
+- Zips in the file manager: zip files and folders, unzip a `.zip` into a folder, while the game keeps running (doc 03, "Archives"; doc 07; doc 08, "File manager"). Agent capabilities `server.files_compress` and `server.files_extract`.
 
 ## Before the first public release
 

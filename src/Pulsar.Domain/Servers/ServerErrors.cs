@@ -152,6 +152,10 @@ public static class ServerErrors
     public static DomainError TemplateVersionExists { get; } =
         new("template.version_exists", "That game key and version are already registered: templates never change, give it a new version.");
 
+    /// <summary>The node's agent predates the file manager's zips (Pulsar 1.0.11).</summary>
+    public static DomainError ArchivesUnsupported { get; } =
+        new("files.archive_unsupported", "This node's agent cannot zip or unzip files: update Pulsar on it.");
+
     public static DomainError FilesUnsupported { get; } =
         new("files.unsupported", "The node's agent has no file manager (update the agent).");
 

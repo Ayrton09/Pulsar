@@ -845,7 +845,12 @@ public sealed partial class ServerManagement(
             return ServerErrors.OperationNotCancellable;
         }
 
-        var needed = operation.Type == OperationType.BackupCreate ? Permissions.Server.BackupsCreate : Permissions.Server.Install;
+        var needed = operation.Type switch
+        {
+            OperationType.BackupCreate => Permissions.Server.BackupsCreate,
+            OperationType.FilesCompress or OperationType.FilesExtract => Permissions.Server.FilesEdit,
+            _ => Permissions.Server.Install,
+        };
         if (request.UserId is not { } user
             || !await permissions.HasAsync(user, needed, AccessTarget.ForServer(server.Id, server.NodeId), cancellationToken))
         {

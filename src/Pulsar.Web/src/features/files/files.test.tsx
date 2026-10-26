@@ -102,6 +102,11 @@ const listings: Record<string, Schemas['FileEntry'][]> = {
   // Folders the panel could not list whole: one over the listing's cap, one with names it cannot open.
   capped: [{ name: 'a.cfg', kind: 'file', size: 1, modifiedAt: at }],
   hidden: [{ name: 'b.cfg', kind: 'file', size: 1, modifiedAt: at }],
+  worlds: [
+    { name: 'world', kind: 'directory', size: 0, modifiedAt: at },
+    { name: 'World.ZIP', kind: 'file', size: 2048, modifiedAt: at },
+    { name: 'shortcut', kind: 'link', size: 0, modifiedAt: at },
+  ],
 };
 const incomplete: Record<string, { truncated: boolean; skipped: number }> = {
   capped: { truncated: true, skipped: 0 },
@@ -377,6 +382,123 @@ describe('files tab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete csgo' }));
     await waitFor(() => expect(deleted).toEqual(['game/csgo']));
     expect(confirm).toHaveBeenCalledWith('Delete the folder csgo and everything in it? This cannot be undone.');
+  });
+
+  it('zips a folder beside it and unzips a zip into a folder named like it, or into this one', async () => {
+    const sent: { path: string; body: unknown }[] = [];
+    const operation = (type: string) =>
+      json({
+        id: '0192f1a0-0000-7000-8000-0000000000c9',
+        type,
+        status: 'running',
+        stage: null,
+        percent: null,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: at,
+        completedAt: null,
+        cancellable: true,
+        cancelRequested: false,
+      });
+    let unsupported = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+      [`POST /api/v1/servers/${serverId}/files/compress`]: async (request) => {
+        sent.push({ path: 'compress', body: await request.json() });
+        return operation('filesCompress');
+      },
+      [`POST /api/v1/servers/${serverId}/files/extract`]: async (request) => {
+        sent.push({ path: 'extract', body: await request.json() });
+        return unsupported ? problem(409, 'files.archive_unsupported') : operation('filesExtract');
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=files&path=worlds`);
+    await screen.findByRole('button', { name: 'world/' });
+    // A link is never followed, so never zipped; only a zip is offered to unzip.
+    expect(screen.queryByRole('button', { name: 'Zip shortcut' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unzip world' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zip world' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Zip world' });
+    expect(within(dialog).getByLabelText('Zip name')).toHaveValue('world.zip');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Zip' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Unzip World.ZIP' }));
+    dialog = await screen.findByRole('dialog', { name: 'Unzip World.ZIP' });
+    expect(within(dialog).getByLabelText('Into the folder')).toHaveValue('World');
+    await userEvent.click(within(dialog).getByLabelText(/Replace files that already exist/));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Unzip' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Into this folder, on a node that cannot: the dialog stays and says why.
+    unsupported = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Unzip World.ZIP' }));
+    dialog = await screen.findByRole('dialog', { name: 'Unzip World.ZIP' });
+    await userEvent.clear(within(dialog).getByLabelText('Into the folder'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Unzip' }));
+    expect(
+      await within(dialog).findByText("This node's agent cannot zip or unzip files. Update Pulsar on it."),
+    ).toBeInTheDocument();
+
+    expect(sent).toEqual([
+      { path: 'compress', body: { directory: 'worlds', names: ['world'], archive: 'worlds/world.zip' } },
+      { path: 'extract', body: { archive: 'worlds/World.ZIP', destination: 'worlds/World', overwrite: true } },
+      { path: 'extract', body: { archive: 'worlds/World.ZIP', destination: 'worlds', overwrite: false } },
+    ]);
+  });
+
+  it("never offers to zip Pulsar's own folder, by its name or its short name", async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: () =>
+        json({
+          path: '',
+          entries: [
+            { name: '.pulsar', kind: 'directory', size: 0, modifiedAt: at },
+            { name: 'PULSAR~1', kind: 'directory', size: 0, modifiedAt: at },
+            { name: 'world', kind: 'directory', size: 0, modifiedAt: at },
+          ],
+          truncated: false,
+          skipped: 0,
+        }),
+    });
+    renderAt(`/servers/${serverId}?tab=files`);
+    await screen.findByRole('button', { name: 'world/' });
+
+    expect(screen.queryByRole('button', { name: 'Zip .pulsar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zip PULSAR~1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zip world' })).toBeInTheDocument();
+  });
+
+  it('offers no zip while another operation runs, and still other changes during a backup', async () => {
+    const backup: Schemas['OperationView'] = {
+      id: '0192f1a0-0000-7000-8000-0000000000ca',
+      type: 'backupCreate',
+      status: 'running',
+      stage: 'archiving',
+      percent: 40,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: at,
+      completedAt: null,
+      cancellable: true,
+      cancelRequested: false,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json({ ...details, server: { ...server, activeOperation: backup } }),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    renderAt(`/servers/${serverId}?tab=files&path=worlds`);
+    await screen.findByRole('button', { name: 'world/' });
+
+    expect(screen.getByRole('button', { name: 'Zip world' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Unzip World.ZIP' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rename world' })).toBeEnabled();
   });
 
   it('edits a file and saves it against the version it opened', async () => {

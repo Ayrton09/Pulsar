@@ -511,8 +511,10 @@ CREATE TABLE operations (
     type                 text NOT NULL CHECK (type IN (
                              'server_provision','server_install','server_update',
                              'server_delete','backup_create','backup_restore',
-                             'addon_install','addon_remove','mods_change','modpack_install')),
-                             -- a reinstall is provision + install; deleting a backup is a plain command
+                             'addon_install','addon_remove','mods_change','modpack_install',
+                             'files_compress','files_extract')),
+                             -- a reinstall is provision + install; deleting a backup is a plain command;
+                             -- the file manager's zips (1.0.11) run beside the game, as a backup does
     status               text NOT NULL CHECK (status IN (
                              'queued','running','succeeded','failed','cancelled','interrupted')),
     node_id              uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,

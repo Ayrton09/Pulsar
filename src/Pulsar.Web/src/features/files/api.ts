@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, readCookie, unwrap, XSRF_COOKIES, XSRF_HEADER, type Schemas } from '../../api/client';
+import { invalidateServer } from '../servers/api';
 
 export type FileEntry = Schemas['FileEntry'];
 export type FileListing = Schemas['FileListing'];
@@ -40,6 +41,33 @@ export function useCreateDirectory(serverId: string) {
       ),
     onSettled: invalidate,
   });
+}
+
+/**
+ * Zips files and folders of a folder into a new zip, or writes a zip's files into a folder: operations the server's
+ * page follows (its progress bar), after which the panel says the server changed and the listing is read again.
+ */
+export function useCompressFiles(serverId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { directory: string; names: string[]; archive: string }) =>
+      unwrap(api.POST('/api/v1/servers/{id}/files/compress', { params: { path: { id: serverId } }, body })),
+    onSettled: () => invalidateServer(queryClient, serverId),
+  });
+}
+
+export function useExtractArchive(serverId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { archive: string; destination: string; overwrite: boolean }) =>
+      unwrap(api.POST('/api/v1/servers/{id}/files/extract', { params: { path: { id: serverId } }, body })),
+    onSettled: () => invalidateServer(queryClient, serverId),
+  });
+}
+
+/** Whether a file is a zip the file manager offers to unzip (by its name, as Windows decides). */
+export function isZip(entry: FileEntry): boolean {
+  return entry.kind === 'file' && entry.name.toLowerCase().endsWith('.zip');
 }
 
 export function useMoveFile(serverId: string) {

@@ -35,7 +35,7 @@ public static class ApiProblems
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "server.port_taken" or "server.port_not_allocated"
             or "template.version_exists" or "operation.not_cancellable" or "update.changed"
-            or "files.unsupported" or "files.sftp_unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use" or "files.transfers_busy"
+            or "files.unsupported" or "files.sftp_unsupported" or "files.archive_unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use" or "files.transfers_busy"
             or "backups.unsupported" or "backups.clean_unsupported" or "backups.clean_incomplete" or "server.limits_unsupported" or "backups.not_completed" or "backups.locked" or "backups.in_use" or "backups.corrupt"
             or "api_key.too_many" or "ssh_key.too_many" or "ssh_key.duplicate" or "enrollment_token.too_many" or "addon.unsupported" or "addon.requires" or "addon.conflicts" or "addon.required_by"
             or "schedules.too_many" or "schedules.sequence_running" or "schedules.sequence_over" or "server.update_check_unsupported"

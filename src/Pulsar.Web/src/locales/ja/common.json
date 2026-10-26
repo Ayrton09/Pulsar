@@ -364,6 +364,8 @@
         "file_moved": "ファイルを移動または名前変更",
         "file_deleted": "ファイルを削除",
         "directory_created": "フォルダーを作成",
+        "files_compress_requested": "ファイルの圧縮を依頼しました",
+        "files_extract_requested": "ファイルの展開を依頼しました",
         "backup_requested": "バックアップを要求",
         "backup_restore_requested": "バックアップの復元を要求",
         "backup_deleted": "バックアップを削除",
@@ -691,7 +693,9 @@
       "invalid_version": "ファイルのバージョンが正しくありません。ファイルを再読み込みしてください。",
       "open_failed": "ノードがファイルを開けませんでした: {{detail}}",
       "delete_failed": "ノードが削除できませんでした: {{detail}}",
-      "invalid_ticket": "転送がノードに拒否されました。もう一度お試しください。"
+      "invalid_ticket": "転送がノードに拒否されました。もう一度お試しください。",
+      "archive_invalid": "ZIP を展開できません: {{detail}}",
+      "archive_unsupported": "このノードのエージェントはファイルの圧縮・展開ができません。そのノードの Pulsar を更新してください。"
     },
     "backups": {
       "not_found": "そのバックアップは存在しません。",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Modのインストール",
         "addonRemove": "Modの削除",
         "modsChange": "Mod の変更",
-        "modpackInstall": "Modpack のインストール"
+        "modpackInstall": "Modpack のインストール",
+        "filesCompress": "ファイルを ZIP に圧縮",
+        "filesExtract": "ファイルを展開"
       },
       "statuses": {
         "queued": "待機中",
@@ -1273,6 +1279,7 @@
       "archiving": "圧縮中",
       "checking": "アーカイブを確認中",
       "restoring": "ファイルを復元中",
+      "extracting": "展開中",
       "saving": "ゲームに保存を要求中",
       "snapshotting": "ディスクのスナップショットを作成中",
       "cleaning": "新しいファイルを削除中",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "{{name}}を削除",
     "deleteConfirm": "{{name}}を削除しますか?この操作は元に戻せません。",
     "deleteFolderConfirm": "フォルダー{{name}}とその中のすべてを削除しますか?この操作は元に戻せません。",
+    "archives": {
+      "compress": "ZIP に圧縮",
+      "compressNamed": "{{name}} を ZIP に圧縮",
+      "compressTitle": "{{name}} を ZIP に圧縮",
+      "compressHint": "隣に ZIP を作ります。フォルダーなら中身をすべて含めます。サーバーは動かしたままで構いません。ゲームが開いているファイルは含まれません。",
+      "zipName": "ZIP の名前",
+      "extract": "展開",
+      "extractNamed": "{{name}} を展開",
+      "extractTitle": "{{name}} を展開",
+      "extractHint": "ZIP のファイルをフォルダーに書き込みます。サーバーは動かしたままで構いません。",
+      "folder": "展開先フォルダー",
+      "folderHint": "ここにあるフォルダー（なければ作成）。空にするとこのフォルダーに展開します。",
+      "overwrite": "既存のファイルを置き換える（オフの場合、既存のファイルがあると何も書き込みません）"
+    },
     "busy": "ある操作がこのサーバーのファイルを変更中です。完了するまで変更できません。",
     "nodeOffline": "ノードがオフラインです。再接続するまでファイルを変更できません。",
     "nameProblems": {

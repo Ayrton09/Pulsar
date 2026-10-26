@@ -364,6 +364,8 @@
         "file_moved": "파일 이동 또는 이름 변경",
         "file_deleted": "파일 삭제",
         "directory_created": "폴더 생성",
+        "files_compress_requested": "파일 압축을 요청함",
+        "files_extract_requested": "파일 압축 풀기를 요청함",
         "backup_requested": "백업 요청",
         "backup_restore_requested": "백업 복원 요청",
         "backup_deleted": "백업 삭제",
@@ -691,7 +693,9 @@
       "invalid_version": "파일 버전이 올바르지 않습니다. 파일을 다시 불러오세요.",
       "open_failed": "노드에서 파일을 열지 못했습니다: {{detail}}",
       "delete_failed": "노드에서 삭제하지 못했습니다: {{detail}}",
-      "invalid_ticket": "노드에서 전송을 거부했습니다. 다시 시도하세요."
+      "invalid_ticket": "노드에서 전송을 거부했습니다. 다시 시도하세요.",
+      "archive_invalid": "zip의 압축을 풀 수 없습니다: {{detail}}",
+      "archive_unsupported": "이 노드의 에이전트는 파일을 압축하거나 풀 수 없습니다. 그 노드의 Pulsar를 업데이트하세요."
     },
     "backups": {
       "not_found": "해당 백업이 존재하지 않습니다.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "모드 설치",
         "addonRemove": "모드 제거",
         "modsChange": "모드 변경",
-        "modpackInstall": "모드팩 설치"
+        "modpackInstall": "모드팩 설치",
+        "filesCompress": "파일 압축",
+        "filesExtract": "파일 압축 풀기"
       },
       "statuses": {
         "queued": "대기 중",
@@ -1273,6 +1279,7 @@
       "archiving": "압축 중",
       "checking": "압축 파일 확인 중",
       "restoring": "파일 복원 중",
+      "extracting": "압축 푸는 중",
       "saving": "게임에 저장 요청 중",
       "snapshotting": "디스크 스냅샷 생성 중",
       "cleaning": "더 새로운 파일 삭제 중",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "{{name}} 삭제",
     "deleteConfirm": "{{name}}을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
     "deleteFolderConfirm": "폴더 {{name}}과(와) 그 안의 모든 항목을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+    "archives": {
+      "compress": "압축",
+      "compressNamed": "{{name}} 압축",
+      "compressTitle": "{{name}} 압축",
+      "compressHint": "옆에 zip을 만듭니다. 폴더라면 안의 모든 것을 담습니다. 서버는 계속 실행해도 됩니다. 게임이 열어 둔 파일은 빠집니다.",
+      "zipName": "zip 이름",
+      "extract": "압축 풀기",
+      "extractNamed": "{{name}} 압축 풀기",
+      "extractTitle": "{{name}} 압축 풀기",
+      "extractHint": "zip의 파일을 폴더에 씁니다. 서버는 계속 실행해도 됩니다.",
+      "folder": "대상 폴더",
+      "folderHint": "여기의 폴더이며, 없으면 만듭니다. 비워 두면 이 폴더에 풉니다.",
+      "overwrite": "이미 있는 파일 바꾸기 (끄면 하나라도 있으면 아무것도 쓰지 않음)"
+    },
     "busy": "작업이 이 서버의 파일을 변경하는 중입니다. 작업이 끝날 때까지 변경할 수 없습니다.",
     "nodeOffline": "노드가 오프라인입니다. 다시 연결될 때까지 파일을 변경할 수 없습니다.",
     "nameProblems": {

@@ -2452,7 +2452,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_operations_status", "status IN ('cancelled', 'failed', 'interrupted', 'queued', 'running', 'succeeded')");
 
-                            t.HasCheckConstraint("ck_operations_type", "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'modpack_install', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_operations_type", "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'files_compress', 'files_extract', 'modpack_install', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
                         });
                 });
 
@@ -2618,7 +2618,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("servers", null, t =>
                         {
-                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'modpack_install', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'files_compress', 'files_extract', 'modpack_install', 'mods_change', 'server_delete', 'server_install', 'server_provision', 'server_update')");
 
                             t.HasCheckConstraint("ck_servers_backup_limit", "backup_limit BETWEEN 1 AND 1000");
 

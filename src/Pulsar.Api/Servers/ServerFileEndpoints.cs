@@ -17,6 +17,21 @@ public sealed record MoveFileRequest(
     [property: Required, StringLength(ServerFilePath.MaxLength, MinimumLength = 1)] string Path,
     [property: Required, StringLength(ServerFilePath.MaxLength, MinimumLength = 1)] string Destination);
 
+/// <param name="Directory">The folder the files are in; empty or left out: the server's folder.</param>
+/// <param name="Names">The files and folders of <paramref name="Directory"/> to zip, each a single name.</param>
+/// <param name="Archive">The new zip's path.</param>
+public sealed record CompressFilesRequest(
+    [property: StringLength(ServerFilePath.MaxLength)] string? Directory,
+    [property: Required, MinLength(1), MaxLength(CompressFilesCommand.MaxNames)] IReadOnlyList<string> Names,
+    [property: Required, StringLength(ServerFilePath.MaxLength, MinimumLength = 1)] string Archive);
+
+/// <param name="Destination">The folder the zip's files go into (created when missing); empty or left out: the server's folder.</param>
+/// <param name="Overwrite">Replace files the folder has; otherwise any one of them refuses the whole zip before anything is written.</param>
+public sealed record ExtractArchiveRequest(
+    [property: Required, StringLength(ServerFilePath.MaxLength, MinimumLength = 1)] string Archive,
+    [property: StringLength(ServerFilePath.MaxLength)] string? Destination,
+    bool Overwrite = false);
+
 /// <summary>
 /// The file manager (docs/architecture/07, "Files"). Paths are relative to the server directory, with forward slashes.
 /// Content is raw bytes both ways: <c>GET …/content</c> opens a file for the editor (up to 1 MiB, with its version
@@ -54,6 +69,13 @@ public static class ServerFileEndpoints
             .RequirePermission(Permissions.Server.FilesEdit);
         files.MapDelete("/", async (Guid id, [Required] string path, ServerFiles f, CancellationToken ct) =>
                 (await f.DeleteAsync(new ServerId(id), path, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.FilesEdit);
+        // Operations (Pulsar 1.0.11): the answer is the operation, which the server's page follows to its end.
+        files.MapPost("/compress", async (Guid id, CompressFilesRequest request, ServerArchives a, CancellationToken ct) =>
+                (await a.CompressAsync(new ServerId(id), request.Directory, request.Names, request.Archive, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.FilesEdit);
+        files.MapPost("/extract", async (Guid id, ExtractArchiveRequest request, ServerArchives a, CancellationToken ct) =>
+                (await a.ExtractAsync(new ServerId(id), request.Archive, request.Destination, request.Overwrite, ct)).ToHttp())
             .RequirePermission(Permissions.Server.FilesEdit);
         return api;
     }

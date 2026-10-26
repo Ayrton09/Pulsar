@@ -55,9 +55,14 @@ export function OperationProgress({
   const me = useCurrentUser();
   const cancel = useCancelOperation();
   const percent = operation.percent == null ? null : Math.round(operation.percent);
-  // Backups are cancelled by whoever may make them; installs and updates by whoever may install.
+  // Backups are cancelled by whoever may make them, the file manager's zips by whoever may change files, installs and
+  // updates by whoever may install.
   const cancelPermission =
-    operation.type === 'backupCreate' ? Permission.ServerBackupsCreate : Permission.ServerInstall;
+    operation.type === 'backupCreate'
+      ? Permission.ServerBackupsCreate
+      : operation.type === 'filesCompress' || operation.type === 'filesExtract'
+        ? Permission.ServerFilesEdit
+        : Permission.ServerInstall;
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -93,6 +93,27 @@ public sealed class ServerTests
         Assert.True(server.BeginOperation(provision, s_now).IsSuccess);
     }
 
+    [Theory]
+    [InlineData(OperationType.FilesCompress)]
+    [InlineData(OperationType.FilesExtract)]
+    [InlineData(OperationType.BackupCreate)]
+    public void TheFileManagersZipsLikeABackupRunBesideTheGame(OperationType type)
+    {
+        // Pulsar 1.0.11: they work on the files as the file manager does, so the game may run, start and restart meanwhile.
+        var server = NewServer();
+        var zip = Operation.Create(type, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        Assert.Equal(ServerErrors.NotInstalled, server.BeginOperation(zip, s_now).Error);
+
+        Install(server);
+        server.Observe(ServerRuntimeState.Running, ServerStateReason.Ready, null, 1, s_now, snapshot: false);
+        Assert.True(server.BeginOperation(zip, s_now).IsSuccess);
+        Assert.True(server.RequestStart(s_now).IsSuccess);
+        Assert.True(zip.IsCancellable);
+
+        var update = Operation.Create(OperationType.ServerUpdate, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        Assert.Equal(ServerErrors.Busy, server.BeginOperation(update, s_now).Error); // still one operation at a time
+    }
+
     [Fact]
     public void ANewServerCanBeProvisioned()
     {

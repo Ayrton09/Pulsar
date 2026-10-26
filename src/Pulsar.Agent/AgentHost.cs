@@ -145,6 +145,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<FileCommands>();
             builder.Services.AddSingleton<IRemoteBackupStore, S3RemoteBackupStore>();
             builder.Services.AddSingleton<BackupStore>();
+            builder.Services.AddSingleton<FileArchives>();
             // Backups of running games read a snapshot of their volume (docs/architecture/06, "Backup snapshots");
             // Pulsar:BackupSnapshots false reads them live, as before Phase 15.
             var backupSnapshots = builder.Configuration.GetValue("Pulsar:BackupSnapshots", true);

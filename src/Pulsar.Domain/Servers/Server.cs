@@ -223,7 +223,7 @@ public sealed class Server
         }
 
         if (operation.Type is OperationType.ServerUpdate or OperationType.BackupCreate or OperationType.BackupRestore
-                or OperationType.AddonInstall or OperationType.AddonRemove
+                or OperationType.AddonInstall or OperationType.AddonRemove or OperationType.FilesCompress or OperationType.FilesExtract
             && InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
@@ -302,8 +302,9 @@ public sealed class Server
             return ServerErrors.NotInstalled;
         }
 
-        // A backup reads the files while the game runs (doc 05); every other operation keeps the server stopped.
-        if (ActiveOperationId is not null && ActiveOperationType != OperationType.BackupCreate)
+        // A backup and the file manager's zips work on the files while the game runs (doc 05); every other operation keeps
+        // the server stopped.
+        if (ActiveOperationId is not null && !(ActiveOperationType is { } type && Operation.RunsBesideTheGame(type)))
         {
             return ServerErrors.Busy;
         }

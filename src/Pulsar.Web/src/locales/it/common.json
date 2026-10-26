@@ -364,6 +364,8 @@
         "file_moved": "Ha spostato o rinominato un file",
         "file_deleted": "Ha eliminato un file",
         "directory_created": "Ha creato una cartella",
+        "files_compress_requested": "Ha chiesto di comprimere dei file",
+        "files_extract_requested": "Ha chiesto di decomprimere un file",
         "backup_requested": "Ha richiesto un backup",
         "backup_restore_requested": "Ha chiesto di ripristinare un backup",
         "backup_deleted": "Ha eliminato un backup",
@@ -691,7 +693,9 @@
       "invalid_version": "La versione del file non è valida. Ricaricare il file.",
       "open_failed": "Il nodo non ha potuto aprire il file: {{detail}}",
       "delete_failed": "Il nodo non ha potuto eliminarlo: {{detail}}",
-      "invalid_ticket": "Il trasferimento è stato rifiutato dal nodo. Riprovare."
+      "invalid_ticket": "Il trasferimento è stato rifiutato dal nodo. Riprovare.",
+      "archive_invalid": "Impossibile decomprimere lo zip: {{detail}}",
+      "archive_unsupported": "L'agente di questo nodo non può comprimere né decomprimere file. Aggiorna Pulsar su quel nodo."
     },
     "backups": {
       "not_found": "Questo backup non esiste.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Installa mod",
         "addonRemove": "Rimuovi mod",
         "modsChange": "Modifica mod",
-        "modpackInstall": "Installa modpack"
+        "modpackInstall": "Installa modpack",
+        "filesCompress": "Comprimi file",
+        "filesExtract": "Decomprimi un file"
       },
       "statuses": {
         "queued": "In coda",
@@ -1273,6 +1279,7 @@
       "archiving": "compressione",
       "checking": "verifica dell'archivio",
       "restoring": "ripristino dei file",
+      "extracting": "decompressione",
       "saving": "richiesta di salvataggio al gioco",
       "snapshotting": "creazione di uno snapshot del disco",
       "cleaning": "eliminazione dei file più recenti",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "Elimina {{name}}",
     "deleteConfirm": "Eliminare {{name}}? L'operazione non può essere annullata.",
     "deleteFolderConfirm": "Eliminare la cartella {{name}} e tutto il suo contenuto? L'operazione non può essere annullata.",
+    "archives": {
+      "compress": "Comprimi",
+      "compressNamed": "Comprimi {{name}}",
+      "compressTitle": "Comprimi {{name}}",
+      "compressHint": "Crea uno zip accanto, con tutto il contenuto se è una cartella. Il server può continuare a funzionare; i file che il gioco tiene aperti restano fuori.",
+      "zipName": "Nome dello zip",
+      "extract": "Decomprimi",
+      "extractNamed": "Decomprimi {{name}}",
+      "extractTitle": "Decomprimi {{name}}",
+      "extractHint": "Scrive i file dello zip in una cartella. Il server può continuare a funzionare.",
+      "folder": "Nella cartella",
+      "folderHint": "Una cartella qui, creata se non esiste. Lascia vuoto per decomprimere in questa cartella.",
+      "overwrite": "Sostituisci i file che esistono già (altrimenti non viene scritto nulla se uno esiste)"
+    },
     "busy": "Un'operazione sta modificando i file di questo server: le modifiche sono bloccate fino al suo termine.",
     "nodeOffline": "Il nodo è offline: i file non possono essere modificati finché non si riconnette.",
     "nameProblems": {

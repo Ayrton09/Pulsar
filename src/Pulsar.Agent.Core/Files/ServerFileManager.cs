@@ -91,6 +91,7 @@ public sealed class TreeWalk : IReadOnlyList<TreeEntry>
 
     private readonly List<TreeEntry> _entries = [];
     private readonly List<string> _sample = [];
+    private readonly List<string> _refused = [];
 
     public int Count => _entries.Count;
 
@@ -114,7 +115,21 @@ public sealed class TreeWalk : IReadOnlyList<TreeEntry>
         {
             _sample.Add(path);
         }
+
+        if (_refused.Count < ServerFileRules.MaxWalkEntries)
+        {
+            _refused.Add(path);
+        }
     }
+
+    /// <summary>
+    /// How many refused entries are one of <paramref name="paths"/> or lie below one; all of them when there were more
+    /// than the walk keeps the paths of.
+    /// </summary>
+    public int RefusedUnder(IReadOnlyCollection<string> paths) =>
+        _refused.Count < Refused
+            ? Refused
+            : _refused.Count(r => paths.Any(p => r.Equals(p, StringComparison.OrdinalIgnoreCase) || ServerFilePath.IsInside(r, p)));
 
     public IEnumerator<TreeEntry> GetEnumerator() => _entries.GetEnumerator();
 

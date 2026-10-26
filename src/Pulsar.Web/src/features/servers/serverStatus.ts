@@ -60,11 +60,15 @@ export interface ServerActions {
   delete: boolean;
 }
 
+/** Operations the game may run, start and stop beside (the API's Operation.RunsBesideTheGame). */
+const besideTheGame = new Set(['backupCreate', 'filesCompress', 'filesExtract']);
+
 /** Which actions make sense now (permissions are checked separately; the API decides in the end). */
 export function serverActions(server: StatusFields & Pick<ServerSummary, 'nodeConnected'>): ServerActions {
   const idle = server.activeOperation === null;
-  // A backup reads the files while the game runs: starting and restarting stay possible (docs/architecture/05).
-  const free = idle || server.activeOperation?.type === 'backupCreate';
+  // A backup and the file manager's zips work on the files while the game runs: starting and restarting stay possible
+  // (docs/architecture/05).
+  const free = idle || besideTheGame.has(server.activeOperation?.type ?? '');
   const connected = server.nodeConnected;
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
   const alive = server.runtimeState === 'starting' || server.runtimeState === 'running';

@@ -157,9 +157,25 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                         // At most the size the walk listed: a file read live (no snapshot) that grows as fast as it is read
                         // (a log) would otherwise keep the backup going until the disk is full. What it wrote since is left out.
                         var sample = (int)Math.Min(SampleSize, file.Size);
-                        // The start of the file decides: maps, archives and media barely shrink, and deflate would only add to them.
-                        var sampled = await opened.Content.ReadAtLeastAsync(buffer.AsMemory(0, sample), sample, throwOnEndOfStream: false,
-                            cancellationToken);
+                        int sampled;
+                        try
+                        {
+                            // The start of the file decides: maps, archives and media barely shrink, and deflate would only add to them.
+                            sampled = await opened.Content.ReadAtLeastAsync(buffer.AsMemory(0, sample), sample, throwOnEndOfStream: false,
+                                cancellationToken);
+                        }
+                        catch (IOException ex) when (ServerFileRules.Translate(file.Path, ex) is { Code: FileErrors.InUse })
+                        {
+                            // Opened, but locked by the game (Minecraft's session.lock, read live): left out, as a file it holds open.
+                            if (++skipped <= MaxLoggedSkips)
+                            {
+                                LogSkipped(location.ShortId, file.Path, FileErrors.InUse);
+                            }
+
+                            meter.Add(file.Size);
+                            continue;
+                        }
+
                         var level = Shrinks(buffer.AsSpan(0, sampled)) ? CompressionLevel.Fastest : CompressionLevel.NoCompression;
                         var entry = archive.CreateEntry(file.Path, level);
                         entry.LastWriteTime = ZipTime(opened.Info.Entry.ModifiedAt);
@@ -168,13 +184,21 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                         long copied = sampled;
                         meter.Add(sampled);
                         int read;
-                        while (copied < file.Size
-                            && (read = await opened.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, file.Size - copied)), cancellationToken)) > 0)
+                        try
                         {
-                            await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                            copied += read;
-                            meter.Add(read);
-                            await meter.ReportAsync();
+                            while (copied < file.Size
+                                && (read = await opened.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, file.Size - copied)), cancellationToken)) > 0)
+                            {
+                                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                                copied += read;
+                                meter.Add(read);
+                                await meter.ReportAsync();
+                            }
+                        }
+                        catch (IOException ex) when (ServerFileRules.Translate(file.Path, ex) is { } failed)
+                        {
+                            // Locked halfway (its first bytes are in the archive already): the backup fails, saying which file.
+                            throw failed;
                         }
 
                         if (copied == file.Size && await opened.Content.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) > 0)
@@ -471,7 +495,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     }
 
     /// <summary>A name for a log line: control characters, which a game could use to forge lines, are shown as '?'.</summary>
-    private static string Printable(string path) => new([.. path.Select(c => char.IsControl(c) ? '?' : c)]);
+    internal static string Printable(string path) => new([.. path.Select(c => char.IsControl(c) ? '?' : c)]);
 
     /// <summary>The files a backup takes: matched by the manifest's globs, minus Pulsar's own; links and directories are not files.</summary>
     internal static List<TreeEntry> Select(IReadOnlyList<TreeEntry> tree, BackupDefinition? rules)

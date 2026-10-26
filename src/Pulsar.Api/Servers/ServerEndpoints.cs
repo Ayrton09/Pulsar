@@ -137,10 +137,11 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.PlayersManage);
         servers.MapGet("/{id:guid}/players/lists", async (Guid id, ServerPlayers players, CancellationToken ct) => (await players.ListsAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.PlayersManage);
-        // Installs and updates need server.install, backups server.backups.create (checked by the operation's type).
+        // Installs and updates need server.install, backups server.backups.create, the file manager's zips server.files.edit
+        // (checked by the operation's type).
         servers.MapPost("/{id:guid}/operations/{operationId:guid}/cancel", (Guid id, Guid operationId, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CancelOperationAsync(new ServerId(id), operationId, ct)))
-            .RequirePermission(Permissions.Server.Install, Permissions.Server.BackupsCreate);
+            .RequirePermission(Permissions.Server.Install, Permissions.Server.BackupsCreate, Permissions.Server.FilesEdit);
 
         // The accounts themselves: panel settings (their passwords are the panel's).
         var steamAccounts = api.MapGroup("/steam-accounts").WithTags("Servers");

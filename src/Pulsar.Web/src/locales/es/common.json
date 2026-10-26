@@ -364,6 +364,8 @@
         "file_moved": "Movió o renombró un archivo",
         "file_deleted": "Eliminó un archivo",
         "directory_created": "Creó una carpeta",
+        "files_compress_requested": "Pidió comprimir archivos",
+        "files_extract_requested": "Pidió descomprimir un archivo",
         "backup_requested": "Pidió un backup",
         "backup_restore_requested": "Pidió restaurar un backup",
         "backup_deleted": "Eliminó un backup",
@@ -691,7 +693,9 @@
       "invalid_version": "La versión del archivo no es válida. Recargá el archivo.",
       "open_failed": "El nodo no pudo abrir el archivo: {{detail}}",
       "delete_failed": "El nodo no pudo borrarlo: {{detail}}",
-      "invalid_ticket": "El nodo rechazó la transferencia. Probá de nuevo."
+      "invalid_ticket": "El nodo rechazó la transferencia. Probá de nuevo.",
+      "archive_invalid": "No se puede descomprimir el zip: {{detail}}",
+      "archive_unsupported": "El agente de este nodo no puede comprimir ni descomprimir archivos. Actualizá Pulsar en ese nodo."
     },
     "backups": {
       "not_found": "Ese backup no existe.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Instalar mod",
         "addonRemove": "Quitar mod",
         "modsChange": "Cambiar mods",
-        "modpackInstall": "Instalar modpack"
+        "modpackInstall": "Instalar modpack",
+        "filesCompress": "Comprimir archivos",
+        "filesExtract": "Descomprimir un archivo"
       },
       "statuses": {
         "queued": "En cola",
@@ -1273,6 +1279,7 @@
       "archiving": "comprimiendo",
       "checking": "verificando el archivo",
       "restoring": "restaurando archivos",
+      "extracting": "descomprimiendo",
       "saving": "pidiéndole al juego que guarde",
       "snapshotting": "haciendo una instantánea del disco",
       "cleaning": "borrando archivos más nuevos",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "Eliminar {{name}}",
     "deleteConfirm": "¿Eliminar {{name}}? No se puede deshacer.",
     "deleteFolderConfirm": "¿Eliminar la carpeta {{name}} y todo su contenido? No se puede deshacer.",
+    "archives": {
+      "compress": "Comprimir",
+      "compressNamed": "Comprimir {{name}}",
+      "compressTitle": "Comprimir {{name}}",
+      "compressHint": "Crea un zip al lado, con todo lo que tenga adentro si es una carpeta. El servidor puede seguir andando; los archivos que el juego tenga abiertos quedan afuera.",
+      "zipName": "Nombre del zip",
+      "extract": "Descomprimir",
+      "extractNamed": "Descomprimir {{name}}",
+      "extractTitle": "Descomprimir {{name}}",
+      "extractHint": "Escribe los archivos del zip en una carpeta. El servidor puede seguir andando.",
+      "folder": "En la carpeta",
+      "folderHint": "Una carpeta de acá; se crea si no existe. Dejala vacía para descomprimir en esta misma carpeta.",
+      "overwrite": "Reemplazar los archivos que ya existan (si no, no se escribe nada cuando alguno existe)"
+    },
     "busy": "Una operación está modificando los archivos de este servidor: los cambios quedan bloqueados hasta que termine.",
     "nodeOffline": "El nodo está desconectado: los archivos no se pueden cambiar hasta que se reconecte.",
     "nameProblems": {

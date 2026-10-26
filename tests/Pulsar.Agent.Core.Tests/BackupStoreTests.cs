@@ -38,6 +38,26 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AFileTheGameLocksIsLeftOutOfALiveBackupAndCounted()
+    {
+        // A running Minecraft read live (no snapshot): world/session.lock opens, but its bytes are locked.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Byte-range locks keep other handles from reading only on Windows.");
+        Write("cfg/server.cfg", "hostname");
+        Write("cfg/session.lock", "locked");
+        using var game = new FileStream(Path.Combine(_serverDirectory, "cfg", "session.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+        if (OperatingSystem.IsWindows())
+        {
+            game.Lock(0, game.Length);
+        }
+        var location = Location();
+
+        var result = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["cfg/server.cfg"], Entries(location.Archive));
+        Assert.Equal((1, 1), (result.FileCount, result.SkippedFiles));
+    }
+
+    [Fact]
     public async Task ABackupHoldsWhatTheManifestIncludesAndNothingElse()
     {
         Write("cfg/server.cfg", "hostname \"Pulsar\"");

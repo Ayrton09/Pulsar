@@ -185,6 +185,33 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     }
 
     [WindowsFact]
+    public async Task AZipNeverFollowsAJunctionNorWritesThroughOne()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "world"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "world", "level.dat"), "mine");
+        Link("/J", "world/stolen", _outside);
+        var archives = new FileArchives(Files, NullLogger<FileArchives>.Instance);
+
+        var made = await archives.CompressAsync(Server, "", ["world"], "world.zip", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(Path.Combine(ServerDirectory, "world.zip")))
+        {
+            Assert.Equal(["world/", "world/level.dat"], archive.Entries.Select(e => e.FullName).Order(StringComparer.Ordinal));
+        }
+
+        Assert.Equal(1, made.Files);
+
+        // Written out where a junction now stands: refused at the link, nothing lands outside.
+        Files.Delete(Server, "world");
+        Link("/J", "world", _outside);
+        var error = await Assert.ThrowsAsync<FileManagerException>(() =>
+            archives.ExtractAsync(Server, "world.zip", "", overwrite: true, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.Link, error.Code);
+        OutsideIsUntouched();
+    }
+
+    [WindowsFact]
     public void ALinkInsideTheServerIsNotFollowedEither()
     {
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "real"));

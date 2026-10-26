@@ -364,6 +364,8 @@
         "file_moved": "Moved or renamed a file",
         "file_deleted": "Deleted a file",
         "directory_created": "Created a folder",
+        "files_compress_requested": "Asked to zip files",
+        "files_extract_requested": "Asked to unzip a file",
         "backup_requested": "Asked for a backup",
         "backup_restore_requested": "Asked to restore a backup",
         "backup_deleted": "Deleted a backup",
@@ -691,7 +693,9 @@
       "invalid_version": "The file version is not valid. Reload the file.",
       "open_failed": "The node could not open the file: {{detail}}",
       "delete_failed": "The node could not delete it: {{detail}}",
-      "invalid_ticket": "The transfer was refused by the node. Try again."
+      "invalid_ticket": "The transfer was refused by the node. Try again.",
+      "archive_invalid": "The zip cannot be unzipped: {{detail}}",
+      "archive_unsupported": "This node's agent cannot zip or unzip files. Update Pulsar on it."
     },
     "backups": {
       "not_found": "That backup does not exist.",
@@ -1179,7 +1183,9 @@
         "addonInstall": "Install mod",
         "addonRemove": "Remove mod",
         "modsChange": "Change mods",
-        "modpackInstall": "Install modpack"
+        "modpackInstall": "Install modpack",
+        "filesCompress": "Zip files",
+        "filesExtract": "Unzip a file"
       },
       "statuses": {
         "queued": "Queued",
@@ -1273,6 +1279,7 @@
       "archiving": "compressing",
       "checking": "checking the archive",
       "restoring": "restoring files",
+      "extracting": "unzipping",
       "saving": "asking the game to save",
       "snapshotting": "taking a snapshot of the disk",
       "cleaning": "deleting newer files",
@@ -1491,6 +1498,20 @@
     "deleteNamed": "Delete {{name}}",
     "deleteConfirm": "Delete {{name}}? This cannot be undone.",
     "deleteFolderConfirm": "Delete the folder {{name}} and everything in it? This cannot be undone.",
+    "archives": {
+      "compress": "Zip",
+      "compressNamed": "Zip {{name}}",
+      "compressTitle": "Zip {{name}}",
+      "compressHint": "Makes a zip beside it, with everything inside a folder. The server can keep running; files the game holds open are left out.",
+      "zipName": "Zip name",
+      "extract": "Unzip",
+      "extractNamed": "Unzip {{name}}",
+      "extractTitle": "Unzip {{name}}",
+      "extractHint": "Writes the zip's files into a folder. The server can keep running.",
+      "folder": "Into the folder",
+      "folderHint": "A folder here, created if missing. Leave it empty to unzip into this folder.",
+      "overwrite": "Replace files that already exist (otherwise nothing is written if one does)"
+    },
     "busy": "An operation is changing this server's files: changes are blocked until it ends.",
     "nodeOffline": "The node is offline: files cannot be changed until it reconnects.",
     "nameProblems": {
