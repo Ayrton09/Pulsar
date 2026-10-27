@@ -984,8 +984,12 @@ public sealed class AgentsEndpointSignInDeadlineTests(AgentsEndpointSignInDeadli
             var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint, factory.MainUrl.ToString());
             var node = new NodeId(config.NodeId);
             await agent.StartAsync();
-            await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.CurrentPanel == factory.AgentsUrl && agent.CurrentSessionId is not null),
-                "the agent on the agents' address");
+            // Moving to the agents' address is a new sign-in: the session counted is the one the panel holds for the node
+            // there, not one the agent had a moment before (a busy machine shows that one for a while).
+            var connections = factory.Services.GetRequiredService<IAgentConnections>();
+            await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.CurrentPanel == factory.AgentsUrl && agent.CurrentSessionId is { } current
+                    && connections.Find(node)?.SessionId == current && factory.Limit.SignedIn(node) >= 1),
+                "the agent's session on the agents' address");
             var session = agent.CurrentSessionId;
 
             await Task.Delay(s_deadline + AgentsConnectionLimit.CloseGrace + TimeSpan.FromSeconds(1), Ct);
