@@ -1,0 +1,123 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "pvkii",
+  "version": "1.0.0",
+  "name": "Pirates, Vikings, and Knights II",
+  "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar PVKII", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "map", "label": "Starting map", "type": "string", "default": "bt_glacier", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
+      "description": "Booty (bt_), team wars (tw_), territory (te_), last team standing (lts_), duel (duel_) or competitive (comp_) maps: bt_island, tw_tortuga, te_cara, lts_arena…" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 2, "max": 32 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "timeLimit", "label": "Map time limit (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "Minutes before the map changes. 0: no limit." },
+    { "key": "waitRoundEnd", "label": "Finish the round before changing map", "type": "enum", "options": [ { "value": "1", "label": "Yes" }, { "value": "0", "label": "No" } ] },
+    { "key": "roundTime", "label": "Round time (min)", "type": "number", "min": 1, "max": 60 },
+    { "key": "roundLimit", "label": "Round limit", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds before the map changes. 0: no limit." },
+    { "key": "winLimit", "label": "Win limit", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a team must win to end the map. 0: no limit." },
+    { "key": "autoTeamBalance", "label": "Auto team balance", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "limitTeams", "label": "Max team size difference", "type": "integer", "min": 0, "max": 30,
+      "description": "How many more players one team may have than another. 0: no limit." },
+    { "key": "suddenDeathTime", "label": "Sudden death time (s)", "type": "integer", "min": 0, "max": 600,
+      "description": "How long sudden death lasts." },
+    { "key": "allTalk", "label": "Voice chat", "type": "enum",
+      "options": [ { "value": "0", "label": "Own team only" }, { "value": "1", "label": "Everyone" }, { "value": "2", "label": "Players nearby, and the own team always" } ],
+      "description": "Who hears whom on voice chat." },
+    { "key": "tags", "label": "Server tags", "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_,-]{1,128}$",
+      "description": "Comma-separated tags shown in the server browser." },
+    { "key": "region", "label": "Region", "type": "enum",
+      "options": [ { "value": "-1", "label": "None" }, { "value": "0", "label": "US East" }, { "value": "1", "label": "US West" }, { "value": "2", "label": "South America" },
+                   { "value": "3", "label": "Europe" }, { "value": "4", "label": "Asia" }, { "value": "5", "label": "Australia" }, { "value": "6", "label": "Middle East" }, { "value": "7", "label": "Africa" }, { "value": "255", "label": "World" } ],
+      "description": "Region shown in the server browser." },
+    { "key": "lan", "label": "LAN only", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Not listed on the internet and players are not authenticated." },
+    { "key": "downloadUrl", "label": "Fast download URL", "type": "string", "maxLength": 200, "pattern": "^https?://[A-Za-z0-9._~:/?#@!$&'()*+,=%-]{1,190}$",
+      "description": "Where players download custom maps and files instead of the server." },
+    { "key": "allowDownload", "label": "Allow downloads", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "pure", "label": "Pure server", "type": "enum",
+      "options": [ { "value": "-1", "label": "Off" }, { "value": "0", "label": "pure_server_minimal.txt only" }, { "value": "1", "label": "Full rules plus whitelist" }, { "value": "2", "label": "Full rules" } ],
+      "description": "Which client files are allowed." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
+    { "name": "tv", "label": "SourceTV", "protocols": ["udp"], "default": 27020, "required": false, "description": "Assign it to enable SourceTV." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 17575 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 17575 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "srcds_win64.exe",
+      "arguments": [
+        "-game", "pvkii",
+        "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "pvkii/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "pvkii/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "mp_timelimit": "{{var.timeLimit}}",
+        "mp_timelimit_waitroundend": "{{var.waitRoundEnd}}",
+        "mp_roundtime": "{{var.roundTime}}",
+        "mp_roundlimit": "{{var.roundLimit}}",
+        "mp_winlimit": "{{var.winLimit}}",
+        "mp_autoteambalance": "{{var.autoTeamBalance}}",
+        "mp_limitteams": "{{var.limitTeams}}",
+        "mp_suddendeathtime": "{{var.suddenDeathTime}}",
+        "sv_alltalk": "{{var.allTalk}}",
+        "sv_tags": "{{var.tags}}",
+        "sv_region": "{{var.region}}",
+        "sv_lan": "{{var.lan}}",
+        "sv_downloadurl": "{{var.downloadUrl}}",
+        "sv_allowdownload": "{{var.allowDownload}}",
+        "sv_pure": "{{var.pure}}"
+      },
+      "keepIfEmpty": ["mp_timelimit", "mp_timelimit_waitroundend", "mp_roundtime", "mp_roundlimit", "mp_winlimit", "mp_autoteambalance", "mp_limitteams",
+        "mp_suddendeathtime", "sv_alltalk", "sv_tags", "sv_region", "sv_lan", "sv_downloadurl", "sv_allowdownload", "sv_pure"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "rcon", "timeoutSeconds": 240 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 30
+  },
+
+  "backup": {
+    "include": ["pvkii/cfg/**", "pvkii/addons/**", "pvkii/custom/**"],
+    "exclude": ["**/*.log", "**/*.dmp"]
+  },
+  "commands": { "broadcast": "say {{message}}", "players": { "kick": "kick \"{{player}}\"", "spaces": true } }
+}

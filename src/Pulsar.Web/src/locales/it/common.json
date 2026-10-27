@@ -6958,6 +6958,285 @@
           "description": "I giocatori si collegano qui."
         }
       }
+    },
+    "hl2dm": {
+      "description": "Server dedicato di Half-Life 2: Deathmatch (srcds), installato in modo anonimo con SteamCMD.",
+      "variables": {
+        "hostname": {
+          "label": "Nome del server"
+        },
+        "map": {
+          "label": "Mappa iniziale",
+          "description": "Le mappe del gioco: dm_lockdown, dm_overwatch, dm_powerhouse, dm_resistance, dm_runoff, dm_steamlab, dm_underpass, halls3."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server pubblico."
+        },
+        "teamplay": {
+          "label": "Modalità",
+          "description": "Si applica al cambio di mappa.",
+          "options": {
+            "0": "Deathmatch",
+            "1": "Deathmatch a squadre (Combine contro Ribelli)"
+          }
+        },
+        "fragLimit": {
+          "label": "Limite di frag",
+          "description": "Uccisioni a cui termina la mappa. 0: nessun limite."
+        },
+        "timeLimit": {
+          "label": "Limite di tempo della mappa (min)",
+          "description": "Minuti prima del cambio mappa. 0: nessun limite."
+        },
+        "friendlyFire": {
+          "label": "Fuoco amico",
+          "description": "I compagni di squadra possono ferirsi nel deathmatch a squadre.",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "weaponStay": {
+          "label": "Le armi restano",
+          "description": "Le armi della mappa restano dopo essere state raccolte.",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "forceRespawn": {
+          "label": "Rinascita forzata",
+          "description": "I giocatori morti rinascono da soli invece di aspettare la pressione di un tasto.",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "fallDamage": {
+          "label": "Danni da caduta",
+          "options": {
+            "0": "Fissi",
+            "1": "In base alla velocità"
+          }
+        },
+        "flashlight": {
+          "label": "Torcia",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "footsteps": {
+          "label": "Passi",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "allTalk": {
+          "label": "Chat vocale globale",
+          "description": "Le due squadre si sentono nella chat vocale.",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "tags": {
+          "label": "Tag del server",
+          "description": "Tag separati da virgole mostrati nell'elenco dei server."
+        },
+        "region": {
+          "label": "Regione",
+          "description": "Regione mostrata nell'elenco dei server.",
+          "options": {
+            "-1": "Nessuna",
+            "0": "USA Est",
+            "1": "USA Ovest",
+            "2": "Sud America",
+            "3": "Europa",
+            "4": "Asia",
+            "5": "Australia",
+            "6": "Medio Oriente",
+            "7": "Africa",
+            "255": "Mondo"
+          }
+        },
+        "lan": {
+          "label": "Solo LAN",
+          "description": "Non è elencato su internet e i giocatori non vengono autenticati.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "cheats": {
+          "label": "Cheat",
+          "description": "I giocatori possono usare i comandi cheat.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL di download rapido",
+          "description": "Da dove i giocatori scaricano mappe e file personalizzati invece che dal server."
+        },
+        "allowDownload": {
+          "label": "Consenti download",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "pure": {
+          "label": "Server pure",
+          "description": "Quali file dei client sono consentiti.",
+          "options": {
+            "-1": "Disattivato",
+            "0": "Solo pure_server_minimal.txt",
+            "1": "Regole complete più whitelist",
+            "2": "Regole complete"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "Assegnarla per attivare SourceTV."
+        }
+      }
+    },
+    "pvkii": {
+      "description": "Server dedicato di Pirates, Vikings, and Knights II (srcds, 64 bit), installato in modo anonimo con SteamCMD (circa 6 GB).",
+      "variables": {
+        "hostname": {
+          "label": "Nome del server"
+        },
+        "map": {
+          "label": "Mappa iniziale",
+          "description": "Mappe bottino (bt_), guerra a squadre (tw_), territorio (te_), ultima squadra in piedi (lts_), duello (duel_) o competitive (comp_): bt_island, tw_tortuga, te_cara, lts_arena…"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server pubblico."
+        },
+        "timeLimit": {
+          "label": "Limite di tempo della mappa (min)",
+          "description": "Minuti prima del cambio mappa. 0: nessun limite."
+        },
+        "waitRoundEnd": {
+          "label": "Finire il round prima di cambiare mappa",
+          "options": {
+            "1": "Sì",
+            "0": "No"
+          }
+        },
+        "roundTime": {
+          "label": "Durata del round (min)"
+        },
+        "roundLimit": {
+          "label": "Limite di round",
+          "description": "Round prima del cambio di mappa. 0: nessun limite."
+        },
+        "winLimit": {
+          "label": "Limite di vittorie",
+          "description": "Round che una squadra deve vincere per concludere la mappa. 0: nessun limite."
+        },
+        "autoTeamBalance": {
+          "label": "Bilanciamento automatico delle squadre",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "limitTeams": {
+          "label": "Differenza max. di dimensione tra squadre",
+          "description": "Quanti giocatori in più può avere una squadra rispetto a un'altra. 0: nessun limite."
+        },
+        "suddenDeathTime": {
+          "label": "Durata della morte improvvisa (s)",
+          "description": "Quanto dura la morte improvvisa."
+        },
+        "allTalk": {
+          "label": "Chat vocale",
+          "description": "Chi sente chi nella chat vocale.",
+          "options": {
+            "0": "Solo la propria squadra",
+            "1": "Tutti",
+            "2": "I giocatori vicini, e sempre la propria squadra"
+          }
+        },
+        "tags": {
+          "label": "Tag del server",
+          "description": "Tag separati da virgole mostrati nell'elenco dei server."
+        },
+        "region": {
+          "label": "Regione",
+          "description": "Regione mostrata nell'elenco dei server.",
+          "options": {
+            "-1": "Nessuna",
+            "0": "USA Est",
+            "1": "USA Ovest",
+            "2": "Sud America",
+            "3": "Europa",
+            "4": "Asia",
+            "5": "Australia",
+            "6": "Medio Oriente",
+            "7": "Africa",
+            "255": "Mondo"
+          }
+        },
+        "lan": {
+          "label": "Solo LAN",
+          "description": "Non è elencato su internet e i giocatori non vengono autenticati.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL di download rapido",
+          "description": "Da dove i giocatori scaricano mappe e file personalizzati invece che dal server."
+        },
+        "allowDownload": {
+          "label": "Consenti download",
+          "options": {
+            "1": "Attivato",
+            "0": "Disattivato"
+          }
+        },
+        "pure": {
+          "label": "Server pure",
+          "description": "Quali file dei client sono consentiti.",
+          "options": {
+            "-1": "Disattivato",
+            "0": "Solo pure_server_minimal.txt",
+            "1": "Regole complete più whitelist",
+            "2": "Regole complete"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "Assegnarla per attivare SourceTV."
+        }
+      }
     }
   },
   "gameUpdates": {

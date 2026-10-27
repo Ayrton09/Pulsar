@@ -6958,6 +6958,285 @@
           "description": "プレイヤーはここに接続します。"
         }
       }
+    },
+    "hl2dm": {
+      "description": "Half-Life 2: Deathmatch の専用サーバー（srcds）。SteamCMD で匿名インストールします。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ",
+          "description": "ゲームのマップ: dm_lockdown、dm_overwatch、dm_powerhouse、dm_resistance、dm_runoff、dm_steamlab、dm_underpass、halls3。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "teamplay": {
+          "label": "モード",
+          "description": "マップが切り替わると反映されます。",
+          "options": {
+            "0": "デスマッチ",
+            "1": "チームデスマッチ（コンバイン対反乱軍）"
+          }
+        },
+        "fragLimit": {
+          "label": "フラグ上限",
+          "description": "マップが終了するキル数です。0: 無制限。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "チームデスマッチで味方同士がダメージを与え合えます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "weaponStay": {
+          "label": "武器が残る",
+          "description": "マップ上の武器は拾われた後も残ります。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "forceRespawn": {
+          "label": "強制リスポーン",
+          "description": "死亡したプレイヤーはキーを押すのを待たずに自動でリスポーンします。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "fallDamage": {
+          "label": "落下ダメージ",
+          "options": {
+            "0": "固定",
+            "1": "速度に応じる"
+          }
+        },
+        "flashlight": {
+          "label": "フラッシュライト",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "footsteps": {
+          "label": "足音",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバー一覧に表示されるリージョンです。",
+          "options": {
+            "-1": "なし",
+            "0": "米国東部",
+            "1": "米国西部",
+            "2": "南米",
+            "3": "ヨーロッパ",
+            "4": "アジア",
+            "5": "オーストラリア",
+            "6": "中東",
+            "7": "アフリカ",
+            "255": "ワールド"
+          }
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップやファイルをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "pure": {
+          "label": "ピュアサーバー",
+          "description": "クライアントのどのファイルを許可するかを決めます。",
+          "options": {
+            "-1": "オフ",
+            "0": "pure_server_minimal.txt のみ",
+            "1": "完全なルール+ホワイトリスト",
+            "2": "完全なルール"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "割り当てるとSourceTVが有効になります。"
+        }
+      }
+    },
+    "pvkii": {
+      "description": "Pirates, Vikings, and Knights II の専用サーバー（srcds、64 ビット）。SteamCMD で匿名インストールします（約 6 GB）。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ",
+          "description": "財宝（bt_）、チーム戦（tw_）、陣地（te_）、最後のチーム（lts_）、決闘（duel_）、競技（comp_）のマップ: bt_island、tw_tortuga、te_cara、lts_arena…"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "waitRoundEnd": {
+          "label": "マップ変更前にラウンドを終える",
+          "options": {
+            "1": "はい",
+            "0": "いいえ"
+          }
+        },
+        "roundTime": {
+          "label": "ラウンド時間(分)"
+        },
+        "roundLimit": {
+          "label": "ラウンド上限",
+          "description": "マップが変わるまでのラウンド数。0: 無制限。"
+        },
+        "winLimit": {
+          "label": "勝利ラウンド数",
+          "description": "マップを終了するためにチームが勝つ必要のあるラウンド数です。0は無制限です。"
+        },
+        "autoTeamBalance": {
+          "label": "チーム自動バランス",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "limitTeams": {
+          "label": "チーム人数差の上限",
+          "description": "あるチームが他のチームより多く持てるプレイヤー数。0: 無制限。"
+        },
+        "suddenDeathTime": {
+          "label": "サドンデスの時間（秒）",
+          "description": "サドンデスが続く時間です。"
+        },
+        "allTalk": {
+          "label": "ボイスチャット",
+          "description": "ボイスチャットで誰が誰の声を聞けるか。",
+          "options": {
+            "0": "自分のチームのみ",
+            "1": "全員",
+            "2": "近くのプレイヤーと、常に自分のチーム"
+          }
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバー一覧に表示されるリージョンです。",
+          "options": {
+            "-1": "なし",
+            "0": "米国東部",
+            "1": "米国西部",
+            "2": "南米",
+            "3": "ヨーロッパ",
+            "4": "アジア",
+            "5": "オーストラリア",
+            "6": "中東",
+            "7": "アフリカ",
+            "255": "ワールド"
+          }
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップやファイルをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "pure": {
+          "label": "ピュアサーバー",
+          "description": "クライアントのどのファイルを許可するかを決めます。",
+          "options": {
+            "-1": "オフ",
+            "0": "pure_server_minimal.txt のみ",
+            "1": "完全なルール+ホワイトリスト",
+            "2": "完全なルール"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "割り当てるとSourceTVが有効になります。"
+        }
+      }
     }
   },
   "gameUpdates": {

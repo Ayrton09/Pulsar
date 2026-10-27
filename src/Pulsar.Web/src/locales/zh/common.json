@@ -6958,6 +6958,285 @@
           "description": "玩家从此处连接。"
         }
       }
+    },
+    "hl2dm": {
+      "description": "Half-Life 2: Deathmatch 专用服务器（srcds），使用 SteamCMD 匿名安装。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图",
+          "description": "游戏的地图：dm_lockdown、dm_overwatch、dm_powerhouse、dm_resistance、dm_runoff、dm_steamlab、dm_underpass、halls3。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "teamplay": {
+          "label": "模式",
+          "description": "换图时生效。",
+          "options": {
+            "0": "死亡竞赛",
+            "1": "团队死斗（联合军对抗反抗军）"
+          }
+        },
+        "fragLimit": {
+          "label": "击杀上限",
+          "description": "地图结束时的击杀数。0:无限制。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "团队死斗中队友之间可以互相伤害。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "weaponStay": {
+          "label": "武器保留",
+          "description": "地图上的武器被拾取后仍留在原处。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "forceRespawn": {
+          "label": "强制重生",
+          "description": "死亡的玩家会自动重生，无需等待按键。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "fallDamage": {
+          "label": "坠落伤害",
+          "options": {
+            "0": "固定",
+            "1": "按速度"
+          }
+        },
+        "flashlight": {
+          "label": "手电筒",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "footsteps": {
+          "label": "脚步声",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "显示在服务器列表中的地区。",
+          "options": {
+            "-1": "无",
+            "0": "美国东部",
+            "1": "美国西部",
+            "2": "南美洲",
+            "3": "欧洲",
+            "4": "亚洲",
+            "5": "澳大利亚",
+            "6": "中东",
+            "7": "非洲",
+            "255": "世界"
+          }
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图和文件的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "pure": {
+          "label": "纯净服务器",
+          "description": "允许哪些客户端文件。",
+          "options": {
+            "-1": "关",
+            "0": "仅 pure_server_minimal.txt",
+            "1": "完整规则加白名单",
+            "2": "完整规则"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "分配后即可启用 SourceTV。"
+        }
+      }
+    },
+    "pvkii": {
+      "description": "Pirates, Vikings, and Knights II 专用服务器（srcds，64 位），使用 SteamCMD 匿名安装（约 6 GB）。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图",
+          "description": "夺宝（bt_）、团队战争（tw_）、领地（te_）、最后一队（lts_）、决斗（duel_）或竞技（comp_）地图：bt_island、tw_tortuga、te_cara、lts_arena…"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "waitRoundEnd": {
+          "label": "换图前打完本回合",
+          "options": {
+            "1": "是",
+            "0": "否"
+          }
+        },
+        "roundTime": {
+          "label": "回合时间（分钟）"
+        },
+        "roundLimit": {
+          "label": "回合上限",
+          "description": "换图前的回合数。0：不限。"
+        },
+        "winLimit": {
+          "label": "获胜回合数",
+          "description": "一支队伍需要赢下多少回合才能结束该地图。0 表示不限制。"
+        },
+        "autoTeamBalance": {
+          "label": "自动平衡队伍",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "limitTeams": {
+          "label": "队伍人数差上限",
+          "description": "一支队伍最多可比另一支多几名玩家。0：不限。"
+        },
+        "suddenDeathTime": {
+          "label": "突然死亡时长（秒）",
+          "description": "突然死亡持续的时间。"
+        },
+        "allTalk": {
+          "label": "语音聊天",
+          "description": "语音聊天中谁能听到谁。",
+          "options": {
+            "0": "仅本队",
+            "1": "所有人",
+            "2": "附近的玩家，并始终包括本队"
+          }
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "显示在服务器列表中的地区。",
+          "options": {
+            "-1": "无",
+            "0": "美国东部",
+            "1": "美国西部",
+            "2": "南美洲",
+            "3": "欧洲",
+            "4": "亚洲",
+            "5": "澳大利亚",
+            "6": "中东",
+            "7": "非洲",
+            "255": "世界"
+          }
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图和文件的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "pure": {
+          "label": "纯净服务器",
+          "description": "允许哪些客户端文件。",
+          "options": {
+            "-1": "关",
+            "0": "仅 pure_server_minimal.txt",
+            "1": "完整规则加白名单",
+            "2": "完整规则"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "分配后即可启用 SourceTV。"
+        }
+      }
     }
   },
   "gameUpdates": {

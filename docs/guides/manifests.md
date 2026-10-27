@@ -22,7 +22,8 @@ operations), argument lists and typed settings with patterns.
 Every manifest under `games/` was run against a real server; each new game's `README.md` says what was checked. Copy
 the closest one to `games/<key>/manifest.json` and change it:
 
-- `css` and `cs2`: Source engine, output from a log file and commands over RCON.
+- `css` and `cs2`: Source engine, output from a log file and commands over RCON; `hl2dm` and `pvkii` (Pulsar 1.0.14) the
+  same, `pvkii` with the 64-bit `srcds_win64.exe`.
 - `valheim`: a console game stopped with Ctrl+C, and a port that follows another.
 - `rust`: Unity, log file and RCON, an optional port with an `else`.
 - `palworld`: console output with commands over RCON, settings in an Unreal Engine ini.

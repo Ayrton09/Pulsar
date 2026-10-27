@@ -6958,6 +6958,285 @@
           "description": "플레이어가 여기로 접속합니다."
         }
       }
+    },
+    "hl2dm": {
+      "description": "Half-Life 2: Deathmatch 전용 서버(srcds). SteamCMD로 익명 설치합니다.",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵",
+          "description": "게임의 맵: dm_lockdown, dm_overwatch, dm_powerhouse, dm_resistance, dm_runoff, dm_steamlab, dm_underpass, halls3."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "참가하려면 필요합니다. 공개 서버로 두려면 비워 두세요."
+        },
+        "teamplay": {
+          "label": "모드",
+          "description": "맵이 바뀔 때 적용됩니다.",
+          "options": {
+            "0": "데스매치",
+            "1": "팀 데스매치(콤바인 대 반란군)"
+          }
+        },
+        "fragLimit": {
+          "label": "프래그 제한",
+          "description": "맵이 끝나는 킬 수입니다. 0: 제한 없음."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀 데스매치에서 팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "weaponStay": {
+          "label": "무기 유지",
+          "description": "맵의 무기를 주워도 그 자리에 남습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "forceRespawn": {
+          "label": "강제 리스폰",
+          "description": "죽은 플레이어가 키를 누르기를 기다리지 않고 자동으로 리스폰합니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "fallDamage": {
+          "label": "낙하 피해",
+          "options": {
+            "0": "고정",
+            "1": "속도에 따라"
+          }
+        },
+        "flashlight": {
+          "label": "손전등",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "footsteps": {
+          "label": "발소리",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "region": {
+          "label": "지역",
+          "description": "서버 목록에 표시되는 지역입니다.",
+          "options": {
+            "-1": "없음",
+            "0": "미국 동부",
+            "1": "미국 서부",
+            "2": "남미",
+            "3": "유럽",
+            "4": "아시아",
+            "5": "오스트레일리아",
+            "6": "중동",
+            "7": "아프리카",
+            "255": "월드"
+          }
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵과 파일을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "pure": {
+          "label": "퓨어 서버",
+          "description": "클라이언트의 어떤 파일을 허용할지 정합니다.",
+          "options": {
+            "-1": "끔",
+            "0": "pure_server_minimal.txt만",
+            "1": "전체 규칙 + 화이트리스트",
+            "2": "전체 규칙"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "할당하면 SourceTV가 활성화됩니다."
+        }
+      }
+    },
+    "pvkii": {
+      "description": "Pirates, Vikings, and Knights II 전용 서버(srcds, 64비트). SteamCMD로 익명 설치합니다(약 6GB).",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵",
+          "description": "보물(bt_), 팀 전쟁(tw_), 영역(te_), 최후의 팀(lts_), 결투(duel_), 경쟁(comp_) 맵: bt_island, tw_tortuga, te_cara, lts_arena…"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "참가하려면 필요합니다. 공개 서버로 두려면 비워 두세요."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "waitRoundEnd": {
+          "label": "맵을 바꾸기 전에 라운드 마치기",
+          "options": {
+            "1": "예",
+            "0": "아니요"
+          }
+        },
+        "roundTime": {
+          "label": "라운드 시간(분)"
+        },
+        "roundLimit": {
+          "label": "라운드 제한",
+          "description": "맵이 바뀌기 전까지의 라운드 수. 0: 제한 없음."
+        },
+        "winLimit": {
+          "label": "승리 라운드 수",
+          "description": "맵을 끝내려면 한 팀이 이겨야 하는 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "autoTeamBalance": {
+          "label": "자동 팀 밸런스",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "limitTeams": {
+          "label": "팀 인원 차이 상한",
+          "description": "한 팀이 다른 팀보다 더 가질 수 있는 플레이어 수. 0: 제한 없음."
+        },
+        "suddenDeathTime": {
+          "label": "서든 데스 시간(초)",
+          "description": "서든 데스가 지속되는 시간입니다."
+        },
+        "allTalk": {
+          "label": "음성 채팅",
+          "description": "음성 채팅에서 누가 누구의 목소리를 듣는지입니다.",
+          "options": {
+            "0": "자기 팀만",
+            "1": "모두",
+            "2": "가까운 플레이어, 그리고 항상 자기 팀"
+          }
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "region": {
+          "label": "지역",
+          "description": "서버 목록에 표시되는 지역입니다.",
+          "options": {
+            "-1": "없음",
+            "0": "미국 동부",
+            "1": "미국 서부",
+            "2": "남미",
+            "3": "유럽",
+            "4": "아시아",
+            "5": "오스트레일리아",
+            "6": "중동",
+            "7": "아프리카",
+            "255": "월드"
+          }
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵과 파일을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "pure": {
+          "label": "퓨어 서버",
+          "description": "클라이언트의 어떤 파일을 허용할지 정합니다.",
+          "options": {
+            "-1": "끔",
+            "0": "pure_server_minimal.txt만",
+            "1": "전체 규칙 + 화이트리스트",
+            "2": "전체 규칙"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "할당하면 SourceTV가 활성화됩니다."
+        }
+      }
     }
   },
   "gameUpdates": {
