@@ -10,7 +10,20 @@ Checked on 2026-10-04 on Windows 11 Pro (build 26200), with the Steam build of t
   exist** (the install step creates `config/config`), and ending in `/`: LocalAdmin quotes each argument when it starts
   the game, and a trailing `\` would escape that quote.
 - LocalAdmin itself keeps its settings and logs in `%APPDATA%\SCP Secret Laboratory` of the account the server runs
-  as (each server has its own account when the agent runs as a service).
+  as (each server has its own account when the agent runs as a service); from 1.4.0, that is the server's
+  `profile/AppData/Roaming/SCP Secret Laboratory` (`LocalAdminLogs`, `ServerLogs`).
+
+## Console (1.4.1)
+
+Checked on 2026-10-27 with LocalAdmin 2.5.16 and EXILED 9.15.2:
+
+- LocalAdmin starts without `--printStd`, as other hosting panels start it: it no longer passes on the game engine's own
+  output (`[STDOUT]` lines: Unity's warnings about scripts missing on map objects and shaders a dedicated server does
+  not have, dozens at every round). The console shows LocalAdmin's, the game's and the plugins' messages (EXILED's
+  loader and plugins, LabAPI's), and `Waiting for players...` still comes: ready in 21 s after an install, `exit` with
+  code 0 in 2 s.
+- The game gets `-silent-crashes` (its command line, as LocalAdmin starts it, shows it): a crash does not open Unity's
+  crash report window, which on a server without a screen could keep the process from ending, and so from restarting.
 
 ## Options added in 1.0.8
 

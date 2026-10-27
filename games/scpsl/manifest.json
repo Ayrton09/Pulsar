@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "scpsl",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "name": "SCP: Secret Laboratory",
   "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, in config/config (config_gameplay.txt starts as the game's own template), and its plugins (LabAPI, EXILED) in profile/AppData/Roaming; LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
   "authors": ["Pulsar contributors"],
@@ -82,8 +82,9 @@
       "arguments": [
         "{{port.game}}",
         "--acceptEULA",
-        "--useDefault", "--noSetCursor", "--noTerminalTitle", "--printStd",
+        "--useDefault", "--noSetCursor", "--noTerminalTitle",
         "--",
+        "-silent-crashes",
         "-appdatapath", "{{server.dir}}/config/",
         "-configpath", "{{server.dir}}/config/config/"
       ],

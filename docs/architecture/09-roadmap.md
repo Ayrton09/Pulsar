@@ -495,6 +495,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Secrets never show in a server's console (doc 04, "Console"; doc 08, T47).
 - New servers start with their node's agent by default (`auto_start` on at creation); a server's settings keep their Save button and its result in view at the bottom of the form; a node can be renamed from beside its name (at the user's request).
 
+## 1.0.13 — SCP: Secret Laboratory's console (2026-10-27, at the user's request)
+
+- SCP: Secret Laboratory 1.4.1: LocalAdmin without `--printStd`, so the console no longer carries the engine's own warnings, and the game with `-silent-crashes` (`games/scpsl/README.md`, "Console").
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).
