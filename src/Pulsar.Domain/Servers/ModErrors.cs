@@ -16,6 +16,13 @@ public static class ModErrors
     public static DomainError VersionUnknown { get; } =
         new("mods.version_unknown", "The server's game version is not known yet: install or update the server first.");
 
+    /// <summary>A variable's list of a catalog's projects to look up is not one (Pulsar 1.0.14).</summary>
+    public static DomainError ListInvalid { get; } = new("mods.list_invalid", "1 to 100 CurseForge project ids of a game, each a number.");
+
+    /// <summary>The catalog's files run on an addon the server does not have (uMod's plugins on Oxide or Carbon; Pulsar 1.0.14).</summary>
+    public static DomainError AddonMissing { get; } =
+        new("mods.addon_missing", "These plugins run on an addon the server does not have: install it first, from this tab.");
+
     public static DomainError NoVersion { get; } =
         new("mods.no_version", "The project has no version for this server's game version and type.");
 

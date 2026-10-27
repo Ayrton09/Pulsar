@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -338,6 +339,39 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
 
             var body = await response.Content.ReadAsStringAsync(Ct);
             Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task ModsFromUmodThunderstoreAndCurseForgeListsGoOnlyToAgentsThatReadThem()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var templates = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Where(t => t.Source == TemplateSource.Bundled).ToList();
+
+        // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need.
+        string[] all = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
+        foreach (var (game, capability, values) in new[]
+        {
+            ("rust", AgentCapabilities.UmodPlugins, new Dictionary<string, string?>()),
+            ("valheim", AgentCapabilities.ThunderstorePackages, new Dictionary<string, string?> { ["password"] = "secret1" }),
+            ("ark-sa", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
+        })
+        {
+            var template = templates.Single(t => t.Key == game);
+            foreach (var refused in new[] { true, false })
+            {
+                var node = await NodeApi.CreateAsync(admin, $"{game}-{(refused ? "old" : "new")}");
+                await using var agent = new TestAgent(factory);
+                await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+                await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, [.. all.Where(c => !refused || c != capability)]);
+
+                using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, game, null, values));
+
+                var body = await response.Content.ReadAsStringAsync(Ct);
+                Assert.True(refused == body.Contains("server.template_unsupported", StringComparison.Ordinal), $"{game}, refused {refused}: {body}");
+            }
         }
     }
 

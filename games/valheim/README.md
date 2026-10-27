@@ -13,6 +13,18 @@ development panel and agent:
 Checked again on 2026-10-05 (Phase 11): listed (`-public 1`), the server answers the agent's A2S query on its query
 port and the panel shows the player count; Valheim puts the server name where A2S has the map.
 
+## Server mods from Thunderstore (1.3.0, Pulsar 1.0.14)
+
+BepInEx is an addon (Mods tab), installed from Thunderstore's `denikson-BepInExPack_Valheim`: its `BepInExPack_Valheim`
+folder goes into the server's (`winhttp.dll`, `doorstop_config.ini`, `BepInEx/core`), and `valheim_server.exe` loads it
+on its own. The same tab then searches Thunderstore's server-side packages for Valheim and installs them, with the
+packages they need, into `BepInEx/plugins/<namespace-name>` while the server is stopped. Backups take `BepInEx/config`.
+
+Checked on 2026-10-27 through a development panel and agent: BepInEx 5.4.23.5 (pack 5.4.2351) loaded at the next start;
+AdventureBackpacks 2.4.6 brought Jotunn 2.30.2 and YamlDotNet 16.3.1 (the BepInEx pack it also names is the addon) and
+BepInEx loaded all three (`Chainloader startup complete (3 loaded, 0 skipped, 0 failed)`); removing them emptied
+`BepInEx/plugins` and kept their configuration in `BepInEx/config`.
+
 ## Options added in 1.0.8
 
 Version 1.2.0 adds backups kept, first and later backup intervals (`-backups`, `-backupshort`, `-backuplong`), fire hazards (`-setkey fire`) and the crossplay instance id (`-instanceid`). The backup arguments come from the Pelican egg and the game's own server documentation, the others from AMP's template.

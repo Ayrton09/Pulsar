@@ -11,6 +11,7 @@ using Pulsar.Domain.Servers;
 namespace Pulsar.Application.Servers;
 
 /// <summary>An addon of the server's game: what the manifest says about it, and the release installed (none: not installed).</summary>
+/// <param name="Source">Where it comes from: <c>githubRelease</c>, or (Pulsar 1.0.14) <c>thunderstore</c>, which publishes no checksum.</param>
 public sealed record AddonView(
     string Key,
     string Name,
@@ -21,7 +22,8 @@ public sealed record AddonView(
     IReadOnlyList<string> Conflicts,
     bool ReinstallAfterUpdate,
     string? InstalledRelease,
-    DateTimeOffset? InstalledAt);
+    DateTimeOffset? InstalledAt,
+    string Source = "githubRelease");
 
 /// <summary>
 /// The addons of a server's game (docs/architecture/02 and 04, "Addons"): installed (or brought to their latest release)
@@ -174,7 +176,8 @@ public sealed class ServerAddons(
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var installed = await db.ServerAddons.AsNoTracking().Where(a => a.ServerId == server.Id).ToDictionaryAsync(a => a.Key, cancellationToken);
         return [.. ServerSpecs.Parse(template).AddonList.Select(a => new AddonView(a.Key, a.Name, a.Description, a.License, a.Url, a.RequiresList,
-            a.ConflictsList, a.ReinstallAfterUpdate, installed.GetValueOrDefault(a.Key)?.Release, installed.GetValueOrDefault(a.Key)?.InstalledAt))];
+            a.ConflictsList, a.ReinstallAfterUpdate, installed.GetValueOrDefault(a.Key)?.Release, installed.GetValueOrDefault(a.Key)?.InstalledAt,
+            a.Source is Manifests.ThunderstoreSource ? "thunderstore" : "githubRelease"))];
     }
 
     private static string NameOf(IReadOnlyList<Manifests.AddonDefinition> addons, string key) => addons.FirstOrDefault(a => a.Key == key)?.Name ?? key;

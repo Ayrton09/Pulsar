@@ -42,7 +42,7 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModCatalog
     public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(true);
 
     public async Task<CatalogSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? community = null, string? category = null)
     {
         ArgumentNullException.ThrowIfNull(loaders);
         // Outer list: all of them; inner: any of them.
@@ -98,7 +98,7 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModCatalog
 
     /// <summary>Looked up by the files' SHA-512 (Modrinth knows its files by their checksums).</summary>
     public async Task<IReadOnlyDictionary<string, CatalogVersion>> LatestVersionsAsync(IReadOnlyList<CatalogInstalled> installed, IReadOnlyList<string> loaders,
-        string gameVersion, CancellationToken cancellationToken)
+        string? gameVersion, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(installed);
         var byHash = installed.Where(i => i.Hash.Length == 128).GroupBy(i => i.Hash, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(),
@@ -108,7 +108,7 @@ public sealed class ModrinthClient(IHttpClientFactory clients) : IModCatalog
             return new Dictionary<string, CatalogVersion>();
         }
 
-        var body = JsonSerializer.Serialize(new { hashes = byHash.Keys, algorithm = "sha512", loaders, game_versions = new[] { gameVersion } });
+        var body = JsonSerializer.Serialize(new { hashes = byHash.Keys, algorithm = "sha512", loaders, game_versions = gameVersion is null ? [] : new[] { gameVersion } });
         var latest = await SendAsync<Dictionary<string, VersionResponse>>(HttpMethod.Post, "version_files/update", body, cancellationToken) ?? [];
         var newest = new Dictionary<string, CatalogVersion>(StringComparer.Ordinal);
         foreach (var (hash, response) in latest)

@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<ModCatalogs>();
         services.AddScoped<CatalogSettings>();
         services.AddScoped<WorkshopLookup>();
+        services.AddScoped<CurseForgeLists>();
         services.AddScoped<BackupStorages>();
         services.AddScoped<SteamAccounts>();
         services.AddSingleton<SteamGuardCodes>();

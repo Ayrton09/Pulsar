@@ -64,6 +64,7 @@ const metamod: Schemas['AddonView'] = {
   reinstallAfterUpdate: false,
   installedRelease: '2.0.0.1473',
   installedAt: '2026-10-05T18:00:00Z',
+  source: 'githubRelease',
 };
 
 const cssharp: Schemas['AddonView'] = {
@@ -77,6 +78,7 @@ const cssharp: Schemas['AddonView'] = {
   reinstallAfterUpdate: false,
   installedRelease: null,
   installedAt: null,
+  source: 'githubRelease',
 };
 
 function renderAt(path: string) {
@@ -100,6 +102,20 @@ afterEach(() => {
 });
 
 describe('mods tab', () => {
+  it('says a Thunderstore addon comes without a checksum, and a GitHub one with it', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/addons`]: () =>
+        json([{ ...cssharp, key: 'bepinex', name: 'BepInEx', requires: [], source: 'thunderstore' }]),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText(/From Thunderstore: the mod loader/)).toBeInTheDocument();
+    expect(screen.queryByText(/the checksum GitHub publishes/)).not.toBeInTheDocument();
+  });
+
   it('is there only for games with addons', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),

@@ -2860,6 +2860,183 @@
         }
       }
     },
+    "/api/v1/curseforge/lookup": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurseForgeLookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CurseForgeProjectView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/curseforge/search": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurseForgeSearchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/roles": {
       "get": {
         "tags": [
@@ -14689,6 +14866,10 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "default": "githubRelease"
           }
         }
       },
@@ -15976,6 +16157,101 @@
           }
         }
       },
+      "CurseForgeLookupRequest": {
+        "required": [
+          "gameId",
+          "ids"
+        ],
+        "type": "object",
+        "properties": {
+          "gameId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ids": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CurseForgeProjectView": {
+        "required": [
+          "id",
+          "found",
+          "name",
+          "otherGame",
+          "author",
+          "downloads",
+          "updated",
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "otherGame": {
+            "type": "boolean"
+          },
+          "author": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "downloads": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "updated": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CurseForgeSearchView": {
+        "required": [
+          "hits",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurseForgeProjectView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "DatabaseHostCheck": {
         "required": [
           "version"
@@ -17177,6 +17453,16 @@
               {
                 "$ref": "#/components/schemas/ModpackView"
               }
+            ]
+          },
+          "whileRunning": {
+            "type": "boolean",
+            "default": false
+          },
+          "community": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         }
@@ -20481,6 +20767,22 @@
           }
         }
       },
+      "TemplateCurseForge": {
+        "required": [
+          "gameId",
+          "separator"
+        ],
+        "type": "object",
+        "properties": {
+          "gameId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "separator": {
+            "type": "string"
+          }
+        }
+      },
       "TemplateDetails": {
         "required": [
           "template",
@@ -20757,6 +21059,16 @@
               },
               {
                 "$ref": "#/components/schemas/TemplateWorkshop"
+              }
+            ]
+          },
+          "curseForge": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateCurseForge"
               }
             ]
           }

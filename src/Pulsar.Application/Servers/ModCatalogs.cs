@@ -47,9 +47,11 @@ public interface IModCatalog
     Task<bool> IsConfiguredAsync(CancellationToken cancellationToken);
 
     /// <param name="gameVersion">Only projects for this game version; null: any.</param>
+    /// <param name="community">The catalog's name for the game (uMod's <c>rust</c>), for a catalog of several games' files.</param>
+    /// <param name="category">The catalog's category the projects are in (Thunderstore's <c>server-side</c>); any when null.</param>
     /// <exception cref="ModCatalogUnavailableException">The catalog could not be asked, or answered something else.</exception>
     Task<CatalogSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, string? community = null, string? category = null);
 
     /// <summary>The project's versions for any of the loaders and the game version (any, when null), newest first.</summary>
     /// <exception cref="ModCatalogUnavailableException">The catalog could not be asked (a project it does not know has no versions).</exception>
@@ -63,10 +65,13 @@ public interface IModCatalog
     /// <exception cref="ModCatalogUnavailableException">The catalog could not be asked.</exception>
     Task<IReadOnlyList<CatalogProject>> ProjectsAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken);
 
-    /// <summary>For each installed mod's project, the newest version for the loaders and game version (by project id).</summary>
+    /// <summary>
+    /// For each installed mod's project, the newest version for the loaders and game version (by project id); any game
+    /// version when null (a catalog whose files are not made per game version).
+    /// </summary>
     /// <exception cref="ModCatalogUnavailableException">The catalog could not be asked.</exception>
     Task<IReadOnlyDictionary<string, CatalogVersion>> LatestVersionsAsync(IReadOnlyList<CatalogInstalled> installed, IReadOnlyList<string> loaders,
-        string gameVersion, CancellationToken cancellationToken);
+        string? gameVersion, CancellationToken cancellationToken);
 }
 
 /// <summary>The catalogs the panel knows, by source.</summary>

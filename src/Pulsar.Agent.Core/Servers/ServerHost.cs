@@ -172,6 +172,9 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
             yield return AgentCapabilities.InstallModpack;
+            yield return AgentCapabilities.UmodPlugins;
+            yield return AgentCapabilities.ThunderstorePackages;
+            yield return AgentCapabilities.CatalogLists;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -1018,7 +1021,7 @@ public sealed partial class ServerHost(
 
     /// <summary>
     /// Puts a mod catalog's files into the stopped server and deletes others (Pulsar 1.0.9), only in the folders its
-    /// manifest names for its catalogs.
+    /// manifest names for its catalogs; while it runs too when the game picks them up (uMod's plugins, Pulsar 1.0.14).
     /// </summary>
     private CommandAck ChangeMods(CommandEnvelope envelope, ChangeModsCommand command)
     {
@@ -1033,35 +1036,42 @@ public sealed partial class ServerHost(
         }
 
         var folders = ModFiles.Folders(server.Manifest);
-        if (folders.Count == 0)
+        var packageFolders = ModFiles.PackageFolders(server.Manifest);
+        if (folders.Count == 0 && packageFolders.Count == 0)
         {
             return Rejected(envelope, "mods.unsupported", "The server's game takes no mods from a catalog.");
         }
 
+        // Read from the manifest this node has, not taken from the panel: the game's own catalog says it loads them live.
         const string stopFirst = "Stop the server before changing its mods.";
-        if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        var live = ModFiles.WhileRunning(server.Manifest, (command.Add ?? []).Select(a => a.Path).Concat(command.Remove ?? []));
+        if (!live && server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
             return Rejected(envelope, "server.running", stopFirst);
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, exclusive: true, stoppedMessage: stopFirst, work: cancellationToken =>
+        return RunOperation(envelope, command.ServerId, operationId, exclusive: !live, stoppedMessage: live ? null : stopFirst, work: cancellationToken =>
             NotedAsync<CommandResult?>(server, "Changing the mods", login: null, async () =>
             {
                 var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
-                TerminateStrays(command.ServerId, provisioned.Identity);
-                foreach (var file in command.Add)
+                if (!live)
+                {
+                    TerminateStrays(command.ServerId, provisioned.Identity); // never the game a live change leaves running
+                }
+
+                foreach (var file in command.Add ?? [])
                 {
                     server.Supervisor.Console.Note($"Downloading {file.Path}", clock.GetUtcNow());
                 }
 
-                foreach (var path in command.Remove)
+                foreach (var path in command.Remove ?? [])
                 {
                     server.Supervisor.Console.Note($"Deleting {path}", clock.GetUtcNow());
                 }
 
                 await new ModInstaller(files, installOptions.HttpHandler).ChangeAsync(provisioned.Directory, folders, command.Add ?? [], command.Remove ?? [],
                     new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
-                    cancellationToken);
+                    cancellationToken, packageFolders);
                 LogModsChanged(command.ServerId, command.Add?.Count ?? 0, command.Remove?.Count ?? 0);
                 return null;
             }, cancellationToken));
@@ -1088,12 +1098,12 @@ public sealed partial class ServerHost(
         var source = server.Manifest.ModList.FirstOrDefault(s => s.Modpacks is not null);
         var variables = server.Manifest.VariableList.ToDictionary(v => v.Key, StringComparer.Ordinal);
         if (source?.Modpacks is not { } modpacks || !variables.TryGetValue(modpacks.LoaderVar, out var loaderVariable)
-            || !variables.TryGetValue(source.VersionVar, out var versionVariable))
+            || source.VersionVar is not { } versionVar || source.TypeVar is not { } typeVar || !variables.TryGetValue(versionVar, out var versionVariable))
         {
             return Rejected(envelope, "modpack.unsupported", "The server's game takes no modpacks.");
         }
 
-        if (command.Pack is null || source.Types.GetValueOrDefault(command.ServerType) is not { ProjectType: "mod" } kind || !kind.Loaders.Contains(command.Loader)
+        if (command.Pack is null || source.Types.GetValueOrDefault(command.ServerType) is not { ProjectType: "mod" } kind || !kind.LoaderList.Contains(command.Loader)
             || VariableValues.Check(versionVariable, command.GameVersion) is not null || command.GameVersion == MinecraftServerStep.Latest)
         {
             return Rejected(envelope, "modpack.invalid", "The modpack's server type, loader or game version is not one this server takes.");
@@ -1118,8 +1128,8 @@ public sealed partial class ServerHost(
                 // The pack's type and versions over the server's own: the panel records them once it reports success.
                 var values = new Dictionary<string, string?>(server.Spec.Variables, StringComparer.Ordinal)
                 {
-                    [source.TypeVar] = command.ServerType,
-                    [source.VersionVar] = command.GameVersion,
+                    [typeVar] = command.ServerType,
+                    [versionVar] = command.GameVersion,
                     [modpacks.LoaderVar] = prepared.LoaderVersion,
                 };
                 var (directory, version) = await RunStepsAsync(server, operationId, server.Manifest.Install?.Steps ?? [], validate: null, login: null,

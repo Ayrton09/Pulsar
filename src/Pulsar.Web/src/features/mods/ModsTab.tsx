@@ -43,8 +43,9 @@ interface Project {
 const searchDelay = 400;
 
 /**
- * The server's mods or plugins from Modrinth (docs/architecture/07, "Mods"): those for its type and game version, with
- * the projects they require. The node downloads them, checking Modrinth's SHA-512, while the server is stopped.
+ * The server's mods or plugins from a catalog (docs/architecture/07, "Mods"): Modrinth's and CurseForge's for its type and
+ * game version, with the projects they require, while the server is stopped; uMod's plugins for the addon it has, while
+ * it runs too. The node downloads them, checking the catalog's checksum.
  */
 export function ModsTab({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
@@ -62,8 +63,13 @@ export function ModsTab({ details }: { details: ServerDetails }) {
   // The catalog searched: the first the server's game offers until another is chosen.
   const [chosen, setChosen] = useState<CatalogSource | null>(null);
   const canChange = canOnServer(me, server, Permission.ServerInstall);
-  // The same moment a reinstall is possible: connected, idle and stopped; and installed, as mods go into the game.
-  const changeable = serverActions(server).reinstall && server.installState === 'installed';
+  // The same moment a reinstall is possible: connected, idle and stopped; and installed, as mods go into the game. A game
+  // that loads its catalog's files as they come (uMod's plugins) takes them while it runs too.
+  const changeable =
+    server.installState === 'installed' &&
+    (mods.data?.whileRunning === true
+      ? server.nodeConnected && server.activeOperation === null
+      : serverActions(server).reinstall);
   const installed = mods.data?.installed ?? [];
   const usable = mods.data?.supported === true && mods.data.unavailable == null;
   const updates = useModUpdates(
@@ -156,7 +162,16 @@ export function ModsTab({ details }: { details: ServerDetails }) {
     <div className="space-y-6">
       {mods.isError && <RefreshFailed error={mods.error} retry={() => void mods.refetch()} />}
       <p className="max-w-2xl text-sm text-muted">
-        {t(plugins ? 'mods.hint.plugin' : 'mods.hint.mod', { version: view.gameVersion ?? '?' })}
+        {t(
+          source === 'umod' || source === 'thunderstore'
+            ? `mods.hint.${source}`
+            : plugins
+              ? 'mods.hint.plugin'
+              : 'mods.hint.mod',
+          {
+            version: view.gameVersion ?? '?',
+          },
+        )}
       </p>
       {view.unavailable && <Alert>{t(`errors.${view.unavailable}`, { defaultValue: view.unavailable })}</Alert>}
       {canChange && (usable || view.modpacks) && !changeable && (
@@ -242,6 +257,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
           key={`mods-${source}`}
           kind="mods"
           source={source}
+          community={view.community ?? null}
           serverId={server.id}
           projectType={view.projectType ?? 'mod'}
           onServer={new Set(installed.filter((mod) => mod.source === source).map((mod) => mod.projectId))}
@@ -261,6 +277,7 @@ export function ModsTab({ details }: { details: ServerDetails }) {
               key={`modpacks-${source}`}
               kind="modpacks"
               source={source}
+              community={view.community ?? null}
               serverId={server.id}
               projectType="modpack"
               onServer={new Set(view.modpack?.source === source ? [view.modpack.projectId] : [])}
@@ -367,7 +384,8 @@ function InstalledTable({
               </Td>
               <Td className="hidden text-xs text-muted md:table-cell">
                 <span className="break-all">{mod.path}</span>
-                <span className="block">{formatSize(mod.size)}</span>
+                {/* uMod does not say how large a plugin is. */}
+                {mod.size > 0 && <span className="block">{formatSize(mod.size)}</span>}
               </Td>
               {canChange && (
                 <Td>
@@ -404,6 +422,7 @@ function InstalledTable({
 function Catalog({
   kind,
   source,
+  community,
   serverId,
   projectType,
   onServer,
@@ -414,6 +433,7 @@ function Catalog({
 }: {
   kind: 'mods' | 'modpacks';
   source: CatalogSource;
+  community: string | null;
   serverId: string;
   projectType: string;
   /** From the server's list, not the hits: it is current after a change, the search may be minutes old. */
@@ -460,6 +480,7 @@ function Catalog({
             <HitCard
               key={hit.projectId}
               source={source}
+              community={community}
               hit={hit}
               projectType={projectType}
               installed={onServer.has(hit.projectId)}
@@ -482,6 +503,7 @@ function Catalog({
 
 function HitCard({
   source,
+  community,
   hit,
   projectType,
   installed,
@@ -491,6 +513,7 @@ function HitCard({
   onVersions,
 }: {
   source: CatalogSource;
+  community: string | null;
   hit: ModHitView;
   projectType: string;
   installed: boolean;
@@ -509,7 +532,7 @@ function HitCard({
           <div className="min-w-0">
             <h3 className="font-semibold break-words">
               <a
-                href={projectUrl(source, projectType, hit.slug)}
+                href={projectUrl(source, projectType, hit.slug, community)}
                 target="_blank"
                 rel="noreferrer noopener"
                 aria-describedby={noteId}

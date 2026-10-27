@@ -153,11 +153,13 @@ public sealed class FakeCurseForge
     /// <summary>Each file, newest last added.</summary>
     public List<JsonObject> Files { get; } = [];
 
-    public JsonObject Mod(int id, string name, int classId = 6)
+    public JsonObject Mod(int id, string name, int classId = 6, int gameId = 432)
     {
         var mod = new JsonObject
         {
             ["id"] = id,
+            ["gameId"] = gameId,
+            ["links"] = new JsonObject { ["websiteUrl"] = $"https://www.curseforge.com/game-{gameId}/mods/{name.ToLowerInvariant().Replace(' ', '-')}" },
             ["name"] = name,
             ["slug"] = name.ToLowerInvariant().Replace(' ', '-'),
             ["summary"] = $"{name}, for tests",
@@ -225,7 +227,10 @@ public sealed class FakeCurseForge
         object? answer = (request.Method.Method, path) switch
         {
             ("GET", "/v1/games/432") => new { data = new { id = 432, name = "Minecraft" } },
-            ("GET", "/v1/mods/search") => Page(Mods.Values.Where(m => m["classId"]!.GetValue<int>() == int.Parse(query["classId"]!, CultureInfo.InvariantCulture))
+            // By class (Minecraft's catalog), or a whole game's (a variable's list, Pulsar 1.0.14) with the words in the name.
+            ("GET", "/v1/mods/search") => Page(Mods.Values.Where(m => m["gameId"]!.GetValue<int>() == int.Parse(query["gameId"]!, CultureInfo.InvariantCulture)
+                    && (query["classId"] is not { } classId || m["classId"]!.GetValue<int>() == int.Parse(classId, CultureInfo.InvariantCulture))
+                    && (query["searchFilter"] is not { } words || m["name"]!.GetValue<string>().Contains(words, StringComparison.OrdinalIgnoreCase)))
                 .Select(WithIndex)),
             ("POST", "/v1/mods") => Page(JsonNode.Parse(body)!["modIds"]!.AsArray().Select(i => i!.GetValue<int>()).Where(Mods.ContainsKey)
                 .Select(i => WithIndex(Mods[i]))),

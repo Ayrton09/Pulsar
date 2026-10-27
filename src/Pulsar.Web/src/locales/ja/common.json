@@ -482,13 +482,13 @@
       "type_unsupported": "この種類のサーバーは Mod もプラグインも使えません。設定で別の種類を選んでから更新してください。",
       "version_unknown": "サーバーのゲームバージョンがまだわかりません。先にサーバーをインストールまたは更新してください。",
       "no_version": "このプロジェクトには、このサーバーのゲームバージョンと種類に合うバージョンがありません。",
-      "file_invalid": "プロジェクトのファイルは、パネルがサーバーに置ける .jar ファイルではありません。",
-      "catalog_busy": "このパネルから Modrinth へのリクエストが多すぎます。1 分後にもう一度お試しください。",
+      "file_invalid": "プロジェクトのファイルは、パネルがサーバーに置けるファイルではありません。",
+      "catalog_busy": "このパネルからカタログへのリクエストが多すぎます。1 分後にもう一度お試しください。",
       "catalog_unavailable": "Modrinth に問い合わせできませんでした: {{detail}}",
       "change_running": "サーバーの Mod はすでに変更中です。終わるまでお待ちください。",
       "too_many": "サーバーの Mod は最大 300 個、1 回の変更は最大 64 ファイルです。",
       "query_invalid": "検索は 100 文字以内の 1 行です。",
-      "no_updates": "それらの Mod に新しいバージョンはありません。",
+      "no_updates": "カタログにそれらの Mod の新しいバージョンはありません。",
       "requirement_missing": "このプロジェクトは、このサーバー向けのバージョンがない別のプロジェクトを必要とします: {{detail}}",
       "required_by": "インストール済みの別の Mod がこれを必要としています: {{detail}}",
       "incompatible": "このプロジェクトは、サーバー上の別の Mod と一緒に動作しません: {{detail}}",
@@ -496,14 +496,17 @@
       "invalid": "ノードが変更を拒否しました: {{detail}}",
       "invalid_path": "ノードがゲームの Mod フォルダー外のファイルを拒否しました: {{detail}}",
       "download_failed": "Mod をダウンロードできませんでした: {{detail}}",
-      "checksum_mismatch": "ダウンロードしたファイルが Modrinth の公開したものと違うため、何も変更していません: {{detail}}",
+      "checksum_mismatch": "ダウンロードしたファイルがカタログの公開したものと違うため、何も変更していません: {{detail}}",
       "file_exists": "パネルが置いたものではない同じ名前のファイルがすでにあります。先に削除するか名前を変えてください。{{detail}}",
       "untrusted_host": "Pulsar はそのサイトから Mod をダウンロードしません: {{detail}}",
       "write_failed": "すべての Mod を書き込めませんでした: {{detail}}",
       "catalog_not_configured": "CurseForge には API キーが必要です。管理者が「ゲーム」で設定します。",
       "distribution_forbidden": "作者は CurseForge のサイトからのダウンロードのみ許可しています。そこでダウンロードし、ファイルマネージャーでアップロードしてください。{{detail}}",
       "curseforge_key_invalid": "CurseForge API キーは 256 文字以内の表示可能な文字の 1 行です。",
-      "curseforge_key_rejected": "CurseForge はその API キーを受け付けません。"
+      "curseforge_key_rejected": "CurseForge はその API キーを受け付けません。",
+      "addon_missing": "これらのプラグインは、サーバーにないアドオンの上で動きます。先にこのタブからアドオンをインストールしてください。",
+      "bad_package": "パッケージが Pulsar で展開できる zip ではないため、何も変更していません: {{detail}}",
+      "list_invalid": "ゲームの CurseForge プロジェクト ID を 1～100 個、それぞれ数字で指定してください。"
     },
     "modpack": {
       "unsupported": "このサーバーには Modpack をインストールできません: {{detail}}",
@@ -1406,7 +1409,25 @@
     "actionsFor": "{{name}}の操作",
     "commandFor": "{{name}}を{{command}}",
     "templateUpgradeAuto": "サーバーの更新設定に従い、Pulsar が自動で移行します。",
-    "templateUpgradeImported": "このバージョンはここでインポートされました。Pulsar が自動で移行するのは、更新に含まれるバージョンだけです。"
+    "templateUpgradeImported": "このバージョンはここでインポートされました。Pulsar が自動で移行するのは、更新に含まれるバージョンだけです。",
+    "curseforge": {
+      "empty": "まだ Mod はありません。下で検索するか、CurseForge の ID で追加してください。",
+      "placeholder": "CurseForge のプロジェクト ID",
+      "add": "追加",
+      "added": "追加済み",
+      "removeShort": "削除",
+      "remove": "{{name}} を削除",
+      "invalid": "CurseForge のプロジェクト ID は数字です。",
+      "duplicate": "その Mod はすでにリストにあります。",
+      "tooMany": "この設定に入る長さを超えています。",
+      "search": "CurseForge でゲームの Mod を検索",
+      "results": "見つかった Mod",
+      "noResults": "見つかりませんでした。",
+      "notFound": "CurseForge にありません",
+      "otherGame": "別のゲームのものです",
+      "needsKey": "パネルに CurseForge のキーがないため、Mod は ID で追加します。管理者が「ゲーム」でキーを設定できます。",
+      "by": "作者: {{author}}"
+    }
   },
   "panelKeys": {
     "title": "パネルの署名キー",
@@ -1566,12 +1587,15 @@
       "conflicts": "{{name}}は{{others}}とは同時にインストールできません。先に削除してください。",
       "required_by": "{{others}}には{{name}}が必要です。先に削除してください。"
     },
-    "removeConfirm": "{{server}}から{{name}}を削除しますか?インストールされたファイルは、変更していても削除されます。ご自身で追加したファイルは残ります。"
+    "removeConfirm": "{{server}}から{{name}}を削除しますか?インストールされたファイルは、変更していても削除されます。ご自身で追加したファイルは残ります。",
+    "hintThunderstore": "Thunderstore から: ゲームの Mod が動く Mod ローダー。Thunderstore はチェックサムを公開していないため、ノードは最新版を Thunderstore 自身のサーバーからだけダウンロードします。第三者が作成したもので、それぞれのライセンスに従います。"
   },
   "mods": {
     "hint": {
       "mod": "このサーバーの種類とゲームバージョン（{{version}}）に合う Modrinth の Mod と、それらが必要とする Mod。ノードは各ファイルを Modrinth からダウンロードし、Modrinth が公開する SHA-512 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。",
-      "plugin": "このサーバーの種類とゲームバージョン（{{version}}）に合う Modrinth のプラグインと、それらが必要とするプラグイン。ノードは各ファイルを Modrinth からダウンロードし、Modrinth が公開する SHA-512 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。"
+      "plugin": "このサーバーの種類とゲームバージョン（{{version}}）に合う Modrinth のプラグインと、それらが必要とするプラグイン。ノードは各ファイルを Modrinth からダウンロードし、Modrinth が公開する SHA-512 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。",
+      "umod": "このサーバーにあるアドオン（Oxide または Carbon）用の uMod のプラグイン。届いた時点で読み込まれるので、サーバーは動かしたままでかまいません。ノードは各ファイルを uMod からダウンロードし、uMod が公開する SHA-1 と一致した場合だけインストールします。第三者が作成したもので、それぞれのライセンスに従います。",
+      "thunderstore": "BepInEx 用の Thunderstore のサーバー Mod と、それらが必要とするパッケージ。先にこのタブから BepInEx をインストールし、変更するときはサーバーを停止してください。Thunderstore はチェックサムを公開していないため、ノードは各パッケージを Thunderstore 自身のサーバーからだけ取得します。第三者が作成したもので、それぞれのライセンスに従います。"
     },
     "stopToChange": "Mod やプラグインをインストール・更新・削除するには、サーバーを停止してください。",
     "lastFailed": "前回の変更は失敗しました: {{reason}}",
@@ -1654,7 +1678,9 @@
       "curseforge": "CurseForge",
       "needsKey": "CurseForge には API キーが必要です。",
       "setKey": "「ゲーム」で設定",
-      "needsKeyAskAdmin": "CurseForge には API キーが必要です。管理者に設定を依頼してください。"
+      "needsKeyAskAdmin": "CurseForge には API キーが必要です。管理者に設定を依頼してください。",
+      "umod": "uMod",
+      "thunderstore": "Thunderstore"
     },
     "curseForgeKey": {
       "title": "CurseForge",

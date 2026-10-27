@@ -37,6 +37,8 @@ public sealed record ServerModView(
 /// <param name="Modpacks">The catalog's modpacks install on the server's game (whatever its type: a pack sets it).</param>
 /// <param name="Modpack">The modpack installed, if any.</param>
 /// <param name="ModpackInstalling">The modpack an operation is installing, if any.</param>
+/// <param name="WhileRunning">The game picks the catalog's files up while it runs: they change without stopping it (uMod's, Pulsar 1.0.14).</param>
+/// <param name="Community">The catalog's name for the game (Thunderstore's <c>valheim</c>), which its pages' addresses take.</param>
 public sealed record ModsView(
     bool Supported,
     IReadOnlyList<string> Catalogs,
@@ -49,7 +51,9 @@ public sealed record ModsView(
     IReadOnlyList<ServerModView> Installed,
     bool Modpacks = false,
     ModpackView? Modpack = null,
-    ModpackView? ModpackInstalling = null);
+    ModpackView? ModpackInstalling = null,
+    bool WhileRunning = false,
+    string? Community = null);
 
 public sealed record ModHitView(string ProjectId, string Slug, string Title, string? Description, string? Author, long Downloads, DateTimeOffset? Updated,
     bool Installed);
@@ -87,10 +91,12 @@ public sealed partial class ServerMods(
     /// <summary>Projects one install may bring: the one asked for and those it requires, recursively.</summary>
     public const int MaxProjectsPerInstall = 32;
 
-    private sealed record Target(IModCatalog Catalog, ModSource Source, ModSourceDefinition Definition, ModTargetDefinition Kind, string GameVersion,
-        IReadOnlySet<string> Folders);
+    /// <param name="GameVersion">The game version the catalog's files are chosen for; null for a catalog whose files are not made per version.</param>
+    /// <param name="Provided">Projects the game's addons are (Thunderstore's BepInEx pack): a dependency on one is met.</param>
+    private sealed record Target(IModCatalog Catalog, ModSource Source, ModSourceDefinition Definition, ModTargetDefinition Kind, string? GameVersion,
+        IReadOnlySet<string> Provided);
 
-    private sealed record Planned(ModSource Source, CatalogVersion Version, CatalogFile File, string Path, bool Dependency);
+    private sealed record Planned(ModSource Source, CatalogVersion Version, CatalogFile File, string Path, bool Dependency, string? Layout = null);
 
     private enum Change
     {
@@ -136,12 +142,13 @@ public sealed partial class ServerMods(
         }
 
         var values = Values(server, manifest);
-        var kind = values.GetValueOrDefault(source.TypeVar) is { } type ? source.Types.GetValueOrDefault(type) : null;
+        var kind = await KindAsync(server, source, values, cancellationToken);
         var version = GameVersion(server, source, values);
-        var unavailable = kind is null ? ModErrors.TypeUnsupported.Code : version is null ? ModErrors.VersionUnknown.Code : null;
-        return new ModsView(true, usable, needingKey, kind?.ProjectType, kind?.Folder, kind?.Loaders ?? [], version, unavailable, installed,
+        var unavailable = kind is null ? (source.AddonTypes ? ModErrors.AddonMissing : ModErrors.TypeUnsupported).Code
+            : source.Versioned && version is null ? ModErrors.VersionUnknown.Code : null;
+        return new ModsView(true, usable, needingKey, kind?.ProjectType, kind?.Folder, kind?.LoaderList ?? [], version, unavailable, installed,
             manifest.ModList.Any(s => s.Modpacks is not null), ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installed)),
-            ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installing)));
+            ModpackViewOf(packs.FirstOrDefault(p => p.State == ServerModpackState.Installing)), source.WhileRunning, source.Community);
     }
 
     /// <summary>The catalog's projects the server can take, by relevance, a page of <see cref="SearchPageSize"/>.</summary>
@@ -167,8 +174,8 @@ public sealed partial class ServerMods(
 
         return await CatalogAsync(async () =>
         {
-            var found = await target.Value.Catalog.SearchAsync(text, target.Value.Kind.ProjectType, target.Value.Kind.Loaders, target.Value.GameVersion,
-                Math.Clamp(offset, 0, 10_000), SearchPageSize, cancellationToken);
+            var found = await target.Value.Catalog.SearchAsync(text, target.Value.Kind.ProjectType, target.Value.Kind.LoaderList, target.Value.GameVersion,
+                Math.Clamp(offset, 0, 10_000), SearchPageSize, cancellationToken, target.Value.Definition.Community, target.Value.Definition.Category);
             var installed = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == server.Id && m.Source == target.Value.Source).Select(m => m.ProjectId)
                 .ToListAsync(cancellationToken);
             return new ModSearchView([.. found.Hits.Select(h => new ModHitView(h.ProjectId, h.Slug, h.Title, h.Description, h.Author, h.Downloads, h.Updated,
@@ -198,7 +205,7 @@ public sealed partial class ServerMods(
 
         return await CatalogAsync(async () =>
         {
-            var versions = await target.Value.Catalog.VersionsAsync(projectId, target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+            var versions = await target.Value.Catalog.VersionsAsync(projectId, target.Value.Kind.LoaderList, target.Value.GameVersion, cancellationToken);
             return new ModVersionList([.. versions.Take(50).Select(v => new ModVersionView(v.Id, v.Name, v.VersionNumber, v.VersionType, v.Published))]);
         });
     }
@@ -272,8 +279,8 @@ public sealed partial class ServerMods(
             var target = await TargetAsync(server, SourceName(bySource.Key), cancellationToken);
             if (!target.IsSuccess)
             {
-                // Updating all: a catalog the panel cannot ask now (no key) has nothing newer to offer.
-                if (modIds is null && target.Error == ModErrors.CatalogNotConfigured)
+                // Updating all: a catalog the panel cannot ask now (no key), or whose addon is gone, has nothing newer to offer.
+                if (modIds is null && (target.Error == ModErrors.CatalogNotConfigured || target.Error == ModErrors.AddonMissing))
                 {
                     continue;
                 }
@@ -284,7 +291,7 @@ public sealed partial class ServerMods(
             var planned = await CatalogAsync<List<Planned>>(async () =>
             {
                 var latest = await target.Value.Catalog.LatestVersionsAsync([.. bySource.Select(m => new CatalogInstalled(m.ProjectId, m.VersionId, m.Hash))],
-                    target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+                    target.Value.Kind.LoaderList, target.Value.GameVersion, cancellationToken);
                 var updates = bySource.Where(m => latest.TryGetValue(m.ProjectId, out var newer) && newer.Id != m.VersionId)
                     .Select(m => (m.ProjectId, (string?)latest[m.ProjectId].Id, m.Dependency)).ToList();
                 return updates.Count == 0 ? new List<Planned>() : await PlanAsync(target.Value, installed, updates, cancellationToken);
@@ -351,7 +358,8 @@ public sealed partial class ServerMods(
             var target = await TargetAsync(server, SourceName(bySource.Key), cancellationToken);
             if (!target.IsSuccess)
             {
-                if (target.Error == ModErrors.CatalogNotConfigured)
+                // A catalog the panel cannot ask now (no key), or whose addon is gone, has nothing newer to offer.
+                if (target.Error == ModErrors.CatalogNotConfigured || target.Error == ModErrors.AddonMissing)
                 {
                     continue;
                 }
@@ -362,7 +370,7 @@ public sealed partial class ServerMods(
             var found = await CatalogAsync(async () =>
             {
                 var latest = await target.Value.Catalog.LatestVersionsAsync([.. bySource.Select(m => new CatalogInstalled(m.ProjectId, m.VersionId, m.Hash))],
-                    target.Value.Kind.Loaders, target.Value.GameVersion, cancellationToken);
+                    target.Value.Kind.LoaderList, target.Value.GameVersion, cancellationToken);
                 return bySource.Where(m => latest.TryGetValue(m.ProjectId, out var newer) && newer.Id != m.VersionId)
                     .Select(m => new ModUpdateView(m.Id.Value, m.Name, m.VersionNumber, latest[m.ProjectId].Id, latest[m.ProjectId].VersionNumber)).ToList();
             });
@@ -510,13 +518,17 @@ public sealed partial class ServerMods(
             }
 
             var file = version.Files.FirstOrDefault(f => f.Primary) ?? FirstOf(version.Files);
-            if (file is null || !ModFiles.IsFileName(file.FileName) || !IsHash(file.Hash))
+            var package = target.Kind.Layout is not null;
+            if (file is null || (package
+                    ? !ManifestValidator.ThunderstorePackagePattern().IsMatch(version.ProjectId) || file.Hash.Length != 0
+                    : !ModFiles.IsFileName(file.FileName, target.Kind.ExtensionList) || !IsHash(file.Hash)))
             {
                 return ModErrors.FileInvalid;
             }
 
-            plan.Add(new Planned(target.Source, version, file with { Hash = file.Hash.ToLowerInvariant() }, $"{target.Kind.Folder}/{file.FileName}",
-                next.Dependency));
+            // A package goes into its own folder of plugins (Thunderstore publishes no checksum: the node takes it from its hosts only).
+            plan.Add(new Planned(target.Source, version, file with { Hash = file.Hash.ToLowerInvariant() },
+                package ? $"{target.Kind.Folder}/plugins/{version.ProjectId}" : $"{target.Kind.Folder}/{file.FileName}", next.Dependency, target.Kind.Layout));
             if (plan.Count > MaxProjectsPerInstall)
             {
                 return ModErrors.TooMany;
@@ -530,7 +542,8 @@ public sealed partial class ServerMods(
                     return ModErrors.Incompatible(version.Name, clash.Name);
                 }
 
-                if (dependency.Type == "required" && (dependency.ProjectId ?? dependency.VersionId) is { } wanted && IsCatalogId(wanted))
+                if (dependency.Type == "required" && (dependency.ProjectId ?? dependency.VersionId) is { } wanted && IsCatalogId(wanted)
+                    && (dependency.ProjectId is null || !target.Provided.Contains(dependency.ProjectId)))
                 {
                     var project = dependency.ProjectId ?? await ProjectOfAsync(target, wanted, cancellationToken) ?? wanted;
                     pending.Enqueue((project, dependency.VersionId, true, version.Name));
@@ -550,7 +563,7 @@ public sealed partial class ServerMods(
             return asked;
         }
 
-        var versions = await target.Catalog.VersionsAsync(projectId, target.Kind.Loaders, target.GameVersion, cancellationToken);
+        var versions = await target.Catalog.VersionsAsync(projectId, target.Kind.LoaderList, target.GameVersion, cancellationToken);
         var suitable = versions.Where(v => Suits(target, v)).ToList();
         return suitable.FirstOrDefault(v => v.VersionType == "release") ?? suitable.FirstOrDefault();
     }
@@ -558,17 +571,24 @@ public sealed partial class ServerMods(
     private static async Task<string?> ProjectOfAsync(Target target, string versionId, CancellationToken cancellationToken) =>
         (await target.Catalog.VersionAsync(versionId, cancellationToken))?.ProjectId;
 
-    /// <summary>For the game version and one of the type's loaders (CurseForge names no loader on Bukkit plugins: their class says it).</summary>
+    /// <summary>
+    /// For the game version and one of the type's loaders (CurseForge names no loader on Bukkit plugins: their class says
+    /// it); any of a catalog whose files are not made per game version (uMod's).
+    /// </summary>
     private static bool Suits(Target target, CatalogVersion version) =>
-        version.GameVersions.Contains(target.GameVersion)
-        && (version.Loaders.Any(l => target.Kind.Loaders.Contains(l)) || (version.Loaders.Count == 0 && target.Kind.ProjectType == "plugin"));
+        !target.Definition.Versioned
+        || (target.GameVersion is { } gameVersion && version.GameVersions.Contains(gameVersion)
+            && (version.Loaders.Any(l => target.Kind.LoaderList.Contains(l)) || (version.Loaders.Count == 0 && target.Kind.ProjectType == "plugin")));
 
     /// <summary>Records the change and has the node make it: <paramref name="add"/> put on the server, <paramref name="remove"/> deleted.</summary>
     private async Task<Result<ModsView>> ChangeAsync(Server server, List<ServerMod> installed, IReadOnlyList<Planned> add, IReadOnlyList<ServerMod> remove,
         Change change, CancellationToken cancellationToken)
     {
-        // The game holds its mods open while it runs (Windows does not delete or replace a file in use).
-        if (server.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        // The game holds its mods open while it runs (Windows does not delete or replace a file in use), unless it picks
+        // them up as they come and go (uMod's plugins; the node checks it again with its own manifest).
+        var manifest = await ManifestAsync(server, cancellationToken);
+        var paths = add.Select(a => a.Path).Concat(remove.Select(m => m.Path)).ToList();
+        if (server.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed) && !ModFiles.WhileRunning(manifest, paths))
         {
             return ServerErrors.MustBeStopped;
         }
@@ -578,9 +598,11 @@ public sealed partial class ServerMods(
             return NodeErrors.NotConnected;
         }
 
-        if (!agent.Capabilities.Contains(AgentCapabilities.ChangeMods))
+        if (!agent.Capabilities.Contains(AgentCapabilities.ChangeMods)
+            || (add.Any(a => a.Source == ModSource.Umod) && !agent.Capabilities.Contains(AgentCapabilities.UmodPlugins))
+            || (add.Any(a => a.Layout is not null) && !agent.Capabilities.Contains(AgentCapabilities.ThunderstorePackages)))
         {
-            return ModErrors.Unsupported with { Message = "The server's node has an agent too old to install mods: update it." };
+            return ModErrors.Unsupported with { Message = "The server's node has an agent too old to install these mods: update it." };
         }
 
         // A project installed in another version is replaced; another project in the same file cannot be.
@@ -603,8 +625,9 @@ public sealed partial class ServerMods(
         var now = clock.GetUtcNow();
         var operation = Operation.Create(OperationType.ModsChange, server.NodeId, server.Id, request.UserId, OperationRequester.User, now);
         var command = new ChangeModsCommand(server.Id.Value,
-            [.. add.Select(a => new ModDownload(a.Path, a.File.Url, a.File.Hash, a.File.Size))],
-            [.. leaving.Where(m => !add.Any(a => string.Equals(a.Path, m.Path, StringComparison.OrdinalIgnoreCase))).Select(m => m.Path)]);
+            [.. add.Select(a => new ModDownload(a.Path, a.File.Url, a.File.Hash, a.File.Size, a.Layout))],
+            // A file replaced under the same name (uMod's plugins keep theirs) is removed too: the node then knows it is the panel's.
+            [.. leaving.Select(m => m.Path).Distinct(StringComparer.OrdinalIgnoreCase)]);
         var names = add.Count == 0 ? [] : await NamesAsync(add, cancellationToken);
         var run = await operations.RunAsync(server, operation, command, beforeSave: () =>
         {
@@ -688,20 +711,38 @@ public sealed partial class ServerMods(
         }
 
         var values = Values(server, manifest);
-        if (values.GetValueOrDefault(definition.TypeVar) is not { } type || definition.Types.GetValueOrDefault(type) is not { } kind)
+        if (await KindAsync(server, definition, values, cancellationToken) is not { } kind)
         {
-            return ModErrors.TypeUnsupported;
+            return definition.AddonTypes ? ModErrors.AddonMissing : ModErrors.TypeUnsupported;
         }
 
-        return GameVersion(server, definition, values) is { } version
-            ? new Target(catalog, modSource, definition, kind, version, ModFiles.Folders(manifest))
-            : ModErrors.VersionUnknown;
+        var version = GameVersion(server, definition, values);
+        var provided = manifest.AddonList.Select(a => a.Source).OfType<ThunderstoreSource>().Select(t => t.Package).ToHashSet(StringComparer.Ordinal);
+        return version is null && definition.Versioned ? ModErrors.VersionUnknown : new Target(catalog, modSource, definition, kind, version, provided);
+    }
+
+    /// <summary>
+    /// What the server takes from the catalog: what its type variable's option takes, or (Pulsar 1.0.14) what the addon it
+    /// has among the catalog's types takes; null when nothing.
+    /// </summary>
+    private async Task<ModTargetDefinition?> KindAsync(Server server, ModSourceDefinition source, IReadOnlyDictionary<string, string?> values,
+        CancellationToken cancellationToken)
+    {
+        if (!source.AddonTypes)
+        {
+            return source.TypeVar is { } typeVar && values.GetValueOrDefault(typeVar) is { } type ? source.Types.GetValueOrDefault(type) : null;
+        }
+
+        var addons = await db.ServerAddons.AsNoTracking().Where(a => a.ServerId == server.Id).Select(a => a.Key).ToListAsync(cancellationToken);
+        return source.Types.Where(t => addons.Contains(t.Key)).Select(t => t.Value).FirstOrDefault();
     }
 
     /// <summary>A catalog's source as manifests and the API name it.</summary>
     internal static string SourceName(ModSource source) => source switch
     {
         ModSource.CurseForge => ModSourceDefinition.CurseForge,
+        ModSource.Umod => ModSourceDefinition.Umod,
+        ModSource.Thunderstore => ModSourceDefinition.Thunderstore,
         _ => ModSourceDefinition.Modrinth,
     };
 
@@ -709,6 +750,8 @@ public sealed partial class ServerMods(
     {
         ModSourceDefinition.Modrinth => ModSource.Modrinth,
         ModSourceDefinition.CurseForge => ModSource.CurseForge,
+        ModSourceDefinition.Umod => ModSource.Umod,
+        ModSourceDefinition.Thunderstore => ModSource.Thunderstore,
         _ => null,
     };
 
@@ -717,10 +760,21 @@ public sealed partial class ServerMods(
 
     /// <summary>The version the last install reported ("latest" stands for it), else the one set, unless that is "latest".</summary>
     private static string? GameVersion(Server server, ModSourceDefinition source, IReadOnlyDictionary<string, string?> values) =>
-        server.GameVersion ?? (values.GetValueOrDefault(source.VersionVar) is { Length: > 0 } set && set != MinecraftServerStep.Latest ? set : null);
+        !source.Versioned ? null
+        : server.GameVersion ?? (source.VersionVar is { } versionVar && values.GetValueOrDefault(versionVar) is { Length: > 0 } set
+            && set != MinecraftServerStep.Latest ? set : null);
 
-    private static IReadOnlyDictionary<string, string?> Values(Server server, GameManifest manifest) =>
-        VariableValues.Resolve(manifest, server.Variables.Where(v => v.ProtectedValue is null).ToDictionary(v => v.Key, v => (string?)v.Value));
+    /// <summary>
+    /// The server's values of its variables that are not secret, over the manifest's defaults: what a catalog reads (its
+    /// type and version variables). Not checked as a start's are: a secret the game requires (Valheim's password) is kept
+    /// protected, and a catalog never needs it.
+    /// </summary>
+    private static Dictionary<string, string?> Values(Server server, GameManifest manifest)
+    {
+        var set = server.Variables.Where(v => v.ProtectedValue is null).ToDictionary(v => v.Key, v => (string?)v.Value, StringComparer.Ordinal);
+        return manifest.VariableList.Where(v => !v.Secret).ToDictionary(v => v.Key,
+            v => set.TryGetValue(v.Key, out var value) ? value : v.Default is { } fallback ? VariableValues.FromJson(fallback) : null, StringComparer.Ordinal);
+    }
 
     private async Task<List<ServerModView>> ViewsAsync(ServerId serverId, CancellationToken cancellationToken)
     {
@@ -748,7 +802,8 @@ public sealed partial class ServerMods(
 
     private static T? FirstOf<T>(IReadOnlyList<T> list) where T : class => list.Count > 0 ? list[0] : null;
 
-    /// <summary>A catalog's id or slug: letters, digits, '-' and '_'.</summary>
+    /// <summary>A catalog's id or slug: letters, digits, '-', '_' and (a uMod version, Pulsar 1.0.14) '.' between them.</summary>
     private static bool IsCatalogId(string? id) =>
-        id is { Length: > 0 and <= ServerMod.MaxIdLength } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+        id is { Length: > 0 and <= ServerMod.MaxIdLength } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')
+        && !id.StartsWith('.') && !id.EndsWith('.') && !id.Contains("..", StringComparison.Ordinal);
 }

@@ -21,13 +21,14 @@ public sealed record AddonRecord(string Key, string Release, string Asset, strin
 /// <summary>
 /// Installs and removes a manifest's addons (docs/architecture/04, "Addons"). The archive is a zip or a .tar.gz asset
 /// (Pulsar 1.0.12) of a GitHub release, found through GitHub's API and checked against the SHA-256 GitHub publishes for
-/// it; it is unpacked into the
+/// it, or (Pulsar 1.0.14) a Thunderstore package's newest zip, which Thunderstore publishes no checksum for, taken over
+/// HTTPS from its own hosts only, one folder of it unpacked; it is unpacked into the
 /// addon's folder of the server with the archive rules of restores (relative paths only, nothing under <c>.pulsar</c>,
 /// size and entry limits), through the agent's link-safe file access. A game server published so (TShock) is installed
 /// the same way by its install step (<see cref="GitHubReleaseStep"/>), recorded in another folder.
 /// </summary>
 /// <param name="recordDirectory">Where what was installed is recorded: <see cref="RecordDirectory"/> for addons.</param>
-public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handler, string recordDirectory = AddonInstaller.RecordDirectory)
+public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandler handler, string recordDirectory = AddonInstaller.RecordDirectory)
 {
     public const string RecordDirectory = ".pulsar/addons";
 
@@ -43,7 +44,16 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         "api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
     };
 
+    // Thunderstore's API, and the CDNs its downloads redirect to.
+    private static readonly HashSet<string> s_thunderstoreHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "thunderstore.io", "ccdn.thunderstore.io", "gcdn.thunderstore.io",
+    };
+
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    /// <summary>Thunderstore's address (tests point it elsewhere through the handler, never through this).</summary>
+    public static readonly Uri ThunderstoreApi = new("https://thunderstore.io/");
 
     /// <summary>The GitHub API's address (tests point it elsewhere through the handler, never through this).</summary>
     public static readonly Uri GitHubApi = new("https://api.github.com/");
@@ -58,6 +68,11 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
     {
         ArgumentNullException.ThrowIfNull(addon);
         ArgumentNullException.ThrowIfNull(progress);
+        if (addon.Source is ThunderstoreSource package)
+        {
+            return await InstallPackageAsync(serverDirectory, addon, package, force, progress, cancellationToken);
+        }
+
         if (addon.Source is not GitHubReleaseSource source)
         {
             throw Failed("addon.unsupported_source", $"This agent cannot install {addon.Name} from its source.");
@@ -185,6 +200,63 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         }
     }
 
+    /// <summary>
+    /// A Thunderstore package's newest version (Pulsar 1.0.14): its version and download address from Thunderstore's API,
+    /// the zip from its hosts, its <see cref="ThunderstoreSource.Folder"/> unpacked. Thunderstore publishes no checksum: the
+    /// SHA-256 recorded is the agent's own, of what it got.
+    /// </summary>
+    private async Task<AddonRecord> InstallPackageAsync(string serverDirectory, AddonDefinition addon, ThunderstoreSource source, bool force,
+        Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    {
+        if (!ManifestValidator.ThunderstorePackagePattern().IsMatch(source.Package))
+        {
+            throw Failed("addon.unsupported_source", $"'{source.Package}' is not a Thunderstore package.");
+        }
+
+        var dash = source.Package.IndexOf('-', StringComparison.Ordinal);
+        var (space, name) = (source.Package[..dash], source.Package[(dash + 1)..]);
+        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Pulsar-Agent", "1"));
+        var client = new VerifiedDownloader(http, s_thunderstoreHosts, "addon", "addons");
+        try
+        {
+            await progress(InstallStages.Preparing, null);
+            var package = await client.GetJsonAsync<ThunderstorePackage>(new Uri(ThunderstoreApi, $"api/experimental/package/{space}/{name}/"), null,
+                cancellationToken);
+            var version = package.Latest?.VersionNumber;
+            var download = $"https://thunderstore.io/package/download/{space}/{name}/{version}/";
+            if (version is null || !ThunderstoreVersionPattern().IsMatch(version) || package.Latest!.DownloadUrl != download)
+            {
+                throw Failed("addon.no_release", $"Thunderstore has no version of {source.Package} Pulsar takes.");
+            }
+
+            var asset = $"{source.Package}-{version}.zip";
+            var previous = Read(serverDirectory, addon.Key);
+            if (!force && previous is { } same && same.Asset == asset)
+            {
+                return same;
+            }
+
+            await using var zip = await client.DownloadAsync(VerifiedDownloader.Https(download, "addon"), null, null,
+                percent => progress(InstallStages.Downloading, percent), cancellationToken);
+            var sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(zip, cancellationToken));
+            await FileArchives.CheckDirectoryAsync(zip, cancellationToken); // its list of entries bounded before .NET reads it
+            await progress(InstallStages.Installing, null);
+            var record = Unpack(serverDirectory, addon, version, asset, sha256, zip, previous, source.Folder);
+            Write(serverDirectory, record);
+            return record;
+        }
+        catch (FileManagerException ex)
+        {
+            throw Failed("addon.bad_archive", $"{addon.Name}'s zip is not one Pulsar unpacks: {ex.Message}", ex);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidDataException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw Failed("addon.download_failed", $"{addon.Name} could not be installed: {ex.Message}", ex);
+        }
+    }
+
     private HttpClient GitHubClient()
     {
         var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
@@ -230,10 +302,11 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         return releases.FirstOrDefault(r => !r.Draft) ?? throw Failed("addon.no_release", $"{source.Repo} has no release.");
     }
 
+    /// <param name="within">Only this folder of the archive, unpacked as its root (a Thunderstore package's); all of it when null or empty.</param>
     private AddonRecord Unpack(string serverDirectory, AddonDefinition addon, string release, string asset, string sha256, Stream download,
-        AddonRecord? previous)
+        AddonRecord? previous, string? within = null)
     {
-        using var archive = IsTarGz(asset) ? (AddonArchive)new TarGzArchive(download, asset) : new ZipAddonArchive(download);
+        using var archive = IsTarGz(asset) ? (AddonArchive)new TarGzArchive(download, asset) : new ZipAddonArchive(download, within);
         var entries = new List<string>();
         long total = 0;
         foreach (var (entryName, length) in archive.Files())
@@ -362,11 +435,15 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         public abstract void Dispose();
     }
 
-    private sealed class ZipAddonArchive(Stream download) : AddonArchive
+    /// <param name="within">Only the files of this folder of the zip, named from it; all of them when null or empty.</param>
+    private sealed class ZipAddonArchive(Stream download, string? within = null) : AddonArchive
     {
         private readonly ZipArchive _zip = new(download, ZipArchiveMode.Read);
 
-        public override IReadOnlyList<(string Name, long Length)> Files() => [.. FileEntries().Select(e => (e.FullName, e.Length))];
+        private readonly string? _prefix = string.IsNullOrEmpty(within) ? null : within + "/";
+
+        public override IReadOnlyList<(string Name, long Length)> Files() =>
+            [.. FileEntries().Select(e => (_prefix is null ? e.FullName : e.FullName.Replace('\\', '/')[_prefix.Length..], e.Length))];
 
         public override void Extract(Action<int, Stream> write)
         {
@@ -380,7 +457,8 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
 
         public override void Dispose() => _zip.Dispose();
 
-        private IEnumerable<ZipArchiveEntry> FileEntries() => _zip.Entries.Where(e => !e.FullName.Replace('\\', '/').EndsWith('/'));
+        private IEnumerable<ZipArchiveEntry> FileEntries() => _zip.Entries.Where(e => e.FullName.Replace('\\', '/') is var name && !name.EndsWith('/')
+            && (_prefix is null || (name.StartsWith(_prefix, StringComparison.Ordinal) && name.Length > _prefix.Length)));
     }
 
     /// <summary>
@@ -479,6 +557,15 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
 
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
+
+    private sealed record ThunderstorePackage(ThunderstoreVersion? Latest);
+
+    private sealed record ThunderstoreVersion(
+        [property: JsonPropertyName("version_number")] string? VersionNumber,
+        [property: JsonPropertyName("download_url")] string? DownloadUrl);
+
+    [GeneratedRegex(@"^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ThunderstoreVersionPattern();
 
     private sealed record GitHubRelease(
         [property: JsonPropertyName("tag_name")] string? TagName,

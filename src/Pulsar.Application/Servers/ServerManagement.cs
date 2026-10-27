@@ -765,7 +765,10 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesDotnetRuntime(manifest) || Announces(connection, AgentCapabilities.DotnetRuntime))
         && (!ManifestFeatures.UsesMinecraftTypes(manifest) || Announces(connection, AgentCapabilities.MinecraftTypes))
         && (!ManifestFeatures.UsesMods(manifest) || Announces(connection, AgentCapabilities.ChangeMods))
-        && (!ManifestFeatures.UsesModpacks(manifest) || Announces(connection, AgentCapabilities.InstallModpack));
+        && (!ManifestFeatures.UsesModpacks(manifest) || Announces(connection, AgentCapabilities.InstallModpack))
+        && (!ManifestFeatures.UsesUmod(manifest) || Announces(connection, AgentCapabilities.UmodPlugins))
+        && (!ManifestFeatures.UsesThunderstore(manifest) || Announces(connection, AgentCapabilities.ThunderstorePackages))
+        && (!ManifestFeatures.UsesCatalogLists(manifest) || Announces(connection, AgentCapabilities.CatalogLists));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;

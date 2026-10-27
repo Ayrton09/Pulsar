@@ -338,6 +338,39 @@ public sealed class AddonInstallerTests : IDisposable
         Assert.DoesNotContain(AssetHost, _http.Requested); // a check downloads nothing
     }
 
+    // Valheim's BepInEx (Pulsar 1.0.14): Thunderstore's newest package, its own folder of the zip unpacked into the server.
+    private static readonly AddonDefinition s_bepinex = new("bepinex", "BepInEx", "LGPL-2.1", "https://thunderstore.io/c/valheim/p/denikson/BepInExPack_Valheim/",
+        new ThunderstoreSource("denikson-BepInExPack_Valheim", "BepInExPack_Valheim"));
+
+    private const string PackageApi = "https://thunderstore.io/api/experimental/package/denikson/BepInExPack_Valheim/";
+    private const string PackageDownload = "https://thunderstore.io/package/download/denikson/BepInExPack_Valheim/5.4.2351/";
+    private const string PackageCdn = "https://ccdn.thunderstore.io/live/repository/packages/denikson-BepInExPack_Valheim-5.4.2351.zip";
+
+    [Fact]
+    public async Task AThunderstorePackagesFolderIsUnpackedIntoTheServerFromThunderstoresHostsOnly()
+    {
+        var zip = Zip(("manifest.json", "{}"), ("icon.png", "png"), ("BepInExPack_Valheim/winhttp.dll", "doorstop"),
+            ("BepInExPack_Valheim/BepInEx/core/BepInEx.dll", "core"));
+        _http.Routes[PackageApi] = () => Json(new { latest = new { version_number = "5.4.2351", download_url = PackageDownload } });
+        _http.Routes[PackageDownload] = () => Redirect(PackageCdn);
+        _http.Routes[PackageCdn] = () => Ok(zip);
+
+        var record = await InstallAsync(s_bepinex);
+
+        Assert.Equal(("5.4.2351", "denikson-BepInExPack_Valheim-5.4.2351.zip", Sha256(zip)), (record.Release, record.Asset, record.Sha256));
+        Assert.Equal(["winhttp.dll", "BepInEx/core/BepInEx.dll"], record.Added);
+        Assert.Equal("core", File.ReadAllText(Path.Combine(_root, "BepInEx", "core", "BepInEx.dll")));
+        Assert.False(File.Exists(Path.Combine(_root, "manifest.json"))); // Thunderstore's own files about it stay out
+        Assert.All(_http.Requested.Where(r => r != PackageApi), r => Assert.Contains("thunderstore.io", r, StringComparison.Ordinal));
+
+        // Thunderstore's answer naming another download is not followed.
+        _http.Routes[PackageApi] = () => Json(new { latest = new { version_number = "5.4.2352", download_url = "https://evil.example/x.zip" } });
+        Assert.Equal("addon.no_release", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_bepinex, force: true))).Code);
+        _http.Routes[PackageApi] = () => Json(new { latest = new { version_number = "5.4.2351", download_url = PackageDownload } });
+        _http.Routes[PackageDownload] = () => Redirect("https://evil.example/pack.zip");
+        Assert.Equal("addon.untrusted_host", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_bepinex, force: true))).Code);
+    }
+
     private Task<AddonRecord> InstallAsync(AddonDefinition addon, bool force = false) =>
         new AddonInstaller(new DirectServerFiles(), _http).InstallAsync(_root, addon, force, (stage, _) =>
         {

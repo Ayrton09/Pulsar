@@ -78,7 +78,13 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
   return (
     <div className="space-y-6">
       {addons.isError && <RefreshFailed error={addons.error} retry={() => void addons.refetch()} />}
-      <p className="max-w-2xl text-sm text-muted">{t('addons.hint')}</p>
+      {/* Where they come from: GitHub with the checksum it publishes, Thunderstore without one. */}
+      {list.some((addon) => addon.source !== 'thunderstore') && (
+        <p className="max-w-2xl text-sm text-muted">{t('addons.hint')}</p>
+      )}
+      {list.some((addon) => addon.source === 'thunderstore') && (
+        <p className="max-w-2xl text-sm text-muted">{t('addons.hintThunderstore')}</p>
+      )}
       {canChange && !changeable && <p className="text-sm text-muted">{t('addons.stopToChange')}</p>}
       {error && <Alert>{refusal() ?? errorMessage(t, error)}</Alert>}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

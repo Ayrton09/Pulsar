@@ -22,6 +22,12 @@ Map type (the map is now a choice, Procedural by default as before), game mode, 
 
 They come from LinuxGSM's configuration, the Facepunch wiki and public server guides; none was tried on a real server.
 
+## Plugins from uMod (1.0.14)
+
+With Oxide or Carbon installed (Mods tab, Addons), the same tab searches uMod's Rust plugins and installs, updates and
+removes them in `oxide/plugins` or `carbon/plugins` while the server runs: both load and unload a plugin as its file
+comes and goes. Each file is checked against the SHA-1 uMod lists for its newest release.
+
 ## Players (1.0.11)
 
 The Players card kicks and bans a player who is on the server by name (`kick "…"`, `ban "…"`). Unbanning and owners take a Steam ID (`unban`, `ownerid`): use the console. From the game's and hosting providers' documentation; not run on a server yet.

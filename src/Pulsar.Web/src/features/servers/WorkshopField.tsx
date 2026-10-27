@@ -98,8 +98,9 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
       return;
     }
     setProblem(null);
-    add.mutate(id, {
-      onSuccess: ([item]) => {
+    // Each call handles its own id: mutate's own callbacks would run only for the last of two quick adds.
+    void add.mutateAsync(id).then(
+      ([item]) => {
         if (item?.isCollection) {
           setCollection(item);
           return;
@@ -107,11 +108,11 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
         append(id);
       },
       // Steam could not be asked: the id still goes in, as typed, marked as not checked.
-      onError: () => {
+      () => {
         setUnchecked((current) => new Set(current).add(id));
         append(id);
       },
-    });
+    );
   };
 
   const addCollection = (items: string[]) => {

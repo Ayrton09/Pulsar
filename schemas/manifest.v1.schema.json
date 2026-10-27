@@ -48,7 +48,7 @@
         "description": { "type": "string", "maxLength": 512 },
         "license": { "type": "string", "minLength": 1, "maxLength": 64, "description": "As the addon's authors state it; shown before installing." },
         "url": { "type": "string", "pattern": "^https://", "maxLength": 256, "description": "The addon's home page." },
-        "source": { "$ref": "#/$defs/GitHubReleaseSource" },
+        "source": { "oneOf": [{ "$ref": "#/$defs/GitHubReleaseSource" }, { "$ref": "#/$defs/ThunderstoreSource" }] },
         "target": {
           "oneOf": [{ "const": "" }, { "$ref": "#/$defs/RelativePath" }],
           "description": "Folder of the server the archive is unpacked into (a relative path, with its rules); empty for the server's folder."
@@ -71,6 +71,17 @@
         "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name, ending with its archive's extension (zip, tar.gz or tgz, then $)." },
         "tag": { "type": "string", "pattern": "^(?!\\.\\.?$)[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
         "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." }
+      }
+    },
+    "ThunderstoreSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "package"],
+      "description": "Pulsar 1.0.14: a Thunderstore package's newest zip (a mod loader such as BepInEx's pack). Thunderstore publishes no checksum: the agent takes it over HTTPS from Thunderstore's own hosts only.",
+      "properties": {
+        "type": { "const": "thunderstore" },
+        "package": { "type": "string", "pattern": "^[A-Za-z0-9_]{1,64}-[A-Za-z0-9_]{1,64}$", "description": "Its namespace and name: denikson-BepInExPack_Valheim." },
+        "folder": { "type": "string", "default": "", "pattern": "^([A-Za-z0-9_-][A-Za-z0-9._-]{0,99})?$", "description": "The zip's folder whose content is unpacked into the target (BepInExPack_Valheim); empty for the whole zip." }
       }
     },
     "LineEdit": {
@@ -111,7 +122,8 @@
         "max": { "type": "number", "description": "Integer and number variables; whole for integers." },
         "options": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/EnumOption" } },
         "description": { "type": "string", "maxLength": 512 },
-        "workshop": { "$ref": "#/$defs/WorkshopList" }
+        "workshop": { "$ref": "#/$defs/WorkshopList" },
+        "curseForge": { "$ref": "#/$defs/CurseForgeList" }
       }
     },
     "WorkshopList": {
@@ -122,6 +134,16 @@
       "properties": {
         "appId": { "type": "integer", "minimum": 1, "maximum": 4294967295, "description": "The game's Steam app id (whose Workshop the items are in)." },
         "separator": { "enum": [";", ","], "default": ";" }
+      }
+    },
+    "CurseForgeList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gameId"],
+      "description": "Pulsar 1.0.14: the variable lists CurseForge project ids; the panel offers an editor that searches the game's mods on CurseForge and names them, with the administrator's key. The game downloads them itself.",
+      "properties": {
+        "gameId": { "type": "integer", "minimum": 1, "maximum": 2147483647, "description": "The game on CurseForge (ARK: Survival Ascended is 83374)." },
+        "separator": { "enum": [",", ";"], "default": "," }
       }
     },
     "EnumOption": {
@@ -402,12 +424,16 @@
     "ModSourceDefinition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "versionVar", "typeVar", "types"],
+      "required": ["source", "types"],
       "description": "A catalog of mods (Pulsar 1.0.9): what a server of each type takes from it, and where.",
       "properties": {
-        "source": { "enum": ["modrinth", "curseforge"] },
-        "versionVar": { "type": "string", "description": "The variable holding the game's version, when the install does not report it." },
-        "typeVar": { "type": "string", "description": "The enum variable holding the server's type; each type the catalog serves is a key of 'types'." },
+        "source": { "enum": ["modrinth", "curseforge", "umod", "thunderstore"], "description": "umod (Pulsar 1.0.14): Oxide's and Carbon's plugins from umod.org. thunderstore (Pulsar 1.0.14): BepInEx packages from thunderstore.io." },
+        "versionVar": { "type": "string", "description": "The variable holding the game's version, when the install does not report it. Required for modrinth and curseforge; not for umod." },
+        "typeVar": { "type": "string", "description": "The enum variable holding the server's type; each type the catalog serves is a key of 'types'. Not with addonTypes." },
+        "addonTypes": { "type": "boolean", "default": false, "description": "Pulsar 1.0.14: the server's type is the addon it has among the keys of 'types' (Oxide or Carbon for uMod)." },
+        "community": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$", "description": "The catalog's name for the game: uMod's (rust), Thunderstore's community (valheim). Required for umod and thunderstore." },
+        "category": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$", "description": "Pulsar 1.0.14, thunderstore only: the category the searches keep to (server-side)." },
+        "whileRunning": { "type": "boolean", "default": false, "description": "Pulsar 1.0.14, umod only: the game loads the files as they come and go, so they change without stopping it." },
         "types": { "type": "object", "minProperties": 1, "maxProperties": 32, "additionalProperties": { "$ref": "#/$defs/ModTargetDefinition" } },
         "modpacks": { "$ref": "#/$defs/ModpacksDefinition" }
       }
@@ -424,11 +450,13 @@
     "ModTargetDefinition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["projectType", "loaders", "folder"],
+      "required": ["projectType", "folder"],
       "properties": {
         "projectType": { "enum": ["mod", "plugin"] },
-        "loaders": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" }, "description": "The catalog's loaders a file must be for, any of them." },
-        "folder": { "type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$", "description": "The server's folder the files go into." }
+        "loaders": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" }, "description": "The catalog's loaders a file must be for, any of them. Required for modrinth and curseforge; not for umod." },
+        "folder": { "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}){0,2}$", "description": "The server's folder the files go into, up to three names deep (mods, oxide/plugins)." },
+        "extensions": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string", "pattern": "^\\.[a-z0-9]{1,8}$" }, "description": "Pulsar 1.0.14: what the files may end with (.cs); .jar when left out." },
+        "layout": { "enum": ["bepinex"], "description": "Pulsar 1.0.14, thunderstore only: a package's zip goes into BepInEx's folder ('folder'), its plugins and patchers each in a folder named after it, its configuration only where there is none." }
       }
     },
     "ConfigFileDefinition": {

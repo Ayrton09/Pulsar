@@ -482,13 +482,13 @@
       "type_unsupported": "A server of this type takes no mods or plugins: choose another type in its settings, then update it.",
       "version_unknown": "The server's game version is not known yet: install or update the server first.",
       "no_version": "The project has no version for this server's game version and type.",
-      "file_invalid": "The project's file is not a .jar file the panel can put on the server.",
-      "catalog_busy": "Modrinth is receiving too many requests from this panel: try again in a minute.",
+      "file_invalid": "The project's file is not one the panel can put on the server.",
+      "catalog_busy": "The catalog is receiving too many requests from this panel: try again in a minute.",
       "catalog_unavailable": "{{detail}}",
       "change_running": "The server's mods are already being changed: wait for that to end.",
       "too_many": "A server has at most 300 mods, and a change takes at most 64 files.",
       "query_invalid": "A search is one line of up to 100 characters.",
-      "no_updates": "Modrinth has nothing newer for those mods.",
+      "no_updates": "The catalog has nothing newer for those mods.",
       "requirement_missing": "{{detail}}",
       "required_by": "{{detail}}",
       "incompatible": "{{detail}}",
@@ -496,14 +496,17 @@
       "invalid": "The node refused the change: {{detail}}",
       "invalid_path": "The node refused a file outside the game's mod folders: {{detail}}",
       "download_failed": "{{detail}}",
-      "checksum_mismatch": "A download is not the file Modrinth published, so nothing was changed: {{detail}}",
+      "checksum_mismatch": "A download is not the file the catalog published, so nothing was changed: {{detail}}",
       "file_exists": "{{detail}}",
       "untrusted_host": "{{detail}}",
       "write_failed": "{{detail}}",
       "catalog_not_configured": "CurseForge needs an API key: an administrator sets it in Games.",
       "distribution_forbidden": "{{detail}}",
       "curseforge_key_invalid": "A CurseForge API key is one line of up to 256 printable characters.",
-      "curseforge_key_rejected": "CurseForge does not accept that API key."
+      "curseforge_key_rejected": "CurseForge does not accept that API key.",
+      "addon_missing": "These plugins run on an addon the server does not have: install it first, from this tab.",
+      "bad_package": "A package is not a zip Pulsar unpacks, so nothing was changed: {{detail}}",
+      "list_invalid": "1 to 100 CurseForge project ids of a game, each a number."
     },
     "modpack": {
       "unsupported": "{{detail}}",
@@ -1406,7 +1409,25 @@
     "actionsFor": "Actions for {{name}}",
     "commandFor": "{{command}} {{name}}",
     "templateUpgradeAuto": "Pulsar moves it by itself, as its updates are set.",
-    "templateUpgradeImported": "This version was imported here: Pulsar moves servers by itself only to the versions its updates bring."
+    "templateUpgradeImported": "This version was imported here: Pulsar moves servers by itself only to the versions its updates bring.",
+    "curseforge": {
+      "empty": "No mods yet: search for them below, or add one by its CurseForge id.",
+      "placeholder": "CurseForge project id",
+      "add": "Add",
+      "added": "Added",
+      "removeShort": "Remove",
+      "remove": "Remove {{name}}",
+      "invalid": "A CurseForge project id is a number.",
+      "duplicate": "That mod is in the list already.",
+      "tooMany": "The list is longer than this setting takes.",
+      "search": "Search the game's mods on CurseForge",
+      "results": "Mods found",
+      "noResults": "Nothing found.",
+      "notFound": "Not on CurseForge",
+      "otherGame": "Another game's",
+      "needsKey": "Without the panel's CurseForge key the mods are added by their ids: an administrator sets the key in Games.",
+      "by": "by {{author}}"
+    }
   },
   "panelKeys": {
     "title": "Panel signing key",
@@ -1566,12 +1587,15 @@
       "conflicts": "{{name}} cannot be installed with {{others}}: remove it first.",
       "required_by": "{{others}} needs {{name}}: remove it first."
     },
-    "removeConfirm": "Remove {{name}} from {{server}}? The files it installed are deleted, even if you changed them; files you added yourself are kept."
+    "removeConfirm": "Remove {{name}} from {{server}}? The files it installed are deleted, even if you changed them; files you added yourself are kept.",
+    "hintThunderstore": "From Thunderstore: the mod loader the game's mods run on. Thunderstore publishes no checksum, so the node downloads its newest version only from Thunderstore's own servers. Made by third parties, under their own licences."
   },
   "mods": {
     "hint": {
       "mod": "Mods from Modrinth for this server's type and game version ({{version}}), with the mods they need. The node downloads each file from Modrinth and installs it only when it matches the SHA-512 Modrinth publishes. They are made by third parties, under their own licences.",
-      "plugin": "Plugins from Modrinth for this server's type and game version ({{version}}), with the plugins they need. The node downloads each file from Modrinth and installs it only when it matches the SHA-512 Modrinth publishes. They are made by third parties, under their own licences."
+      "plugin": "Plugins from Modrinth for this server's type and game version ({{version}}), with the plugins they need. The node downloads each file from Modrinth and installs it only when it matches the SHA-512 Modrinth publishes. They are made by third parties, under their own licences.",
+      "umod": "Plugins from uMod for the addon this server has (Oxide or Carbon). They load as they arrive, so the server can keep running. The node downloads each file from uMod and installs it only when it matches the SHA-1 uMod publishes. They are made by third parties, under their own licences.",
+      "thunderstore": "Server mods from Thunderstore for BepInEx, with the packages they need. Install BepInEx first, from this tab, and stop the server to change them. Thunderstore publishes no checksum, so the node takes each package only from Thunderstore's own servers. They are made by third parties, under their own licences."
     },
     "stopToChange": "Stop the server to install, update or remove mods and plugins.",
     "lastFailed": "The last change failed: {{reason}}",
@@ -1654,7 +1678,9 @@
       "curseforge": "CurseForge",
       "needsKey": "CurseForge needs an API key.",
       "setKey": "Set it in Games",
-      "needsKeyAskAdmin": "CurseForge needs an API key: ask an administrator to set it."
+      "needsKeyAskAdmin": "CurseForge needs an API key: ask an administrator to set it.",
+      "umod": "uMod",
+      "thunderstore": "Thunderstore"
     },
     "curseForgeKey": {
       "title": "CurseForge",

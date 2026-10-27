@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import type { TemplateVariable } from './api';
+import { CurseForgeListField } from './CurseForgeListField';
 import { isGameOption, type VariableValues } from './variables';
 import { WorkshopField } from './WorkshopField';
 
@@ -104,6 +105,14 @@ function VariableField({
         variable.workshop ? (
           <WorkshopField
             variable={{ ...variable, workshop: variable.workshop }}
+            value={value}
+            disabled={disabled}
+            onChange={(next) => onChange(variable.key, next)}
+            control={ids}
+          />
+        ) : variable.curseForge ? (
+          <CurseForgeListField
+            variable={{ ...variable, curseForge: variable.curseForge }}
             value={value}
             disabled={disabled}
             onChange={(next) => onChange(variable.key, next)}

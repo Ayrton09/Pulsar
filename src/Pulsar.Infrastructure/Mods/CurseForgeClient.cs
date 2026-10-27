@@ -19,7 +19,12 @@ namespace Pulsar.Infrastructure.Mods;
 /// publishes no stronger checksum); one whose author keeps it on CurseForge's site only has no address and is said so.
 /// Files tagged for players' games only are left out.
 /// </summary>
-public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContext db, ICatalogKeyProtector protector) : IModCatalog, ICurseForgeKeyCheck
+/// <remarks>
+/// Pulsar 1.0.14: any game's projects too (<see cref="ICurseForgeProjects"/>), by id or by a search of the game, for the
+/// editor of a variable that lists them (ARK: Survival Ascended's mods).
+/// </remarks>
+public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContext db, ICatalogKeyProtector protector)
+    : IModCatalog, ICurseForgeKeyCheck, ICurseForgeProjects
 {
     public const string ClientName = "Pulsar.CurseForge";
     public static readonly Uri BaseAddress = new("https://api.curseforge.com/v1/");
@@ -65,7 +70,7 @@ public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContex
     }
 
     public async Task<CatalogSearch> SearchAsync(string? query, string projectType, IReadOnlyList<string> loaders, string? gameVersion, int offset, int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? community = null, string? category = null)
     {
         ArgumentNullException.ThrowIfNull(loaders);
         var size = Math.Clamp(limit, 1, MaxPageSize);
@@ -128,7 +133,7 @@ public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContex
 
     /// <summary>From each project's index of its latest files: the newest for the game version and loader (a release first).</summary>
     public async Task<IReadOnlyDictionary<string, CatalogVersion>> LatestVersionsAsync(IReadOnlyList<CatalogInstalled> installed, IReadOnlyList<string> loaders,
-        string gameVersion, CancellationToken cancellationToken)
+        string? gameVersion, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(loaders);
@@ -137,7 +142,7 @@ public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContex
         foreach (var mod in await ModsAsync([.. installed.Select(i => i.ProjectId)], cancellationToken))
         {
             var suitable = (mod.LatestFilesIndexes ?? [])
-                .Where(f => f is not null && f.FileId > 0 && f.GameVersion == gameVersion && (type is null || f.ModLoader == type)).ToList();
+                .Where(f => f is not null && f.FileId > 0 && (gameVersion is null || f.GameVersion == gameVersion) && (type is null || f.ModLoader == type)).ToList();
             if ((suitable.FirstOrDefault(f => f!.ReleaseType == 1) ?? suitable.FirstOrDefault()) is { } file)
             {
                 newest[mod.Id] = file.FileId;
@@ -203,6 +208,35 @@ public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContex
             cancellationToken);
         return [.. (found?.Data ?? []).Where(f => f is not null)];
     }
+
+    public async Task<(IReadOnlyList<CurseForgeProject> Projects, int Total)> SearchGameAsync(int gameId, string? query, int offset, int limit,
+        CancellationToken cancellationToken)
+    {
+        var size = Math.Clamp(limit, 1, MaxPageSize);
+        var index = Math.Clamp(offset, 0, MaxSearchWindow - size);
+        var path = new StringBuilder().Append(CultureInfo.InvariantCulture, $"mods/search?gameId={Math.Max(1, gameId)}&sortField=2&sortOrder=desc&index={index}&pageSize={size}");
+        if (!string.IsNullOrEmpty(query))
+        {
+            path.Append("&searchFilter=").Append(Uri.EscapeDataString(query));
+        }
+
+        var found = await GetAsync<Page<ModResponse>>(path.ToString(), cancellationToken) ?? throw Unavailable("CurseForge sent an empty answer.");
+        var projects = (found.Data ?? []).Where(m => m is { Id: > 0, Name: not null }).Select(Project).ToList();
+        return (projects, Math.Clamp(found.Pagination?.TotalCount ?? projects.Count, 0, MaxSearchWindow));
+    }
+
+    public async Task<IReadOnlyList<CurseForgeProject>> ProjectsByIdAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        return [.. (await ModsAsync(ids, cancellationToken)).Select(Project)];
+    }
+
+    /// <summary>A project as the editor shows it: its page only on CurseForge's own site.</summary>
+    private static CurseForgeProject Project(ModResponse mod) =>
+        new(Id(mod.Id), Text(mod.Name)!, mod.GameId, Text(mod.Authors?.FirstOrDefault()?.Name), Math.Max(0, mod.DownloadCount), mod.DateModified,
+            Uri.TryCreate(mod.Links?.WebsiteUrl, UriKind.Absolute, out var page) && page.Scheme == Uri.UriSchemeHttps && page.Host == "www.curseforge.com"
+                ? page.AbsoluteUri
+                : null);
 
     private async Task<List<ModResponse>> ModsAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken)
     {
@@ -362,7 +396,9 @@ public sealed class CurseForgeClient(IHttpClientFactory clients, IPulsarDbContex
     private sealed record Author(string? Name);
 
     private sealed record ModResponse(int Id, string? Name, string? Slug, string? Summary, long DownloadCount, List<Author>? Authors,
-        DateTimeOffset? DateModified, List<FileIndex?>? LatestFilesIndexes);
+        DateTimeOffset? DateModified, List<FileIndex?>? LatestFilesIndexes, int GameId = 0, ModLinks? Links = null);
+
+    private sealed record ModLinks(string? WebsiteUrl);
 
     private sealed record FileIndex(string? GameVersion, int FileId, int ReleaseType, int? ModLoader);
 

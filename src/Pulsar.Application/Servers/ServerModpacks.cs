@@ -288,8 +288,8 @@ public sealed partial class ServerMods
         var loaderVersion = result?.LoaderVersion is { Length: > 0 } reported ? reported : null;
         if (PackSource(manifest, SourceName(pack.Source)) is { Modpacks: { } modpacks } source)
         {
-            server.SetVariable(source.TypeVar, pack.ServerType, null, now);
-            server.SetVariable(source.VersionVar, pack.GameVersion, null, now);
+            server.SetVariable(source.TypeVar!, pack.ServerType, null, now);
+            server.SetVariable(source.VersionVar!, pack.GameVersion, null, now);
             if (manifest.VariableList.FirstOrDefault(v => v.Key == modpacks.LoaderVar) is not { } loaderVariable || loaderVersion is null
                 || VariableValues.Check(loaderVariable, loaderVersion) is not null)
             {
@@ -373,7 +373,7 @@ public sealed partial class ServerMods
     private static Result<PackPlan> PackTarget(GameManifest manifest, ModSource modSource, ModSourceDefinition source, CatalogVersion version)
     {
         var type = source.Types.Where(t => t.Value.ProjectType == "mod")
-            .SelectMany(t => t.Value.Loaders.Where(l => s_modpackLoaders.Contains(l) && version.Loaders.Contains(l)).Select(l => (Type: t.Key, Loader: l)))
+            .SelectMany(t => t.Value.LoaderList.Where(l => s_modpackLoaders.Contains(l) && version.Loaders.Contains(l)).Select(l => (Type: t.Key, Loader: l)))
             .FirstOrDefault();
         if (type.Type is null)
         {
@@ -426,7 +426,7 @@ public sealed partial class ServerMods
 
     /// <summary>The loaders of the game's mod types that packs can be made for.</summary>
     private static List<string> PackLoaders(ModSourceDefinition source) =>
-        [.. source.Types.Values.Where(t => t.ProjectType == "mod").SelectMany(t => t.Loaders).Where(s_modpackLoaders.Contains).Distinct(StringComparer.Ordinal)];
+        [.. source.Types.Values.Where(t => t.ProjectType == "mod").SelectMany(t => t.LoaderList).Where(s_modpackLoaders.Contains).Distinct(StringComparer.Ordinal)];
 
     private static ModpackView? ModpackViewOf(ServerModpack? pack) => pack is null
         ? null

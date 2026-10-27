@@ -482,13 +482,13 @@
       "type_unsupported": "这种类型的服务器不支持模组或插件：请在设置中选择其他类型，然后更新服务器。",
       "version_unknown": "还不知道服务器的游戏版本：请先安装或更新服务器。",
       "no_version": "该项目没有适合此服务器游戏版本和类型的版本。",
-      "file_invalid": "该项目的文件不是面板可以放到服务器上的 .jar 文件。",
-      "catalog_busy": "Modrinth 收到此面板的请求过多：请一分钟后重试。",
+      "file_invalid": "该项目的文件不是面板可以放到服务器上的文件。",
+      "catalog_busy": "目录收到此面板的请求过多：请一分钟后重试。",
       "catalog_unavailable": "无法查询 Modrinth：{{detail}}",
       "change_running": "服务器的模组正在更改：请等待完成。",
       "too_many": "一台服务器最多 300 个模组，一次更改最多 64 个文件。",
       "query_invalid": "搜索内容为一行，最多 100 个字符。",
-      "no_updates": "Modrinth 没有这些模组的更新版本。",
+      "no_updates": "目录没有这些模组的更新版本。",
       "requirement_missing": "该项目需要另一个没有适合此服务器版本的项目：{{detail}}",
       "required_by": "另一个已安装的模组需要它：{{detail}}",
       "incompatible": "该项目无法与服务器上的另一个模组一起使用：{{detail}}",
@@ -496,14 +496,17 @@
       "invalid": "节点拒绝了更改：{{detail}}",
       "invalid_path": "节点拒绝了游戏模组文件夹之外的文件：{{detail}}",
       "download_failed": "无法下载模组：{{detail}}",
-      "checksum_mismatch": "下载的文件不是 Modrinth 公布的文件，因此没有做任何更改：{{detail}}",
+      "checksum_mismatch": "下载的文件不是目录公布的文件，因此没有做任何更改：{{detail}}",
       "file_exists": "已有一个同名文件，不是面板放的：请先删除或重命名它。{{detail}}",
       "untrusted_host": "Pulsar 不从该网站下载模组：{{detail}}",
       "write_failed": "无法写入所有模组：{{detail}}",
       "catalog_not_configured": "CurseForge 需要 API 密钥：由管理员在“游戏”中设置。",
       "distribution_forbidden": "作者只允许从 CurseForge 网站下载：请在那里下载，再用文件管理器上传。{{detail}}",
       "curseforge_key_invalid": "CurseForge API 密钥是一行不超过 256 个可见字符。",
-      "curseforge_key_rejected": "CurseForge 不接受该 API 密钥。"
+      "curseforge_key_rejected": "CurseForge 不接受该 API 密钥。",
+      "addon_missing": "这些插件运行在服务器没有的附加组件上：请先在此标签页安装它。",
+      "bad_package": "该包不是 Pulsar 可以解压的 zip，因此没有做任何更改：{{detail}}",
+      "list_invalid": "某个游戏的 1 到 100 个 CurseForge 项目 ID，每个都是数字。"
     },
     "modpack": {
       "unsupported": "此服务器无法安装整合包：{{detail}}",
@@ -1406,7 +1409,25 @@
     "actionsFor": "{{name}} 的操作",
     "commandFor": "{{command}} {{name}}",
     "templateUpgradeAuto": "Pulsar 会按服务器的更新设置自动切换。",
-    "templateUpgradeImported": "此版本是在这里导入的：Pulsar 只会自动切换到其更新带来的版本。"
+    "templateUpgradeImported": "此版本是在这里导入的：Pulsar 只会自动切换到其更新带来的版本。",
+    "curseforge": {
+      "empty": "还没有模组：在下方搜索，或按 CurseForge ID 添加。",
+      "placeholder": "CurseForge 项目 ID",
+      "add": "添加",
+      "added": "已添加",
+      "removeShort": "移除",
+      "remove": "移除 {{name}}",
+      "invalid": "CurseForge 项目 ID 是一个数字。",
+      "duplicate": "该模组已在列表中。",
+      "tooMany": "列表超出了此设置允许的长度。",
+      "search": "在 CurseForge 上搜索游戏的模组",
+      "results": "找到的模组",
+      "noResults": "什么也没找到。",
+      "notFound": "不在 CurseForge 上",
+      "otherGame": "属于其他游戏",
+      "needsKey": "面板没有 CurseForge 密钥时，按 ID 添加模组：管理员可在“游戏”中设置密钥。",
+      "by": "作者：{{author}}"
+    }
   },
   "panelKeys": {
     "title": "面板签名密钥",
@@ -1566,12 +1587,15 @@
       "conflicts": "{{name}} 无法与 {{others}} 一起安装：请先移除。",
       "required_by": "{{others}} 需要 {{name}}：请先移除。"
     },
-    "removeConfirm": "从 {{server}} 中移除 {{name}}？它安装的文件将被删除（即使你改动过）；你自己添加的文件会保留。"
+    "removeConfirm": "从 {{server}} 中移除 {{name}}？它安装的文件将被删除（即使你改动过）；你自己添加的文件会保留。",
+    "hintThunderstore": "来自 Thunderstore：游戏模组运行所依赖的模组加载器。Thunderstore 不公布校验和，因此节点只从 Thunderstore 自己的服务器下载其最新版本。由第三方制作，遵循各自的许可证。"
   },
   "mods": {
     "hint": {
       "mod": "适合此服务器类型和游戏版本（{{version}}）的 Modrinth 模组，以及它们需要的模组。节点从 Modrinth 下载每个文件，只有与 Modrinth 公布的 SHA-512 一致时才安装。它们由第三方制作，遵循各自的许可证。",
-      "plugin": "适合此服务器类型和游戏版本（{{version}}）的 Modrinth 插件，以及它们需要的插件。节点从 Modrinth 下载每个文件，只有与 Modrinth 公布的 SHA-512 一致时才安装。它们由第三方制作，遵循各自的许可证。"
+      "plugin": "适合此服务器类型和游戏版本（{{version}}）的 Modrinth 插件，以及它们需要的插件。节点从 Modrinth 下载每个文件，只有与 Modrinth 公布的 SHA-512 一致时才安装。它们由第三方制作，遵循各自的许可证。",
+      "umod": "适用于此服务器已有附加组件（Oxide 或 Carbon）的 uMod 插件。插件一到就会加载，因此服务器可以保持运行。节点从 uMod 下载每个文件，只有与 uMod 公布的 SHA-1 一致时才安装。它们由第三方制作，遵循各自的许可证。",
+      "thunderstore": "适用于 BepInEx 的 Thunderstore 服务器模组，以及它们需要的包。请先在此标签页安装 BepInEx，并在更改前停止服务器。Thunderstore 不公布校验和，因此节点只从 Thunderstore 自己的服务器获取每个包。它们由第三方制作，遵循各自的许可证。"
     },
     "stopToChange": "停止服务器后才能安装、更新或移除模组和插件。",
     "lastFailed": "上次更改失败：{{reason}}",
@@ -1654,7 +1678,9 @@
       "curseforge": "CurseForge",
       "needsKey": "CurseForge 需要 API 密钥。",
       "setKey": "在“游戏”中设置",
-      "needsKeyAskAdmin": "CurseForge 需要 API 密钥：请管理员设置。"
+      "needsKeyAskAdmin": "CurseForge 需要 API 密钥：请管理员设置。",
+      "umod": "uMod",
+      "thunderstore": "Thunderstore"
     },
     "curseForgeKey": {
       "title": "CurseForge",

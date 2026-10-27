@@ -2861,6 +2861,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/curseforge/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CurseForgeLookupRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CurseForgeProjectView"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/curseforge/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    gameId: number;
+                    query?: string;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CurseForgeSearchView"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -14273,6 +14441,8 @@ export interface components {
             installedRelease: null | string;
             /** Format: date-time */
             installedAt: null | string;
+            /** @default githubRelease */
+            source: string;
         };
         AddSshKeyRequest: {
             name: null | string;
@@ -14559,6 +14729,28 @@ export interface components {
         CurseForgeKeyRequest: {
             apiKey: string;
         };
+        CurseForgeLookupRequest: {
+            /** Format: int32 */
+            gameId: number;
+            ids: string[];
+        };
+        CurseForgeProjectView: {
+            id: string;
+            found: boolean;
+            name: null | string;
+            otherGame: boolean;
+            author: null | string;
+            /** Format: int64 */
+            downloads: null | number;
+            /** Format: date-time */
+            updated: null | string;
+            url: null | string;
+        };
+        CurseForgeSearchView: {
+            hits: components["schemas"]["CurseForgeProjectView"][];
+            /** Format: int32 */
+            total: number;
+        };
         DatabaseHostCheck: {
             version: string;
         };
@@ -14843,6 +15035,9 @@ export interface components {
             modpacks: boolean;
             modpack?: null | components["schemas"]["ModpackView"];
             modpackInstalling?: null | components["schemas"]["ModpackView"];
+            /** @default false */
+            whileRunning: boolean;
+            community?: null | string;
         };
         ModUpdateList: {
             updates: components["schemas"]["ModUpdateView"][];
@@ -15658,6 +15853,11 @@ export interface components {
         TemplateContentRequest: {
             content: string;
         };
+        TemplateCurseForge: {
+            /** Format: int32 */
+            gameId: number;
+            separator: string;
+        };
         TemplateDetails: {
             template: components["schemas"]["TemplateView"];
             /** Format: int32 */
@@ -15719,6 +15919,7 @@ export interface components {
             options: components["schemas"]["TemplateOption"][];
             description: null | string;
             workshop?: null | components["schemas"]["TemplateWorkshop"];
+            curseForge?: null | components["schemas"]["TemplateCurseForge"];
         };
         TemplateView: {
             /** Format: uuid */

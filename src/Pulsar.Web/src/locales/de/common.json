@@ -482,13 +482,13 @@
       "type_unsupported": "Ein Server dieses Typs nimmt keine Mods oder Plugins: wähle in seinen Einstellungen einen anderen Typ und aktualisiere ihn dann.",
       "version_unknown": "Die Spielversion des Servers ist noch nicht bekannt: installiere oder aktualisiere den Server zuerst.",
       "no_version": "Das Projekt hat keine Version für Spielversion und Typ dieses Servers.",
-      "file_invalid": "Die Datei des Projekts ist keine .jar-Datei, die das Panel auf den Server legen kann.",
-      "catalog_busy": "Modrinth erhält zu viele Anfragen von diesem Panel: versuche es in einer Minute erneut.",
+      "file_invalid": "Die Datei des Projekts ist keine, die das Panel auf den Server legen kann.",
+      "catalog_busy": "Der Katalog erhält zu viele Anfragen von diesem Panel: versuche es in einer Minute erneut.",
       "catalog_unavailable": "Modrinth konnte nicht abgefragt werden: {{detail}}",
       "change_running": "Die Mods des Servers werden schon geändert: warte, bis das fertig ist.",
       "too_many": "Ein Server hat höchstens 300 Mods, und eine Änderung umfasst höchstens 64 Dateien.",
       "query_invalid": "Eine Suche ist eine Zeile mit bis zu 100 Zeichen.",
-      "no_updates": "Modrinth hat nichts Neueres für diese Mods.",
+      "no_updates": "Der Katalog hat nichts Neueres für diese Mods.",
       "requirement_missing": "Das Projekt braucht ein anderes, das keine Version für diesen Server hat: {{detail}}",
       "required_by": "Ein anderer installierter Mod braucht diesen: {{detail}}",
       "incompatible": "Das Projekt funktioniert nicht mit einem anderen Mod auf dem Server: {{detail}}",
@@ -496,14 +496,17 @@
       "invalid": "Der Node hat die Änderung abgelehnt: {{detail}}",
       "invalid_path": "Der Node hat eine Datei außerhalb der Mod-Ordner des Spiels abgelehnt: {{detail}}",
       "download_failed": "Ein Mod konnte nicht heruntergeladen werden: {{detail}}",
-      "checksum_mismatch": "Ein Download ist nicht die Datei, die Modrinth veröffentlicht hat, daher wurde nichts geändert: {{detail}}",
+      "checksum_mismatch": "Ein Download ist nicht die Datei, die der Katalog veröffentlicht hat, daher wurde nichts geändert: {{detail}}",
       "file_exists": "Dort liegt schon eine Datei mit diesem Namen, die nicht vom Panel stammt: lösche oder benenne sie zuerst um. {{detail}}",
       "untrusted_host": "Pulsar lädt keine Mods von dieser Seite herunter: {{detail}}",
       "write_failed": "Nicht alle Mods konnten geschrieben werden: {{detail}}",
       "catalog_not_configured": "CurseForge braucht einen API-Schlüssel: ein Administrator legt ihn unter Spiele fest.",
       "distribution_forbidden": "Der Autor erlaubt den Download nur über die CurseForge-Seite: lade es dort herunter und lade es mit dem Dateimanager hoch. {{detail}}",
       "curseforge_key_invalid": "Ein CurseForge-API-Schlüssel ist eine Zeile mit bis zu 256 sichtbaren Zeichen.",
-      "curseforge_key_rejected": "CurseForge akzeptiert diesen API-Schlüssel nicht."
+      "curseforge_key_rejected": "CurseForge akzeptiert diesen API-Schlüssel nicht.",
+      "addon_missing": "Diese Plugins laufen auf einem Addon, das der Server nicht hat: installiere es zuerst, in diesem Tab.",
+      "bad_package": "Ein Paket ist kein Zip, das Pulsar entpackt, daher wurde nichts geändert: {{detail}}",
+      "list_invalid": "1 bis 100 CurseForge-Projekt-IDs eines Spiels, jede eine Zahl."
     },
     "modpack": {
       "unsupported": "Dieser Server kann keine Modpacks installieren: {{detail}}",
@@ -1406,7 +1409,25 @@
     "actionsFor": "Aktionen für {{name}}",
     "commandFor": "{{command}} {{name}}",
     "templateUpgradeAuto": "Pulsar stellt ihn selbst um, wie seine Updates eingestellt sind.",
-    "templateUpgradeImported": "Diese Version wurde hier importiert: Pulsar stellt Server nur auf die Versionen selbst um, die seine Updates mitbringen."
+    "templateUpgradeImported": "Diese Version wurde hier importiert: Pulsar stellt Server nur auf die Versionen selbst um, die seine Updates mitbringen.",
+    "curseforge": {
+      "empty": "Noch keine Mods: suche sie unten oder füge einen per CurseForge-ID hinzu.",
+      "placeholder": "CurseForge-Projekt-ID",
+      "add": "Hinzufügen",
+      "added": "Hinzugefügt",
+      "removeShort": "Entfernen",
+      "remove": "{{name}} entfernen",
+      "invalid": "Eine CurseForge-Projekt-ID ist eine Zahl.",
+      "duplicate": "Dieser Mod ist schon in der Liste.",
+      "tooMany": "Die Liste ist länger, als diese Einstellung zulässt.",
+      "search": "Mods des Spiels auf CurseForge suchen",
+      "results": "Gefundene Mods",
+      "noResults": "Nichts gefunden.",
+      "notFound": "Nicht auf CurseForge",
+      "otherGame": "Von einem anderen Spiel",
+      "needsKey": "Ohne den CurseForge-Schlüssel des Panels werden Mods per ID hinzugefügt: ein Administrator legt ihn unter Spiele fest.",
+      "by": "von {{author}}"
+    }
   },
   "panelKeys": {
     "title": "Signaturschlüssel des Panels",
@@ -1566,12 +1587,15 @@
       "conflicts": "{{name}} kann nicht zusammen mit {{others}} installiert werden: Entfernen Sie es zuerst.",
       "required_by": "{{others}} benötigt {{name}}: Entfernen Sie es zuerst."
     },
-    "removeConfirm": "{{name}} von {{server}} entfernen? Die von ihr installierten Dateien werden gelöscht, auch wenn Sie sie geändert haben; selbst hinzugefügte Dateien bleiben erhalten."
+    "removeConfirm": "{{name}} von {{server}} entfernen? Die von ihr installierten Dateien werden gelöscht, auch wenn Sie sie geändert haben; selbst hinzugefügte Dateien bleiben erhalten.",
+    "hintThunderstore": "Von Thunderstore: der Mod-Loader, auf dem die Mods des Spiels laufen. Thunderstore veröffentlicht keine Prüfsummen, daher lädt der Node die neueste Version nur von Thunderstores eigenen Servern. Von Dritten, unter deren eigenen Lizenzen."
   },
   "mods": {
     "hint": {
       "mod": "Mods von Modrinth für Typ und Spielversion dieses Servers ({{version}}), mit den Mods, die sie brauchen. Der Node lädt jede Datei von Modrinth herunter und installiert sie nur, wenn sie zum SHA-512 passt, den Modrinth veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen.",
-      "plugin": "Plugins von Modrinth für Typ und Spielversion dieses Servers ({{version}}), mit den Plugins, die sie brauchen. Der Node lädt jede Datei von Modrinth herunter und installiert sie nur, wenn sie zum SHA-512 passt, den Modrinth veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen."
+      "plugin": "Plugins von Modrinth für Typ und Spielversion dieses Servers ({{version}}), mit den Plugins, die sie brauchen. Der Node lädt jede Datei von Modrinth herunter und installiert sie nur, wenn sie zum SHA-512 passt, den Modrinth veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen.",
+      "umod": "Plugins von uMod für das Addon, das dieser Server hat (Oxide oder Carbon). Sie werden beim Eintreffen geladen, der Server kann also weiterlaufen. Der Node lädt jede Datei von uMod herunter und installiert sie nur, wenn sie zum SHA-1 passt, den uMod veröffentlicht. Sie stammen von Dritten, unter deren eigenen Lizenzen.",
+      "thunderstore": "Server-Mods von Thunderstore für BepInEx, mit den Paketen, die sie brauchen. Installiere zuerst BepInEx in diesem Tab und stoppe den Server, um sie zu ändern. Thunderstore veröffentlicht keine Prüfsummen, daher lädt der Node jedes Paket nur von Thunderstores eigenen Servern. Sie stammen von Dritten, unter deren eigenen Lizenzen."
     },
     "stopToChange": "Stoppe den Server, um Mods und Plugins zu installieren, zu aktualisieren oder zu entfernen.",
     "lastFailed": "Die letzte Änderung ist fehlgeschlagen: {{reason}}",
@@ -1654,7 +1678,9 @@
       "curseforge": "CurseForge",
       "needsKey": "CurseForge braucht einen API-Schlüssel.",
       "setKey": "In Spiele festlegen",
-      "needsKeyAskAdmin": "CurseForge braucht einen API-Schlüssel: bitte einen Administrator, ihn festzulegen."
+      "needsKeyAskAdmin": "CurseForge braucht einen API-Schlüssel: bitte einen Administrator, ihn festzulegen.",
+      "umod": "uMod",
+      "thunderstore": "Thunderstore"
     },
     "curseForgeKey": {
       "title": "CurseForge",

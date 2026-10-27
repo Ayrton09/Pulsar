@@ -12,7 +12,7 @@ export type ModpackView = Schemas['ModpackView'];
 export type ModpackVersionView = Schemas['ModpackVersionView'];
 
 /** A mod catalog: Modrinth, or CurseForge with the administrator's key. */
-export type CatalogSource = 'modrinth' | 'curseforge';
+export type CatalogSource = 'modrinth' | 'curseforge' | 'umod' | 'thunderstore';
 
 /** The catalogs' answers change slowly, and each one is a request to the catalog: they are kept a while. */
 const catalogStaleTime = 5 * 60_000;
@@ -222,8 +222,15 @@ export function useRemoveCurseForgeKey() {
   });
 }
 
-/** A project's page on its catalog's site. */
-export function projectUrl(source: string, projectType: string, slug: string): string {
+/** A project's page on its catalog's site; Thunderstore's is in its community's (`valheim`). */
+export function projectUrl(source: string, projectType: string, slug: string, community?: string | null): string {
+  if (source === 'thunderstore') {
+    const dash = slug.indexOf('-');
+    return `https://thunderstore.io/c/${encodeURIComponent(community ?? '')}/p/${encodeURIComponent(slug.slice(0, dash))}/${encodeURIComponent(slug.slice(dash + 1))}/`;
+  }
+  if (source === 'umod') {
+    return `https://umod.org/plugins/${encodeURIComponent(slug)}`;
+  }
   if (source === 'curseforge') {
     const section = projectType === 'plugin' ? 'bukkit-plugins' : projectType === 'modpack' ? 'modpacks' : 'mc-mods';
     return `https://www.curseforge.com/minecraft/${section}/${encodeURIComponent(slug)}`;

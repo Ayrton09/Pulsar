@@ -10,7 +10,7 @@ namespace Pulsar.Api.Servers;
 
 /// <param name="ProjectId">The catalog's project (an id; a slug for Modrinth).</param>
 /// <param name="VersionId">A version of it; null for its newest one for the server.</param>
-/// <param name="Source">The catalog: <c>modrinth</c> (the default) or <c>curseforge</c>.</param>
+/// <param name="Source">The catalog: <c>modrinth</c> (the default), <c>curseforge</c> or (Pulsar 1.0.14) <c>umod</c>.</param>
 public sealed record InstallModRequest(
     [property: Required, StringLength(64)] string ProjectId,
     [property: StringLength(64)] string? VersionId,
@@ -25,7 +25,8 @@ public sealed record CurseForgeKeyRequest([property: Required, StringLength(Cata
 /// <summary>
 /// A server's mods and plugins from a catalog (Pulsar 1.0.9; docs/architecture/07, "Mods"): what it has, searching a
 /// catalog for what it can take, installing (with what a project requires), updating and removing. Changing them is an
-/// operation on the stopped server, and needs the right to install it, as addons do; so does installing a modpack. The
+/// operation on the stopped server (uMod's plugins change while it runs), and needs the right to install it, as addons do;
+/// so does installing a modpack. The
 /// routes that ask a catalog share each user's budget of lookups with the Workshop's: Modrinth answers a panel's address
 /// 300 times a minute. CurseForge needs the administrator's own key (<c>settings.manage</c> sets it).
 /// </summary>

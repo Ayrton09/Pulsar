@@ -115,6 +115,11 @@ Then:
    excludes, and the lines it needs in the game's files (Metamod's in `gameinfo.gi`), which the agent puts back before
    every start. Mark `reinstallAfterUpdate` when the game's updates overwrite it. Naming a repository means trusting its
    authors with code that runs as the game server.
+12. **Mod catalogs** (optional): `mods` lets users search a catalog and install its files into the server: Modrinth
+   and CurseForge by the server's type and game version (`minecraft` shows how), or (1.0.14) uMod's plugins by the
+   addon the server has (`rust`: `addonTypes`, `community`, `extensions`, and `whileRunning` since Oxide and Carbon
+   load plugins as they come), or Thunderstore's packages for a game's BepInEx (`valheim`: the BepInEx pack as a
+   `thunderstore` addon, the catalog with `community`, `category` and the `bepinex` layout).
 
 ### Messages to the players
 

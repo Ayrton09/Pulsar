@@ -37,6 +37,7 @@ public sealed record AddonDefinition(
 /// <summary>Where an addon's archive comes from: a closed set, like install steps.</summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type", UnknownDerivedTypeHandling = JsonUnknownDerivedTypeHandling.FailSerialization)]
 [JsonDerivedType(typeof(GitHubReleaseSource), "githubRelease")]
+[JsonDerivedType(typeof(ThunderstoreSource), "thunderstore")]
 public abstract record AddonSource;
 
 /// <summary>
@@ -53,4 +54,13 @@ public sealed record GitHubReleaseSource(string Repo, string Asset, string? Tag 
 /// compared without leading and trailing spaces, runs of spaces and tabs as one). Metamod's line in CS2's
 /// <c>gameinfo.gi</c>, which the game's updates overwrite.
 /// </summary>
+/// <summary>
+/// A Thunderstore package's newest version (Pulsar 1.0.14): a mod loader such as BepInEx's pack for Valheim, whose zip
+/// holds it in a folder of its own beside Thunderstore's files about it. Thunderstore publishes no checksum: the agent
+/// takes it over HTTPS from Thunderstore's own hosts only (docs/architecture/08, T52).
+/// </summary>
+/// <param name="Package">Its namespace and name: <c>denikson-BepInExPack_Valheim</c>.</param>
+/// <param name="Folder">The zip's folder whose content is unpacked into the target (<c>BepInExPack_Valheim</c>); empty for the whole zip.</param>
+public sealed record ThunderstoreSource(string Package, string Folder = "") : AddonSource;
+
 public sealed record LineEdit(string Path, string After, string Line);

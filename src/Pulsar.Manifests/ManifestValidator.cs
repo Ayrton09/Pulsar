@@ -149,37 +149,88 @@ public static partial class ManifestValidator
             ValidateCommands(commands, Error);
         }
 
-        ValidateMods(manifest.ModList, context);
+        ValidateMods(manifest, context);
         return errors;
     }
 
-    private static void ValidateMods(IReadOnlyList<ModSourceDefinition> sources, Context context)
+    private static void ValidateMods(GameManifest manifest, Context context)
     {
+        var sources = manifest.ModList;
         if (sources.Count > 4 || sources.Select(s => s.Source).Distinct(StringComparer.Ordinal).Count() != sources.Count)
         {
             context.Error("mods", "At most 4 catalogs, each once.");
+        }
+
+        // The Mods tab shows one type for the server: a game's catalogs are typed alike, and change while it runs alike.
+        if (sources.Select(s => (s.AddonTypes, s.TypeVar, s.WhileRunning, s.Versioned)).Distinct().Count() > 1)
+        {
+            context.Error("mods", "A game's catalogs share how the server's type is told (typeVar or addonTypes), whileRunning, and whether they are made per game version.");
         }
 
         for (var i = 0; i < sources.Count; i++)
         {
             var path = $"mods[{i}]";
             var source = sources[i];
-            if (source.Source is not (ModSourceDefinition.Modrinth or ModSourceDefinition.CurseForge))
+            if (source.Source is not (ModSourceDefinition.Modrinth or ModSourceDefinition.CurseForge or ModSourceDefinition.Umod
+                    or ModSourceDefinition.Thunderstore))
             {
-                context.Error($"{path}.source", $"Pulsar knows the catalogs '{ModSourceDefinition.Modrinth}' and '{ModSourceDefinition.CurseForge}'.");
+                context.Error($"{path}.source", $"Pulsar knows the catalogs '{ModSourceDefinition.Modrinth}', '{ModSourceDefinition.CurseForge}', "
+                    + $"'{ModSourceDefinition.Umod}' and '{ModSourceDefinition.Thunderstore}'.");
             }
 
-            if (!IsVersionVariable(source.VersionVar, context))
+            // Thunderstore's packages are zips unpacked into BepInEx's folder: the catalog is typed by the BepInEx addon.
+            var thunderstore = source.Source == ModSourceDefinition.Thunderstore;
+            if (thunderstore && !source.AddonTypes)
             {
-                context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
+                context.Error($"{path}.addonTypes", "Thunderstore's packages run on the game's BepInEx addon: 'addonTypes' must be true.");
             }
 
-            var options = context.Variables.TryGetValue(source.TypeVar, out var type) && type.Type == VariableType.Enum && !type.Secret
-                ? (type.Options ?? []).Select(o => o.Value).ToHashSet(StringComparer.Ordinal)
-                : null;
-            if (options is null)
+            if (source.Category is { } category && (!thunderstore || !CommunityPattern().IsMatch(category)))
             {
-                context.Error($"{path}.typeVar", "Must name an enum variable.");
+                context.Error($"{path}.category", "Only for Thunderstore: a category's slug, lowercase letters, digits or '-' (server-side).");
+            }
+
+            // Modrinth's and CurseForge's files are made per game version and loader; uMod's are not.
+            if (source.Versioned ? source.VersionVar is not { } versionVar || !IsVersionVariable(versionVar, context) : source.VersionVar is not null)
+            {
+                context.Error($"{path}.versionVar", source.Versioned
+                    ? "Must name a string variable with a 'pattern', or an enum."
+                    : "This catalog's files are not made per game version: leave it out.");
+            }
+
+            var communal = source.Source is ModSourceDefinition.Umod or ModSourceDefinition.Thunderstore;
+            if (communal ? source.Community is null || !CommunityPattern().IsMatch(source.Community) : source.Community is not null)
+            {
+                context.Error($"{path}.community", communal
+                    ? "The catalog's name for the game: 1 to 32 lowercase letters, digits or '-' (rust, valheim)."
+                    : "Only for uMod and Thunderstore.");
+            }
+
+            if (source.WhileRunning && source.Source != ModSourceDefinition.Umod)
+            {
+                context.Error($"{path}.whileRunning", "Only uMod's plugins are loaded by a running game (Oxide, Carbon).");
+            }
+
+            // The server's type: an option of an enum variable, or the addon it has.
+            HashSet<string>? options = null;
+            if (source.AddonTypes)
+            {
+                options = manifest.AddonList.Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
+                if (source.TypeVar is not null || source.Versioned)
+                {
+                    context.Error($"{path}.addonTypes", "Not with a 'typeVar', nor for a catalog whose files are made per game version.");
+                }
+            }
+            else
+            {
+                options = source.TypeVar is not null && context.Variables.TryGetValue(source.TypeVar, out var type) && type.Type == VariableType.Enum
+                    && !type.Secret
+                    ? (type.Options ?? []).Select(o => o.Value).ToHashSet(StringComparer.Ordinal)
+                    : null;
+                if (options is null)
+                {
+                    context.Error($"{path}.typeVar", "Must name an enum variable (or the types are the game's addons: 'addonTypes').");
+                }
             }
 
             if (source.Types.Count is 0 or > 32)
@@ -192,7 +243,7 @@ public static partial class ManifestValidator
                 var at = $"{path}.types.{key}";
                 if (options is not null && !options.Contains(key))
                 {
-                    context.Error(at, $"Not an option of '{source.TypeVar}'.");
+                    context.Error(at, source.AddonTypes ? "Not one of the game's addons." : $"Not an option of '{source.TypeVar}'.");
                 }
 
                 if (target.ProjectType is not ("mod" or "plugin"))
@@ -200,16 +251,32 @@ public static partial class ManifestValidator
                     context.Error($"{at}.projectType", "'mod' or 'plugin'.");
                 }
 
-                if (target.Loaders.Count is 0 or > 8 || target.Loaders.Any(l => !CatalogLoaderPattern().IsMatch(l)))
+                if (source.Versioned
+                        ? target.LoaderList.Count is 0 or > 8 || target.LoaderList.Any(l => !CatalogLoaderPattern().IsMatch(l))
+                        : target.LoaderList.Count > 0)
                 {
-                    context.Error($"{at}.loaders", "1 to 8 loaders, each lowercase letters, digits, '-' or '_'.");
+                    context.Error($"{at}.loaders", source.Versioned
+                        ? "1 to 8 loaders, each lowercase letters, digits, '-' or '_'."
+                        : "This catalog names no loaders: leave them out.");
                 }
 
-                // A folder of its own, one name deep: never the server's root, never Pulsar's.
-                if (!IsValidRelativePath(target.Folder) || target.Folder.Contains('/', StringComparison.Ordinal)
-                    || target.Folder.StartsWith('.'))
+                if (target.Extensions is { } extensions && (extensions.Count is 0 or > 4 || extensions.Any(e => !ExtensionPattern().IsMatch(e)) || thunderstore))
                 {
-                    context.Error($"{at}.folder", "One folder name in the server's folder (mods, plugins).");
+                    context.Error($"{at}.extensions", thunderstore
+                        ? "Thunderstore's packages are zips unpacked by their layout: leave it out."
+                        : "1 to 4 endings, each '.' and 1 to 8 lowercase letters or digits (.jar, .cs).");
+                }
+
+                if (thunderstore ? target.Layout != ModTargetDefinition.BepInExLayout : target.Layout is not null)
+                {
+                    context.Error($"{at}.layout", thunderstore ? "Thunderstore's packages go into BepInEx's folder: 'bepinex'." : "Only for Thunderstore.");
+                }
+
+                // A folder of its own: never the server's root, never Pulsar's, nothing hidden.
+                if (!IsValidRelativePath(target.Folder) || target.Folder.Length > 64 || target.Folder.Split('/') is { Length: > 3 } parts
+                    || target.Folder.Split('/').Any(p => p.StartsWith('.')))
+                {
+                    context.Error($"{at}.folder", "A folder in the server's folder, up to three names deep (mods, plugins, oxide/plugins).");
                 }
             }
 
@@ -221,9 +288,9 @@ public static partial class ManifestValidator
                     context.Error($"{path}.modpacks.loaderVar", "Must name a string variable with a 'pattern' of its own.");
                 }
 
-                if (!source.Types.Values.Any(t => t.ProjectType == "mod"))
+                if (!source.Types.Values.Any(t => t.ProjectType == "mod") || !source.Versioned)
                 {
-                    context.Error($"{path}.modpacks", "Modpacks are made of mods: a type must take them.");
+                    context.Error($"{path}.modpacks", "Modpacks are made of mods, from Modrinth or CurseForge: a type must take them.");
                 }
             }
         }
@@ -328,6 +395,19 @@ public static partial class ManifestValidator
             {
                 case GitHubReleaseSource github:
                     ValidateGitHubRelease($"{path}.source", github, error);
+                    break;
+                case ThunderstoreSource package:
+                    if (!ThunderstorePackagePattern().IsMatch(package.Package))
+                    {
+                        error($"{path}.source.package", "The package's namespace and name: letters, digits and '_', joined by '-' (denikson-BepInExPack_Valheim).");
+                    }
+
+                    if (package.Folder.Length > 0 && (!IsValidRelativePath(package.Folder) || package.Folder.Contains('/', StringComparison.Ordinal)
+                            || package.Folder.StartsWith('.')))
+                    {
+                        error($"{path}.source.folder", "One folder of the package's zip (BepInExPack_Valheim), or nothing for the whole zip.");
+                    }
+
                     break;
                 default:
                     error($"{path}.source", "Unknown source.");
@@ -552,6 +632,24 @@ public static partial class ManifestValidator
                 if (workshop.Separator is not (";" or ","))
                 {
                     error($"{path}.workshop.separator", "';' or ','.");
+                }
+            }
+
+            if (variable.CurseForge is { } curseForge)
+            {
+                if (variable.Type != VariableType.String || variable.Secret || variable.Workshop is not null)
+                {
+                    error($"{path}.curseForge", "Only string variables that are not secret, and list no Workshop items, can list CurseForge projects.");
+                }
+
+                if (curseForge.GameId < 1)
+                {
+                    error($"{path}.curseForge.gameId", "A CurseForge game id.");
+                }
+
+                if (curseForge.Separator is not (";" or ","))
+                {
+                    error($"{path}.curseForge.separator", "',' or ';'.");
                 }
             }
 
@@ -1409,6 +1507,18 @@ public static partial class ManifestValidator
     /// <summary>A catalog's loader name (Modrinth's <c>neoforge</c>, <c>paper</c>).</summary>
     [GeneratedRegex(@"^[a-z0-9_-]{1,32}\z", RegexOptions.CultureInvariant)]
     private static partial Regex CatalogLoaderPattern();
+
+    /// <summary>A catalog's name for a game (uMod's <c>rust</c>).</summary>
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{0,31}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex CommunityPattern();
+
+    /// <summary>A Thunderstore package: its namespace and name (<c>denikson-BepInExPack_Valheim</c>).</summary>
+    [GeneratedRegex(@"^[A-Za-z0-9_]{1,64}-[A-Za-z0-9_]{1,64}\z", RegexOptions.CultureInvariant)]
+    public static partial Regex ThunderstorePackagePattern();
+
+    /// <summary>What a mod's file may end with (<c>.jar</c>, <c>.cs</c>).</summary>
+    [GeneratedRegex(@"^\.[a-z0-9]{1,8}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ExtensionPattern();
 
     // [0-9], not \d: other scripts' digits would be ordered as 0 (GameTemplate.CompareVersions).
     [GeneratedRegex(@"^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,32})?\z", RegexOptions.CultureInvariant)]

@@ -482,13 +482,13 @@
       "type_unsupported": "Un server di questo tipo non accetta mod né plugin: scegli un altro tipo nelle sue impostazioni, poi aggiornalo.",
       "version_unknown": "La versione del gioco del server non è ancora nota: installa o aggiorna prima il server.",
       "no_version": "Il progetto non ha una versione per la versione del gioco e il tipo di questo server.",
-      "file_invalid": "Il file del progetto non è un .jar che il pannello può mettere sul server.",
-      "catalog_busy": "Modrinth riceve troppe richieste da questo pannello: riprova tra un minuto.",
+      "file_invalid": "Il file del progetto non è uno che il pannello può mettere sul server.",
+      "catalog_busy": "Il catalogo riceve troppe richieste da questo pannello: riprova tra un minuto.",
       "catalog_unavailable": "Non è stato possibile interrogare Modrinth: {{detail}}",
       "change_running": "Le mod del server sono già in fase di modifica: aspetta che finisca.",
       "too_many": "Un server ha al massimo 300 mod, e una modifica riguarda al massimo 64 file.",
       "query_invalid": "Una ricerca è una sola riga di massimo 100 caratteri.",
-      "no_updates": "Modrinth non ha niente di più recente per queste mod.",
+      "no_updates": "Il catalogo non ha niente di più recente per queste mod.",
       "requirement_missing": "Il progetto ha bisogno di un altro che non ha una versione per questo server: {{detail}}",
       "required_by": "Un'altra mod installata ha bisogno di questa: {{detail}}",
       "incompatible": "Il progetto non funziona con un'altra mod già sul server: {{detail}}",
@@ -496,14 +496,17 @@
       "invalid": "Il nodo ha rifiutato la modifica: {{detail}}",
       "invalid_path": "Il nodo ha rifiutato un file fuori dalle cartelle delle mod del gioco: {{detail}}",
       "download_failed": "Non è stato possibile scaricare una mod: {{detail}}",
-      "checksum_mismatch": "Un download non è il file pubblicato da Modrinth, quindi non è stato cambiato nulla: {{detail}}",
+      "checksum_mismatch": "Un download non è il file pubblicato dal catalogo, quindi non è stato cambiato nulla: {{detail}}",
       "file_exists": "C'è già un file con questo nome che non ha messo il pannello: eliminalo o rinominalo prima. {{detail}}",
       "untrusted_host": "Pulsar non scarica mod da questo sito: {{detail}}",
       "write_failed": "Non è stato possibile scrivere tutte le mod: {{detail}}",
       "catalog_not_configured": "CurseForge ha bisogno di una chiave API: la imposta un amministratore in Giochi.",
       "distribution_forbidden": "L'autore consente il download solo dal sito di CurseForge: scaricalo lì e caricalo con il gestore file. {{detail}}",
       "curseforge_key_invalid": "Una chiave API di CurseForge è una riga di massimo 256 caratteri visibili.",
-      "curseforge_key_rejected": "CurseForge non accetta questa chiave API."
+      "curseforge_key_rejected": "CurseForge non accetta questa chiave API.",
+      "addon_missing": "Questi plugin funzionano su un addon che il server non ha: installalo prima, da questa scheda.",
+      "bad_package": "Un pacchetto non è uno zip che Pulsar estrae, quindi non è stato cambiato nulla: {{detail}}",
+      "list_invalid": "Da 1 a 100 id di progetti CurseForge di un gioco, ciascuno un numero."
     },
     "modpack": {
       "unsupported": "Questo server non può installare modpack: {{detail}}",
@@ -1406,7 +1409,25 @@
     "actionsFor": "Azioni per {{name}}",
     "commandFor": "{{command}} {{name}}",
     "templateUpgradeAuto": "Pulsar lo passa da solo, come sono impostati i suoi aggiornamenti.",
-    "templateUpgradeImported": "Questa versione è stata importata qui: Pulsar passa i server da solo solo alle versioni portate dai suoi aggiornamenti."
+    "templateUpgradeImported": "Questa versione è stata importata qui: Pulsar passa i server da solo solo alle versioni portate dai suoi aggiornamenti.",
+    "curseforge": {
+      "empty": "Ancora nessuna mod: cercale qui sotto o aggiungine una con il suo id di CurseForge.",
+      "placeholder": "Id del progetto su CurseForge",
+      "add": "Aggiungi",
+      "added": "Aggiunta",
+      "removeShort": "Rimuovi",
+      "remove": "Rimuovi {{name}}",
+      "invalid": "Un id di progetto CurseForge è un numero.",
+      "duplicate": "Questa mod è già nella lista.",
+      "tooMany": "La lista è più lunga di quanto accetti questa impostazione.",
+      "search": "Cerca le mod del gioco su CurseForge",
+      "results": "Mod trovate",
+      "noResults": "Nessun risultato.",
+      "notFound": "Non è su CurseForge",
+      "otherGame": "È di un altro gioco",
+      "needsKey": "Senza la chiave CurseForge del pannello le mod si aggiungono per id: un amministratore la imposta in Giochi.",
+      "by": "di {{author}}"
+    }
   },
   "panelKeys": {
     "title": "Chiave di firma del pannello",
@@ -1566,12 +1587,15 @@
       "conflicts": "{{name}} non può essere installata insieme a {{others}}: rimuoverla prima.",
       "required_by": "{{others}} richiede {{name}}: rimuoverla prima."
     },
-    "removeConfirm": "Rimuovere {{name}} da {{server}}? I file che ha installato vengono eliminati, anche se li hai modificati; i file aggiunti da te vengono mantenuti."
+    "removeConfirm": "Rimuovere {{name}} da {{server}}? I file che ha installato vengono eliminati, anche se li hai modificati; i file aggiunti da te vengono mantenuti.",
+    "hintThunderstore": "Da Thunderstore: il caricatore di mod su cui girano le mod del gioco. Thunderstore non pubblica checksum, quindi il nodo scarica la versione più recente solo dai server di Thunderstore. Fatto da terzi, con le loro licenze."
   },
   "mods": {
     "hint": {
       "mod": "Mod di Modrinth per il tipo e la versione del gioco di questo server ({{version}}), con le mod di cui hanno bisogno. Il nodo scarica ogni file da Modrinth e lo installa solo se corrisponde allo SHA-512 pubblicato da Modrinth. Sono fatte da terzi, con le loro licenze.",
-      "plugin": "Plugin di Modrinth per il tipo e la versione del gioco di questo server ({{version}}), con i plugin di cui hanno bisogno. Il nodo scarica ogni file da Modrinth e lo installa solo se corrisponde allo SHA-512 pubblicato da Modrinth. Sono fatti da terzi, con le loro licenze."
+      "plugin": "Plugin di Modrinth per il tipo e la versione del gioco di questo server ({{version}}), con i plugin di cui hanno bisogno. Il nodo scarica ogni file da Modrinth e lo installa solo se corrisponde allo SHA-512 pubblicato da Modrinth. Sono fatti da terzi, con le loro licenze.",
+      "umod": "Plugin di uMod per l'addon che ha questo server (Oxide o Carbon). Si caricano man mano che arrivano, quindi il server può restare acceso. Il nodo scarica ogni file da uMod e lo installa solo se corrisponde allo SHA-1 pubblicato da uMod. Sono fatti da terzi, con le loro licenze.",
+      "thunderstore": "Mod per server di Thunderstore per BepInEx, con i pacchetti di cui hanno bisogno. Installa prima BepInEx, da questa scheda, e ferma il server per cambiarle. Thunderstore non pubblica checksum, quindi il nodo prende ogni pacchetto solo dai server di Thunderstore. Sono fatti da terzi, con le loro licenze."
     },
     "stopToChange": "Arresta il server per installare, aggiornare o rimuovere mod e plugin.",
     "lastFailed": "L'ultima modifica non è riuscita: {{reason}}",
@@ -1654,7 +1678,9 @@
       "curseforge": "CurseForge",
       "needsKey": "CurseForge ha bisogno di una chiave API.",
       "setKey": "Impostala in Giochi",
-      "needsKeyAskAdmin": "CurseForge ha bisogno di una chiave API: chiedi a un amministratore di impostarla."
+      "needsKeyAskAdmin": "CurseForge ha bisogno di una chiave API: chiedi a un amministratore di impostarla.",
+      "umod": "uMod",
+      "thunderstore": "Thunderstore"
     },
     "curseForgeKey": {
       "title": "CurseForge",

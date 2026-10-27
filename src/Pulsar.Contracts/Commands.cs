@@ -232,13 +232,20 @@ public sealed record ChangeModsCommand(Guid ServerId, IReadOnlyList<ModDownload>
     public const int MaxFiles = 64;
 }
 
-/// <param name="Path">Where it goes in the server's folder: <c>mods/lithium-fabric-0.18.1.jar</c>.</param>
+/// <param name="Path">
+/// Where it goes in the server's folder: <c>mods/lithium-fabric-0.18.1.jar</c>; for a package (<paramref name="Layout"/>),
+/// its own folder of plugins, <c>BepInEx/plugins/ValheimModding-Jotunn</c>.
+/// </param>
 /// <param name="Url">An https address of the catalog's own download host.</param>
 /// <param name="Hash">
 /// The catalog's checksum of the file, lowercase hex: SHA-512 (128 characters, Modrinth's) or SHA-1 (40, CurseForge's,
-/// the only one it publishes).
+/// the only one it publishes); empty for a Thunderstore package, which has none.
 /// </param>
-public sealed record ModDownload(string Path, string Url, string Hash, long Size)
+/// <param name="Layout">
+/// Pulsar 1.0.14: a zip unpacked by this layout (<c>bepinex</c>, a Thunderstore package into BepInEx's folder) rather than
+/// a file written as it is.
+/// </param>
+public sealed record ModDownload(string Path, string Url, string Hash, long Size, string? Layout = null)
 {
     /// <summary>The algorithm of <see cref="Hash"/>, by its length; null when it is not a lowercase hex checksum of either.</summary>
     [JsonIgnore]
@@ -807,6 +814,24 @@ public static class AgentCapabilities
     /// mod catalog takes them.
     /// </summary>
     public const string InstallModpack = InstallModpackCommand.Type;
+
+    /// <summary>
+    /// Not a command: the agent takes uMod's plugins (Pulsar 1.0.14): mod folders more than one name deep, files that do not
+    /// end with <c>.jar</c>, and changes while the game runs when its manifest says the game loads them as they come.
+    /// </summary>
+    public const string UmodPlugins = "mods.umod";
+
+    /// <summary>
+    /// Not a command: the agent takes Thunderstore's packages (Pulsar 1.0.14): the <c>thunderstore</c> addon source, and
+    /// mods unpacked into BepInEx's folder (<see cref="ModDownload.Layout"/>).
+    /// </summary>
+    public const string ThunderstorePackages = "mods.thunderstore";
+
+    /// <summary>
+    /// Not a command: the agent reads manifests whose variables list a catalog's projects for the panel's editor (Pulsar
+    /// 1.0.14, <c>curseForge</c>); it does nothing more with them.
+    /// </summary>
+    public const string CatalogLists = "manifest.catalog_lists";
 
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;

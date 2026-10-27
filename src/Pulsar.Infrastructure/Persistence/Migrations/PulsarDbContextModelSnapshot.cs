@@ -2768,7 +2768,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_mods", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_mods_source", "source IN ('curse_forge', 'modrinth')");
+                            t.HasCheckConstraint("ck_server_mods_source", "source IN ('curse_forge', 'modrinth', 'thunderstore', 'umod')");
 
                             t.HasCheckConstraint("ck_server_mods_state", "state IN ('installed', 'installing', 'removing')");
                         });
@@ -2871,7 +2871,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_modpacks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_modpacks_source", "source IN ('curse_forge', 'modrinth')");
+                            t.HasCheckConstraint("ck_server_modpacks_source", "source IN ('curse_forge', 'modrinth', 'thunderstore', 'umod')");
 
                             t.HasCheckConstraint("ck_server_modpacks_state", "state IN ('installed', 'installing')");
                         });

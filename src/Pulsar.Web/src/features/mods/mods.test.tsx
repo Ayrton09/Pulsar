@@ -96,6 +96,7 @@ function mods(installed: Schemas['ServerModView'][], changes: Partial<Schemas['M
     unavailable: null,
     installed,
     modpacks: false,
+    whileRunning: false,
     ...changes,
   };
 }
@@ -641,5 +642,130 @@ describe('mods from the catalog', () => {
       'href',
       'https://modrinth.com/plugin/luckperms',
     );
+  });
+
+  it("installs uMod's plugins while the server runs, and links to their page", async () => {
+    const installs: unknown[] = [];
+    const umod = { catalogs: ['umod'], projectType: 'plugin', folder: 'oxide/plugins', loaders: [], gameVersion: null };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details({ runtimeState: 'running', desiredState: 'running' })),
+      [`GET /api/v1/servers/${serverId}/mods`]: () => json(mods([], { ...umod, whileRunning: true })),
+      [`GET /api/v1/servers/${serverId}/mods/search`]: () =>
+        json({
+          hits: [{ ...sodium, projectId: 'rust-kits', slug: 'rust-kits', title: 'Rust Kits', author: 'k1lly0u' }],
+          total: 1,
+        }),
+      [`POST /api/v1/servers/${serverId}/mods`]: async (request) => {
+        installs.push(await request.json());
+        return json(mods([], { ...umod, whileRunning: true }));
+      },
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText(/Plugins from uMod for the addon this server has/)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Stop the server to install, update or remove mods and plugins.'),
+    ).not.toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Rust Kits' });
+    expect(within(hit('Rust Kits')).getByRole('link', { name: 'Rust Kits' })).toHaveAttribute(
+      'href',
+      'https://umod.org/plugins/rust-kits',
+    );
+    await userEvent.click(within(hit('Rust Kits')).getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(installs).toEqual([{ projectId: 'rust-kits', versionId: null, source: 'umod' }]));
+  });
+
+  it('leaves out the size of a plugin uMod did not give one for', async () => {
+    const kits: Schemas['ServerModView'] = {
+      ...lithium,
+      id: '0192f1a0-0000-7000-8000-0000000000c3',
+      source: 'umod',
+      projectId: 'rust-kits',
+      versionId: '4.4.10',
+      name: 'Rust Kits',
+      versionNumber: '4.4.10',
+      path: 'oxide/plugins/Kits.cs',
+      size: 0,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () =>
+        json(mods([kits], { catalogs: ['umod'], projectType: 'plugin', folder: 'oxide/plugins', whileRunning: true })),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText('oxide/plugins/Kits.cs')).toBeInTheDocument();
+    expect(row('Rust Kits')).not.toHaveTextContent('0 B');
+  });
+
+  it("links Thunderstore's packages to their page in the game's community", async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () =>
+        json(
+          mods([], {
+            catalogs: ['thunderstore'],
+            projectType: 'mod',
+            folder: 'BepInEx',
+            loaders: [],
+            gameVersion: null,
+            community: 'valheim',
+          }),
+        ),
+      [`GET /api/v1/servers/${serverId}/mods/search`]: () =>
+        json({
+          hits: [
+            {
+              ...sodium,
+              projectId: 'Advize-PlantEverything',
+              slug: 'Advize-PlantEverything',
+              title: 'PlantEverything',
+            },
+          ],
+          total: 1,
+        }),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(await screen.findByText(/Server mods from Thunderstore for BepInEx/)).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'PlantEverything' });
+    expect(within(hit('PlantEverything')).getByRole('link', { name: 'PlantEverything' })).toHaveAttribute(
+      'href',
+      'https://thunderstore.io/c/valheim/p/Advize/PlantEverything/',
+    );
+  });
+
+  it('says the plugins need an addon the server does not have yet', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/mods`]: () =>
+        json(
+          mods([], {
+            catalogs: ['umod'],
+            projectType: null,
+            folder: null,
+            loaders: [],
+            gameVersion: null,
+            unavailable: 'mods.addon_missing',
+            whileRunning: true,
+          }),
+        ),
+    });
+
+    renderAt(`/servers/${serverId}?tab=addons`);
+
+    expect(
+      await screen.findByText(
+        'These plugins run on an addon the server does not have: install it first, from this tab.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   });
 });

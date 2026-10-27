@@ -499,8 +499,12 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - SCP: Secret Laboratory 1.4.1: LocalAdmin without `--printStd`, so the console no longer carries the engine's own warnings, and the game with `-silent-crashes` (`games/scpsl/README.md`, "Console").
 
-## 1.0.14 — Long console lines (2026-10-27, at the user's request)
+## 1.0.14 — Long console lines and more mod sources (2026-10-27, at the user's request)
 
+- uMod's plugins for Rust (gap point 7): searched, installed, updated and removed from the Mods tab into the folder of Oxide or Carbon, whichever the server has, while it runs; each file checked against uMod's SHA-1 (doc 04, "Mods"; doc 03, "Mods"; doc 08, T51). Mod catalogs can be typed by the game's addons, take files other than `.jar` in folders up to three names deep, and change files while the game runs (agent capability `mods.umod`).
+- Thunderstore's server mods for Valheim (gap point 7): BepInEx installed as an addon from Thunderstore, then packages of Valheim's server-side category with the packages they need, unpacked into BepInEx's folder, updated and removed (doc 04, "Mods"; doc 08, T52: Thunderstore publishes no checksum). Agent capability `mods.thunderstore`.
+- ARK: Survival Ascended's mods by name (gap point 7): its `mods` setting is a list editor that searches the game's mods on CurseForge and names them with the administrator's key; the server still downloads them itself (doc 04, "Variables"; doc 07, "Workshop"; doc 08, T53). Agent capability `manifest.catalog_lists`.
+- Workshop items added one after another, before the first is looked up on Steam, all go into the list (only the last one did).
 - Lines wider than a pseudo console (220 columns), which the console host cuts once its screen is full, are joined again as the agent reads them, so a long link (SCP: Secret Laboratory's `!verify static`) comes whole and opens whole (doc 06, "Console: ConPTY vs pipes").
 
 ## Before the first public release

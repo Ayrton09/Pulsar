@@ -7,6 +7,12 @@ public enum ModSource
 {
     Modrinth,
     CurseForge,
+
+    /// <summary>uMod's plugins for Oxide and Carbon (Pulsar 1.0.14).</summary>
+    Umod,
+
+    /// <summary>Thunderstore's packages for BepInEx (Pulsar 1.0.14).</summary>
+    Thunderstore,
 }
 
 public enum ServerModState

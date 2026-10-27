@@ -93,6 +93,7 @@ public static class DependencyInjection
         services.AddScoped<CurseForgeClient>();
         services.AddScoped<IModCatalog>(provider => provider.GetRequiredService<CurseForgeClient>());
         services.AddScoped<ICurseForgeKeyCheck>(provider => provider.GetRequiredService<CurseForgeClient>());
+        services.AddScoped<ICurseForgeProjects>(provider => provider.GetRequiredService<CurseForgeClient>());
         services.AddSingleton<ICatalogKeyProtector, DataProtectionCatalogKeyProtector>();
         services.AddHttpClient(CurseForgeClient.ClientName, client =>
             {
@@ -103,6 +104,25 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         services.AddHttpClient(ModrinthClient.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(20);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    $"Ayrton09/Pulsar/{PanelUpdates.PanelVersionText} (https://github.com/Ayrton09/Pulsar)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        // uMod's plugin directory and Thunderstore's packages (1.0.14): one host each, no key, no redirects.
+        services.AddScoped<IModCatalog, UmodClient>();
+        services.AddScoped<IModCatalog, ThunderstoreClient>();
+        services.AddHttpClient(ThunderstoreClient.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(20);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    $"Ayrton09/Pulsar/{PanelUpdates.PanelVersionText} (https://github.com/Ayrton09/Pulsar)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        services.AddHttpClient(UmodClient.ClientName, client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(20);
                 client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",

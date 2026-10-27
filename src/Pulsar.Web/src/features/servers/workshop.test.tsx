@@ -214,4 +214,24 @@ describe('workshop editor', () => {
 
     await waitFor(() => expect(changes).toEqual(['111', '111;444']));
   });
+
+  it('adds both of two items added quickly', async () => {
+    let release = () => {};
+    const { changes } = renderEditor('111', false, {
+      id: '444',
+      release: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    });
+    const input = screen.getByRole('textbox', { name: 'Workshop items' });
+
+    await userEvent.type(input, '444{Enter}');
+    // The text stays while it is looked up: the user clears it for the next one.
+    await userEvent.clear(input);
+    await userEvent.type(input, '333{Enter}');
+    await waitFor(() => expect(changes).toEqual(['111;333']));
+    release();
+
+    await waitFor(() => expect(changes).toEqual(['111;333', '111;333;444']));
+  });
 });

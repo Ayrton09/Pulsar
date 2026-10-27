@@ -49,19 +49,40 @@ public sealed record GameManifest(
 /// <summary>
 /// A catalog of mods the panel installs files from into the server (Pulsar 1.0.9; docs/architecture/04, "Mods"):
 /// Modrinth for Minecraft. What a server can take depends on its type: the type variable's options are keys of
-/// <see cref="Types"/> (an option without one takes nothing from the catalog).
+/// <see cref="Types"/> (an option without one takes nothing from the catalog), or (Pulsar 1.0.14) the addon it has
+/// among <see cref="Types"/>' keys (Oxide or Carbon for uMod's plugins).
 /// </summary>
-/// <param name="Source">The catalog: <c>modrinth</c> or <c>curseforge</c>.</param>
-/// <param name="VersionVar">The variable holding the game's version, the catalog's files are filtered by (when the install did not report it).</param>
-/// <param name="TypeVar">The enum variable holding the server's type.</param>
+/// <param name="Source">The catalog: <c>modrinth</c>, <c>curseforge</c> or <c>umod</c>.</param>
+/// <param name="VersionVar">
+/// The variable holding the game's version, the catalog's files are filtered by (when the install did not report it);
+/// null for a catalog whose files are not made per game version (uMod).
+/// </param>
+/// <param name="TypeVar">The enum variable holding the server's type; null when <paramref name="AddonTypes"/>.</param>
 /// <param name="Modpacks">The catalog's modpacks install on the game too (null: they do not).</param>
-public sealed record ModSourceDefinition(string Source, string VersionVar, string TypeVar, IReadOnlyDictionary<string, ModTargetDefinition> Types,
-    ModpacksDefinition? Modpacks = null)
+/// <param name="AddonTypes">The server's type is the addon it has among <paramref name="Types"/>' keys (Pulsar 1.0.14).</param>
+/// <param name="Community">The catalog's name for the game: uMod's game (<c>rust</c>), Thunderstore's community (<c>valheim</c>).</param>
+/// <param name="WhileRunning">
+/// The game picks the files up while it runs (Oxide and Carbon load and unload plugins as they come and go): they are
+/// installed and removed without stopping it (Pulsar 1.0.14).
+/// </param>
+/// <param name="Category">Thunderstore's category the searches keep to (<c>server-side</c>); any when null.</param>
+public sealed record ModSourceDefinition(string Source, IReadOnlyDictionary<string, ModTargetDefinition> Types, string? VersionVar = null,
+    string? TypeVar = null, ModpacksDefinition? Modpacks = null, bool AddonTypes = false, string? Community = null, bool WhileRunning = false,
+    string? Category = null)
 {
     public const string Modrinth = "modrinth";
 
     /// <summary>CurseForge (Pulsar 1.0.9): its API needs the panel's administrator's own key.</summary>
     public const string CurseForge = "curseforge";
+
+    /// <summary>uMod (Pulsar 1.0.14): Oxide's and Carbon's plugins, one C# file each, from umod.org.</summary>
+    public const string Umod = "umod";
+
+    /// <summary>Thunderstore (Pulsar 1.0.14): packages for BepInEx, a zip each, from thunderstore.io.</summary>
+    public const string Thunderstore = "thunderstore";
+
+    /// <summary>Whether the catalog's files are made per game version (Modrinth's and CurseForge's are).</summary>
+    public bool Versioned => Source is Modrinth or CurseForge;
 }
 
 /// <summary>
@@ -75,9 +96,26 @@ public sealed record ModpacksDefinition(string LoaderVar);
 
 /// <summary>What a server of one type takes from the catalog, and where it goes.</summary>
 /// <param name="ProjectType">The catalog's kind of project: <c>mod</c> or <c>plugin</c>.</param>
-/// <param name="Loaders">The catalog's loaders a file must be for, any of them (<c>fabric</c>; <c>paper</c>, <c>spigot</c>, <c>bukkit</c>).</param>
-/// <param name="Folder">The server's folder the files go into (<c>mods</c>, <c>plugins</c>).</param>
-public sealed record ModTargetDefinition(string ProjectType, IReadOnlyList<string> Loaders, string Folder);
+/// <param name="Loaders">
+/// The catalog's loaders a file must be for, any of them (<c>fabric</c>; <c>paper</c>, <c>spigot</c>, <c>bukkit</c>);
+/// none for a catalog that names none (uMod).
+/// </param>
+/// <param name="Folder">The server's folder the files go into (<c>mods</c>, <c>plugins</c>; <c>oxide/plugins</c> from Pulsar 1.0.14).</param>
+/// <param name="Extensions">What the files may end with (Pulsar 1.0.14; <c>.cs</c> for uMod's plugins); <c>.jar</c> when not given.</param>
+/// <param name="Layout">
+/// How a package's zip goes into <paramref name="Folder"/> (Pulsar 1.0.14): <c>bepinex</c>, BepInEx's folder, a package's
+/// plugins and patchers each in a folder named after it, its configuration only where there is none.
+/// </param>
+public sealed record ModTargetDefinition(string ProjectType, string Folder, IReadOnlyList<string>? Loaders = null, IReadOnlyList<string>? Extensions = null,
+    string? Layout = null)
+{
+    /// <summary>A package unpacked into BepInEx's folder (Thunderstore's packages).</summary>
+    public const string BepInExLayout = "bepinex";
+
+    public IReadOnlyList<string> LoaderList => Loaders ?? [];
+
+    public IReadOnlyList<string> ExtensionList => Extensions ?? [".jar"];
+}
 
 /// <summary>
 /// Console commands the panel sends for the game's players (Pulsar 1.0.9), through the server's console (its input or
@@ -179,7 +217,8 @@ public sealed record VariableDefinition(
     decimal? Max = null,
     IReadOnlyList<EnumOption>? Options = null,
     string? Description = null,
-    WorkshopList? Workshop = null);
+    WorkshopList? Workshop = null,
+    CurseForgeList? CurseForge = null);
 
 /// <summary>
 /// A string variable that lists Steam Workshop items by id (Project Zomboid's <c>WorkshopItems</c>): the panel offers
@@ -188,6 +227,15 @@ public sealed record VariableDefinition(
 /// <param name="AppId">The Steam app whose Workshop the items belong to (the game's, not its dedicated server's).</param>
 /// <param name="Separator">Between ids: <c>;</c> or <c>,</c>.</param>
 public sealed record WorkshopList(long AppId, string Separator = ";");
+
+/// <summary>
+/// A string variable that lists CurseForge projects by id (Pulsar 1.0.14; ARK: Survival Ascended's mods): the panel
+/// offers an editor that searches the game's mods on CurseForge and names them, with the administrator's key. The game
+/// downloads them itself.
+/// </summary>
+/// <param name="GameId">The game on CurseForge (ARK: Survival Ascended is 83374).</param>
+/// <param name="Separator">Between ids: <c>,</c> or <c>;</c>.</param>
+public sealed record CurseForgeList(int GameId, string Separator = ",");
 
 /// <summary>One choice of an <see cref="VariableType.Enum"/> variable; <see cref="Map"/> gives its sub-values.</summary>
 public sealed record EnumOption(string Value, string Label, IReadOnlyDictionary<string, string>? Map = null);

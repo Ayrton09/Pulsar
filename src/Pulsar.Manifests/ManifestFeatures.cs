@@ -60,6 +60,30 @@ public static class ManifestFeatures
         return manifest.ModList.Count > 0;
     }
 
+    /// <summary>
+    /// uMod's plugins (Pulsar 1.0.14): files in folders more than one name deep, ending otherwise than <c>.jar</c>, typed by
+    /// the server's addon and changed while it runs.
+    /// </summary>
+    public static bool UsesUmod(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ModList.Any(s => s.Source == ModSourceDefinition.Umod);
+    }
+
+    /// <summary>A variable that lists a catalog's projects for the panel's editor (Pulsar 1.0.14: <c>curseForge</c>).</summary>
+    public static bool UsesCatalogLists(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.VariableList.Any(v => v.CurseForge is not null);
+    }
+
+    /// <summary>Thunderstore's packages (Pulsar 1.0.14): the <c>thunderstore</c> addon source, and the catalog unpacked into BepInEx's folder.</summary>
+    public static bool UsesThunderstore(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.AddonList.Any(a => a.Source is ThunderstoreSource) || manifest.ModList.Any(s => s.Source == ModSourceDefinition.Thunderstore);
+    }
+
     /// <summary>A mod catalog whose modpacks install on the game (Pulsar 1.0.9, <see cref="ModSourceDefinition.Modpacks"/>).</summary>
     public static bool UsesModpacks(GameManifest manifest)
     {
