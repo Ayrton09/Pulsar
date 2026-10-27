@@ -159,6 +159,33 @@ public sealed class SourceManifestTests
         Assert.Contains(errors, e => e.Message.Contains("RCON password", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void CtrlCWithPipesIsForAgentsThatSendIt()
+    {
+        // A game run with pipes that opens a console of its own (Unreal Engine's -log) takes Ctrl+C there (Pulsar 1.0.12).
+        var pipes = TestManifests.Parse(TestManifests.Change("project-zomboid", m => m["stop"]!["steps"] = JsonNode.Parse("""[{"type": "ctrlC"}]""")));
+
+        Assert.True(ManifestFeatures.UsesPipesCtrlC(pipes));
+        Assert.False(ManifestFeatures.UsesPipesCtrlC(TestManifests.Load("valheim"))); // Ctrl+C through a pseudo console
+        Assert.False(ManifestFeatures.UsesPipesCtrlC(TestManifests.Load("project-zomboid")));
+    }
+
+    [Fact]
+    public void AnIniFilesSectionsMayBeDeclaredOneByOneAndNothingElseTwice()
+    {
+        // Insurgency: Sandstorm's Game.ini holds its RCON and its game modes' settings.
+        Assert.True(ManifestFeatures.UsesIniSections(TestManifests.Load("sandstorm")));
+        Assert.False(ManifestFeatures.UsesIniSections(TestManifests.Load("palworld")));
+
+        var sameSection = TestManifests.Errors(TestManifests.Change("sandstorm", m =>
+            m["configFiles"]![1]!["section"] = "Rcon"));
+        var notIni = TestManifests.Errors(TestManifests.Change("css", m =>
+            m["configFiles"]!.AsArray().Add(m["configFiles"]![0]!.DeepClone())));
+
+        Assert.Contains(sameSection, e => e.Path == "configFiles" && e.Message.Contains("one section each", StringComparison.Ordinal));
+        Assert.Contains(notIni, e => e.Path == "configFiles");
+    }
+
     [Theory]
     [InlineData("""{"type": "consoleCommand", "command": "quit"}""", "use 'rconCommand'")]
     [InlineData("""{"type": "ctrlC"}""", "Ctrl+C needs")]

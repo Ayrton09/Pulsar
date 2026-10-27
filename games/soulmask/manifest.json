@@ -1,0 +1,78 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "soulmask",
+  "version": "1.0.0",
+  "name": "Soulmask",
+  "description": "Soulmask dedicated server, installed anonymously with SteamCMD. Its world lives in the server's folder; Pulsar saves it and stops it through the game's own console.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 25, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Soulmask", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 20, "min": 1, "max": 70 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ?]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "required": true, "maxLength": 32, "pattern": "^[^\" ?]{1,32}$",
+      "description": "Players who enter it in the game (gm key) become its game masters." },
+    { "key": "pvp", "label": "PvP", "type": "boolean", "default": false, "description": "Off, the server is PvE." },
+    { "key": "saveInterval", "label": "Save every (s)", "type": "integer", "min": 60, "max": 3600,
+      "description": "How often the world is written to disk. 600 is the game's own." },
+    { "key": "backupInterval", "label": "Game backup every (s)", "type": "integer", "min": 300, "max": 86400,
+      "description": "How often the game copies its world database beside it. 900 is the game's own." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 8777, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27015, "description": "The server list asks here." },
+    { "name": "rcon", "label": "RCON", "protocols": ["tcp"], "default": 19000, "internal": true,
+      "description": "The game's RCON, on this machine only, with a password Pulsar makes: the console's commands, saves and a clean stop." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 3017310 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 3017310 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "WS/Binaries/Win64/WSServer-Win64-Shipping.exe",
+      "arguments": [
+        "Level01_Main", "-server", "-log", "-UTF8Output", "-forcepassthrough",
+        "-MULTIHOME={{port.game.ip}}",
+        "-Port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        "-EchoPort=0",
+        "-rconaddr=127.0.0.1",
+        "-rconport={{port.rcon}}",
+        "-rconpsw={{rcon.password}}",
+        "-SteamServerName={{var.name}}",
+        "-MaxPlayers={{var.maxPlayers}}",
+        { "if": "var.password", "then": ["-PSW={{var.password}}"] },
+        "-adminpsw={{var.adminPassword}}",
+        { "if": "var.pvp", "then": ["-pvp"], "else": ["-pve"] },
+        { "if": "var.saveInterval", "then": ["-saving={{var.saveInterval}}"] },
+        { "if": "var.backupInterval", "then": ["-backup={{var.backupInterval}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon", "logsCommands": true }
+      }
+    }
+  },
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "query", "timeoutSeconds": 1200 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "SaveAndExit 1" } ],
+    "timeoutSeconds": 180
+  },
+
+  "backup": {
+    "include": ["WS/Saved/Worlds/**", "WS/Saved/GameplaySettings/**"],
+    "save": { "commands": ["SaveWorld 1"], "waitSeconds": 10 }
+  }
+}

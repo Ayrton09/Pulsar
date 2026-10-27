@@ -21,6 +21,7 @@ internal sealed class WindowsGameProcess : IGameProcess
     private readonly FileStream _input;
     private readonly Encoding _inputEncoding;
     private readonly HPCON _pseudoConsole;
+    private readonly bool _pipesInterrupt;
     private readonly IDisposable[] _resources;
     private readonly Channel<ConsoleChunk> _output = Channel.CreateBounded<ConsoleChunk>(
         new BoundedChannelOptions(OutputCapacity) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
@@ -36,8 +37,9 @@ internal sealed class WindowsGameProcess : IGameProcess
     private int _disposed;
 
     internal WindowsGameProcess(JobObject job, SafeFileHandle process, int processId, FileStream input, Encoding inputEncoding,
-        HPCON pseudoConsole, TimeProvider clock, IDisposable[] resources)
+        HPCON pseudoConsole, TimeProvider clock, IDisposable[] resources, bool pipesInterrupt = false)
     {
+        _pipesInterrupt = pipesInterrupt;
         _job = job;
         _process = process;
         _input = input;
@@ -57,7 +59,11 @@ internal sealed class WindowsGameProcess : IGameProcess
 
     public ChannelReader<ConsoleChunk> Output => _output.Reader;
 
-    public bool SupportsInterrupt => _pseudoConsole != default;
+    /// <summary>
+    /// A pseudo console takes Ctrl+C as input; a game run with pipes by its host gets it through its own console, when it
+    /// has one (<see cref="ConsoleInterrupt"/>).
+    /// </summary>
+    public bool SupportsInterrupt => _pseudoConsole != default || _pipesInterrupt;
 
     internal void StartReader(SafeFileHandle handle, Encoding encoding, string name)
     {
@@ -96,9 +102,17 @@ internal sealed class WindowsGameProcess : IGameProcess
 
     public ValueTask SendInterruptAsync(CancellationToken cancellationToken)
     {
-        if (!SupportsInterrupt)
+        if (_pseudoConsole == default)
         {
-            throw new NotSupportedException("Ctrl+C needs a pseudo console.");
+            if (!_pipesInterrupt)
+            {
+                throw new NotSupportedException("Ctrl+C reaches a game run with pipes only from its host.");
+            }
+
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
+            // The process handle is open while this is not disposed: its id cannot be another process's.
+            ConsoleInterrupt.Send(ProcessId);
+            return ValueTask.CompletedTask;
         }
 
         // A pseudo console turns ETX into CTRL_C_EVENT for the attached processes.

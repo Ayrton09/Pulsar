@@ -91,6 +91,17 @@ public sealed class TelnetConsoleTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ATelnetConsoleThatNeverGreetsIsNotTakenForLoggedOn()
+    {
+        var endpoint = Serve(password: null, greets: false);
+
+        var error = await Assert.ThrowsAsync<RconException>(() => new TelnetConsoleConnector { AnswerTimeout = TimeSpan.FromSeconds(1) }
+            .ConnectAsync(endpoint, ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not greet", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NothingListeningIsAConnectionError() =>
         await Assert.ThrowsAsync<RconException>(() => new TelnetConsoleConnector { ConnectTimeout = TimeSpan.FromSeconds(1) }
             .ConnectAsync(new RconEndpoint(RconProtocol.Telnet, "127.0.0.1", 1, "x"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken));
@@ -101,14 +112,14 @@ public sealed class TelnetConsoleTests : IAsyncDisposable
             "2026-10-05T12:14:40 71.457 INF Executing command 'version' by Telnet from 127.0.0.1:62479\r\n" +
             "Game version: V 3.2.0\r\n\r\nMod TFP_Harmony: 1.1.0.4\r\n2026-10-05T12:14:41 72.001 WRN something else\r\n"));
 
-    private RconEndpoint Serve(string? password)
+    private RconEndpoint Serve(string? password, bool greets = true)
     {
         _listener.Start();
-        _server = Task.Run(() => RunAsync(password, _stop.Token));
+        _server = Task.Run(() => RunAsync(password, greets, _stop.Token));
         return new RconEndpoint(RconProtocol.Telnet, "127.0.0.1", ((IPEndPoint)_listener.LocalEndpoint).Port, password ?? "unused");
     }
 
-    private async Task RunAsync(string? password, CancellationToken cancellationToken)
+    private async Task RunAsync(string? password, bool greets, CancellationToken cancellationToken)
     {
         using var client = await _listener.AcceptTcpClientAsync(cancellationToken);
         await using var stream = client.GetStream();
@@ -144,6 +155,17 @@ public sealed class TelnetConsoleTests : IAsyncDisposable
             }
 
             await WriteAsync("Logon successful.\r\n\r\n");
+        }
+
+        if (!greets)
+        {
+            while (await reader.ReadLineAsync(cancellationToken) is { } plain)
+            {
+                _received.Add(plain);
+                await WriteAsync(plain == "lp" ? "Total of 0 in the game\r\n" : $"unknown command '{plain}'\r\n");
+            }
+
+            return;
         }
 
         await WriteAsync("*** Connected with 7DTD server.\r\n*** Server version: V 3.2.0 (b10)\r\n\r\nPress 'help' to get a list of all commands.\r\n\r\n");

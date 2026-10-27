@@ -218,6 +218,22 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheServersSecretsAreMaskedInWhatTheGamePrintsAndInTheCommandsTyped()
+    {
+        // Unreal Engine games print their command line, passwords included.
+        var supervisor = Supervisor(ManifestConsoleMode.Pipes, secrets: ["hunter22"]);
+        await RunningAsync(supervisor);
+        _processes.Last.Print("LogInit: Command Line: -ServerPassword=hun");
+        _processes.Last.Print("ter22 -Port=7777\n");
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("password hunter22", TestContext.Current.CancellationToken));
+
+        await EventuallyAsync(() => Text(supervisor).Contains("> password ********", StringComparison.Ordinal), () => Text(supervisor));
+        Assert.Contains("-ServerPassword=******** -Port=7777", Text(supervisor), StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter22", Text(supervisor), StringComparison.Ordinal);
+        Assert.Equal("password hunter22\n", _processes.Last.Input[^1]); // the game still gets it
+    }
+
+    [Fact]
     public async Task APseudoConsoleGetsTheCommandWithItsNewlineAndEchoesItItself()
     {
         var supervisor = Supervisor(ManifestConsoleMode.Pty);
@@ -294,12 +310,15 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
     }
 
-    private ServerSupervisor Supervisor(ManifestConsoleMode mode)
+    private ServerSupervisor Supervisor(ManifestConsoleMode mode, IReadOnlyList<string>? secrets = null)
     {
         var plan = new LaunchPlan("bin/game.exe", "", [], new Dictionary<string, string>(),
             new ConsoleDefinition(mode, InputNewline: mode == ManifestConsoleMode.Pty ? "\r\n" : null),
             new LogPatternReadiness("^Test server ready", 60),
-            new StopDefinition([new ConsoleCommandStop("quit")], 15));
+            new StopDefinition([new ConsoleCommandStop("quit")], 15))
+        {
+            Secrets = secrets ?? [],
+        };
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", @"C:\servers\abcd1234", ProcessIdentity.CurrentUser, plan,
             AutoStart: false, RestartOnCrash: true);
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance);

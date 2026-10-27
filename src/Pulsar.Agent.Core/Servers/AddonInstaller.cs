@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -18,17 +19,23 @@ namespace Pulsar.Agent.Core.Servers;
 public sealed record AddonRecord(string Key, string Release, string Asset, string Sha256, IReadOnlyList<string> Added, IReadOnlyList<string> Replaced);
 
 /// <summary>
-/// Installs and removes a manifest's addons (docs/architecture/04, "Addons"). The archive is a zip asset of a GitHub
-/// release, found through GitHub's API and checked against the SHA-256 GitHub publishes for it; it is unpacked into the
+/// Installs and removes a manifest's addons (docs/architecture/04, "Addons"). The archive is a zip or a .tar.gz asset
+/// (Pulsar 1.0.12) of a GitHub release, found through GitHub's API and checked against the SHA-256 GitHub publishes for
+/// it; it is unpacked into the
 /// addon's folder of the server with the archive rules of restores (relative paths only, nothing under <c>.pulsar</c>,
-/// size and entry limits), through the agent's link-safe file access.
+/// size and entry limits), through the agent's link-safe file access. A game server published so (TShock) is installed
+/// the same way by its install step (<see cref="GitHubReleaseStep"/>), recorded in another folder.
 /// </summary>
-public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handler)
+/// <param name="recordDirectory">Where what was installed is recorded: <see cref="RecordDirectory"/> for addons.</param>
+public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handler, string recordDirectory = AddonInstaller.RecordDirectory)
 {
     public const string RecordDirectory = ".pulsar/addons";
 
     private const long MaximumExtracted = 2L * 1024 * 1024 * 1024;
     private const int MaximumEntries = 50_000;
+
+    // A .tar.gz's headers and padding, beside its files: 512 bytes each, extended headers, the end of the archive.
+    private const long MaximumTarOverhead = 64L * 1024 * 1024;
 
     // The API, and the hosts GitHub's release downloads redirect to.
     private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase)
@@ -56,27 +63,12 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             throw Failed("addon.unsupported_source", $"This agent cannot install {addon.Name} from its source.");
         }
 
-        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Pulsar-Agent", "1"));
-        http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        using var http = GitHubClient();
         var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
         try
         {
             await progress(InstallStages.Preparing, null);
-            var release = await ReleaseAsync(client, source, cancellationToken);
-            var pattern = new Regex(source.Asset, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-            var matching = (release.Assets ?? []).Where(a => a.Name is not null && pattern.IsMatch(a.Name)).ToList();
-            if (matching is not [{ Name: { } name, BrowserDownloadUrl: { } url } asset])
-            {
-                throw Failed("addon.no_asset", $"{addon.Name} {release.TagName}: {matching.Count} assets match '{source.Asset}', not one.");
-            }
-
-            if (asset.Digest is not { } digest || !digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) || digest.Length != 71)
-            {
-                throw Failed("addon.no_checksum", $"GitHub publishes no SHA-256 for {name}: Pulsar does not install it.");
-            }
-
-            var sha256 = digest[7..];
+            var (release, name, url, sha256) = await AssetAsync(client, addon.Name, source, cancellationToken);
             var previous = Read(serverDirectory, addon.Key);
             if (!force && previous is { } same && same.Asset == name && same.Sha256.Equals(sha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -86,7 +78,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             await using var download = await client.DownloadAsync(VerifiedDownloader.Https(url, "addon"), HashAlgorithmName.SHA256, sha256,
                 percent => progress(InstallStages.Downloading, percent), cancellationToken);
             await progress(InstallStages.Installing, null);
-            var record = Unpack(serverDirectory, addon, release.TagName ?? name, name, sha256, download, previous);
+            var record = Unpack(serverDirectory, addon, release, name, sha256, download, previous);
             Write(serverDirectory, record);
             return record;
         }
@@ -94,6 +86,30 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
                                        || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             throw Failed("addon.download_failed", $"{addon.Name} could not be installed: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="source"/>'s release has another asset than the one recorded as <paramref name="key"/> (an
+    /// update check of a <see cref="GitHubReleaseStep"/>): the releases' tags, the installed one null when nothing is.
+    /// </summary>
+    /// <exception cref="GameProcessException">With an <c>addon.*</c> code.</exception>
+    public async Task<GameBuild> CheckAsync(string serverDirectory, string key, GitHubReleaseSource source, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        using var http = GitHubClient();
+        var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
+        try
+        {
+            var (release, name, _, sha256) = await AssetAsync(client, source.Repo, source, cancellationToken);
+            var installed = Read(serverDirectory, key) is { Asset.Length: > 0 } record ? record : null;
+            var same = installed is not null && installed.Asset == name && installed.Sha256.Equals(sha256, StringComparison.OrdinalIgnoreCase);
+            return new GameBuild(installed?.Release, release, !same);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw Failed("addon.download_failed", $"{source.Repo}'s releases could not be read: {ex.Message}", ex);
         }
     }
 
@@ -169,6 +185,34 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         }
     }
 
+    private HttpClient GitHubClient()
+    {
+        var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Pulsar-Agent", "1"));
+        http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        return http;
+    }
+
+    /// <summary>The release's one asset that matches, with the SHA-256 GitHub publishes for it (one without is refused).</summary>
+    private static async Task<(string Release, string Name, string Url, string Sha256)> AssetAsync(VerifiedDownloader client, string what,
+        GitHubReleaseSource source, CancellationToken cancellationToken)
+    {
+        var release = await ReleaseAsync(client, source, cancellationToken);
+        var pattern = new Regex(source.Asset, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        var matching = (release.Assets ?? []).Where(a => a.Name is not null && pattern.IsMatch(a.Name)).ToList();
+        if (matching is not [{ Name: { } name, BrowserDownloadUrl: { } url } asset])
+        {
+            throw Failed("addon.no_asset", $"{what} {release.TagName}: {matching.Count} assets match '{source.Asset}', not one.");
+        }
+
+        if (asset.Digest is not { } digest || !digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) || digest.Length != 71)
+        {
+            throw Failed("addon.no_checksum", $"GitHub publishes no SHA-256 for {name}: Pulsar does not install it.");
+        }
+
+        return (release.TagName ?? name, name, url, digest[7..]);
+    }
+
     private static async Task<GitHubRelease> ReleaseAsync(VerifiedDownloader client, GitHubReleaseSource source, CancellationToken cancellationToken)
     {
         if (source.Tag is { } tag)
@@ -189,30 +233,25 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
     private AddonRecord Unpack(string serverDirectory, AddonDefinition addon, string release, string asset, string sha256, Stream download,
         AddonRecord? previous)
     {
-        using var archive = new ZipArchive(download, ZipArchiveMode.Read);
-        var entries = new List<(ZipArchiveEntry Entry, string Path)>();
+        using var archive = IsTarGz(asset) ? (AddonArchive)new TarGzArchive(download, asset) : new ZipAddonArchive(download);
+        var entries = new List<string>();
         long total = 0;
-        foreach (var entry in archive.Entries)
+        foreach (var (entryName, length) in archive.Files())
         {
-            var name = entry.FullName.Replace('\\', '/');
-            if (name.EndsWith('/'))
-            {
-                continue;
-            }
-
+            var name = entryName.Replace('\\', '/');
             var path = addon.Target.Length == 0 ? name : $"{addon.Target}/{name}";
             if (!IsAddonPath(path))
             {
-                throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entry.FullName}'.");
+                throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entryName}'.");
             }
 
-            total += entry.Length;
+            total += length;
             if (total > MaximumExtracted || entries.Count >= MaximumEntries)
             {
                 throw Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks.");
             }
 
-            entries.Add((entry, path));
+            entries.Add(path);
         }
 
         // A file counts as the game's (replaced, not removed with the addon) when it was there before the addon was.
@@ -220,7 +259,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         var replacedBefore = new HashSet<string>(previous?.Replaced ?? [], StringComparer.OrdinalIgnoreCase);
         var added = new List<string>();
         var replaced = new List<string>();
-        foreach (var (_, path) in entries)
+        foreach (var path in entries)
         {
             bool existed;
             using (var existing = files.OpenRead(serverDirectory, path))
@@ -245,14 +284,10 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         // trusts: what this attempt adds stays the addon's. No asset: a retry never takes it as installed.
         Write(serverDirectory, new AddonRecord(addon.Key, previous?.Release ?? "", "", "",
             [.. ownedBefore.Union(added, StringComparer.OrdinalIgnoreCase).Except(replacing, StringComparer.OrdinalIgnoreCase)], replacing));
-        foreach (var (entry, path) in entries)
-        {
-            using var content = BoundedEntryStream.Open(entry);
-            files.Write(serverDirectory, path, content);
-        }
+        archive.Extract((index, content) => files.Write(serverDirectory, entries[index], content));
 
         // Files of the previous release the new one does not have.
-        var current = entries.Select(e => e.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var current = entries.ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var old in ownedBefore.Where(p => !current.Contains(p)))
         {
             Delete(serverDirectory, old);
@@ -296,7 +331,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         }
     }
 
-    private static string RecordPath(string key) => $"{RecordDirectory}/{key}.json";
+    private string RecordPath(string key) => $"{recordDirectory}/{key}.json";
 
     /// <summary>
     /// A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>, by any case or
@@ -313,6 +348,137 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
     }
 
     private static GameProcessException Failed(string code, string message, Exception? inner = null) => new(code, message, inner);
+
+    private static bool IsTarGz(string asset) =>
+        asset.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) || asset.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>An addon's archive: its files (folders left out), then their contents, by their place in that list.</summary>
+    private abstract class AddonArchive : IDisposable
+    {
+        public abstract IReadOnlyList<(string Name, long Length)> Files();
+
+        public abstract void Extract(Action<int, Stream> write);
+
+        public abstract void Dispose();
+    }
+
+    private sealed class ZipAddonArchive(Stream download) : AddonArchive
+    {
+        private readonly ZipArchive _zip = new(download, ZipArchiveMode.Read);
+
+        public override IReadOnlyList<(string Name, long Length)> Files() => [.. FileEntries().Select(e => (e.FullName, e.Length))];
+
+        public override void Extract(Action<int, Stream> write)
+        {
+            var index = 0;
+            foreach (var entry in FileEntries())
+            {
+                using var content = BoundedEntryStream.Open(entry);
+                write(index++, content);
+            }
+        }
+
+        public override void Dispose() => _zip.Dispose();
+
+        private IEnumerable<ZipArchiveEntry> FileEntries() => _zip.Entries.Where(e => !e.FullName.Replace('\\', '/').EndsWith('/'));
+    }
+
+    /// <summary>
+    /// A .tar.gz, read twice from the verified download (a file): once for its files, which are checked before anything is
+    /// written, once to write them. Only plain files and folders: a link, a device or anything else fails it, and a file's
+    /// content ends where its header says. What either reading decompresses is counted, headers and skipped data included:
+    /// past the size of the files Pulsar unpacks and room for their headers, the archive is refused (a small download
+    /// can hold far more).
+    /// </summary>
+    private sealed class TarGzArchive(Stream download, string asset) : AddonArchive
+    {
+        public override IReadOnlyList<(string Name, long Length)> Files()
+        {
+            var files = new List<(string Name, long Length)>();
+            Read(entry => files.Add((Name(entry), entry.Length)));
+            return files;
+        }
+
+        public override void Extract(Action<int, Stream> write)
+        {
+            var index = 0;
+            Read(entry => write(index++, entry.DataStream ?? Stream.Null));
+        }
+
+        public override void Dispose()
+        {
+        }
+
+        private void Read(Action<TarEntry> file)
+        {
+            download.Seek(0, SeekOrigin.Begin);
+            using var gzip = new GZipStream(download, CompressionMode.Decompress, leaveOpen: true);
+            using var counted = new BoundedReadStream(gzip, MaximumExtracted + MaximumTarOverhead,
+                () => Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks."));
+            using var reader = new TarReader(counted, leaveOpen: true);
+            var entries = 0;
+            while (reader.GetNextEntry() is { } entry)
+            {
+                if (++entries > MaximumEntries)
+                {
+                    throw Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks.");
+                }
+
+                switch (entry.EntryType)
+                {
+                    case TarEntryType.RegularFile or TarEntryType.V7RegularFile:
+                        file(entry);
+                        break;
+                    case TarEntryType.Directory or TarEntryType.GlobalExtendedAttributes:
+                        break;
+                    default:
+                        throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entry.Name}' ({entry.EntryType}).");
+                }
+            }
+        }
+
+        // Tar names often start with ./ (a folder packed from inside it).
+        private static string Name(TarEntry entry) => entry.Name.StartsWith("./", StringComparison.Ordinal) ? entry.Name[2..] : entry.Name;
+    }
+
+    /// <summary>Reads another stream up to a number of bytes in all; reading further throws what <c>tooLarge</c> makes.</summary>
+    private sealed class BoundedReadStream(Stream inner, long maximum, Func<Exception> tooLarge) : Stream
+    {
+        private long _read;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => _read;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            var read = inner.Read(buffer);
+            _read += read;
+            return _read > maximum ? throw tooLarge() : read;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     private sealed record GitHubRelease(
         [property: JsonPropertyName("tag_name")] string? TagName,

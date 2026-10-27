@@ -4,6 +4,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace Pulsar.Manifests;
 
@@ -15,6 +17,9 @@ public static partial class ConfigFileWriter
 {
     /// <summary>Largest configuration file the agent reads and rewrites.</summary>
     public const int MaximumSize = 1024 * 1024;
+
+    /// <summary>The one key of a <see cref="ConfigFileFormat.Text"/> file's <c>set</c>.</summary>
+    public const string TextKey = "content";
 
     /// <summary>Null when <paramref name="value"/> is safe in <paramref name="format"/>, otherwise why not.</summary>
     public static string? ValueError(ConfigFileFormat format, string value)
@@ -72,6 +77,17 @@ public static partial class ConfigFileWriter
         if (file.Format == ConfigFileFormat.Json)
         {
             return Json(file, existing, newline);
+        }
+
+        if (file.Format == ConfigFileFormat.Xml)
+        {
+            return XmlElements(file, existing);
+        }
+
+        if (file.Format == ConfigFileFormat.Text)
+        {
+            // The value is the file; a value kept while empty is not rendered, so the file stays as it is.
+            return file.Entries.FirstOrDefault(e => e.Key == TextKey) is { } content ? content.Value : existing ?? "";
         }
 
         var output = new List<string>();
@@ -271,6 +287,92 @@ public static partial class ConfigFileWriter
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// The declared elements' text (keys are paths from the root, <c>/MyConfigDedicated/ServerName</c>): a missing element
+    /// is added at the end of its parent, an empty value removes the element, an element with elements of its own is never
+    /// replaced by text. Read without DTDs or external entities; a missing file starts as the root alone.
+    /// </summary>
+    private static string XmlElements(RenderedConfigFile file, string? existing)
+    {
+        var rootName = file.Entries.Select(e => e.Key.Split('/')[1]).FirstOrDefault() ?? "root";
+        XDocument document;
+        try
+        {
+            var text = existing?.TrimStart('\uFEFF');
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                document = new XDocument(new XDeclaration("1.0", null, null), new XElement(rootName));
+            }
+            else
+            {
+                var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumSize };
+                using var reader = XmlReader.Create(new StringReader(text), settings);
+                document = XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            }
+        }
+        catch (XmlException)
+        {
+            throw new LaunchPlanException($"{file.Path} is not valid XML; fix it or delete the file.");
+        }
+
+        var root = document.Root!;
+        if (root.Name.LocalName != rootName)
+        {
+            throw new LaunchPlanException($"{file.Path}: its root element is <{root.Name.LocalName}>, not <{rootName}>; fix it or delete the file.");
+        }
+
+        foreach (var entry in file.Entries)
+        {
+            var names = entry.Key.Split('/')[2..];
+            var remove = entry.Value.Length == 0;
+            var element = root;
+            foreach (var name in names)
+            {
+                var child = element.Element(root.Name.Namespace + name);
+                if (child is null)
+                {
+                    if (remove)
+                    {
+                        element = null;
+                        break;
+                    }
+
+                    child = new XElement(root.Name.Namespace + name);
+                    element.Add(child);
+                }
+
+                element = child;
+            }
+
+            if (element is null)
+            {
+                continue;
+            }
+
+            if (element.HasElements)
+            {
+                throw new LaunchPlanException($"{file.Path}: {entry.Key} holds other elements, not a value; fix the manifest or the file.");
+            }
+
+            if (remove)
+            {
+                element.Remove();
+            }
+            else
+            {
+                element.Value = entry.Value;
+            }
+        }
+
+        using var stream = new MemoryStream();
+        using (var writer = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new UTF8Encoding(false), OmitXmlDeclaration = document.Declaration is null }))
+        {
+            document.Save(writer);
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     /// <summary>

@@ -1,0 +1,105 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "squad",
+  "version": "1.0.0",
+  "name": "Squad",
+  "description": "Squad dedicated server, installed anonymously with SteamCMD, with commands over RCON. Its settings are the files of its SquadGame/ServerConfig folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 20, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Squad", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 80, "min": 2, "max": 100 },
+    { "key": "reservedSlots", "label": "Reserved slots", "type": "integer", "min": 0, "max": 20,
+      "description": "Slots kept for the admins and whitelisted players of Admins.cfg." },
+    { "key": "advertise", "label": "Server list", "type": "enum",
+      "options": [ { "value": "true", "label": "Listed" }, { "value": "false", "label": "Not listed" } ] },
+    { "key": "queueLimit", "label": "Public queue", "type": "integer", "min": -1, "max": 100,
+      "description": "How many players may wait for a slot. -1 has no limit, 0 turns the queue off. 25 is the game's own." },
+    { "key": "teamChanges", "label": "Team changes", "type": "enum", "options": [ { "value": "true", "label": "Allowed" }, { "value": "false", "label": "Not allowed" } ] },
+    { "key": "unbalancedChanges", "label": "Team changes into the bigger team", "type": "enum",
+      "options": [ { "value": "true", "label": "Not allowed" }, { "value": "false", "label": "Allowed" } ] },
+    { "key": "teamKillKick", "label": "Kick for team kills", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "teamKillBanCount", "label": "Team kills before a ban", "type": "integer", "min": 1, "max": 50 },
+    { "key": "timeBetweenMatches", "label": "Time between matches (s)", "type": "integer", "min": 0, "max": 600 },
+    { "key": "messageInterval", "label": "Server messages every (s)", "type": "integer", "min": 30, "max": 3600,
+      "description": "How often the messages of ServerMessages.cfg are shown." },
+    { "key": "recordDemos", "label": "Record demos", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7787, "description": "Players connect here." },
+    { "name": "query", "label": "Query", "protocols": ["udp"], "default": 27165, "description": "The game's query port." },
+    { "name": "beacon", "label": "Beacon", "protocols": ["udp"], "default": 15000 },
+    { "name": "rcon", "label": "RCON", "protocols": ["tcp"], "default": 21114, "internal": true,
+      "description": "Only Pulsar uses it, on this machine: console commands." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 403240 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 403240 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "SquadGame/Binaries/Win64/SquadGameServer.exe",
+      "arguments": [
+        "Port={{port.game}}",
+        "QueryPort={{port.query}}",
+        "beaconport={{port.beacon}}",
+        "RCONPORT={{port.rcon}}",
+        "FIXEDMAXPLAYERS={{var.maxPlayers}}",
+        "RANDOM=NONE",
+        "-log"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" }
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "SquadGame/ServerConfig/Rcon.cfg", "format": "key-value", "mode": "patch",
+      "set": { "IP": "127.0.0.1", "Port": "{{port.rcon}}", "Password": "{{rcon.password}}" } },
+    { "path": "SquadGame/ServerConfig/Server.cfg", "format": "key-value", "mode": "patch",
+      "set": {
+        "ServerName": "\"{{var.name}}\"",
+        "MaxPlayers": "{{var.maxPlayers}}",
+        "NumReservedSlots": "{{var.reservedSlots}}",
+        "ShouldAdvertise": "{{var.advertise}}",
+        "PublicQueueLimit": "{{var.queueLimit}}",
+        "AllowTeamChanges": "{{var.teamChanges}}",
+        "PreventTeamChangeIfUnbalanced": "{{var.unbalancedChanges}}",
+        "TKAutoKickEnabled": "{{var.teamKillKick}}",
+        "AutoTKBanNumberTKs": "{{var.teamKillBanCount}}",
+        "TimeBetweenMatches": "{{var.timeBetweenMatches}}",
+        "ServerMessageInterval": "{{var.messageInterval}}",
+        "RecordDemos": "{{var.recordDemos}}"
+      },
+      "keepIfEmpty": ["NumReservedSlots", "ShouldAdvertise", "PublicQueueLimit", "AllowTeamChanges", "PreventTeamChangeIfUnbalanced", "TKAutoKickEnabled",
+        "AutoTKBanNumberTKs", "TimeBetweenMatches", "ServerMessageInterval", "RecordDemos"] }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Match State Changed from EnteringMap to WaitingToStart", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["SquadGame/ServerConfig/**"]
+  },
+  "commands": {
+    "broadcast": "AdminBroadcast {{message}}",
+    "players": {
+      "kick": "AdminKick \"{{player}}\" Kicked by an admin",
+      "ban": "AdminBan \"{{player}}\" \"0\" Banned by an admin",
+      "spaces": true
+    }
+  }
+}

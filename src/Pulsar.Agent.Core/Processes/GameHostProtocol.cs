@@ -38,17 +38,18 @@ public sealed record GameHostLaunch(
     ConsoleMode ConsoleMode,
     ConsoleEncoding Encoding,
     string? Account,
-    ProcessLimits? Limits)
+    ProcessLimits? Limits,
+    string? UserProfile = null)
 {
     public static GameHostLaunch From(ProcessLaunchSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
         return new GameHostLaunch(spec.ServerId, spec.ServerRoot, spec.Executable, spec.Arguments, spec.WorkingDirectory, spec.Environment,
-            spec.ConsoleMode, spec.Encoding, spec.Identity is ProcessIdentity.AccountIdentity account ? account.Name : null, spec.Limits);
+            spec.ConsoleMode, spec.Encoding, spec.Identity is ProcessIdentity.AccountIdentity account ? account.Name : null, spec.Limits, spec.UserProfile);
     }
 
     public ProcessLaunchSpec ToSpec() => new(ServerId, ServerRoot, Executable, Arguments, WorkingDirectory, Environment, ConsoleMode, Encoding,
-        Account is null ? ProcessIdentity.CurrentUser : ProcessIdentity.Account(Account), Limits);
+        Account is null ? ProcessIdentity.CurrentUser : ProcessIdentity.Account(Account), Limits, UserProfile);
 
     // The environment can hold a game's settings: never in logs.
     public override string ToString() => $"GameHostLaunch {{ ServerId = {ServerId} }}";

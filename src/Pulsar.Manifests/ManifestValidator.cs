@@ -327,22 +327,7 @@ public static partial class ManifestValidator
             switch (addon.Source)
             {
                 case GitHubReleaseSource github:
-                    if (!GitHubRepoPattern().IsMatch(github.Repo))
-                    {
-                        error($"{path}.source.repo", "A GitHub repository, 'owner/name'.");
-                    }
-
-                    if (github.Asset.Length is 0 or > 200 || CompileError(github.Asset) is not null)
-                    {
-                        error($"{path}.source.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
-                    }
-
-                    // A tag goes into the API's URL as one segment: '.' and '..' would be read as a path.
-                    if (github.Tag is { } tag && (!BranchPattern().IsMatch(tag) || tag is "." or ".." || github.Prerelease))
-                    {
-                        error($"{path}.source.tag", "1–64 letters, digits, '_', '-' or '.' (not '.' or '..'); not with 'prerelease'.");
-                    }
-
+                    ValidateGitHubRelease($"{path}.source", github, error);
                     break;
                 default:
                     error($"{path}.source", "Unknown source.");
@@ -434,6 +419,31 @@ public static partial class ManifestValidator
         else if ((RelativePathError(value) ?? PulsarFolderError(value)) is { } message)
         {
             error(path, message);
+        }
+    }
+
+    /// <summary>A release of a GitHub repository whose asset the agent downloads and unpacks (an addon's, or an install step's).</summary>
+    private static void ValidateGitHubRelease(string path, GitHubReleaseSource github, Action<string, string> error)
+    {
+        if (!GitHubRepoPattern().IsMatch(github.Repo))
+        {
+            error($"{path}.repo", "A GitHub repository, 'owner/name'.");
+        }
+
+        if (github.Asset.Length is 0 or > 200 || CompileError(github.Asset) is not null)
+        {
+            error($"{path}.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
+        }
+        else if (ManifestFeatures.AddonFormat(github) is null)
+        {
+            // What the agent unpacks is known from the manifest: a .tar.gz goes only to agents that read one.
+            error($"{path}.asset", @"Must end with the archive's extension, which the agent unpacks: '\.zip$', '\.tar\.gz$' or '\.tgz$'.");
+        }
+
+        // A tag goes into the API's URL as one segment: '.' and '..' would be read as a path.
+        if (github.Tag is { } tag && (!BranchPattern().IsMatch(tag) || tag is "." or ".." || github.Prerelease))
+        {
+            error($"{path}.tag", "1–64 letters, digits, '_', '-' or '.' (not '.' or '..'); not with 'prerelease'.");
         }
     }
 
@@ -756,6 +766,37 @@ public static partial class ManifestValidator
                     when !IsVersionVariable(versionVar, context):
                     context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
                     break;
+                case GitHubReleaseStep step:
+                    ValidateGitHubRelease(path, step.Source, context.Error);
+                    if (step.Target.Length > 0)
+                    {
+                        ValidateRelativePath($"{path}.target", step.Target, context.Error);
+                    }
+
+                    // The runtime's folder is the runtime step's own: its updates replace what is there.
+                    if (definition.Steps.Any(s => s is DotnetRuntimeStep) && IsUnder(step.Target, DotnetRuntimeStep.Folder))
+                    {
+                        context.Error($"{path}.target", $"'{DotnetRuntimeStep.Folder}' holds the .NET runtime of the 'dotnetRuntime' step.");
+                    }
+
+                    if (definition.Steps.OfType<GitHubReleaseStep>().Count(s => s.RecordKey == step.RecordKey) > 1)
+                    {
+                        context.Error($"{path}.repo", "One 'githubRelease' step per repository.");
+                    }
+
+                    break;
+                case DotnetRuntimeStep step:
+                    if (!DotnetChannelPattern().IsMatch(step.Channel))
+                    {
+                        context.Error($"{path}.channel", "A .NET channel: its major version, '9.0'.");
+                    }
+
+                    if (definition.Steps.OfType<DotnetRuntimeStep>().Count() > 1)
+                    {
+                        context.Error(path, "One 'dotnetRuntime' step.");
+                    }
+
+                    break;
                 case TestGameServerStep step:
                     ValidateRelativePath($"{path}.path", step.Path, context.Error);
                     if (manifest.Key != TestGameKey)
@@ -767,6 +808,33 @@ public static partial class ManifestValidator
             }
         }
     }
+
+    /// <summary>
+    /// The game's log: a relative path whose file name may hold one <c>*</c> (Pulsar 1.0.12), for a game that names its
+    /// log by its start (Space Engineers' <c>SpaceEngineersDedicated_*.log</c>): the agent follows the newest file it matches.
+    /// </summary>
+    private static void ValidateLogFile(string path, string logFile, Action<string, string> error)
+    {
+        var separator = logFile.LastIndexOf('/');
+        if (logFile.Count(c => c == '*') > 1 || (logFile.Contains('*', StringComparison.Ordinal) && logFile.LastIndexOf('*') < separator))
+        {
+            error(path, "At most one '*', in the file's name.");
+            return;
+        }
+
+        ValidateRelativePath(path, logFile.Replace('*', 'x'), error);
+    }
+
+    /// <summary>Whether a log file's name is a pattern (one <c>*</c> for any run of characters).</summary>
+    public static bool IsLogFilePattern(string logFile)
+    {
+        ArgumentNullException.ThrowIfNull(logFile);
+        return logFile.Contains('*', StringComparison.Ordinal);
+    }
+
+    /// <summary>Whether <paramref name="path"/> is <paramref name="folder"/> or inside it ("" is the server's folder, above it).</summary>
+    private static bool IsUnder(string path, string folder) =>
+        path.Equals(folder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A version a download step puts in an address: a non-secret enum, or a string the panel checks with a pattern.</summary>
     private static bool IsVersionVariable(string key, Context context) =>
@@ -784,6 +852,11 @@ public static partial class ManifestValidator
         if (runtime.WorkingDirectory is { } workingDirectory)
         {
             ValidateRelativePath($"{path}.workingDirectory", workingDirectory, context.Error);
+        }
+
+        if (runtime.UserProfile is { } userProfile)
+        {
+            ValidateRelativePath($"{path}.userProfile", userProfile, context.Error);
         }
 
         var console = runtime.Console;
@@ -832,7 +905,7 @@ public static partial class ManifestValidator
             }
             else
             {
-                ValidateRelativePath($"{path}.console.logFile", logFile, context.Error);
+                ValidateLogFile($"{path}.console.logFile", logFile, context.Error);
             }
 
             if (console.Rcon is null)
@@ -845,9 +918,17 @@ public static partial class ManifestValidator
                 context.Error($"{path}.console.inputNewline", "Commands go through RCON in 'logfile+rcon' mode.");
             }
         }
-        else if (console.LogFile is not null)
+        else if (console.LogFile is { } pipedLog)
         {
-            context.Error($"{path}.console.logFile", "'logFile' belongs to the 'logfile+rcon' mode.");
+            // A game run with pipes that writes only to its log (Killing Floor 2): the log is its console (1.0.12).
+            if (console.Mode != ManifestConsoleMode.Pipes)
+            {
+                context.Error($"{path}.console.logFile", "'logFile' belongs to the 'logfile+rcon' and 'pipes' modes.");
+            }
+            else
+            {
+                ValidateLogFile($"{path}.console.logFile", pipedLog, context.Error);
+            }
         }
         else if (console.Rcon is not null && console.InputNewline is not null)
         {
@@ -992,9 +1073,15 @@ public static partial class ManifestValidator
             context.Error("configFiles", "At most 16 files.");
         }
 
-        if (files.Select(f => f.Path.ToUpperInvariant()).Distinct().Count() != files.Count)
+        // An ini file's sections can be declared one by one (Pulsar 1.0.12): they are patched in turn, each on what the one
+        // before wrote. Any other file is declared once.
+        foreach (var same in files.GroupBy(f => f.Path.ToUpperInvariant()).Where(g => g.Count() > 1))
         {
-            context.Error("configFiles", "Each file can be declared once.");
+            if (same.Any(f => f.Format != ConfigFileFormat.UnrealIni || f.Mode != ConfigFileMode.Patch || f.Struct is not null)
+                || same.Select(f => f.Section?.ToUpperInvariant()).Distinct().Count() != same.Count())
+            {
+                context.Error("configFiles", "Each file can be declared once, except an ini file's sections ('unreal-ini', 'patch', one section each).");
+            }
         }
 
         for (var i = 0; i < files.Count; i++)
@@ -1057,6 +1144,26 @@ public static partial class ManifestValidator
                 context.Error(path, "'section' and 'struct' belong to the 'unreal-ini' and 'xml-properties' formats.");
             }
 
+            if (file.Format == ConfigFileFormat.Xml)
+            {
+                if (file.Mode != ConfigFileMode.Patch)
+                {
+                    context.Error($"{path}.mode", "'xml' files are patched (the game's other settings stay).");
+                }
+
+                // One root: every path starts at the same element, and none is inside another key's element.
+                if (file.Set.Keys.Select(k => k.Split('/').ElementAtOrDefault(1)).Distinct(StringComparer.Ordinal).Count() > 1
+                    || file.Set.Keys.Any(k => file.Set.Keys.Any(o => o.StartsWith(k + "/", StringComparison.Ordinal))))
+                {
+                    context.Error($"{path}.set", "Paths from one root element, none inside another key's element.");
+                }
+            }
+
+            if (file.Format == ConfigFileFormat.Text && (file.Mode != ConfigFileMode.Patch || file.Set.Count != 1 || !file.Set.ContainsKey(ConfigFileWriter.TextKey)))
+            {
+                context.Error($"{path}.set", "A 'text' file is patched and holds one value: its 'set' has the one key 'content'.");
+            }
+
             if (file.Format == ConfigFileFormat.Json)
             {
                 if (file.Mode != ConfigFileMode.Patch)
@@ -1078,6 +1185,7 @@ public static partial class ManifestValidator
                     ConfigFileFormat.SourceCfg => SourceCfgKeyPattern(),
                     ConfigFileFormat.UnrealIni => UnrealKeyPattern(),
                     ConfigFileFormat.Json => JsonPointerPattern(),
+                    ConfigFileFormat.Xml => XmlPathPattern(),
                     _ => PropertiesKeyPattern(),
                 };
                 if (!keyPattern.IsMatch(key))
@@ -1205,8 +1313,8 @@ public static partial class ManifestValidator
                     }
 
                     break;
-                case CtrlCStop when mode != ManifestConsoleMode.Pty:
-                    error(path, "Ctrl+C needs console mode 'pty'.");
+                case CtrlCStop when mode == ManifestConsoleMode.LogfileRcon:
+                    error(path, "Ctrl+C needs console mode 'pty' or 'pipes' (a game that opens a console of its own).");
                     break;
                 case WaitStop wait when wait.Seconds is < 1 or > 300:
                     error($"{path}.seconds", "Between 1 and 300.");
@@ -1328,6 +1436,10 @@ public static partial class ManifestValidator
     [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex PropertiesKeyPattern();
 
+    /// <summary>An XML element's path from the root, the root and 1 to 7 names below it (no namespace prefixes).</summary>
+    [GeneratedRegex(@"^(/[A-Za-z_][A-Za-z0-9_.-]{0,63}){2,8}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex XmlPathPattern();
+
     /// <summary>A JSON Pointer to an object member, 1 to 8 names deep; no escapes (<c>~</c>), so no <c>/</c> inside a name.</summary>
     [GeneratedRegex(@"^(/[A-Za-z0-9_.-]{1,64}){1,8}\z", RegexOptions.CultureInvariant)]
     private static partial Regex JsonPointerPattern();
@@ -1350,6 +1462,10 @@ public static partial class ManifestValidator
     // Neither part is '.' or '..' (a path, not a repository, in the API's URL).
     [GeneratedRegex(@"^(?!\.\.?/)[A-Za-z0-9_.-]{1,100}/(?!\.\.?\z)[A-Za-z0-9_.-]{1,100}\z", RegexOptions.CultureInvariant)]
     private static partial Regex GitHubRepoPattern();
+
+    // A channel of Microsoft's release metadata (dotnet/release-metadata/<channel>/releases.json): .NET 5 and later.
+    [GeneratedRegex(@"^([5-9]|[1-9][0-9])\.0\z", RegexOptions.CultureInvariant)]
+    private static partial Regex DotnetChannelPattern();
 
     // Device names (the console's CONIN$ and CONOUT$ too, as ServerFilePath has them), matched on the name before its extension.
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]

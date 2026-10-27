@@ -223,6 +223,93 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
+    public async Task AGameStoppedWithCtrlCThroughPipesGoesOnlyToAgentsThatSendIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "abiotic-factor");
+
+        // An agent before 1.0.12 refuses Ctrl+C for a game run with pipes (its Unreal Engine server opens a console of its own).
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats];
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("pipes-ctrl-c-old", older, true),
+            ("pipes-ctrl-c-new", [.. older, AgentCapabilities.PipesCtrlC], false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "Abiotic", null));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task ScpslWithItsPluginsInItsFolderGoesOnlyToAgentsThatKeepThemThere()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Where(t => t.Key == "scpsl").OrderByDescending(t => Version.Parse(t.Version)).First();
+
+        // Before 1.0.12 an agent would start it with its account's AppData (where LabAPI looks) and could not unpack EXILED.
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats];
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("scpsl-old", older, true),
+            ("scpsl-no-tar", [.. older, AgentCapabilities.UserProfile], true),
+            ("scpsl-new", [.. older, AgentCapabilities.UserProfile, AgentCapabilities.TarAddons], false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers",
+                new CreateServerRequest(node.Node.Id, template.Id, "Scpsl", null, new Dictionary<string, string?> { ["eula"] = "accepted" }));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task TerrariaFromAReleaseWithItsRuntimeGoesOnlyToAgentsThatInstallBoth()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Where(t => t.Key == "terraria").OrderByDescending(t => Version.Parse(t.Version)).First();
+
+        // Before 1.0.12 an agent knows neither install step, and would start TShock on whatever .NET the node has.
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands,
+            AgentCapabilities.PlayerCommands];
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("terraria-old", older, true),
+            ("terraria-no-runtime", [.. older, AgentCapabilities.GitHubReleaseInstall], true),
+            ("terraria-no-release", [.. older, AgentCapabilities.DotnetRuntime], true),
+            ("terraria-new", [.. older, AgentCapabilities.GitHubReleaseInstall, AgentCapabilities.DotnetRuntime], false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers",
+                new CreateServerRequest(node.Node.Id, template.Id, "Terraria", null, new Dictionary<string, string?>()));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
     public async Task MinecraftWithServerTypesGoesOnlyToAgentsThatInstallThem()
     {
         using var admin = await factory.CreateAdminClientAsync();

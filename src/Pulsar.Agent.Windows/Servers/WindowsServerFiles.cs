@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Contracts;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Storage.FileSystem;
@@ -145,6 +147,42 @@ public sealed class WindowsServerFiles : IServerFiles
             WIN32_ERROR.ERROR_DIR_NOT_EMPTY => false,
             var error => throw Failure("files.delete_failed", relativePath, error),
         };
+    }
+
+    public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit)
+    {
+        // Opened level by level as a file's folder is (a junction on the way is refused), then listed through its handle.
+        var (root, _) = Paths(serverRoot, relativeDirectory.Length == 0 ? "x" : relativeDirectory + "/x");
+        using var directory = relativeDirectory.Length == 0 ? OpenRoot(serverRoot) : OpenParent(serverRoot, root, relativeDirectory + "/x");
+        if (directory is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            // Read a buffer at a time: a folder with more entries than the limit is refused before it is all in memory.
+            var files = new List<(string, DateTimeOffset)>();
+            var entries = 0;
+            foreach (var entry in WindowsServerFileManager.Enumerate(directory, relativeDirectory))
+            {
+                if (++entries > limit)
+                {
+                    throw new IOException($"'{(relativeDirectory.Length == 0 ? "/" : relativeDirectory)}' holds more than {limit} entries.");
+                }
+
+                if (entry.Kind == FileEntryKind.File)
+                {
+                    files.Add((entry.Name, entry.ModifiedAt));
+                }
+            }
+
+            return files;
+        }
+        catch (FileManagerException ex)
+        {
+            throw new IOException(ex.Message, ex);
+        }
     }
 
     public void CreateDirectory(string serverRoot, string relativePath)

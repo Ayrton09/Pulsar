@@ -32,6 +32,22 @@ public sealed record LaunchPlan(
 
     /// <summary>The lines the installed addons need in the game's files, kept before every start (<see cref="LineEditor"/>).</summary>
     public IReadOnlyList<LineEdit> LineEdits { get; init; } = [];
+
+    /// <summary>
+    /// What the console must not show: the values of secret variables and the RCON password, of
+    /// <see cref="MinimumSecretLength"/> characters or more. The agent masks them in the game's output, since some games
+    /// print their command line (Unreal Engine's do) or their settings.
+    /// </summary>
+    public IReadOnlyList<string> Secrets { get; init; } = [];
+
+    /// <summary>Shorter secrets are not masked: hiding every "ab" would garble ordinary text.</summary>
+    public const int MinimumSecretLength = 4;
+
+    /// <summary>Where a .NET program finds its runtime (and <c>DOTNET_ROOT_X64</c>, which 64-bit programs read first).</summary>
+    public const string DotnetRootVariable = "DOTNET_ROOT";
+
+    /// <summary>The folder of the server the game takes for its user's (<see cref="RuntimeDefinition.UserProfile"/>); null: its account's.</summary>
+    public string? UserProfile { get; init; }
 }
 
 /// <summary>An <c>ip:port</c> pair of a node given to a server (both protocols). <c>0.0.0.0</c> means every interface.</summary>
@@ -404,6 +420,15 @@ public static partial class LaunchPlanRenderer
         var environment = (runtime.Environment ?? new Dictionary<string, string>())
             .ToDictionary(e => e.Key, e => Placeholders.Replace(e.Value, Placeholder), StringComparer.OrdinalIgnoreCase);
 
+        // The .NET runtime the install put in the server's folder (Pulsar 1.0.12): the game's .NET programs run on it, not
+        // on what the node has installed. Only the agent sets these: a manifest's environment cannot name DOTNET_ variables.
+        if ((manifest.Install?.Steps ?? []).OfType<DotnetRuntimeStep>().Any())
+        {
+            var root = $"{binding.Directory ?? throw new LaunchPlanException("The server folder is not known.")}/{DotnetRuntimeStep.Folder}";
+            environment[LaunchPlan.DotnetRootVariable] = root;
+            environment[LaunchPlan.DotnetRootVariable + "_X64"] = root;
+        }
+
         // A key kept when empty (an option left unset) is not written at all: its line stays as the file has it.
         var configFiles = manifest.ConfigFileList.Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
         [
@@ -436,6 +461,9 @@ public static partial class LaunchPlanRenderer
             Rcon = rcon,
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,
             LineEdits = [.. manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true).SelectMany(a => a.LineEditList)],
+            UserProfile = runtime.UserProfile,
+            Secrets = [.. manifest.VariableList.Where(v => v.Secret).Select(v => resolved.GetValueOrDefault(v.Key)).Append(rcon?.Password)
+                .OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],
         };
     }
 

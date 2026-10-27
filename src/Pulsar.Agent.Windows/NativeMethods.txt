@@ -58,6 +58,11 @@ CreateFile
 GetFinalPathNameByHandle
 SetConsoleCtrlHandler
 
+// Ctrl+C for a game run with pipes, through the console it opened for itself (docs/architecture/06)
+AttachConsole
+FreeConsole
+GenerateConsoleCtrlEvent
+
 // Per-server accounts: logon, profile, restricted token, rights, window station (docs/architecture/06)
 LogonUser
 LoadUserProfile

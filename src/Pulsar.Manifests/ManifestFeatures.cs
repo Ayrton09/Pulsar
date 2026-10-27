@@ -1,7 +1,7 @@
 namespace Pulsar.Manifests;
 
 /// <summary>
-/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7, 1.0.8, 1.0.9 or 1.0.11): they
+/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, 1.0.7, 1.0.8, 1.0.9, 1.0.11 or 1.0.12): they
 /// refuse such a manifest, so the panel gives it only to agents that announce they read it.
 /// </summary>
 public static class ManifestFeatures
@@ -18,6 +18,13 @@ public static class ManifestFeatures
             || manifest.ConfigFileList.Any(f => f.KeepIfEmpty is { Count: > 0 } || f.Format == ConfigFileFormat.Colon)
             || manifest.Runtime.Values.SelectMany(r => Conditions(r.ArgumentList)).Any(c =>
                 c.If.Split('.') is ["var", var key] && types.TryGetValue(key, out var type) && type is not (VariableType.Boolean or VariableType.String));
+    }
+
+    /// <summary>The configuration formats of Pulsar 1.0.12: <c>text</c> (a file that holds one value) and <c>xml</c> (elements' text).</summary>
+    public static bool UsesTextConfig(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ConfigFileList.Any(f => f.Format is ConfigFileFormat.Text or ConfigFileFormat.Xml);
     }
 
     /// <summary>The configuration formats of Pulsar 1.0.7: <c>json</c> and <c>space</c>.</summary>
@@ -72,6 +79,67 @@ public static class ManifestFeatures
     {
         ArgumentNullException.ThrowIfNull(manifest);
         return manifest.Commands?.Players is not null;
+    }
+
+    /// <summary>A Ctrl+C stop for a game run with pipes, which reaches the console the game opened (Pulsar 1.0.12).</summary>
+    public static bool UsesPipesCtrlC(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Runtime.Values.Any(r => r.Console.Mode == ManifestConsoleMode.Pipes) && manifest.Stop.Steps.OfType<CtrlCStop>().Any();
+    }
+
+    /// <summary>An addon whose asset is a .tar.gz (Pulsar 1.0.12): older agents unpack only zips.</summary>
+    public static bool UsesTarAddons(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.AddonList.Any(a => a.Source is GitHubReleaseSource github && AddonFormat(github) == "tar.gz");
+    }
+
+    /// <summary>A game server installed from a GitHub release (<see cref="GitHubReleaseStep"/>, Pulsar 1.0.12).</summary>
+    public static bool UsesGitHubReleaseInstall(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any();
+    }
+
+    /// <summary>A .NET runtime in the server's folder (<see cref="DotnetRuntimeStep"/>, Pulsar 1.0.12).</summary>
+    public static bool UsesDotnetRuntime(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<DotnetRuntimeStep>().Any();
+    }
+
+    /// <summary>The archive an addon's asset is, from the end of its pattern: "zip", "tar.gz", or null when it says neither.</summary>
+    public static string? AddonFormat(GitHubReleaseSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Asset.EndsWith(@"\.zip$", StringComparison.OrdinalIgnoreCase) ? "zip"
+            : source.Asset.EndsWith(@"\.tar\.gz$", StringComparison.OrdinalIgnoreCase) || source.Asset.EndsWith(@"\.tgz$", StringComparison.OrdinalIgnoreCase) ? "tar.gz"
+            : null;
+    }
+
+    /// <summary>The game's user folders in the server's folder (<see cref="RuntimeDefinition.UserProfile"/>, Pulsar 1.0.12).</summary>
+    public static bool UsesUserProfile(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Runtime.Values.Any(r => r.UserProfile is not null);
+    }
+
+    /// <summary>Several sections of one ini file, each declared on its own (Pulsar 1.0.12).</summary>
+    public static bool UsesIniSections(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ConfigFileList.GroupBy(f => f.Path, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1);
+    }
+
+    /// <summary>
+    /// A game run with pipes whose console is its log file, or a log named by a pattern (Pulsar 1.0.12): older agents read a
+    /// log only with RCON, and only by its name.
+    /// </summary>
+    public static bool UsesLogFileConsole(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Runtime.Values.Any(r => r.Console.LogFile is { } log && (r.Console.Mode == ManifestConsoleMode.Pipes || ManifestValidator.IsLogFilePattern(log)));
     }
 
     private static IEnumerable<ArgumentCondition> Conditions(IEnumerable<ArgumentTemplate> arguments) =>

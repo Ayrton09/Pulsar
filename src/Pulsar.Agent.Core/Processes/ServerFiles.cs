@@ -24,6 +24,16 @@ public interface IServerFiles
 
     /// <summary>Removes the directory if it is empty; false when it is missing, holds anything, or is a link.</summary>
     bool DeleteEmptyDirectory(string serverRoot, string relativePath);
+
+    /// <summary>
+    /// The files directly in a directory ("" is the server directory), with when each was last written: not its folders,
+    /// not its links. Empty when the directory does not exist; a link in its place is not followed.
+    /// </summary>
+    /// <param name="limit">
+    /// The most entries (files, folders and links) the directory may hold: the server's account controls it, so one with more
+    /// fails with an <see cref="IOException"/> rather than costing the agent the memory and time of listing it.
+    /// </param>
+    IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit);
 }
 
 /// <summary>
@@ -70,5 +80,31 @@ public sealed class DirectServerFiles : IServerFiles
 
         directory.Delete(recursive: false);
         return true;
+    }
+
+    public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit)
+    {
+        var directory = new DirectoryInfo(relativeDirectory.Length == 0 ? serverRoot : InstallSteps.Resolve(serverRoot, relativeDirectory));
+        if (!directory.Exists || directory.LinkTarget is not null)
+        {
+            return [];
+        }
+
+        var files = new List<(string, DateTimeOffset)>();
+        var entries = 0;
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (++entries > limit)
+            {
+                throw new IOException($"'{(relativeDirectory.Length == 0 ? "/" : relativeDirectory)}' holds more than {limit} entries.");
+            }
+
+            if (entry is FileInfo { LinkTarget: null } file)
+            {
+                files.Add((file.Name, new DateTimeOffset(file.LastWriteTimeUtc)));
+            }
+        }
+
+        return files;
     }
 }

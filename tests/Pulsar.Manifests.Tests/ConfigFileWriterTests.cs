@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 namespace Pulsar.Manifests.Tests;
 
 public sealed class ConfigFileWriterTests
@@ -302,6 +303,104 @@ public sealed class ConfigFileWriterTests
         Assert.Equal("<?xml version=\"1.0\"?>\n<ServerSettings>\n\t<property name=\"ServerPort\" value=\"26900\"/>\n</ServerSettings>\n",
             ConfigFileWriter.Apply(Xml(("ServerPort", "26900")), null));
         Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Xml(("ServerPort", "26900")), "<ServerSettings>\n"));
+    }
+
+    private const string SpaceEngineersConfig = """
+        <?xml version="1.0"?>
+        <MyConfigDedicated xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <SessionSettings>
+            <GameMode>Survival</GameMode>
+            <MaxPlayers>4</MaxPlayers>
+          </SessionSettings>
+          <ServerName>Old name</ServerName>
+          <Administrators />
+        </MyConfigDedicated>
+        """;
+
+    [Fact]
+    public void AnXmlFilesElementsGetTheirTextAndTheRestStays()
+    {
+        var text = ConfigFileWriter.Apply(Xml_(("/MyConfigDedicated/ServerName", "Fish & <Chips>"), ("/MyConfigDedicated/SessionSettings/MaxPlayers", "16"),
+            ("/MyConfigDedicated/PremadeCheckpointPath", @"D:\servers\abcd1234\Content\CustomWorlds\Star System")), SpaceEngineersConfig);
+
+        var document = System.Xml.Linq.XDocument.Parse(text);
+        var root = document.Root!;
+        Assert.Equal("Fish & <Chips>", root.Element("ServerName")!.Value);
+        Assert.Contains("Fish &amp; &lt;Chips&gt;", text, StringComparison.Ordinal);
+        Assert.Equal("16", root.Element("SessionSettings")!.Element("MaxPlayers")!.Value);
+        Assert.Equal("Survival", root.Element("SessionSettings")!.Element("GameMode")!.Value); // the game's own
+        Assert.Equal(@"D:\servers\abcd1234\Content\CustomWorlds\Star System", root.Element("PremadeCheckpointPath")!.Value); // added
+        Assert.NotNull(root.Element("Administrators"));
+        Assert.Equal("http://www.w3.org/2001/XMLSchema-instance", root.Attribute(System.Xml.Linq.XNamespace.Xmlns + "xsi")!.Value);
+    }
+
+    [Fact]
+    public void AnXmlFileThatIsMissingStartsAsItsRootAndAnEmptyValueRemovesItsElement()
+    {
+        var created = ConfigFileWriter.Apply(Xml_(("/MyConfigDedicated/ServerName", "Pulsar")), null);
+        Assert.Equal("Pulsar", System.Xml.Linq.XDocument.Parse(created).Root!.Element("ServerName")!.Value);
+
+        var removed = ConfigFileWriter.Apply(Xml_(("/MyConfigDedicated/ServerName", "")), SpaceEngineersConfig);
+        Assert.Null(System.Xml.Linq.XDocument.Parse(removed).Root!.Element("ServerName"));
+    }
+
+    [Theory]
+    [InlineData("/MyConfigDedicated/SessionSettings", "8")] // holds elements of its own
+    [InlineData("/OtherRoot/ServerName", "x")] // not this file's root
+    public void AnXmlValueNeverReplacesElementsNorGoesUnderAnotherRoot(string key, string value) =>
+        Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Xml_((key, value)), SpaceEngineersConfig));
+
+    [Fact]
+    public void AnXmlFileWithADtdIsRefused()
+    {
+        const string Entities = """<?xml version="1.0"?><!DOCTYPE r [<!ENTITY e SYSTEM "file:///C:/Windows/win.ini">]><MyConfigDedicated><ServerName>&e;</ServerName></MyConfigDedicated>""";
+
+        var error = Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Xml_(("/MyConfigDedicated/ServerName", "x")), Entities));
+
+        Assert.Contains("not valid XML", error.Message, StringComparison.Ordinal);
+    }
+
+    private static RenderedConfigFile Xml_(params (string Key, string Value)[] entries) =>
+        new("instance/SpaceEngineers-Dedicated.cfg", ConfigFileFormat.Xml, ConfigFileMode.Patch, [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false))]);
+
+    [Fact]
+    public void ATextFileIsItsValue()
+    {
+        // Don't Starve Together's cluster_token.txt holds the token and nothing else.
+        var token = new RenderedConfigFile("save/Cluster_1/cluster_token.txt", ConfigFileFormat.Text, ConfigFileMode.Patch,
+            [new ConfigEntry(ConfigFileWriter.TextKey, "pds-g^KU_abc123^6^xyz=", Secret: true)]);
+
+        Assert.Equal("pds-g^KU_abc123^6^xyz=", ConfigFileWriter.Apply(token, "an older token\n"));
+        Assert.Equal("", ConfigFileWriter.Apply(token with { Entries = [new ConfigEntry(ConfigFileWriter.TextKey, "", Secret: true)] }, "an older token"));
+        // A value kept while empty is not rendered at all: the file stays.
+        Assert.Equal("an older token", ConfigFileWriter.Apply(token with { Entries = [] }, "an older token"));
+        Assert.Equal("", ConfigFileWriter.Apply(token with { Entries = [] }, null));
+    }
+
+    [Fact]
+    public void ATextFileHoldsOneValueAndTheValidatorSaysSo()
+    {
+        Assert.True(ManifestFeatures.UsesTextConfig(TestManifests.Load("dst")));
+        Assert.False(ManifestFeatures.UsesTextConfig(TestManifests.Load("css")));
+
+        var twoKeys = TestManifests.Errors(TestManifests.Change("dst", m => m["configFiles"]![4]!["set"]!["other"] = "x"));
+        var otherKey = TestManifests.Errors(TestManifests.Change("dst", m => m["configFiles"]![4]!["set"] = JsonNode.Parse("""{"token": "{{var.clusterToken}}"}""")));
+
+        Assert.Contains(twoKeys, e => e.Path == "configFiles[4].set");
+        Assert.Contains(otherKey, e => e.Path == "configFiles[4].set");
+    }
+
+    [Fact]
+    public void SectionsOfOneIniFilePatchedInTurnKeepEachOther()
+    {
+        // The agent writes a file's sections one after the other, each on what the one before wrote (Pulsar 1.0.12).
+        var rcon = Unreal(ConfigFileMode.Patch, null, ("bEnabled", "True"), ("ListenPort", "27140")) with { Section = "Rcon" };
+        var mode = Unreal(ConfigFileMode.Patch, null, ("bAllowFriendlyFire", "False")) with { Section = "/Script/Insurgency.INSGameMode" };
+        const string Existing = "[/Script/Insurgency.INSGameMode]\nbAllowFriendlyFire=True\nbKillFeed=True\n";
+
+        var text = ConfigFileWriter.Apply(mode, ConfigFileWriter.Apply(rcon, Existing));
+
+        Assert.Equal("[/Script/Insurgency.INSGameMode]\nbAllowFriendlyFire=False\nbKillFeed=True\n\n[Rcon]\nbEnabled=True\nListenPort=27140\n", text);
     }
 
     private static RenderedConfigFile Xml(params (string Key, string Value)[] entries) =>

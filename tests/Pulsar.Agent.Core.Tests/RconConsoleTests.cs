@@ -558,6 +558,9 @@ public sealed class LogTailTests : IDisposable
         public void CreateDirectory(string serverRoot, string relativePath) => _inner.CreateDirectory(serverRoot, relativePath);
 
         public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _inner.DeleteEmptyDirectory(serverRoot, relativePath);
+
+        public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit) =>
+            _inner.ListFiles(serverRoot, relativeDirectory, limit);
     }
 
     internal static async Task Eventually(Func<bool> condition, Func<string> what)
@@ -672,6 +675,29 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "console.log"), "Loading map\nServer is hibernating\n", TestContext.Current.CancellationToken);
 
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+    }
+
+    [Fact]
+    public async Task ALogNamedByAPatternIsTheFileThatAppearedWithTheStart()
+    {
+        // Space Engineers names its log by the time it started: an earlier start's log stays, and is not this start's console.
+        var ct = TestContext.Current.CancellationToken;
+        Directory.CreateDirectory(Path.Combine(_root, "cstrike"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "console_1.log"), "Server is hibernating\n", ct);
+        var supervisor = Supervisor(new LogPatternReadiness("^Server is hibernating", 60),
+            change: plan => plan with { Console = plan.Console with { LogFile = "cstrike/console_*.log" } });
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+
+        await Task.Delay(200, ct); // polls enough to have taken the earlier log, were it taken
+        await supervisor.FlushAsync();
+        Assert.DoesNotContain("hibernating", Text(supervisor), StringComparison.Ordinal);
+
+        await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "console_2.log"), "Loading map\nServer is hibernating\n", ct);
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+        await EventuallyAsync(() => Text(supervisor).EndsWith("Loading map\nServer is hibernating\n", StringComparison.Ordinal));
+        Assert.Single(Text(supervisor).Split("hibernating")[1..]);
+        Assert.True(File.Exists(Path.Combine(_root, "cstrike", "console_1.log")));
     }
 
     [Fact]
@@ -915,6 +941,24 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
             () => Text(supervisor));
         Assert.Equal(["ShowPlayers"], _rcon.Commands);
         Assert.Empty(_processes.Last.Input); // nothing typed into the game's console
+    }
+
+    [Fact]
+    public async Task AGameThatPrintsItsRconCommandsToItsOutputGetsNoSecondCopy()
+    {
+        // Soulmask, run with pipes, prints each RCON command and its answer itself.
+        var ct = TestContext.Current.CancellationToken;
+        var supervisor = await RunningAsync(logsCommands: true, mode: ManifestConsoleMode.Pipes, loggedAnswerWait: TimeSpan.FromSeconds(10));
+        _rcon.Answer = _ => "Average FPS: 30";
+        _rcon.OnCommand = command => _processes.Last.Print($"TRY RUN ADMIN COMMAND: {command}\r\nRESPONSE: Average FPS: 30\r\n");
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("fps", ct));
+
+        const string Printed = "TRY RUN ADMIN COMMAND: fps\r\nRESPONSE: Average FPS: 30\r\n";
+        await EventuallyAsync(supervisor, Printed);
+        await Task.Delay(s_loggedAnswerWait * 3, ct);
+        await supervisor.FlushAsync();
+        Assert.Equal(Printed, Text(supervisor));
     }
 
     private const string Rcon = "Rc0nPassw0rd";

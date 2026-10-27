@@ -745,6 +745,52 @@ public static class AgentCapabilities
     public const string PlayerCommands = "manifest.player_commands";
 
     /// <summary>
+    /// Not a command: the agent sends Ctrl+C to a game run with pipes through the console window the game opened for
+    /// itself (Pulsar 1.0.12: Unreal Engine servers started with <c>-log</c>); an older one refuses manifests whose
+    /// <c>ctrlC</c> stop step is in <c>pipes</c> mode.
+    /// </summary>
+    public const string PipesCtrlC = "manifest.pipes_ctrl_c";
+
+    /// <summary>
+    /// Not a command: the agent patches several sections of one ini file, each declared on its own (Pulsar 1.0.12); an
+    /// older one refuses a manifest that declares a file twice.
+    /// </summary>
+    public const string IniSections = "manifest.ini_sections";
+
+    /// <summary>
+    /// Not a command: the agent shows a game run with pipes through its log file (Pulsar 1.0.12, <c>logFile</c> in
+    /// <c>pipes</c> mode); an older one refuses manifests that ask for it.
+    /// </summary>
+    public const string LogFileConsole = "manifest.log_file_console";
+
+    /// <summary>
+    /// Not a command: the agent gives a game its user's folders in the server's folder (Pulsar 1.0.12,
+    /// <c>runtime.userProfile</c>); an older one refuses manifests that ask for it.
+    /// </summary>
+    public const string UserProfile = "manifest.user_profile";
+
+    /// <summary>
+    /// Not a command: the agent writes the configuration formats of Pulsar 1.0.12, <c>text</c> (a file that holds one value)
+    /// and <c>xml</c> (elements' text by their path); an older one refuses manifests that use them.
+    /// </summary>
+    public const string TextConfig = "manifest.text_config";
+
+    /// <summary>Not a command: the agent unpacks addons whose asset is a .tar.gz (Pulsar 1.0.12), not only zips.</summary>
+    public const string TarAddons = "addons.tar_gz";
+
+    /// <summary>
+    /// Not a command: the agent installs a game server from a GitHub release's asset (Pulsar 1.0.12, the <c>githubRelease</c>
+    /// install step); an older one refuses manifests that use it.
+    /// </summary>
+    public const string GitHubReleaseInstall = "install.github_release";
+
+    /// <summary>
+    /// Not a command: the agent installs Microsoft's .NET runtime in the server's folder for the game (Pulsar 1.0.12, the
+    /// <c>dotnetRuntime</c> install step); an older one refuses manifests that use it.
+    /// </summary>
+    public const string DotnetRuntime = "install.dotnet_runtime";
+
+    /// <summary>
     /// Not a command: the agent installs Minecraft's server types (Paper, Purpur, Fabric, Forge, NeoForge) and reads
     /// conditions on what an enum's option maps (Pulsar 1.0.9); an older one refuses manifests that use them.
     /// </summary>

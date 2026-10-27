@@ -55,7 +55,7 @@ internal static class HostCommand
             // The agent's own lock files: its logons of the server's account and this host's never overlap.
             var accounts = new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>(), paths.LogonLocksDirectory);
             var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>(),
-                allowCurrentUser: line.Has("dev")); // only a development agent starts hosts with --dev
+                allowCurrentUser: line.Has("dev"), hostsOneGame: true); // only a development agent starts hosts with --dev
             using var service = new GameHostService(processes, serverId, pipe, new GameHostOptions(), TimeProvider.System,
                 loggers.CreateLogger<GameHostService>());
             return await service.RunAsync(CancellationToken.None);

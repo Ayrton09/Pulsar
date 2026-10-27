@@ -161,6 +161,14 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.MoreConfigFormats;
             yield return AgentCapabilities.ManifestCommands;
             yield return AgentCapabilities.PlayerCommands;
+            yield return AgentCapabilities.PipesCtrlC;
+            yield return AgentCapabilities.IniSections;
+            yield return AgentCapabilities.LogFileConsole;
+            yield return AgentCapabilities.UserProfile;
+            yield return AgentCapabilities.TarAddons;
+            yield return AgentCapabilities.TextConfig;
+            yield return AgentCapabilities.GitHubReleaseInstall;
+            yield return AgentCapabilities.DotnetRuntime;
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
             yield return AgentCapabilities.InstallModpack;

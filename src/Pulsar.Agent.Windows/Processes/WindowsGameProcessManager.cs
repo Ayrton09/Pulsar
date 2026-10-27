@@ -25,8 +25,12 @@ namespace Pulsar.Agent.Windows.Processes;
 /// Development agents only (enrolled with <c>--dev</c>): a spec without a server account starts the game as the agent's own
 /// account. In production that is SYSTEM, so the default refuses it.
 /// </param>
+/// <param name="hostsOneGame">
+/// A game's host (<c>PulsarAgent host</c>): it starts one game and no process after it, so it may send Ctrl+C to a game
+/// run with pipes (<see cref="ConsoleInterrupt"/>). The agent itself never does: it starts more games after one.
+/// </param>
 public sealed partial class WindowsGameProcessManager(WindowsServerAccounts accounts, TimeProvider clock, ILogger<WindowsGameProcessManager> logger,
-    bool allowCurrentUser = false)
+    bool allowCurrentUser = false, bool hostsOneGame = false)
     : IGameProcessManager
 {
     // PROC_THREAD_ATTRIBUTE_* are macros in the SDK headers, so CsWin32 does not generate them.
@@ -78,6 +82,14 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         var temp = TempDirectory(root);
         // The server's account controls .pulsar: created level by level without following a junction (doc 06).
         s_files.CreateDirectory(root, ".pulsar/temp");
+        string? profile = null;
+        if (spec.UserProfile is { } userProfile)
+        {
+            // The game's user folders in the server's: what it keeps in AppData is reached by the file manager (doc 04).
+            s_files.CreateDirectory(root, $"{userProfile}/AppData/Roaming");
+            s_files.CreateDirectory(root, $"{userProfile}/AppData/Local");
+            profile = ServerPaths.ResolveDirectory(root, userProfile);
+        }
 
         var resources = new List<IDisposable>();
         try
@@ -100,7 +112,7 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
                     .ToDictionary(e => (string)e.Key, e => (string?)e.Value ?? "", StringComparer.OrdinalIgnoreCase);
             }
 
-            var environment = BuildEnvironment(baseEnvironment, spec.Environment, temp);
+            var environment = BuildEnvironment(baseEnvironment, spec.Environment, temp, profile);
             var commandLine = WindowsCommandLine.Build(executable, spec.Arguments);
             var process = Launch(spec, executable, workingDirectory, commandLine, environment, logon, desktop, [.. resources]);
             LogStarted(spec.ServerId, process.ProcessId, spec.ConsoleMode, spec.Identity is ProcessIdentity.AccountIdentity a ? a.Name : Environment.UserName);
@@ -122,7 +134,9 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         }
     }
 
-    internal static string BuildEnvironment(IReadOnlyDictionary<string, string> baseEnvironment, IReadOnlyDictionary<string, string> overrides, string temp)
+    /// <param name="profile">The game's user folder in the server's (<see cref="ProcessLaunchSpec.UserProfile"/>); null: its account's.</param>
+    internal static string BuildEnvironment(IReadOnlyDictionary<string, string> baseEnvironment, IReadOnlyDictionary<string, string> overrides, string temp,
+        string? profile = null)
     {
         var variables = new SortedDictionary<string, string>(baseEnvironment.ToDictionary(), StringComparer.OrdinalIgnoreCase);
         foreach (var (name, value) in overrides)
@@ -138,6 +152,14 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
 
         variables["TEMP"] = temp;
         variables["TMP"] = temp;
+        if (profile is not null)
+        {
+            // Windows finds a program's AppData through %USERPROFILE% (the account's User Shell Folders say
+            // %USERPROFILE%\AppData\Roaming), and programs that read the variables find the same folders.
+            variables["USERPROFILE"] = profile;
+            variables["APPDATA"] = Path.Combine(profile, "AppData", "Roaming");
+            variables["LOCALAPPDATA"] = Path.Combine(profile, "AppData", "Local");
+        }
 
         // Sorted, NUL-separated, double-NUL terminated (CREATE_UNICODE_ENVIRONMENT).
         var block = new StringBuilder();
@@ -209,7 +231,7 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
             var input = new FileStream(new SafeFileHandle((nint)inWrite.Value, ownsHandle: true), FileAccess.Write, 1);
             inWrite = default;
             var result = new WindowsGameProcess(job, process, (int)info.dwProcessId, input, pty ? new UTF8Encoding(false) : outputEncoding,
-                pseudoConsole, clock, resources);
+                pseudoConsole, clock, resources, pipesInterrupt: !pty && hostsOneGame);
             result.StartReader(new SafeFileHandle((nint)outRead.Value, ownsHandle: true), outputEncoding, "out");
             outRead = default;
             if (!pty)

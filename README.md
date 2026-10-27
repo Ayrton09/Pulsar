@@ -55,11 +55,11 @@ best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk 
 - MySQL/MariaDB databases for game plugins, created per server.
 
 **Mods and automation**
-- One-click mod frameworks: Metamod:Source and CounterStrikeSharp for CS2, Oxide (uMod) and Carbon for Rust; Steam
-  Workshop items where the game uses them.
+- One-click mod frameworks: Metamod:Source and CounterStrikeSharp for CS2, Oxide (uMod) and Carbon for Rust, EXILED
+  for SCP: Secret Laboratory; Steam Workshop items where the game uses them.
 - Scheduled tasks: start, stop, restart, back up, update or send a console command, in your time zone; or several steps in
   a row (warn the players, wait, restart), only when nobody plays or when a game update is out.
-- Game updates checked every 15 minutes with Steam (or Mojang): shown, notified, or installed by themselves, warning
+- Game updates checked every 15 minutes with Steam (or Mojang, or GitHub): shown, notified, or installed by themselves, warning
   the players first and, if you want, only when nobody plays.
 - Notifications to Discord or email when a server crashes or fails to start, a backup or a scheduled task fails, or a
   node goes offline or runs low on disk.
@@ -95,7 +95,17 @@ Korean and Simplified Chinese**: each user picks theirs in My account (until the
 | Sons of the Forest | SteamCMD | console | |
 | Arma Reforger | SteamCMD | console | |
 | Unturned | SteamCMD | console | |
-| SCP: Secret Laboratory | SteamCMD | console | |
+| SCP: Secret Laboratory | SteamCMD | console | EXILED |
+| Conan Exiles | SteamCMD | console + RCON | |
+| Insurgency: Sandstorm | SteamCMD | console + RCON | |
+| Squad | SteamCMD | console + RCON | |
+| Killing Floor 2 | SteamCMD | log | |
+| Space Engineers | SteamCMD | log | |
+| Don't Starve Together | SteamCMD | console | |
+| Icarus | SteamCMD | console | |
+| Soulmask | SteamCMD | console | |
+| Abiotic Factor | SteamCMD | console | |
+| Terraria | TShock's release from GitHub, with its .NET runtime | console | |
 | Minecraft: Java Edition | Mojang's server, the version you choose | console | |
 | Minecraft: Bedrock Edition | Mojang's server (signed by Microsoft), the version you choose | console | |
 

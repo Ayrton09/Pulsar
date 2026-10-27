@@ -1,0 +1,117 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "abiotic-factor",
+  "version": "1.0.0",
+  "name": "Abiotic Factor",
+  "description": "Abiotic Factor dedicated server, installed anonymously with SteamCMD. Its world and its sandbox rules live in the server's folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 6, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Abiotic Factor", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "world", "label": "World", "type": "string", "default": "Cascade", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "Its save's name: a new name makes a new world." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 6, "min": 1, "max": 24,
+      "description": "The game is made for 6; more works but is not balanced for." },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ?]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ?]{1,32}$",
+      "description": "Players who type it in the game become its admins. Leave empty to have none." },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum",
+      "options": [ { "value": "1", "label": "Normal" }, { "value": "2", "label": "Hard" }, { "value": "3", "label": "Apocalyptic" } ] },
+    { "key": "hardcore", "label": "Hardcore", "type": "enum", "options": [ { "value": "True", "label": "On" }, { "value": "False", "label": "Off" } ],
+      "description": "A dead character is gone for good." },
+    { "key": "enemySpawnRate", "label": "Enemy spawn rate", "type": "number", "min": 0.5, "max": 3,
+      "description": "Multiplier of how many enemies appear. 1 is the game's own." },
+    { "key": "enemyHealth", "label": "Enemy health", "type": "number", "min": 0.1, "max": 5, "description": "1 is the game's own." },
+    { "key": "enemyDamage", "label": "Enemy damage", "type": "number", "min": 0.1, "max": 5,
+      "description": "Multiplier of the damage enemies deal to players. 1 is the game's own." },
+    { "key": "friendlyFire", "label": "Damage to allies", "type": "number", "min": 0, "max": 2,
+      "description": "Multiplier of the damage players deal each other. 0.5 is the game's own." },
+    { "key": "xpGain", "label": "Experience gain", "type": "number", "min": 0.1, "max": 10, "description": "1 is the game's own." },
+    { "key": "hunger", "label": "Hunger speed", "type": "number", "min": 0, "max": 2, "description": "1 is the game's own." },
+    { "key": "thirst", "label": "Thirst speed", "type": "number", "min": 0, "max": 2, "description": "1 is the game's own." },
+    { "key": "fatigue", "label": "Fatigue speed", "type": "number", "min": 0, "max": 2, "description": "1 is the game's own." },
+    { "key": "stackSize", "label": "Stack size", "type": "number", "min": 1, "max": 30,
+      "description": "Multiplier of how many items fit in a stack. 1 is the game's own." },
+    { "key": "itemWeight", "label": "Item weight", "type": "number", "min": 0, "max": 2, "description": "1 is the game's own." },
+    { "key": "itemDurability", "label": "Item durability", "type": "number", "min": 0.1, "max": 5, "description": "1 is the game's own." },
+    { "key": "foodSpoil", "label": "Food spoil speed", "type": "number", "min": 0, "max": 5, "description": "1 is the game's own." },
+    { "key": "dayLength", "label": "Day and night speed", "type": "number", "min": 0.1, "max": 5,
+      "description": "Multiplier of how fast time passes. 1 is the game's own." },
+    { "key": "lootRespawn", "label": "Loot respawns", "type": "enum", "options": [ { "value": "True", "label": "On" }, { "value": "False", "label": "Off" } ] },
+    { "key": "deathMessages", "label": "Death messages", "type": "enum", "options": [ { "value": "True", "label": "Shown" }, { "value": "False", "label": "Hidden" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7777, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27015, "description": "The server list asks here." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 2857200 },
+    { "type": "ensureDirectory", "path": "AbioticFactor/Saved/Config/WindowsServer" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2857200 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe",
+      "arguments": [
+        "-log", "-useperfthreads", "-NoAsyncLoadingThread",
+        "-SteamServerName={{var.name}}",
+        "-WorldSaveName={{var.world}}",
+        "-MaxServerPlayers={{var.maxPlayers}}",
+        "-PORT={{port.game}}",
+        "-QueryPort={{port.query}}",
+        { "if": "var.password", "then": ["-ServerPassword={{var.password}}"] },
+        { "if": "var.adminPassword", "then": ["-AdminPassword={{var.adminPassword}}"] },
+        "-SandboxIniPath=Config/WindowsServer/SandboxSettings.ini"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "AbioticFactor/Saved/Config/WindowsServer/SandboxSettings.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "SandboxSettings",
+      "set": {
+        "GameDifficulty": "{{var.difficulty}}",
+        "HardcoreMode": "{{var.hardcore}}",
+        "EnemySpawnRate": "{{var.enemySpawnRate}}",
+        "EnemyHealthMultiplier": "{{var.enemyHealth}}",
+        "EnemyPlayerDamageMultiplier": "{{var.enemyDamage}}",
+        "DamageToAlliesMultiplier": "{{var.friendlyFire}}",
+        "PlayerXPGainMultiplier": "{{var.xpGain}}",
+        "HungerSpeedMultiplier": "{{var.hunger}}",
+        "ThirstSpeedMultiplier": "{{var.thirst}}",
+        "FatigueSpeedMultiplier": "{{var.fatigue}}",
+        "ItemStackSizeMultiplier": "{{var.stackSize}}",
+        "ItemWeightMultiplier": "{{var.itemWeight}}",
+        "ItemDurabilityMultiplier": "{{var.itemDurability}}",
+        "FoodSpoilSpeedMultiplier": "{{var.foodSpoil}}",
+        "DayNightCycleSpeedMultiplier": "{{var.dayLength}}",
+        "LootRespawnEnabled": "{{var.lootRespawn}}",
+        "ShowDeathMessages": "{{var.deathMessages}}"
+      },
+      "keepIfEmpty": ["GameDifficulty", "HardcoreMode", "EnemySpawnRate", "EnemyHealthMultiplier", "EnemyPlayerDamageMultiplier", "DamageToAlliesMultiplier",
+        "PlayerXPGainMultiplier", "HungerSpeedMultiplier", "ThirstSpeedMultiplier", "FatigueSpeedMultiplier", "ItemStackSizeMultiplier", "ItemWeightMultiplier",
+        "ItemDurabilityMultiplier", "FoodSpoilSpeedMultiplier", "DayNightCycleSpeedMultiplier", "LootRespawnEnabled", "ShowDeathMessages"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "query", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["AbioticFactor/Saved/SaveGames/**", "AbioticFactor/Saved/Config/WindowsServer/SandboxSettings.ini"]
+  }
+}

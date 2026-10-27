@@ -487,6 +487,13 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - A backup read live (no snapshot) leaves out a file the game keeps locked (Minecraft's `session.lock`) instead of failing; Minecraft's template takes the save confirmation newer versions print (`System chat: Saved the game`), so a backup no longer waits two minutes for it.
 - Zips in the file manager: zip files and folders, unzip a `.zip` into a folder, while the game keeps running (doc 03, "Archives"; doc 07; doc 08, "File manager"). Agent capabilities `server.files_compress` and `server.files_extract`.
 
+## 1.0.12 — More games (2026-10-26, at the user's request)
+
+- Ten more games, each checked on a real server through a development panel and agent (`games/<key>/README.md`): Abiotic Factor, Conan Exiles, Don't Starve Together (offline, without a Klei token), Icarus, Insurgency: Sandstorm, Killing Floor 2, Soulmask, Space Engineers, Squad, and Terraria through TShock. DayZ was dropped; Euro Truck Simulator 2 waits for a way to make its `server_packages` without the game's client.
+- EXILED for SCP: Secret Laboratory from its Mods tab, and its plugins (LabAPI's and EXILED's) in the server's folder, where the file manager and backups reach them.
+- New manifest features, each read only by agents that announce it (doc 03): Ctrl+C for games run with pipes (`manifest.pipes_ctrl_c`), several sections of one ini (`manifest.ini_sections`), a log file as the console with pipes and log names by pattern (`manifest.log_file_console`), `runtime.userProfile` (`manifest.user_profile`), the `text` and `xml` formats (`manifest.text_config`), `.tar.gz` addons (`addons.tar_gz`), and the `githubRelease` and `dotnetRuntime` install steps (`install.github_release`, `install.dotnet_runtime`) (doc 04).
+- Secrets never show in a server's console (doc 04, "Console"; doc 08, T47).
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

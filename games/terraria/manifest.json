@@ -1,0 +1,109 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "terraria",
+  "version": "1.0.0",
+  "name": "Terraria",
+  "description": "Terraria dedicated server through TShock, its community server, installed from TShock's GitHub releases with the .NET runtime it needs in the server's folder. TShock adds accounts, groups and permissions; its settings are tshock/config.json.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 1, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Terraria", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$",
+      "description": "Shown to players in place of the world's name." },
+    { "key": "world", "label": "World", "type": "string", "default": "World", "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "The world's file in worlds (a new one is made when it does not exist)." },
+    { "key": "size", "label": "Size of a new world", "type": "enum", "default": "2",
+      "options": [ { "value": "1", "label": "Small" }, { "value": "2", "label": "Medium" }, { "value": "3", "label": "Large" } ],
+      "description": "Taken only while the world does not exist yet." },
+    { "key": "difficulty", "label": "Difficulty of a new world", "type": "enum", "default": "0",
+      "options": [ { "value": "0", "label": "Classic" }, { "value": "1", "label": "Expert" }, { "value": "2", "label": "Master" }, { "value": "3", "label": "Journey" } ],
+      "description": "Taken only while the world does not exist yet." },
+    { "key": "seed", "label": "Seed of a new world", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._'-]{0,63}$",
+      "description": "Empty for a random one; secret seeds (for the worthy, not the bees) work too. Taken only while the world does not exist yet." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 255 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$",
+      "description": "Players need it to join, unless they log in to a TShock account. Leave empty for an open server." },
+    { "key": "pvp", "label": "PvP", "type": "enum",
+      "options": [ { "value": "normal", "label": "Players choose" }, { "value": "always", "label": "Always on" }, { "value": "disabled", "label": "Off" } ] },
+    { "key": "spawnProtection", "label": "Spawn protection", "type": "boolean", "default": false,
+      "description": "Only TShock's admins can build near the spawn point." },
+    { "key": "whitelist", "label": "Whitelist", "type": "boolean", "default": false,
+      "description": "Only the addresses in tshock/whitelist.txt can join." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["tcp"], "default": 7777, "description": "Players connect here." }
+  ],
+
+  "install": { "steps": [
+    { "type": "githubRelease", "repo": "Pryaxis/TShock", "asset": "^TShock-.*-win-x64-Release\\.zip$" },
+    { "type": "dotnetRuntime", "channel": "9.0" }
+  ] },
+  "update": { "steps": [
+    { "type": "githubRelease", "repo": "Pryaxis/TShock", "asset": "^TShock-.*-win-x64-Release\\.zip$" },
+    { "type": "dotnetRuntime", "channel": "9.0" }
+  ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "TShock.Server.exe",
+      "arguments": [
+        "-config", "serverconfig.txt",
+        "-port", "{{port.game}}",
+        "-maxplayers", "{{var.maxPlayers}}",
+        "-world", "worlds/{{var.world}}.wld",
+        "-autocreate", "{{var.size}}",
+        "-worldname", "{{var.world}}",
+        { "if": "var.seed", "then": ["-seed", "{{var.seed}}"] },
+        "-savedirectory", "save"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    {
+      "path": "serverconfig.txt",
+      "format": "properties",
+      "mode": "patch",
+      "set": { "difficulty": "{{var.difficulty}}" }
+    },
+    {
+      "path": "tshock/config.json",
+      "format": "json",
+      "mode": "patch",
+      "set": {
+        "/Settings/ServerName": "{{var.name}}",
+        "/Settings/UseServerName": "true",
+        "/Settings/ServerPassword": "{{var.password}}",
+        "/Settings/PvPMode": "{{var.pvp}}",
+        "/Settings/SpawnProtection": "{{var.spawnProtection}}",
+        "/Settings/EnableWhitelist": "{{var.whitelist}}"
+      },
+      "keepIfEmpty": ["/Settings/PvPMode"]
+    }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Server started", "timeoutSeconds": 600 },
+
+  "stop": { "steps": [ { "type": "consoleCommand", "command": "exit" } ], "timeoutSeconds": 60 },
+
+  "commands": {
+    "broadcast": "say {{message}}",
+    "players": {
+      "kick": "/kick \"{{player}}\"",
+      "ban": "/ban add \"{{player}}\"",
+      "spaces": true
+    }
+  },
+
+  "backup": {
+    "include": ["worlds/**", "tshock/**", "save/**", "serverconfig.txt"],
+    "exclude": ["tshock/logs/**"],
+    "save": { "commands": ["save"], "waitSeconds": 5 }
+  }
+}

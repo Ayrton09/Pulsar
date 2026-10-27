@@ -59,6 +59,7 @@ public abstract record ProcessIdentity
 /// Everything needed to start one server process. Paths are relative to <see cref="ServerRoot"/> and validated by the
 /// manager; arguments are already rendered (one element = one argv entry, never split or re-parsed).
 /// </summary>
+/// <param name="UserProfile">A folder of the server the game takes for its user's (USERPROFILE, APPDATA, LOCALAPPDATA); null: its account's.</param>
 public sealed record ProcessLaunchSpec(
     Guid ServerId,
     string ServerRoot,
@@ -69,7 +70,8 @@ public sealed record ProcessLaunchSpec(
     ConsoleMode ConsoleMode,
     ConsoleEncoding Encoding,
     ProcessIdentity Identity,
-    ProcessLimits? Limits = null)
+    ProcessLimits? Limits = null,
+    string? UserProfile = null)
 {
     // The default would print every argument and environment value: SteamCMD's come with the account's password.
     public override string ToString() => $"ProcessLaunchSpec {{ ServerId = {ServerId}, Executable = {Executable}, Arguments = {Arguments.Count} }}";
@@ -110,7 +112,10 @@ public interface IGameProcess : IAsyncDisposable
     /// <summary>Console output; completes when the output closes. It must be drained, or the process blocks writing.</summary>
     ChannelReader<ConsoleChunk> Output { get; }
 
-    /// <summary>Whether <see cref="SendInterruptAsync"/> is available (pseudo console only).</summary>
+    /// <summary>
+    /// Whether <see cref="SendInterruptAsync"/> is available: a pseudo console, or (Pulsar 1.0.12) a game run with pipes by
+    /// its host, which sends Ctrl+C to the console the game opened.
+    /// </summary>
     bool SupportsInterrupt { get; }
 
     /// <summary>

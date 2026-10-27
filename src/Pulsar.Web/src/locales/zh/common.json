@@ -4542,7 +4542,7 @@
       }
     },
     "scpsl": {
-      "description": "SCP: Secret Laboratory 专用服务器，由其 LocalAdmin 运行，通过 SteamCMD 匿名安装（约 1 GB）。其配置保存在服务器文件夹的 config/config 中（config_gameplay.txt 以游戏自带模板为起点）；LocalAdmin 将自己的设置和日志保存在服务器运行账户的配置文件中。",
+      "description": "由 LocalAdmin 运行的 SCP: Secret Laboratory 专用服务器,通过 SteamCMD 匿名安装(约 1 GB)。配置保存在服务器文件夹的 config/config 中(config_gameplay.txt 以游戏自带的模板开始),插件(LabAPI、EXILED)位于 profile/AppData/Roaming;LocalAdmin 将自己的设置和日志保存在运行服务器的账号的 profile 中。",
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
@@ -5747,6 +5747,1167 @@
         "game": {
           "label": "游戏",
           "description": "玩家通过 TCP（IPv4 和 IPv6）连接到这里，之后游戏流量走 UDP（见 UDP 端口）。"
+        }
+      }
+    },
+    "abiotic-factor": {
+      "description": "Abiotic Factor 专用服务器,通过 SteamCMD 匿名安装。世界和沙盒规则位于服务器文件夹中。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "world": {
+          "label": "世界",
+          "description": "存档的名称:使用新名称会创建新世界。"
+        },
+        "maxPlayers": {
+          "label": "槽位",
+          "description": "游戏为 6 人设计;更多人也能运行,但未做平衡。"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "在游戏中输入它的玩家将成为管理员。留空则没有管理员。"
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "1": "普通",
+            "2": "困难",
+            "3": "末日"
+          }
+        },
+        "hardcore": {
+          "label": "硬核",
+          "description": "死亡的角色将永久消失。",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "enemySpawnRate": {
+          "label": "敌人生成率",
+          "description": "敌人出现数量的倍率。1 为游戏默认值。"
+        },
+        "enemyHealth": {
+          "label": "敌人生命值",
+          "description": "1 为游戏默认值。"
+        },
+        "enemyDamage": {
+          "label": "敌人伤害",
+          "description": "敌人对玩家造成伤害的倍率。1 为游戏默认值。"
+        },
+        "friendlyFire": {
+          "label": "对友军的伤害",
+          "description": "玩家之间互相造成伤害的倍率。0.5 为游戏默认值。"
+        },
+        "xpGain": {
+          "label": "经验获取",
+          "description": "1 为游戏默认值。"
+        },
+        "hunger": {
+          "label": "饥饿速度",
+          "description": "1 为游戏默认值。"
+        },
+        "thirst": {
+          "label": "口渴速度",
+          "description": "1 为游戏默认值。"
+        },
+        "fatigue": {
+          "label": "疲劳速度",
+          "description": "1 为游戏默认值。"
+        },
+        "stackSize": {
+          "label": "堆叠大小",
+          "description": "每个堆叠可容纳物品数量的倍率。1 为游戏默认值。"
+        },
+        "itemWeight": {
+          "label": "物品重量",
+          "description": "1 为游戏默认值。"
+        },
+        "itemDurability": {
+          "label": "物品耐久度",
+          "description": "1 为游戏默认值。"
+        },
+        "foodSpoil": {
+          "label": "食物腐败速度",
+          "description": "1 为游戏默认值。"
+        },
+        "dayLength": {
+          "label": "昼夜速度",
+          "description": "时间流逝速度的倍率。1 为游戏默认值。"
+        },
+        "lootRespawn": {
+          "label": "战利品刷新",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "deathMessages": {
+          "label": "死亡消息",
+          "options": {
+            "True": "显示",
+            "False": "隐藏"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        }
+      }
+    },
+    "conan-exiles": {
+      "description": "Conan Exiles 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。世界和设置位于服务器文件夹中。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "在游戏中输入它(MakeMeAdmin)的玩家将成为管理员。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "avatars": {
+          "label": "化身(神)",
+          "options": {
+            "False": "开",
+            "True": "关"
+          }
+        },
+        "damageStructures": {
+          "label": "玩家可破坏他人的建筑",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "openContainers": {
+          "label": "任何人都可打开的容器",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "xpRate": {
+          "label": "经验倍率",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "xpKill": {
+          "label": "击杀经验",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "xpHarvest": {
+          "label": "采集经验",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "xpCraft": {
+          "label": "制作经验",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "playerDamage": {
+          "label": "玩家造成的伤害",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "playerDamageTaken": {
+          "label": "玩家受到的伤害",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "npcDamage": {
+          "label": "敌人造成的伤害",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "npcHealth": {
+          "label": "敌人生命值",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "npcRespawn": {
+          "label": "敌人重生时间",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "stamina": {
+          "label": "耐力消耗",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "healthRegen": {
+          "label": "生命恢复",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "craftCost": {
+          "label": "制作成本",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "craftTime": {
+          "label": "制作时间",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "fuelBurn": {
+          "label": "燃料燃烧时间",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "thrallConversion": {
+          "label": "奴隶转化时间",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "decay": {
+          "label": "建筑腐朽时间",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "structureDamage": {
+          "label": "建筑伤害",
+          "description": "倍率。1 为游戏默认值。"
+        },
+        "nudity": {
+          "label": "裸露",
+          "options": {
+            "0": "无",
+            "1": "部分",
+            "2": "完全"
+          }
+        },
+        "afkKick": {
+          "label": "踢出挂机玩家的时间 (秒)",
+          "description": "0 表示从不踢出。"
+        },
+        "motd": {
+          "label": "每日消息"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "仅 Pulsar 在本机使用:控制台命令。"
+        }
+      }
+    },
+    "dst": {
+      "description": "Don't Starve Together 专用服务器(地上世界),通过 SteamCMD 匿名安装。有 Klei 集群令牌时在线运行,没有则只在局域网运行。世界和设置位于服务器文件夹中。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "description": {
+          "label": "描述",
+          "description": "显示在服务器列表中名称的下方。"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "clusterToken": {
+          "label": "Klei 集群令牌",
+          "description": "让服务器上线:用拥有该游戏的账号在 accounts.klei.com(Games、Game Servers)创建一个。没有令牌时,服务器只在局域网运行。"
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "description": "创建新世界时采用。",
+          "options": {
+            "survival": "生存",
+            "endless": "无尽",
+            "wilderness": "荒野"
+          }
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "pauseWhenEmpty": {
+          "label": "无人时暂停",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "intention": {
+          "label": "游戏风格",
+          "description": "显示在服务器列表中。",
+          "options": {
+            "cooperative": "合作",
+            "social": "社交",
+            "competitive": "竞争",
+            "madness": "疯狂"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "steam": {
+          "label": "Steam 主服务器"
+        },
+        "auth": {
+          "label": "Steam 验证"
+        }
+      }
+    },
+    "icarus": {
+      "description": "Icarus 专用服务器,通过 SteamCMD 匿名安装。玩家在大厅启动并继续勘探;勘探和设置位于服务器文件夹中。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "使用它登录(/AdminLogin)的玩家可执行管理员命令。必填:没有它,任何输入 /AdminLogin 的人都会成为管理员。"
+        },
+        "resume": {
+          "label": "继续上次的勘探",
+          "description": "服务器启动时,加载上次运行的勘探。",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "loadProspect": {
+          "label": "要加载的勘探",
+          "description": "服务器启动时,在继续上次勘探之前要加载的勘探的存档名。"
+        },
+        "launchProspects": {
+          "label": "玩家启动勘探",
+          "options": {
+            "True": "任何人",
+            "False": "仅管理员"
+          }
+        },
+        "deleteProspects": {
+          "label": "玩家删除勘探",
+          "options": {
+            "True": "任何人",
+            "False": "仅管理员"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        }
+      }
+    },
+    "kf2": {
+      "description": "Killing Floor 2 专用服务器,通过 SteamCMD 匿名安装。设置为 KFGame/Config 中的 PCServer 文件,首次启动时生成。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "地图",
+          "description": "服务器启动时使用的地图;之后按地图循环。",
+          "options": {
+            "KF-Airship": "Airship",
+            "KF-AshwoodAsylum": "Ashwood Asylum",
+            "KF-BarmwichTown": "Barmwich Town",
+            "KF-Biolapse": "Biolapse",
+            "KF-Bioticslab": "Biotics Lab",
+            "KF-BlackForest": "Black Forest",
+            "KF-BurningParis": "Burning Paris",
+            "KF-CarillonHamlet": "Carillon Hamlet",
+            "KF-CastleVolter": "Castle Volter",
+            "KF-Catacombs": "Catacombs",
+            "KF-ContainmentStation": "Containment Station",
+            "KF-Crash": "Crash",
+            "KF-Desolation": "Desolation",
+            "KF-DieSector": "Die Sector",
+            "KF-Elysium": "Elysium",
+            "KF-EvacuationPoint": "Evacuation Point",
+            "KF-Farmhouse": "Farmhouse",
+            "KF-HellmarkStation": "Hellmark Station",
+            "KF-HostileGrounds": "Hostile Grounds",
+            "KF-InfernalRealm": "Infernal Realm",
+            "KF-KrampusLair": "Krampus Lair",
+            "KF-Lockdown": "Lockdown",
+            "KF-MonsterBall": "Monster Ball",
+            "KF-Moonbase": "Moonbase",
+            "KF-Netherhold": "Netherhold",
+            "KF-Nightmare": "Nightmare",
+            "KF-Nuked": "Nuked",
+            "KF-Outpost": "Outpost",
+            "KF-Prison": "Prison",
+            "KF-Rig": "The Rig",
+            "KF-Sanitarium": "Sanitarium",
+            "KF-Santasworkshop": "Santa's Workshop",
+            "KF-ShoppingSpree": "Shopping Spree",
+            "KF-Spillway": "Spillway",
+            "KF-SteamFortress": "Steam Fortress",
+            "KF-Subduction": "Subduction",
+            "KF-TheDescent": "The Descent",
+            "KF-TragicKingdom": "Tragic Kingdom",
+            "KF-VolterManor": "Volter Manor",
+            "KF-ZedLanding": "Zed Landing"
+          }
+        },
+        "mode": {
+          "label": "游戏模式",
+          "options": {
+            "survival": "生存",
+            "weekly": "每周爆发",
+            "endless": "无尽",
+            "versus": "对抗生存"
+          }
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "0": "普通",
+            "1": "困难",
+            "2": "自杀式",
+            "3": "人间地狱"
+          }
+        },
+        "length": {
+          "label": "游戏时长",
+          "options": {
+            "0": "短 (4 波)",
+            "1": "中 (7 波)",
+            "2": "长 (10 波)"
+          }
+        },
+        "maxPlayers": {
+          "label": "槽位",
+          "description": "生存模式最多 6 人,对抗模式最多 12 人。"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "在游戏中使用它登录(adminlogin)的玩家为管理员。"
+        },
+        "motd": {
+          "label": "每日消息"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "队友受到的伤害比例。0 为游戏默认值。"
+        },
+        "mapVote": {
+          "label": "地图投票",
+          "options": {
+            "False": "开",
+            "True": "关"
+          }
+        },
+        "kickVote": {
+          "label": "踢人投票",
+          "options": {
+            "False": "开",
+            "True": "关"
+          }
+        },
+        "textChat": {
+          "label": "公开文字聊天",
+          "options": {
+            "False": "开",
+            "True": "关"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "False": "开",
+            "True": "关"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        }
+      }
+    },
+    "sandstorm": {
+      "description": "Insurgency: Sandstorm 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "scenario": {
+          "label": "场景",
+          "description": "服务器启动时使用的地图和游戏模式。",
+          "options": {
+            "Scenario_Bab_Checkpoint_Security": "Bab: 检查点 (安保)",
+            "Scenario_Bab_Checkpoint_Insurgents": "Bab: 检查点 (叛乱分子)",
+            "Scenario_Bab_Outpost": "Bab: 前哨",
+            "Scenario_Bab_Survival": "Bab: 生存",
+            "Scenario_Bab_Push_Security": "Bab: 推进 (安保)",
+            "Scenario_Bab_Push_Insurgents": "Bab: 推进 (叛乱分子)",
+            "Scenario_Bab_Firefight_East": "Bab: 交火 (东)",
+            "Scenario_Bab_Domination": "Bab: 占领",
+            "Scenario_Bab_Ambush": "Bab: 伏击",
+            "Scenario_Bab_Defusal": "Bab: 拆除",
+            "Scenario_Citadel_Checkpoint_Security": "Citadel: 检查点 (安保)",
+            "Scenario_Citadel_Checkpoint_Insurgents": "Citadel: 检查点 (叛乱分子)",
+            "Scenario_Citadel_Outpost": "Citadel: 前哨",
+            "Scenario_Citadel_Survival": "Citadel: 生存",
+            "Scenario_Citadel_Push_Security": "Citadel: 推进 (安保)",
+            "Scenario_Citadel_Push_Insurgents": "Citadel: 推进 (叛乱分子)",
+            "Scenario_Citadel_Firefight": "Citadel: 交火",
+            "Scenario_Citadel_Domination": "Citadel: 占领",
+            "Scenario_Citadel_Frontline": "Citadel: 前线",
+            "Scenario_Citadel_Ambush": "Citadel: 伏击",
+            "Scenario_Citadel_Defusal": "Citadel: 拆除",
+            "Scenario_Crossing_Checkpoint_Security": "Crossing: 检查点 (安保)",
+            "Scenario_Crossing_Checkpoint_Insurgents": "Crossing: 检查点 (叛乱分子)",
+            "Scenario_Crossing_Outpost": "Crossing: 前哨",
+            "Scenario_Crossing_Push_Security": "Crossing: 推进 (安保)",
+            "Scenario_Crossing_Push_Insurgents": "Crossing: 推进 (叛乱分子)",
+            "Scenario_Crossing_Firefight_West": "Crossing: 交火 (西)",
+            "Scenario_Crossing_Domination": "Crossing: 占领",
+            "Scenario_Crossing_Frontline": "Crossing: 前线",
+            "Scenario_Crossing_Ambush": "Crossing: 伏击",
+            "Scenario_Crossing_Defusal": "Crossing: 拆除",
+            "Scenario_Crossing_Team_Deathmatch": "Crossing: 团队死斗",
+            "Scenario_Crossing_FFA": "Crossing: 自由混战",
+            "Scenario_Farmhouse_Checkpoint_Security": "Farmhouse: 检查点 (安保)",
+            "Scenario_Farmhouse_Checkpoint_Insurgents": "Farmhouse: 检查点 (叛乱分子)",
+            "Scenario_Farmhouse_Outpost": "Farmhouse: 前哨",
+            "Scenario_Farmhouse_Survival": "Farmhouse: 生存",
+            "Scenario_Farmhouse_Push_Security": "Farmhouse: 推进 (安保)",
+            "Scenario_Farmhouse_Push_Insurgents": "Farmhouse: 推进 (叛乱分子)",
+            "Scenario_Farmhouse_Firefight_East": "Farmhouse: 交火 (东)",
+            "Scenario_Farmhouse_Firefight_West": "Farmhouse: 交火 (西)",
+            "Scenario_Farmhouse_Domination": "Farmhouse: 占领",
+            "Scenario_Farmhouse_Frontline": "Farmhouse: 前线",
+            "Scenario_Farmhouse_Ambush": "Farmhouse: 伏击",
+            "Scenario_Farmhouse_Defusal": "Farmhouse: 拆除",
+            "Scenario_Farmhouse_Team_Deathmatch": "Farmhouse: 团队死斗",
+            "Scenario_Forest_Checkpoint_Security": "Forest: 检查点 (安保)",
+            "Scenario_Forest_Checkpoint_Insurgents": "Forest: 检查点 (叛乱分子)",
+            "Scenario_Forest_Outpost": "Forest: 前哨",
+            "Scenario_Forest_Survival": "Forest: 生存",
+            "Scenario_Forest_Push_Security": "Forest: 推进 (安保)",
+            "Scenario_Forest_Push_Insurgents": "Forest: 推进 (叛乱分子)",
+            "Scenario_Forest_Firefight_East": "Forest: 交火 (东)",
+            "Scenario_Forest_Firefight_West": "Forest: 交火 (西)",
+            "Scenario_Forest_Domination": "Forest: 占领",
+            "Scenario_Forest_Frontline": "Forest: 前线",
+            "Scenario_Forest_Ambush": "Forest: 伏击",
+            "Scenario_Forest_Defusal": "Forest: 拆除",
+            "Scenario_Forest_TDM": "Forest: 团队死斗",
+            "Scenario_Forest_FFA": "Forest: 自由混战",
+            "Scenario_Gap_Checkpoint_Security": "Gap: 检查点 (安保)",
+            "Scenario_Gap_Checkpoint_Insurgents": "Gap: 检查点 (叛乱分子)",
+            "Scenario_Gap_Outpost": "Gap: 前哨",
+            "Scenario_Gap_Survival": "Gap: 生存",
+            "Scenario_Gap_Push_Security": "Gap: 推进 (安保)",
+            "Scenario_Gap_Push_Insurgents": "Gap: 推进 (叛乱分子)",
+            "Scenario_Gap_Firefight": "Gap: 交火",
+            "Scenario_Gap_Firefight_West": "Gap: 交火 (西)",
+            "Scenario_Gap_Domination_East": "Gap: 占领 (东)",
+            "Scenario_Gap_Domination_West": "Gap: 占领 (西)",
+            "Scenario_Gap_Frontline": "Gap: 前线",
+            "Scenario_Gap_Ambush": "Gap: 伏击",
+            "Scenario_Gap_Defusal": "Gap: 拆除",
+            "Scenario_Gap_TDM": "Gap: 团队死斗",
+            "Scenario_Hideout_Checkpoint_Security": "Hideout: 检查点 (安保)",
+            "Scenario_Hideout_Checkpoint_Insurgents": "Hideout: 检查点 (叛乱分子)",
+            "Scenario_Hideout_Outpost": "Hideout: 前哨",
+            "Scenario_Hideout_Survival": "Hideout: 生存",
+            "Scenario_Hideout_Push_Security": "Hideout: 推进 (安保)",
+            "Scenario_Hideout_Push_Insurgents": "Hideout: 推进 (叛乱分子)",
+            "Scenario_Hideout_Firefight_East": "Hideout: 交火 (东)",
+            "Scenario_Hideout_Firefight_West": "Hideout: 交火 (西)",
+            "Scenario_Hideout_Domination": "Hideout: 占领",
+            "Scenario_Hideout_Frontline": "Hideout: 前线",
+            "Scenario_Hideout_Ambush": "Hideout: 伏击",
+            "Scenario_Hideout_Ambush_East": "Hideout: 伏击 (东)",
+            "Scenario_Hideout_Defusal": "Hideout: 拆除",
+            "Scenario_Hideout_Team_Deathmatch": "Hideout: 团队死斗",
+            "Scenario_Hillside_Checkpoint_Security": "Hillside: 检查点 (安保)",
+            "Scenario_Hillside_Checkpoint_Insurgents": "Hillside: 检查点 (叛乱分子)",
+            "Scenario_Hillside_Outpost": "Hillside: 前哨",
+            "Scenario_Hillside_Survival": "Hillside: 生存",
+            "Scenario_Hillside_Push_Security": "Hillside: 推进 (安保)",
+            "Scenario_Hillside_Push_Insurgents": "Hillside: 推进 (叛乱分子)",
+            "Scenario_Hillside_Firefight_East": "Hillside: 交火 (东)",
+            "Scenario_Hillside_Firefight_West": "Hillside: 交火 (西)",
+            "Scenario_Hillside_Domination": "Hillside: 占领",
+            "Scenario_Hillside_Frontline": "Hillside: 前线",
+            "Scenario_Hillside_Ambush": "Hillside: 伏击",
+            "Scenario_Hillside_Defusal": "Hillside: 拆除",
+            "Scenario_Hold_Checkpoint_Security": "Hold: 检查点 (安保)",
+            "Scenario_Hold_Checkpoint_Insurgents": "Hold: 检查点 (叛乱分子)",
+            "Scenario_Hold_Outpost": "Hold: 前哨",
+            "Scenario_Hold_Firefight": "Hold: 交火",
+            "Scenario_Hold_Domination": "Hold: 占领",
+            "Scenario_Hold_Ambush": "Hold: 伏击",
+            "Scenario_Hold_Defusal": "Hold: 拆除",
+            "Scenario_Hold_TDM": "Hold: 团队死斗",
+            "Scenario_Hold_FFA": "Hold: 自由混战",
+            "Scenario_LastLight_Checkpoint_Security": "Last Light: 检查点 (安保)",
+            "Scenario_LastLight_Checkpoint_Insurgents": "Last Light: 检查点 (叛乱分子)",
+            "Scenario_LastLight_Outpost": "Last Light: 前哨",
+            "Scenario_LastLight_Survival": "Last Light: 生存",
+            "Scenario_LastLight_Push_Security": "Last Light: 推进 (安保)",
+            "Scenario_LastLight_Push_Insurgents": "Last Light: 推进 (叛乱分子)",
+            "Scenario_LastLight_Firefight": "Last Light: 交火",
+            "Scenario_LastLight_Domination": "Last Light: 占领",
+            "Scenario_LastLight_Frontline": "Last Light: 前线",
+            "Scenario_LastLight_Ambush": "Last Light: 伏击",
+            "Scenario_LastLight_Defusal": "Last Light: 拆除",
+            "Scenario_LastLight_TDM": "Last Light: 团队死斗",
+            "Scenario_Ministry_Checkpoint_Security": "Ministry: 检查点 (安保)",
+            "Scenario_Ministry_Checkpoint_Insurgents": "Ministry: 检查点 (叛乱分子)",
+            "Scenario_Ministry_Outpost": "Ministry: 前哨",
+            "Scenario_Ministry_Survival": "Ministry: 生存",
+            "Scenario_Ministry_Firefight_A": "Ministry: 交火 (A)",
+            "Scenario_Ministry_Domination": "Ministry: 占领",
+            "Scenario_Ministry_Ambush": "Ministry: 伏击",
+            "Scenario_Ministry_Defusal": "Ministry: 拆除",
+            "Scenario_Ministry_Team_Deathmatch": "Ministry: 团队死斗",
+            "Scenario_Outskirts_Checkpoint_Security": "Outskirts: 检查点 (安保)",
+            "Scenario_Outskirts_Checkpoint_Insurgents": "Outskirts: 检查点 (叛乱分子)",
+            "Scenario_Outskirts_Outpost": "Outskirts: 前哨",
+            "Scenario_Outskirts_Survival": "Outskirts: 生存",
+            "Scenario_Outskirts_Push_Security": "Outskirts: 推进 (安保)",
+            "Scenario_Outskirts_Push_Insurgents": "Outskirts: 推进 (叛乱分子)",
+            "Scenario_Outskirts_Firefight_East": "Outskirts: 交火 (东)",
+            "Scenario_Outskirts_Firefight_West": "Outskirts: 交火 (西)",
+            "Scenario_Outskirts_Domination": "Outskirts: 占领",
+            "Scenario_Outskirts_Frontline": "Outskirts: 前线",
+            "Scenario_Outskirts_Ambush": "Outskirts: 伏击",
+            "Scenario_Outskirts_Ambush_East": "Outskirts: 伏击 (东)",
+            "Scenario_Outskirts_Defusal": "Outskirts: 拆除",
+            "Scenario_Outskirts_Team_Deathmatch": "Outskirts: 团队死斗",
+            "Scenario_PowerPlant_Checkpoint_Security": "Power Plant: 检查点 (安保)",
+            "Scenario_PowerPlant_Checkpoint_Insurgents": "Power Plant: 检查点 (叛乱分子)",
+            "Scenario_PowerPlant_Outpost": "Power Plant: 前哨",
+            "Scenario_PowerPlant_Survival": "Power Plant: 生存",
+            "Scenario_PowerPlant_Push_Security": "Power Plant: 推进 (安保)",
+            "Scenario_PowerPlant_Push_Insurgents": "Power Plant: 推进 (叛乱分子)",
+            "Scenario_PowerPlant_Firefight_East": "Power Plant: 交火 (东)",
+            "Scenario_PowerPlant_Firefight_West": "Power Plant: 交火 (西)",
+            "Scenario_PowerPlant_Domination": "Power Plant: 占领",
+            "Scenario_PowerPlant_Frontline": "Power Plant: 前线",
+            "Scenario_PowerPlant_Ambush": "Power Plant: 伏击",
+            "Scenario_PowerPlant_Defusal": "Power Plant: 拆除",
+            "Scenario_PowerPlant_FFA": "Power Plant: 自由混战",
+            "Scenario_Precinct_Checkpoint_Security": "Precinct: 检查点 (安保)",
+            "Scenario_Precinct_Checkpoint_Insurgents": "Precinct: 检查点 (叛乱分子)",
+            "Scenario_Precinct_Outpost": "Precinct: 前哨",
+            "Scenario_Precinct_Survival": "Precinct: 生存",
+            "Scenario_Precinct_Push_Security": "Precinct: 推进 (安保)",
+            "Scenario_Precinct_Push_Insurgents": "Precinct: 推进 (叛乱分子)",
+            "Scenario_Precinct_Firefight_East": "Precinct: 交火 (东)",
+            "Scenario_Precinct_Firefight_West": "Precinct: 交火 (西)",
+            "Scenario_Precinct_Domination_East": "Precinct: 占领 (东)",
+            "Scenario_Precinct_Domination_West": "Precinct: 占领 (西)",
+            "Scenario_Precinct_Frontline": "Precinct: 前线",
+            "Scenario_Precinct_Ambush": "Precinct: 伏击",
+            "Scenario_Precinct_Ambush_East": "Precinct: 伏击 (东)",
+            "Scenario_Precinct_Defusal": "Precinct: 拆除",
+            "Scenario_Precinct_Team_Deathmatch": "Precinct: 团队死斗",
+            "Scenario_Precinct_FFA": "Precinct: 自由混战",
+            "Scenario_Prison_Checkpoint_Security": "Prison: 检查点 (安保)",
+            "Scenario_Prison_Checkpoint_Insurgents": "Prison: 检查点 (叛乱分子)",
+            "Scenario_Prison_Survival": "Prison: 生存",
+            "Scenario_Prison_Push_Security": "Prison: 推进 (安保)",
+            "Scenario_Prison_Push_Insurgents": "Prison: 推进 (叛乱分子)",
+            "Scenario_Prison_Firefight": "Prison: 交火",
+            "Scenario_Prison_Domination": "Prison: 占领",
+            "Scenario_Prison_Ambush": "Prison: 伏击",
+            "Scenario_Prison_Defusal": "Prison: 拆除",
+            "Scenario_Prison_TDM": "Prison: 团队死斗",
+            "Scenario_Prison_FFA": "Prison: 自由混战",
+            "Scenario_Refinery_Checkpoint_Security": "Refinery: 检查点 (安保)",
+            "Scenario_Refinery_Checkpoint_Insurgents": "Refinery: 检查点 (叛乱分子)",
+            "Scenario_Refinery_Outpost": "Refinery: 前哨",
+            "Scenario_Refinery_Survival": "Refinery: 生存",
+            "Scenario_Refinery_Push_Security": "Refinery: 推进 (安保)",
+            "Scenario_Refinery_Push_Insurgents": "Refinery: 推进 (叛乱分子)",
+            "Scenario_Refinery_Firefight_West": "Refinery: 交火 (西)",
+            "Scenario_Refinery_Domination": "Refinery: 占领",
+            "Scenario_Refinery_Frontline": "Refinery: 前线",
+            "Scenario_Refinery_Ambush": "Refinery: 伏击",
+            "Scenario_Refinery_Defusal": "Refinery: 拆除",
+            "Scenario_Refinery_Team_Deathmatch": "Refinery: 团队死斗",
+            "Scenario_Summit_Checkpoint_Security": "Summit: 检查点 (安保)",
+            "Scenario_Summit_Checkpoint_Insurgents": "Summit: 检查点 (叛乱分子)",
+            "Scenario_Summit_Outpost": "Summit: 前哨",
+            "Scenario_Summit_Survival": "Summit: 生存",
+            "Scenario_Summit_Push_Security": "Summit: 推进 (安保)",
+            "Scenario_Summit_Push_Insurgents": "Summit: 推进 (叛乱分子)",
+            "Scenario_Summit_Firefight_East": "Summit: 交火 (东)",
+            "Scenario_Summit_Firefight_West": "Summit: 交火 (西)",
+            "Scenario_Summit_Domination": "Summit: 占领",
+            "Scenario_Summit_Frontline": "Summit: 前线",
+            "Scenario_Summit_Ambush_East": "Summit: 伏击 (东)",
+            "Scenario_Summit_Ambush_West": "Summit: 伏击 (西)",
+            "Scenario_Summit_Defusal": "Summit: 拆除",
+            "Scenario_Summit_Team_Deathmatch": "Summit: 团队死斗",
+            "Scenario_Tell_Checkpoint_Security": "Tell: 检查点 (安保)",
+            "Scenario_Tell_Checkpoint_Insurgents": "Tell: 检查点 (叛乱分子)",
+            "Scenario_Tell_Outpost": "Tell: 前哨",
+            "Scenario_Tell_Survival": "Tell: 生存",
+            "Scenario_Tell_Push_Security": "Tell: 推进 (安保)",
+            "Scenario_Tell_Push_Insurgents": "Tell: 推进 (叛乱分子)",
+            "Scenario_Tell_Firefight_East": "Tell: 交火 (东)",
+            "Scenario_Tell_Firefight_West": "Tell: 交火 (西)",
+            "Scenario_Tell_Domination_East": "Tell: 占领 (东)",
+            "Scenario_Tell_Domination_West": "Tell: 占领 (西)",
+            "Scenario_Tell_Frontline": "Tell: 前线",
+            "Scenario_Tell_Ambush_East": "Tell: 伏击 (东)",
+            "Scenario_Tell_Ambush_West": "Tell: 伏击 (西)",
+            "Scenario_Tell_Defusal": "Tell: 拆除",
+            "Scenario_Tell_FFA": "Tell: 自由混战",
+            "Scenario_Tideway_Checkpoint_Security": "Tideway: 检查点 (安保)",
+            "Scenario_Tideway_Checkpoint_Insurgents": "Tideway: 检查点 (叛乱分子)",
+            "Scenario_Tideway_Outpost": "Tideway: 前哨",
+            "Scenario_Tideway_Survival": "Tideway: 生存",
+            "Scenario_Tideway_Push_Security": "Tideway: 推进 (安保)",
+            "Scenario_Tideway_Push_Insurgents": "Tideway: 推进 (叛乱分子)",
+            "Scenario_Tideway_Firefight_West": "Tideway: 交火 (西)",
+            "Scenario_Tideway_Domination": "Tideway: 占领",
+            "Scenario_Tideway_Frontline": "Tideway: 前线",
+            "Scenario_Tideway_Ambush": "Tideway: 伏击",
+            "Scenario_Tideway_Defusal": "Tideway: 拆除",
+            "Scenario_Trainyard_Checkpoint_Security": "Trainyard: 检查点 (安保)",
+            "Scenario_Trainyard_Checkpoint_Insurgents": "Trainyard: 检查点 (叛乱分子)",
+            "Scenario_Trainyard_Outpost": "Trainyard: 前哨",
+            "Scenario_Trainyard_Survival": "Trainyard: 生存",
+            "Scenario_Trainyard_Push_Security": "Trainyard: 推进 (安保)",
+            "Scenario_Trainyard_Push_Insurgents": "Trainyard: 推进 (叛乱分子)",
+            "Scenario_Trainyard_Firefight_East": "Trainyard: 交火 (东)",
+            "Scenario_Trainyard_Firefight_West": "Trainyard: 交火 (西)",
+            "Scenario_Trainyard_Domination_East": "Trainyard: 占领 (东)",
+            "Scenario_Trainyard_Domination_West": "Trainyard: 占领 (西)",
+            "Scenario_Trainyard_Frontline": "Trainyard: 前线",
+            "Scenario_Trainyard_Ambush_East": "Trainyard: 伏击 (东)",
+            "Scenario_Trainyard_Ambush_West": "Trainyard: 伏击 (西)",
+            "Scenario_Trainyard_Defusal_East": "Trainyard: 拆除 (东)",
+            "Scenario_Trainyard_Defusal_West": "Trainyard: 拆除 (西)"
+          }
+        },
+        "lighting": {
+          "label": "光照",
+          "options": {
+            "Day": "白天",
+            "Night": "夜晚"
+          }
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "friendlyFireScale": {
+          "label": "友军伤害量",
+          "description": "队友受到的伤害比例。0.2 为游戏默认值。"
+        },
+        "deadChat": {
+          "label": "死亡玩家可与存活玩家交谈",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "autoBalance": {
+          "label": "队伍自动平衡",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "mapVoting": {
+          "label": "地图投票",
+          "description": "玩家在一局结束时投票选择下一张地图。",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "minEnemies": {
+          "label": "最少敌人数 (合作)"
+        },
+        "maxEnemies": {
+          "label": "最多敌人数 (合作)"
+        },
+        "friendlyBots": {
+          "label": "友方机器人 (合作)"
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "让服务器出现在游戏的服务器浏览器中。请在 steamcommunity.com/dev/managegameservers 为应用 581320 创建一个。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "仅 Pulsar 在本机使用:控制台命令和正常停止。"
+        }
+      }
+    },
+    "soulmask": {
+      "description": "Soulmask 专用服务器,通过 SteamCMD 匿名安装。世界位于服务器文件夹中;Pulsar 通过游戏自带的控制台保存并停止它。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "在游戏中输入它(gm key)的玩家将成为游戏管理员。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "关闭后,服务器为 PvE。"
+        },
+        "saveInterval": {
+          "label": "保存间隔 (秒)",
+          "description": "世界写入磁盘的频率。600 为游戏默认值。"
+        },
+        "backupInterval": {
+          "label": "游戏备份间隔 (秒)",
+          "description": "游戏将世界数据库复制到旁边的频率。900 为游戏默认值。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "服务器列表从此处查询。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "游戏的 RCON，仅限本机，使用 Pulsar 生成的密码：用于控制台命令、存档和正常停止。"
+        }
+      }
+    },
+    "space-engineers": {
+      "description": "Space Engineers 专用服务器,通过 SteamCMD 匿名安装。设置和存档位于服务器的实例文件夹中;新世界从游戏的某个场景开始。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "world": {
+          "label": "世界",
+          "description": "instance/Saves 中的存档名称。"
+        },
+        "scenario": {
+          "label": "新世界的场景",
+          "description": "仅在世界尚不存在时采用。",
+          "options": {
+            "StarSystem": "Star System",
+            "EarthPlanet": "Earth Planet",
+            "MarsPlanet": "Mars Planet",
+            "AlienPlanet": "Alien Planet",
+            "AlienSystem": "Alien System",
+            "HomeSystem": "Home System",
+            "DistantMoons": "Distant Moons",
+            "MoonBase": "Moon Base",
+            "PertamOrbiter": "Pertam Orbiter",
+            "EmptyWorld": "Empty World",
+            "AsteroidArmory": "Asteroid Armory",
+            "CrashedRedShip": "Crashed Red Ship",
+            "RedShip": "Red Ship",
+            "RedShip2": "Red Ship 2",
+            "GreenStation": "Green Station",
+            "LoneSurvivor": "Lone Survivor",
+            "RivalPlatforms": "Rival Platforms",
+            "DeadDropArena": "Dead Drop Arena"
+          }
+        },
+        "maxPlayers": {
+          "label": "槽位",
+          "description": "创建新世界时采用;之后世界保留自己的值。"
+        },
+        "description": {
+          "label": "描述"
+        },
+        "motd": {
+          "label": "每日消息"
+        },
+        "pauseWhenEmpty": {
+          "label": "无人时暂停",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "description": "创建新世界时采用。",
+          "options": {
+            "Survival": "生存",
+            "Creative": "创造"
+          }
+        },
+        "inventorySize": {
+          "label": "物品栏大小",
+          "description": "倍率,创建新世界时采用。"
+        },
+        "assemblerSpeed": {
+          "label": "装配机速度",
+          "description": "倍率,创建新世界时采用。"
+        },
+        "refinerySpeed": {
+          "label": "精炼厂速度",
+          "description": "倍率,创建新世界时采用。"
+        },
+        "welderSpeed": {
+          "label": "焊接器速度",
+          "description": "倍率,创建新世界时采用。"
+        },
+        "grinderSpeed": {
+          "label": "切割器速度",
+          "description": "倍率,创建新世界时采用。"
+        },
+        "hostility": {
+          "label": "陨石",
+          "description": "创建新世界时采用。",
+          "options": {
+            "SAFE": "无",
+            "NORMAL": "普通",
+            "CATACLYSM": "大灾变",
+            "CATACLYSM_UNREAL": "世界末日"
+          }
+        },
+        "autoSave": {
+          "label": "自动保存间隔 (分钟)",
+          "description": "创建新世界时采用。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接;服务器列表也从此处查询。"
+        },
+        "steam": {
+          "label": "Steam"
+        }
+      }
+    },
+    "squad": {
+      "description": "Squad 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。设置为其 SquadGame/ServerConfig 文件夹中的文件。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "reservedSlots": {
+          "label": "保留槽位",
+          "description": "为 Admins.cfg 中的管理员和白名单玩家保留的槽位。"
+        },
+        "advertise": {
+          "label": "服务器列表",
+          "options": {
+            "true": "已列出",
+            "false": "不列出"
+          }
+        },
+        "queueLimit": {
+          "label": "公共队列",
+          "description": "可以等待槽位的玩家数量。-1 表示无限制,0 表示关闭队列。25 为游戏默认值。"
+        },
+        "teamChanges": {
+          "label": "更换队伍",
+          "options": {
+            "true": "允许",
+            "false": "不允许"
+          }
+        },
+        "unbalancedChanges": {
+          "label": "换入人数较多的队伍",
+          "options": {
+            "true": "不允许",
+            "false": "允许"
+          }
+        },
+        "teamKillKick": {
+          "label": "误杀队友时踢出",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "teamKillBanCount": {
+          "label": "封禁前的误杀次数"
+        },
+        "timeBetweenMatches": {
+          "label": "两局之间的时间 (秒)"
+        },
+        "messageInterval": {
+          "label": "服务器消息间隔 (秒)",
+          "description": "显示 ServerMessages.cfg 中消息的频率。"
+        },
+        "recordDemos": {
+          "label": "录制 demo",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
+        },
+        "query": {
+          "label": "Query",
+          "description": "游戏的查询端口。"
+        },
+        "beacon": {
+          "label": "Beacon"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "仅 Pulsar 在本机使用:控制台命令。"
+        }
+      }
+    },
+    "terraria": {
+      "description": "通过社区服务器 TShock 运行的 Terraria 专用服务器,从 TShock 的 GitHub 发布版安装,所需的 .NET 运行时放在服务器文件夹中。TShock 增加了账号、组和权限;设置位于 tshock/config.json。",
+      "variables": {
+        "name": {
+          "label": "服务器名称",
+          "description": "向玩家显示,代替世界名称。"
+        },
+        "world": {
+          "label": "世界",
+          "description": "worlds 中的世界文件(不存在时会创建新的)。"
+        },
+        "size": {
+          "label": "新世界的大小",
+          "description": "仅在世界尚不存在时采用。",
+          "options": {
+            "1": "小",
+            "2": "中",
+            "3": "大"
+          }
+        },
+        "difficulty": {
+          "label": "新世界的难度",
+          "description": "仅在世界尚不存在时采用。",
+          "options": {
+            "0": "经典",
+            "1": "专家",
+            "2": "大师",
+            "3": "旅途"
+          }
+        },
+        "seed": {
+          "label": "新世界的种子",
+          "description": "留空则随机;秘密种子(给值得的人,不是给蜜蜂的)也可使用。仅在世界尚不存在时采用。"
+        },
+        "maxPlayers": {
+          "label": "槽位"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入,除非他们登录 TShock 账号。留空则为开放服务器。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "normal": "由玩家选择",
+            "always": "始终开启",
+            "disabled": "关"
+          }
+        },
+        "spawnProtection": {
+          "label": "出生点保护",
+          "description": "只有 TShock 的管理员可以在出生点附近建造。"
+        },
+        "whitelist": {
+          "label": "白名单",
+          "description": "只有 tshock/whitelist.txt 中的地址可以加入。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家从此处连接。"
         }
       }
     }

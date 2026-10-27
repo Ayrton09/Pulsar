@@ -146,6 +146,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private volatile IHostedGameProcess? _hosted; // the game's host, until the process is released
     private long _consoleEnd; // host output offset written to the console so far
     private long _logPosition; // game log file position read so far
+    private HashSet<string>? _logsBefore; // a log named by a pattern: the files it matched before this start (null: attached to a running game)
+
+    // A log named by a pattern is looked for in a folder the server's account fills as it likes: one with more entries is not
+    // listed, and after the first seconds it is looked for every 2 s.
+    private const int MaximumLogFolderEntries = 10_000;
+    private static readonly TimeSpan s_maximumLogSearchInterval = TimeSpan.FromSeconds(2);
     private Task _pumping = Task.CompletedTask;
     private Task _tailing = Task.CompletedTask;
 
@@ -665,10 +671,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
             plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity,
-            _definition.Limits);
+            _definition.Limits, plan.UserProfile);
         IGameProcess process;
         try
         {
+            _console.Hide(plan.Secrets, _clock.GetUtcNow());
             PrepareFiles(plan);
             process = await StartProcessAsync(spec);
         }
@@ -794,15 +801,18 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var writes = Channel.CreateBounded<ConsoleWrite>(new BoundedChannelOptions(MaxQueuedWrites) { SingleReader = true });
         _writes = writes;
         _ = WriteConsoleAsync(process, writes.Reader, _watchers.Token);
-        if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
+        if (plan.Console.LogFile is not null)
         {
-            // The game's console is its log file; whatever reaches the pseudo console is drained and dropped.
+            // The game's console is its log file (logfile+rcon, or pipes for a game that writes only there); whatever reaches
+            // the pseudo console or the pipes is drained and dropped.
             _pumping = PumpOutputAsync(process, generation, readiness: null, toConsole: false);
             _tailing = TailLogAsync(plan, generation, readiness, logStart, _watchers.Token);
         }
         else
         {
-            _pumping = PumpOutputAsync(process, generation, readiness, toConsole: true);
+            // A game that prints the RCON commands it runs and their answers (Soulmask) shows them itself: they are kept to
+            // tell, as with a log file, which answers need no second copy.
+            _pumping = PumpOutputAsync(process, generation, readiness, toConsole: true, answers: plan.Console.Rcon?.LogsCommands == true);
         }
 
         switch (readinessCheck)
@@ -841,6 +851,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _stopReason = null;
         _restartTimer++;
         var plan = _definition.Plan;
+        _console.Hide(plan.Secrets, _clock.GetUtcNow());
         var generation = ++_generation;
         _process = attach.Process;
         _plan = plan;
@@ -947,7 +958,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
             if (plan.Console.LogFile is { } logFile)
             {
-                _files.Delete(_definition.Directory, logFile);
+                // A log named by a pattern is the game's history (one file per start): the new one is the file that was not
+                // there before.
+                if (ManifestValidator.IsLogFilePattern(logFile))
+                {
+                    _logsBefore = MatchingLogs(logFile).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    _files.Delete(_definition.Directory, logFile);
+                }
             }
 
             // A Steam login lent to SteamCMD by an agent that stopped before it could take it back: never the game's.
@@ -972,7 +992,48 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// </summary>
     private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, long start, CancellationToken cancellationToken)
     {
-        var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval,
+        var logFile = plan.Console.LogFile!;
+        if (ManifestValidator.IsLogFilePattern(logFile))
+        {
+            // A game that names its log by its start (Space Engineers): the newest file the pattern matches that was not
+            // there before the start, or, attached to a game an earlier agent started, the newest. Looked for until it appears,
+            // less often as time goes by; a folder that cannot be listed is said once.
+            var before = _logsBefore;
+            string? found = null;
+            var reported = false;
+            for (var attempt = 1; found is null; attempt++)
+            {
+                try
+                {
+                    found = MatchingLogs(logFile).FirstOrDefault(path => before?.Contains(path) != true);
+                }
+                catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+                {
+                    if (!reported)
+                    {
+                        reported = true;
+                        LogLogTailFailed(ServerId, ex.Message);
+                        _console.Note($"Cannot look for the log file {logFile}: {ex.Message}", _clock.GetUtcNow());
+                    }
+                }
+
+                if (found is null)
+                {
+                    try
+                    {
+                        await Task.Delay(attempt < 40 ? _options.LogPollInterval : s_maximumLogSearchInterval, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            logFile = found;
+        }
+
+        var tail = new LogTail(_files, _definition.Directory, logFile, TextEncoding(plan.Console.Encoding), _options.LogPollInterval,
             start, onUnreadable: ex =>
             {
                 LogLogTailFailed(ServerId, ex.Message);
@@ -1024,6 +1085,21 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             LogLogTailFailed(ServerId, ex.Message);
             _console.Note($"Cannot follow the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
         }
+    }
+
+    /// <summary>The files a log pattern (<c>instance/SpaceEngineersDedicated_*.log</c>) matches, newest first.</summary>
+    private List<string> MatchingLogs(string pattern)
+    {
+        var separator = pattern.LastIndexOf('/');
+        var directory = separator < 0 ? "" : pattern[..separator];
+        var name = pattern[(separator + 1)..];
+        var star = name.IndexOf('*', StringComparison.Ordinal);
+        var (prefix, suffix) = (name[..star], name[(star + 1)..]);
+        return [.. _files.ListFiles(_definition.Directory, directory, MaximumLogFolderEntries)
+            .Where(f => f.Name.Length >= prefix.Length + suffix.Length && f.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && f.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWrite)
+            .Select(f => directory.Length == 0 ? f.Name : $"{directory}/{f.Name}")];
     }
 
     /// <summary>
@@ -1494,6 +1570,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var process = _process!;
         _process = null;
         StopWatchers();
+        _console.Flush(_clock.GetUtcNow());
         _exitCode = exitCode;
         // A crash after a process was refused memory by the server's limit: its cause is known.
         var crashReason = process.ReachedMemoryLimit ? StateChangeReason.MemoryLimit : StateChangeReason.Crashed;
@@ -1605,7 +1682,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// Drains the output (a process that cannot write blocks), copies it to the console unless the game's console is its
     /// log file, and looks for the readiness line while starting.
     /// </summary>
-    private async Task PumpOutputAsync(IGameProcess process, int generation, Regex? readiness, bool toConsole)
+    /// <param name="answers">Keep the output to look RCON answers up in (<see cref="RconDefinition.LogsCommands"/>).</param>
+    private async Task PumpOutputAsync(IGameProcess process, int generation, Regex? readiness, bool toConsole, bool answers = false)
     {
         var lines = new ConsoleLines();
         var ready = readiness is null;
@@ -1616,6 +1694,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 if (toConsole)
                 {
                     _console.Write(chunk.Text, chunk.At);
+                }
+
+                if (answers)
+                {
+                    _recentLog.Append(chunk.Text);
                 }
 
                 if (chunk.End >= 0 && process == _hosted)

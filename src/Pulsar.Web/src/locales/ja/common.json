@@ -4542,7 +4542,7 @@
       }
     },
     "scpsl": {
-      "description": "SCP: Secret Laboratory の専用サーバーです。LocalAdmin によって実行され、SteamCMD で匿名インストールされます(約 1 GB)。設定はサーバーフォルダーの config/config にあります(config_gameplay.txt はゲーム本来のテンプレートから始まります)。LocalAdmin は、サーバーを実行するアカウントのプロファイルに独自の設定とログを保存します。",
+      "description": "LocalAdmin によって実行される SCP: Secret Laboratory の専用サーバーです。SteamCMD で匿名インストールされます(約 1 GB)。設定はサーバーのフォルダーの config/config に保存され(config_gameplay.txt はゲーム標準のテンプレートから始まります)、プラグイン(LabAPI、EXILED)は profile/AppData/Roaming に置かれます。LocalAdmin は自身の設定とログを、サーバーを実行するアカウントの profile に保存します。",
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
@@ -5747,6 +5747,1167 @@
         "game": {
           "label": "ゲーム",
           "description": "プレイヤーはここに TCP（IPv4 と IPv6）で接続し、その後のゲーム通信は UDP で行われます（UDP ポートを参照）。"
+        }
+      }
+    },
+    "abiotic-factor": {
+      "description": "Abiotic Factor の専用サーバーです。SteamCMD で匿名インストールされます。ワールドとサンドボックスのルールはサーバーのフォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "world": {
+          "label": "ワールド",
+          "description": "セーブデータの名前です。新しい名前を指定すると新しいワールドが作られます。"
+        },
+        "maxPlayers": {
+          "label": "スロット",
+          "description": "ゲームは6人向けです。それ以上でも動作しますが、バランスは調整されていません。"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "ゲーム内でこれを入力したプレイヤーが管理者になります。管理者を置かない場合は空のままにしてください。"
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "1": "ノーマル",
+            "2": "ハード",
+            "3": "アポカリプス"
+          }
+        },
+        "hardcore": {
+          "label": "ハードコア",
+          "description": "死亡したキャラクターは完全に失われます。",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "enemySpawnRate": {
+          "label": "敵の出現率",
+          "description": "敵の出現数の倍率です。1 がゲームの標準値です。"
+        },
+        "enemyHealth": {
+          "label": "敵の体力",
+          "description": "1 がゲームの標準値です。"
+        },
+        "enemyDamage": {
+          "label": "敵のダメージ",
+          "description": "敵がプレイヤーに与えるダメージの倍率です。1 がゲームの標準値です。"
+        },
+        "friendlyFire": {
+          "label": "味方へのダメージ",
+          "description": "プレイヤー同士に与えるダメージの倍率です。0.5 がゲームの標準値です。"
+        },
+        "xpGain": {
+          "label": "経験値獲得量",
+          "description": "1 がゲームの標準値です。"
+        },
+        "hunger": {
+          "label": "空腹の速度",
+          "description": "1 がゲームの標準値です。"
+        },
+        "thirst": {
+          "label": "喉の渇きの速度",
+          "description": "1 がゲームの標準値です。"
+        },
+        "fatigue": {
+          "label": "疲労の速度",
+          "description": "1 がゲームの標準値です。"
+        },
+        "stackSize": {
+          "label": "スタックサイズ",
+          "description": "1スタックに入るアイテム数の倍率です。1 がゲームの標準値です。"
+        },
+        "itemWeight": {
+          "label": "アイテムの重量",
+          "description": "1 がゲームの標準値です。"
+        },
+        "itemDurability": {
+          "label": "アイテムの耐久度",
+          "description": "1 がゲームの標準値です。"
+        },
+        "foodSpoil": {
+          "label": "食べ物の腐る速度",
+          "description": "1 がゲームの標準値です。"
+        },
+        "dayLength": {
+          "label": "昼夜の速度",
+          "description": "時間の進む速さの倍率です。1 がゲームの標準値です。"
+        },
+        "lootRespawn": {
+          "label": "戦利品の再出現",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "deathMessages": {
+          "label": "死亡メッセージ",
+          "options": {
+            "True": "表示",
+            "False": "非表示"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        }
+      }
+    },
+    "conan-exiles": {
+      "description": "Conan Exiles の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。ワールドと設定はサーバーのフォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "ゲーム内でこれを入力(MakeMeAdmin)したプレイヤーが管理者になります。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "avatars": {
+          "label": "アバター(神)",
+          "options": {
+            "False": "オン",
+            "True": "オフ"
+          }
+        },
+        "damageStructures": {
+          "label": "プレイヤーが他人の建物にダメージを与える",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "openContainers": {
+          "label": "誰でも開けられるコンテナ",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "xpRate": {
+          "label": "経験値倍率",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "xpKill": {
+          "label": "撃破で得る経験値",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "xpHarvest": {
+          "label": "採集で得る経験値",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "xpCraft": {
+          "label": "クラフトで得る経験値",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "playerDamage": {
+          "label": "プレイヤーが与えるダメージ",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "playerDamageTaken": {
+          "label": "プレイヤーが受けるダメージ",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "npcDamage": {
+          "label": "敵が与えるダメージ",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "npcHealth": {
+          "label": "敵の体力",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "npcRespawn": {
+          "label": "敵の再出現時間",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "stamina": {
+          "label": "スタミナ消費",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "healthRegen": {
+          "label": "体力の回復",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "craftCost": {
+          "label": "クラフトコスト",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "craftTime": {
+          "label": "クラフト時間",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "fuelBurn": {
+          "label": "燃料の燃焼時間",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "thrallConversion": {
+          "label": "奴隷の変換時間",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "decay": {
+          "label": "建物の劣化時間",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "structureDamage": {
+          "label": "建物へのダメージ",
+          "description": "倍率です。1 がゲームの標準値です。"
+        },
+        "nudity": {
+          "label": "ヌード表現",
+          "options": {
+            "0": "なし",
+            "1": "一部",
+            "2": "すべて"
+          }
+        },
+        "afkKick": {
+          "label": "放置プレイヤーをキックするまで(秒)",
+          "description": "0 にするとキックしません。"
+        },
+        "motd": {
+          "label": "今日のメッセージ"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "このマシン上で Pulsar だけが使用します。コンソールコマンド用です。"
+        }
+      }
+    },
+    "dst": {
+      "description": "Don't Starve Together の専用サーバー(地上)です。SteamCMD で匿名インストールされます。Klei のクラスタートークンがあればオンライン、なければローカルネットワークで動作します。ワールドと設定はサーバーのフォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "description": {
+          "label": "説明",
+          "description": "サーバーリストで名前の下に表示されます。"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "clusterToken": {
+          "label": "Klei クラスタートークン",
+          "description": "サーバーをオンラインにします。ゲームを所有するアカウントで accounts.klei.com(Games、Game Servers)から作成してください。なければサーバーはローカルネットワークでのみ動作します。"
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "description": "新しいワールドを作るときに反映されます。",
+          "options": {
+            "survival": "サバイバル",
+            "endless": "エンドレス",
+            "wilderness": "ウィルダネス"
+          }
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "pauseWhenEmpty": {
+          "label": "無人のときは一時停止",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "intention": {
+          "label": "プレイスタイル",
+          "description": "サーバーリストに表示されます。",
+          "options": {
+            "cooperative": "協力",
+            "social": "ソーシャル",
+            "competitive": "競争",
+            "madness": "狂気"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "steam": {
+          "label": "Steam マスターサーバー"
+        },
+        "auth": {
+          "label": "Steam 認証"
+        }
+      }
+    },
+    "icarus": {
+      "description": "Icarus の専用サーバーです。SteamCMD で匿名インストールされます。プレイヤーはロビーからプロスペクトを開始・再開します。プロスペクトと設定はサーバーのフォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "これでログイン(/AdminLogin)したプレイヤーが管理コマンドを実行できます。必須です。未設定だと /AdminLogin と入力した人は誰でも管理者になってしまいます。"
+        },
+        "resume": {
+          "label": "前回のプロスペクトを再開",
+          "description": "サーバー起動時に、最後に実行していたプロスペクトを読み込みます。",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "loadProspect": {
+          "label": "読み込むプロスペクト",
+          "description": "サーバー起動時に、前回のものを再開する前に読み込むプロスペクトのセーブ名です。"
+        },
+        "launchProspects": {
+          "label": "プレイヤーによるプロスペクトの開始",
+          "options": {
+            "True": "全員",
+            "False": "管理者のみ"
+          }
+        },
+        "deleteProspects": {
+          "label": "プレイヤーによるプロスペクトの削除",
+          "options": {
+            "True": "全員",
+            "False": "管理者のみ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        }
+      }
+    },
+    "kf2": {
+      "description": "Killing Floor 2 の専用サーバーです。SteamCMD で匿名インストールされます。設定は KFGame/Config の PCServer ファイルで、初回起動時に作成されます。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "マップ",
+          "description": "サーバーが最初に使うマップです。以降はマップローテーションに従います。",
+          "options": {
+            "KF-Airship": "Airship",
+            "KF-AshwoodAsylum": "Ashwood Asylum",
+            "KF-BarmwichTown": "Barmwich Town",
+            "KF-Biolapse": "Biolapse",
+            "KF-Bioticslab": "Biotics Lab",
+            "KF-BlackForest": "Black Forest",
+            "KF-BurningParis": "Burning Paris",
+            "KF-CarillonHamlet": "Carillon Hamlet",
+            "KF-CastleVolter": "Castle Volter",
+            "KF-Catacombs": "Catacombs",
+            "KF-ContainmentStation": "Containment Station",
+            "KF-Crash": "Crash",
+            "KF-Desolation": "Desolation",
+            "KF-DieSector": "Die Sector",
+            "KF-Elysium": "Elysium",
+            "KF-EvacuationPoint": "Evacuation Point",
+            "KF-Farmhouse": "Farmhouse",
+            "KF-HellmarkStation": "Hellmark Station",
+            "KF-HostileGrounds": "Hostile Grounds",
+            "KF-InfernalRealm": "Infernal Realm",
+            "KF-KrampusLair": "Krampus Lair",
+            "KF-Lockdown": "Lockdown",
+            "KF-MonsterBall": "Monster Ball",
+            "KF-Moonbase": "Moonbase",
+            "KF-Netherhold": "Netherhold",
+            "KF-Nightmare": "Nightmare",
+            "KF-Nuked": "Nuked",
+            "KF-Outpost": "Outpost",
+            "KF-Prison": "Prison",
+            "KF-Rig": "The Rig",
+            "KF-Sanitarium": "Sanitarium",
+            "KF-Santasworkshop": "Santa's Workshop",
+            "KF-ShoppingSpree": "Shopping Spree",
+            "KF-Spillway": "Spillway",
+            "KF-SteamFortress": "Steam Fortress",
+            "KF-Subduction": "Subduction",
+            "KF-TheDescent": "The Descent",
+            "KF-TragicKingdom": "Tragic Kingdom",
+            "KF-VolterManor": "Volter Manor",
+            "KF-ZedLanding": "Zed Landing"
+          }
+        },
+        "mode": {
+          "label": "ゲームモード",
+          "options": {
+            "survival": "サバイバル",
+            "weekly": "週替わりアウトブレイク",
+            "endless": "エンドレス",
+            "versus": "バーサスサバイバル"
+          }
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "0": "ノーマル",
+            "1": "ハード",
+            "2": "自殺的",
+            "3": "ヘル・オン・アース"
+          }
+        },
+        "length": {
+          "label": "ゲームの長さ",
+          "options": {
+            "0": "短い(4ウェーブ)",
+            "1": "普通(7ウェーブ)",
+            "2": "長い(10ウェーブ)"
+          }
+        },
+        "maxPlayers": {
+          "label": "スロット",
+          "description": "サバイバルは最大6人、バーサスは最大12人です。"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "ゲーム内でこれでログイン(adminlogin)したプレイヤーが管理者になります。"
+        },
+        "motd": {
+          "label": "今日のメッセージ"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "味方が受けるダメージの割合です。0 がゲームの標準値です。"
+        },
+        "mapVote": {
+          "label": "マップ投票",
+          "options": {
+            "False": "オン",
+            "True": "オフ"
+          }
+        },
+        "kickVote": {
+          "label": "キック投票",
+          "options": {
+            "False": "オン",
+            "True": "オフ"
+          }
+        },
+        "textChat": {
+          "label": "公開テキストチャット",
+          "options": {
+            "False": "オン",
+            "True": "オフ"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "False": "オン",
+            "True": "オフ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        }
+      }
+    },
+    "sandstorm": {
+      "description": "Insurgency: Sandstorm の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "scenario": {
+          "label": "シナリオ",
+          "description": "サーバーが最初に使うマップとゲームモードです。",
+          "options": {
+            "Scenario_Bab_Checkpoint_Security": "Bab: チェックポイント (セキュリティ)",
+            "Scenario_Bab_Checkpoint_Insurgents": "Bab: チェックポイント (反乱軍)",
+            "Scenario_Bab_Outpost": "Bab: アウトポスト",
+            "Scenario_Bab_Survival": "Bab: サバイバル",
+            "Scenario_Bab_Push_Security": "Bab: プッシュ (セキュリティ)",
+            "Scenario_Bab_Push_Insurgents": "Bab: プッシュ (反乱軍)",
+            "Scenario_Bab_Firefight_East": "Bab: ファイアファイト (東)",
+            "Scenario_Bab_Domination": "Bab: ドミネーション",
+            "Scenario_Bab_Ambush": "Bab: アンブッシュ",
+            "Scenario_Bab_Defusal": "Bab: 解除",
+            "Scenario_Citadel_Checkpoint_Security": "Citadel: チェックポイント (セキュリティ)",
+            "Scenario_Citadel_Checkpoint_Insurgents": "Citadel: チェックポイント (反乱軍)",
+            "Scenario_Citadel_Outpost": "Citadel: アウトポスト",
+            "Scenario_Citadel_Survival": "Citadel: サバイバル",
+            "Scenario_Citadel_Push_Security": "Citadel: プッシュ (セキュリティ)",
+            "Scenario_Citadel_Push_Insurgents": "Citadel: プッシュ (反乱軍)",
+            "Scenario_Citadel_Firefight": "Citadel: ファイアファイト",
+            "Scenario_Citadel_Domination": "Citadel: ドミネーション",
+            "Scenario_Citadel_Frontline": "Citadel: フロントライン",
+            "Scenario_Citadel_Ambush": "Citadel: アンブッシュ",
+            "Scenario_Citadel_Defusal": "Citadel: 解除",
+            "Scenario_Crossing_Checkpoint_Security": "Crossing: チェックポイント (セキュリティ)",
+            "Scenario_Crossing_Checkpoint_Insurgents": "Crossing: チェックポイント (反乱軍)",
+            "Scenario_Crossing_Outpost": "Crossing: アウトポスト",
+            "Scenario_Crossing_Push_Security": "Crossing: プッシュ (セキュリティ)",
+            "Scenario_Crossing_Push_Insurgents": "Crossing: プッシュ (反乱軍)",
+            "Scenario_Crossing_Firefight_West": "Crossing: ファイアファイト (西)",
+            "Scenario_Crossing_Domination": "Crossing: ドミネーション",
+            "Scenario_Crossing_Frontline": "Crossing: フロントライン",
+            "Scenario_Crossing_Ambush": "Crossing: アンブッシュ",
+            "Scenario_Crossing_Defusal": "Crossing: 解除",
+            "Scenario_Crossing_Team_Deathmatch": "Crossing: チームデスマッチ",
+            "Scenario_Crossing_FFA": "Crossing: フリーフォーオール",
+            "Scenario_Farmhouse_Checkpoint_Security": "Farmhouse: チェックポイント (セキュリティ)",
+            "Scenario_Farmhouse_Checkpoint_Insurgents": "Farmhouse: チェックポイント (反乱軍)",
+            "Scenario_Farmhouse_Outpost": "Farmhouse: アウトポスト",
+            "Scenario_Farmhouse_Survival": "Farmhouse: サバイバル",
+            "Scenario_Farmhouse_Push_Security": "Farmhouse: プッシュ (セキュリティ)",
+            "Scenario_Farmhouse_Push_Insurgents": "Farmhouse: プッシュ (反乱軍)",
+            "Scenario_Farmhouse_Firefight_East": "Farmhouse: ファイアファイト (東)",
+            "Scenario_Farmhouse_Firefight_West": "Farmhouse: ファイアファイト (西)",
+            "Scenario_Farmhouse_Domination": "Farmhouse: ドミネーション",
+            "Scenario_Farmhouse_Frontline": "Farmhouse: フロントライン",
+            "Scenario_Farmhouse_Ambush": "Farmhouse: アンブッシュ",
+            "Scenario_Farmhouse_Defusal": "Farmhouse: 解除",
+            "Scenario_Farmhouse_Team_Deathmatch": "Farmhouse: チームデスマッチ",
+            "Scenario_Forest_Checkpoint_Security": "Forest: チェックポイント (セキュリティ)",
+            "Scenario_Forest_Checkpoint_Insurgents": "Forest: チェックポイント (反乱軍)",
+            "Scenario_Forest_Outpost": "Forest: アウトポスト",
+            "Scenario_Forest_Survival": "Forest: サバイバル",
+            "Scenario_Forest_Push_Security": "Forest: プッシュ (セキュリティ)",
+            "Scenario_Forest_Push_Insurgents": "Forest: プッシュ (反乱軍)",
+            "Scenario_Forest_Firefight_East": "Forest: ファイアファイト (東)",
+            "Scenario_Forest_Firefight_West": "Forest: ファイアファイト (西)",
+            "Scenario_Forest_Domination": "Forest: ドミネーション",
+            "Scenario_Forest_Frontline": "Forest: フロントライン",
+            "Scenario_Forest_Ambush": "Forest: アンブッシュ",
+            "Scenario_Forest_Defusal": "Forest: 解除",
+            "Scenario_Forest_TDM": "Forest: チームデスマッチ",
+            "Scenario_Forest_FFA": "Forest: フリーフォーオール",
+            "Scenario_Gap_Checkpoint_Security": "Gap: チェックポイント (セキュリティ)",
+            "Scenario_Gap_Checkpoint_Insurgents": "Gap: チェックポイント (反乱軍)",
+            "Scenario_Gap_Outpost": "Gap: アウトポスト",
+            "Scenario_Gap_Survival": "Gap: サバイバル",
+            "Scenario_Gap_Push_Security": "Gap: プッシュ (セキュリティ)",
+            "Scenario_Gap_Push_Insurgents": "Gap: プッシュ (反乱軍)",
+            "Scenario_Gap_Firefight": "Gap: ファイアファイト",
+            "Scenario_Gap_Firefight_West": "Gap: ファイアファイト (西)",
+            "Scenario_Gap_Domination_East": "Gap: ドミネーション (東)",
+            "Scenario_Gap_Domination_West": "Gap: ドミネーション (西)",
+            "Scenario_Gap_Frontline": "Gap: フロントライン",
+            "Scenario_Gap_Ambush": "Gap: アンブッシュ",
+            "Scenario_Gap_Defusal": "Gap: 解除",
+            "Scenario_Gap_TDM": "Gap: チームデスマッチ",
+            "Scenario_Hideout_Checkpoint_Security": "Hideout: チェックポイント (セキュリティ)",
+            "Scenario_Hideout_Checkpoint_Insurgents": "Hideout: チェックポイント (反乱軍)",
+            "Scenario_Hideout_Outpost": "Hideout: アウトポスト",
+            "Scenario_Hideout_Survival": "Hideout: サバイバル",
+            "Scenario_Hideout_Push_Security": "Hideout: プッシュ (セキュリティ)",
+            "Scenario_Hideout_Push_Insurgents": "Hideout: プッシュ (反乱軍)",
+            "Scenario_Hideout_Firefight_East": "Hideout: ファイアファイト (東)",
+            "Scenario_Hideout_Firefight_West": "Hideout: ファイアファイト (西)",
+            "Scenario_Hideout_Domination": "Hideout: ドミネーション",
+            "Scenario_Hideout_Frontline": "Hideout: フロントライン",
+            "Scenario_Hideout_Ambush": "Hideout: アンブッシュ",
+            "Scenario_Hideout_Ambush_East": "Hideout: アンブッシュ (東)",
+            "Scenario_Hideout_Defusal": "Hideout: 解除",
+            "Scenario_Hideout_Team_Deathmatch": "Hideout: チームデスマッチ",
+            "Scenario_Hillside_Checkpoint_Security": "Hillside: チェックポイント (セキュリティ)",
+            "Scenario_Hillside_Checkpoint_Insurgents": "Hillside: チェックポイント (反乱軍)",
+            "Scenario_Hillside_Outpost": "Hillside: アウトポスト",
+            "Scenario_Hillside_Survival": "Hillside: サバイバル",
+            "Scenario_Hillside_Push_Security": "Hillside: プッシュ (セキュリティ)",
+            "Scenario_Hillside_Push_Insurgents": "Hillside: プッシュ (反乱軍)",
+            "Scenario_Hillside_Firefight_East": "Hillside: ファイアファイト (東)",
+            "Scenario_Hillside_Firefight_West": "Hillside: ファイアファイト (西)",
+            "Scenario_Hillside_Domination": "Hillside: ドミネーション",
+            "Scenario_Hillside_Frontline": "Hillside: フロントライン",
+            "Scenario_Hillside_Ambush": "Hillside: アンブッシュ",
+            "Scenario_Hillside_Defusal": "Hillside: 解除",
+            "Scenario_Hold_Checkpoint_Security": "Hold: チェックポイント (セキュリティ)",
+            "Scenario_Hold_Checkpoint_Insurgents": "Hold: チェックポイント (反乱軍)",
+            "Scenario_Hold_Outpost": "Hold: アウトポスト",
+            "Scenario_Hold_Firefight": "Hold: ファイアファイト",
+            "Scenario_Hold_Domination": "Hold: ドミネーション",
+            "Scenario_Hold_Ambush": "Hold: アンブッシュ",
+            "Scenario_Hold_Defusal": "Hold: 解除",
+            "Scenario_Hold_TDM": "Hold: チームデスマッチ",
+            "Scenario_Hold_FFA": "Hold: フリーフォーオール",
+            "Scenario_LastLight_Checkpoint_Security": "Last Light: チェックポイント (セキュリティ)",
+            "Scenario_LastLight_Checkpoint_Insurgents": "Last Light: チェックポイント (反乱軍)",
+            "Scenario_LastLight_Outpost": "Last Light: アウトポスト",
+            "Scenario_LastLight_Survival": "Last Light: サバイバル",
+            "Scenario_LastLight_Push_Security": "Last Light: プッシュ (セキュリティ)",
+            "Scenario_LastLight_Push_Insurgents": "Last Light: プッシュ (反乱軍)",
+            "Scenario_LastLight_Firefight": "Last Light: ファイアファイト",
+            "Scenario_LastLight_Domination": "Last Light: ドミネーション",
+            "Scenario_LastLight_Frontline": "Last Light: フロントライン",
+            "Scenario_LastLight_Ambush": "Last Light: アンブッシュ",
+            "Scenario_LastLight_Defusal": "Last Light: 解除",
+            "Scenario_LastLight_TDM": "Last Light: チームデスマッチ",
+            "Scenario_Ministry_Checkpoint_Security": "Ministry: チェックポイント (セキュリティ)",
+            "Scenario_Ministry_Checkpoint_Insurgents": "Ministry: チェックポイント (反乱軍)",
+            "Scenario_Ministry_Outpost": "Ministry: アウトポスト",
+            "Scenario_Ministry_Survival": "Ministry: サバイバル",
+            "Scenario_Ministry_Firefight_A": "Ministry: ファイアファイト (A)",
+            "Scenario_Ministry_Domination": "Ministry: ドミネーション",
+            "Scenario_Ministry_Ambush": "Ministry: アンブッシュ",
+            "Scenario_Ministry_Defusal": "Ministry: 解除",
+            "Scenario_Ministry_Team_Deathmatch": "Ministry: チームデスマッチ",
+            "Scenario_Outskirts_Checkpoint_Security": "Outskirts: チェックポイント (セキュリティ)",
+            "Scenario_Outskirts_Checkpoint_Insurgents": "Outskirts: チェックポイント (反乱軍)",
+            "Scenario_Outskirts_Outpost": "Outskirts: アウトポスト",
+            "Scenario_Outskirts_Survival": "Outskirts: サバイバル",
+            "Scenario_Outskirts_Push_Security": "Outskirts: プッシュ (セキュリティ)",
+            "Scenario_Outskirts_Push_Insurgents": "Outskirts: プッシュ (反乱軍)",
+            "Scenario_Outskirts_Firefight_East": "Outskirts: ファイアファイト (東)",
+            "Scenario_Outskirts_Firefight_West": "Outskirts: ファイアファイト (西)",
+            "Scenario_Outskirts_Domination": "Outskirts: ドミネーション",
+            "Scenario_Outskirts_Frontline": "Outskirts: フロントライン",
+            "Scenario_Outskirts_Ambush": "Outskirts: アンブッシュ",
+            "Scenario_Outskirts_Ambush_East": "Outskirts: アンブッシュ (東)",
+            "Scenario_Outskirts_Defusal": "Outskirts: 解除",
+            "Scenario_Outskirts_Team_Deathmatch": "Outskirts: チームデスマッチ",
+            "Scenario_PowerPlant_Checkpoint_Security": "Power Plant: チェックポイント (セキュリティ)",
+            "Scenario_PowerPlant_Checkpoint_Insurgents": "Power Plant: チェックポイント (反乱軍)",
+            "Scenario_PowerPlant_Outpost": "Power Plant: アウトポスト",
+            "Scenario_PowerPlant_Survival": "Power Plant: サバイバル",
+            "Scenario_PowerPlant_Push_Security": "Power Plant: プッシュ (セキュリティ)",
+            "Scenario_PowerPlant_Push_Insurgents": "Power Plant: プッシュ (反乱軍)",
+            "Scenario_PowerPlant_Firefight_East": "Power Plant: ファイアファイト (東)",
+            "Scenario_PowerPlant_Firefight_West": "Power Plant: ファイアファイト (西)",
+            "Scenario_PowerPlant_Domination": "Power Plant: ドミネーション",
+            "Scenario_PowerPlant_Frontline": "Power Plant: フロントライン",
+            "Scenario_PowerPlant_Ambush": "Power Plant: アンブッシュ",
+            "Scenario_PowerPlant_Defusal": "Power Plant: 解除",
+            "Scenario_PowerPlant_FFA": "Power Plant: フリーフォーオール",
+            "Scenario_Precinct_Checkpoint_Security": "Precinct: チェックポイント (セキュリティ)",
+            "Scenario_Precinct_Checkpoint_Insurgents": "Precinct: チェックポイント (反乱軍)",
+            "Scenario_Precinct_Outpost": "Precinct: アウトポスト",
+            "Scenario_Precinct_Survival": "Precinct: サバイバル",
+            "Scenario_Precinct_Push_Security": "Precinct: プッシュ (セキュリティ)",
+            "Scenario_Precinct_Push_Insurgents": "Precinct: プッシュ (反乱軍)",
+            "Scenario_Precinct_Firefight_East": "Precinct: ファイアファイト (東)",
+            "Scenario_Precinct_Firefight_West": "Precinct: ファイアファイト (西)",
+            "Scenario_Precinct_Domination_East": "Precinct: ドミネーション (東)",
+            "Scenario_Precinct_Domination_West": "Precinct: ドミネーション (西)",
+            "Scenario_Precinct_Frontline": "Precinct: フロントライン",
+            "Scenario_Precinct_Ambush": "Precinct: アンブッシュ",
+            "Scenario_Precinct_Ambush_East": "Precinct: アンブッシュ (東)",
+            "Scenario_Precinct_Defusal": "Precinct: 解除",
+            "Scenario_Precinct_Team_Deathmatch": "Precinct: チームデスマッチ",
+            "Scenario_Precinct_FFA": "Precinct: フリーフォーオール",
+            "Scenario_Prison_Checkpoint_Security": "Prison: チェックポイント (セキュリティ)",
+            "Scenario_Prison_Checkpoint_Insurgents": "Prison: チェックポイント (反乱軍)",
+            "Scenario_Prison_Survival": "Prison: サバイバル",
+            "Scenario_Prison_Push_Security": "Prison: プッシュ (セキュリティ)",
+            "Scenario_Prison_Push_Insurgents": "Prison: プッシュ (反乱軍)",
+            "Scenario_Prison_Firefight": "Prison: ファイアファイト",
+            "Scenario_Prison_Domination": "Prison: ドミネーション",
+            "Scenario_Prison_Ambush": "Prison: アンブッシュ",
+            "Scenario_Prison_Defusal": "Prison: 解除",
+            "Scenario_Prison_TDM": "Prison: チームデスマッチ",
+            "Scenario_Prison_FFA": "Prison: フリーフォーオール",
+            "Scenario_Refinery_Checkpoint_Security": "Refinery: チェックポイント (セキュリティ)",
+            "Scenario_Refinery_Checkpoint_Insurgents": "Refinery: チェックポイント (反乱軍)",
+            "Scenario_Refinery_Outpost": "Refinery: アウトポスト",
+            "Scenario_Refinery_Survival": "Refinery: サバイバル",
+            "Scenario_Refinery_Push_Security": "Refinery: プッシュ (セキュリティ)",
+            "Scenario_Refinery_Push_Insurgents": "Refinery: プッシュ (反乱軍)",
+            "Scenario_Refinery_Firefight_West": "Refinery: ファイアファイト (西)",
+            "Scenario_Refinery_Domination": "Refinery: ドミネーション",
+            "Scenario_Refinery_Frontline": "Refinery: フロントライン",
+            "Scenario_Refinery_Ambush": "Refinery: アンブッシュ",
+            "Scenario_Refinery_Defusal": "Refinery: 解除",
+            "Scenario_Refinery_Team_Deathmatch": "Refinery: チームデスマッチ",
+            "Scenario_Summit_Checkpoint_Security": "Summit: チェックポイント (セキュリティ)",
+            "Scenario_Summit_Checkpoint_Insurgents": "Summit: チェックポイント (反乱軍)",
+            "Scenario_Summit_Outpost": "Summit: アウトポスト",
+            "Scenario_Summit_Survival": "Summit: サバイバル",
+            "Scenario_Summit_Push_Security": "Summit: プッシュ (セキュリティ)",
+            "Scenario_Summit_Push_Insurgents": "Summit: プッシュ (反乱軍)",
+            "Scenario_Summit_Firefight_East": "Summit: ファイアファイト (東)",
+            "Scenario_Summit_Firefight_West": "Summit: ファイアファイト (西)",
+            "Scenario_Summit_Domination": "Summit: ドミネーション",
+            "Scenario_Summit_Frontline": "Summit: フロントライン",
+            "Scenario_Summit_Ambush_East": "Summit: アンブッシュ (東)",
+            "Scenario_Summit_Ambush_West": "Summit: アンブッシュ (西)",
+            "Scenario_Summit_Defusal": "Summit: 解除",
+            "Scenario_Summit_Team_Deathmatch": "Summit: チームデスマッチ",
+            "Scenario_Tell_Checkpoint_Security": "Tell: チェックポイント (セキュリティ)",
+            "Scenario_Tell_Checkpoint_Insurgents": "Tell: チェックポイント (反乱軍)",
+            "Scenario_Tell_Outpost": "Tell: アウトポスト",
+            "Scenario_Tell_Survival": "Tell: サバイバル",
+            "Scenario_Tell_Push_Security": "Tell: プッシュ (セキュリティ)",
+            "Scenario_Tell_Push_Insurgents": "Tell: プッシュ (反乱軍)",
+            "Scenario_Tell_Firefight_East": "Tell: ファイアファイト (東)",
+            "Scenario_Tell_Firefight_West": "Tell: ファイアファイト (西)",
+            "Scenario_Tell_Domination_East": "Tell: ドミネーション (東)",
+            "Scenario_Tell_Domination_West": "Tell: ドミネーション (西)",
+            "Scenario_Tell_Frontline": "Tell: フロントライン",
+            "Scenario_Tell_Ambush_East": "Tell: アンブッシュ (東)",
+            "Scenario_Tell_Ambush_West": "Tell: アンブッシュ (西)",
+            "Scenario_Tell_Defusal": "Tell: 解除",
+            "Scenario_Tell_FFA": "Tell: フリーフォーオール",
+            "Scenario_Tideway_Checkpoint_Security": "Tideway: チェックポイント (セキュリティ)",
+            "Scenario_Tideway_Checkpoint_Insurgents": "Tideway: チェックポイント (反乱軍)",
+            "Scenario_Tideway_Outpost": "Tideway: アウトポスト",
+            "Scenario_Tideway_Survival": "Tideway: サバイバル",
+            "Scenario_Tideway_Push_Security": "Tideway: プッシュ (セキュリティ)",
+            "Scenario_Tideway_Push_Insurgents": "Tideway: プッシュ (反乱軍)",
+            "Scenario_Tideway_Firefight_West": "Tideway: ファイアファイト (西)",
+            "Scenario_Tideway_Domination": "Tideway: ドミネーション",
+            "Scenario_Tideway_Frontline": "Tideway: フロントライン",
+            "Scenario_Tideway_Ambush": "Tideway: アンブッシュ",
+            "Scenario_Tideway_Defusal": "Tideway: 解除",
+            "Scenario_Trainyard_Checkpoint_Security": "Trainyard: チェックポイント (セキュリティ)",
+            "Scenario_Trainyard_Checkpoint_Insurgents": "Trainyard: チェックポイント (反乱軍)",
+            "Scenario_Trainyard_Outpost": "Trainyard: アウトポスト",
+            "Scenario_Trainyard_Survival": "Trainyard: サバイバル",
+            "Scenario_Trainyard_Push_Security": "Trainyard: プッシュ (セキュリティ)",
+            "Scenario_Trainyard_Push_Insurgents": "Trainyard: プッシュ (反乱軍)",
+            "Scenario_Trainyard_Firefight_East": "Trainyard: ファイアファイト (東)",
+            "Scenario_Trainyard_Firefight_West": "Trainyard: ファイアファイト (西)",
+            "Scenario_Trainyard_Domination_East": "Trainyard: ドミネーション (東)",
+            "Scenario_Trainyard_Domination_West": "Trainyard: ドミネーション (西)",
+            "Scenario_Trainyard_Frontline": "Trainyard: フロントライン",
+            "Scenario_Trainyard_Ambush_East": "Trainyard: アンブッシュ (東)",
+            "Scenario_Trainyard_Ambush_West": "Trainyard: アンブッシュ (西)",
+            "Scenario_Trainyard_Defusal_East": "Trainyard: 解除 (東)",
+            "Scenario_Trainyard_Defusal_West": "Trainyard: 解除 (西)"
+          }
+        },
+        "lighting": {
+          "label": "ライティング",
+          "options": {
+            "Day": "昼",
+            "Night": "夜"
+          }
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "friendlyFireScale": {
+          "label": "フレンドリーファイアのダメージ",
+          "description": "味方が受けるダメージの割合です。0.2 がゲームの標準値です。"
+        },
+        "deadChat": {
+          "label": "死亡者が生存者と会話する",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "autoBalance": {
+          "label": "チームの自動バランス",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "mapVoting": {
+          "label": "マップ投票",
+          "description": "試合の終了時に、プレイヤーが次のマップに投票します。",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "minEnemies": {
+          "label": "敵の最小数(協力)"
+        },
+        "maxEnemies": {
+          "label": "敵の最大数(協力)"
+        },
+        "friendlyBots": {
+          "label": "味方ボット(協力)"
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "サーバーをゲーム内のブラウザーに掲載します。steamcommunity.com/dev/managegameservers でアプリ 581320 用に作成してください。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "このマシン上で Pulsar だけが使用します。コンソールコマンドと正常な停止に使います。"
+        }
+      }
+    },
+    "soulmask": {
+      "description": "Soulmask の専用サーバーです。SteamCMD で匿名インストールされます。ワールドはサーバーのフォルダーにあり、Pulsar はゲーム自身のコンソールで保存と停止を行います。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "ゲーム内でこれを入力(gm key)したプレイヤーがゲームマスターになります。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "オフにするとサーバーは PvE になります。"
+        },
+        "saveInterval": {
+          "label": "保存間隔(秒)",
+          "description": "ワールドをディスクに書き込む間隔です。600 がゲームの標準値です。"
+        },
+        "backupInterval": {
+          "label": "ゲームのバックアップ間隔(秒)",
+          "description": "ゲームがワールドのデータベースを隣にコピーする間隔です。900 がゲームの標準値です。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "サーバーリストはここに問い合わせます。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "ゲームの RCON です。このマシン上でのみ、Pulsar が作成するパスワードで使います。コンソールのコマンド、保存、正常な停止に使います。"
+        }
+      }
+    },
+    "space-engineers": {
+      "description": "Space Engineers の専用サーバーです。SteamCMD で匿名インストールされます。設定とセーブデータはサーバーのインスタンスフォルダーにあり、新しいワールドはゲームのシナリオのいずれかから始まります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "world": {
+          "label": "ワールド",
+          "description": "instance/Saves 内のセーブ名です。"
+        },
+        "scenario": {
+          "label": "新しいワールドのシナリオ",
+          "description": "ワールドがまだ存在しない間だけ反映されます。",
+          "options": {
+            "StarSystem": "Star System",
+            "EarthPlanet": "Earth Planet",
+            "MarsPlanet": "Mars Planet",
+            "AlienPlanet": "Alien Planet",
+            "AlienSystem": "Alien System",
+            "HomeSystem": "Home System",
+            "DistantMoons": "Distant Moons",
+            "MoonBase": "Moon Base",
+            "PertamOrbiter": "Pertam Orbiter",
+            "EmptyWorld": "Empty World",
+            "AsteroidArmory": "Asteroid Armory",
+            "CrashedRedShip": "Crashed Red Ship",
+            "RedShip": "Red Ship",
+            "RedShip2": "Red Ship 2",
+            "GreenStation": "Green Station",
+            "LoneSurvivor": "Lone Survivor",
+            "RivalPlatforms": "Rival Platforms",
+            "DeadDropArena": "Dead Drop Arena"
+          }
+        },
+        "maxPlayers": {
+          "label": "スロット",
+          "description": "新しいワールドを作るときに反映されます。その後、ワールドは自身の設定を保持します。"
+        },
+        "description": {
+          "label": "説明"
+        },
+        "motd": {
+          "label": "今日のメッセージ"
+        },
+        "pauseWhenEmpty": {
+          "label": "無人のときは一時停止",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "description": "新しいワールドを作るときに反映されます。",
+          "options": {
+            "Survival": "サバイバル",
+            "Creative": "クリエイティブ"
+          }
+        },
+        "inventorySize": {
+          "label": "インベントリのサイズ",
+          "description": "倍率です。新しいワールドを作るときに反映されます。"
+        },
+        "assemblerSpeed": {
+          "label": "アセンブラーの速度",
+          "description": "倍率です。新しいワールドを作るときに反映されます。"
+        },
+        "refinerySpeed": {
+          "label": "精製施設の速度",
+          "description": "倍率です。新しいワールドを作るときに反映されます。"
+        },
+        "welderSpeed": {
+          "label": "溶接機の速度",
+          "description": "倍率です。新しいワールドを作るときに反映されます。"
+        },
+        "grinderSpeed": {
+          "label": "グラインダーの速度",
+          "description": "倍率です。新しいワールドを作るときに反映されます。"
+        },
+        "hostility": {
+          "label": "隕石",
+          "description": "新しいワールドを作るときに反映されます。",
+          "options": {
+            "SAFE": "なし",
+            "NORMAL": "ノーマル",
+            "CATACLYSM": "大災害",
+            "CATACLYSM_UNREAL": "アルマゲドン"
+          }
+        },
+        "autoSave": {
+          "label": "オートセーブ間隔(分)",
+          "description": "新しいワールドを作るときに反映されます。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。サーバーリストもここに問い合わせます。"
+        },
+        "steam": {
+          "label": "Steam"
+        }
+      }
+    },
+    "squad": {
+      "description": "Squad の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。設定は SquadGame/ServerConfig フォルダーのファイルです。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "reservedSlots": {
+          "label": "予約スロット",
+          "description": "Admins.cfg の管理者とホワイトリストのプレイヤー用に確保されるスロットです。"
+        },
+        "advertise": {
+          "label": "サーバーリスト",
+          "options": {
+            "true": "掲載する",
+            "false": "掲載しない"
+          }
+        },
+        "queueLimit": {
+          "label": "公開待機列",
+          "description": "スロットを待てるプレイヤーの数です。-1 は無制限、0 は待機列をオフにします。25 がゲームの標準値です。"
+        },
+        "teamChanges": {
+          "label": "チーム変更",
+          "options": {
+            "true": "許可",
+            "false": "禁止"
+          }
+        },
+        "unbalancedChanges": {
+          "label": "人数の多いチームへの変更",
+          "options": {
+            "true": "禁止",
+            "false": "許可"
+          }
+        },
+        "teamKillKick": {
+          "label": "チームキルでキック",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "teamKillBanCount": {
+          "label": "BAN までのチームキル数"
+        },
+        "timeBetweenMatches": {
+          "label": "試合の間隔(秒)"
+        },
+        "messageInterval": {
+          "label": "サーバーメッセージの間隔(秒)",
+          "description": "ServerMessages.cfg のメッセージを表示する間隔です。"
+        },
+        "recordDemos": {
+          "label": "デモを記録",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Query",
+          "description": "ゲームのクエリポートです。"
+        },
+        "beacon": {
+          "label": "Beacon"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "このマシン上で Pulsar だけが使用します。コンソールコマンド用です。"
+        }
+      }
+    },
+    "terraria": {
+      "description": "TShock(コミュニティサーバー)経由の Terraria 専用サーバーです。TShock の GitHub リリースから、必要な .NET ランタイムとともにサーバーのフォルダーにインストールされます。TShock はアカウント、グループ、権限を追加します。設定は tshock/config.json です。",
+      "variables": {
+        "name": {
+          "label": "サーバー名",
+          "description": "ワールド名の代わりにプレイヤーに表示されます。"
+        },
+        "world": {
+          "label": "ワールド",
+          "description": "worlds 内のワールドのファイルです(存在しない場合は新しく作られます)。"
+        },
+        "size": {
+          "label": "新しいワールドのサイズ",
+          "description": "ワールドがまだ存在しない間だけ反映されます。",
+          "options": {
+            "1": "小",
+            "2": "中",
+            "3": "大"
+          }
+        },
+        "difficulty": {
+          "label": "新しいワールドの難易度",
+          "description": "ワールドがまだ存在しない間だけ反映されます。",
+          "options": {
+            "0": "クラシック",
+            "1": "エキスパート",
+            "2": "マスター",
+            "3": "ジャーニー"
+          }
+        },
+        "seed": {
+          "label": "新しいワールドのシード",
+          "description": "ランダムにする場合は空のままにしてください。シークレットシード(ふさわしき者向けで、ハチ向けではない)も使えます。ワールドがまだ存在しない間だけ反映されます。"
+        },
+        "maxPlayers": {
+          "label": "スロット"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。ただし TShock アカウントでログインする場合は不要です。オープンなサーバーにする場合は空のままにしてください。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "normal": "プレイヤーが選択",
+            "always": "常にオン",
+            "disabled": "オフ"
+          }
+        },
+        "spawnProtection": {
+          "label": "スポーン保護",
+          "description": "スポーン地点の近くには TShock の管理者だけが建築できます。"
+        },
+        "whitelist": {
+          "label": "ホワイトリスト",
+          "description": "tshock/whitelist.txt に載っているアドレスだけが参加できます。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
         }
       }
     }

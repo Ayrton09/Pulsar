@@ -747,7 +747,7 @@ public sealed partial class ServerManagement(
     /// <summary>
     /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
     /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
-    /// server types 1.0.9, commands for one player 1.0.11.
+    /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12.
     /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
@@ -755,6 +755,14 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
         && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands))
         && (!ManifestFeatures.UsesPlayerCommands(manifest) || Announces(connection, AgentCapabilities.PlayerCommands))
+        && (!ManifestFeatures.UsesPipesCtrlC(manifest) || Announces(connection, AgentCapabilities.PipesCtrlC))
+        && (!ManifestFeatures.UsesIniSections(manifest) || Announces(connection, AgentCapabilities.IniSections))
+        && (!ManifestFeatures.UsesLogFileConsole(manifest) || Announces(connection, AgentCapabilities.LogFileConsole))
+        && (!ManifestFeatures.UsesUserProfile(manifest) || Announces(connection, AgentCapabilities.UserProfile))
+        && (!ManifestFeatures.UsesTarAddons(manifest) || Announces(connection, AgentCapabilities.TarAddons))
+        && (!ManifestFeatures.UsesTextConfig(manifest) || Announces(connection, AgentCapabilities.TextConfig))
+        && (!ManifestFeatures.UsesGitHubReleaseInstall(manifest) || Announces(connection, AgentCapabilities.GitHubReleaseInstall))
+        && (!ManifestFeatures.UsesDotnetRuntime(manifest) || Announces(connection, AgentCapabilities.DotnetRuntime))
         && (!ManifestFeatures.UsesMinecraftTypes(manifest) || Announces(connection, AgentCapabilities.MinecraftTypes))
         && (!ManifestFeatures.UsesMods(manifest) || Announces(connection, AgentCapabilities.ChangeMods))
         && (!ManifestFeatures.UsesModpacks(manifest) || Announces(connection, AgentCapabilities.InstallModpack));

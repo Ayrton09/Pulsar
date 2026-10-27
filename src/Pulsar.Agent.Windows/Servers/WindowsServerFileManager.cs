@@ -518,7 +518,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     /// The entries of an opened directory, read from its handle as they are consumed: a folder of millions of entries
     /// is never held whole (the handle must stay open while enumerating).
     /// </summary>
-    private static IEnumerable<FileEntry> Enumerate(SafeFileHandle directory, string path)
+    internal static IEnumerable<FileEntry> Enumerate(SafeFileHandle directory, string path)
     {
         var buffer = new byte[ListingBuffer];
         var batch = new List<FileEntry>();

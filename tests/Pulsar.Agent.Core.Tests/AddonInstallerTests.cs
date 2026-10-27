@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
@@ -298,6 +299,45 @@ public sealed class AddonInstallerTests : IDisposable
         Assert.Equal("addon.no_asset", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_oxide))).Code);
     }
 
+    [Fact]
+    public async Task AGameServerFromAReleaseIsInstalledByItsStepAndRecordedApartFromTheAddons()
+    {
+        var step = new GitHubReleaseStep("OxideMod/Oxide.Rust", @"^Oxide\.Rust\.zip$");
+        var steps = new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles());
+
+        var version = await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal("2.0.7801", version); // the release's tag, as the game's version
+        Assert.Equal("oxide core", File.ReadAllText(Path.Combine(_root, "RustDedicated_Data", "Managed", "Oxide.Core.dll")));
+        Assert.True(File.Exists(Path.Combine(_root, ".pulsar", "releases", "oxidemod_oxide.rust.json")));
+        Assert.False(Directory.Exists(Path.Combine(_root, ".pulsar", "addons")));
+        Assert.True(InstallSteps.IsCheckable(step));
+        Assert.Equal("Getting OxideMod/Oxide.Rust's latest release from GitHub, unless it is already installed",
+            InstallSteps.Describe(step, new Dictionary<string, string?>()));
+
+        // An update to the same release downloads nothing.
+        _http.Requested.Clear();
+        await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(Download, _http.Requested);
+    }
+
+    [Fact]
+    public async Task AnUpdateCheckOfAReleaseComparesItsAssetWithTheInstalledOne()
+    {
+        var source = (GitHubReleaseSource)s_oxide.Source;
+        var installer = new AddonInstaller(new DirectServerFiles(), _http);
+        var cancellation = TestContext.Current.CancellationToken;
+        Assert.Equal(new GameBuild(null, "2.0.7801", true), await installer.CheckAsync(_root, "oxide", source, cancellation));
+
+        await InstallAsync(s_oxide);
+        _http.Requested.Clear();
+        Assert.Equal(new GameBuild("2.0.7801", "2.0.7801", false), await installer.CheckAsync(_root, "oxide", source, cancellation));
+
+        Release("2.0.7900", Zip(("RustDedicated_Data/Managed/Oxide.Core.dll", "core 2")));
+        Assert.Equal(new GameBuild("2.0.7801", "2.0.7900", true), await installer.CheckAsync(_root, "oxide", source, cancellation));
+        Assert.DoesNotContain(AssetHost, _http.Requested); // a check downloads nothing
+    }
+
     private Task<AddonRecord> InstallAsync(AddonDefinition addon, bool force = false) =>
         new AddonInstaller(new DirectServerFiles(), _http).InstallAsync(_root, addon, force, (stage, _) =>
         {
@@ -305,17 +345,87 @@ public sealed class AddonInstallerTests : IDisposable
             return Task.CompletedTask;
         }, TestContext.Current.CancellationToken);
 
-    private void Release(string tag, byte[] zip, string? digest = "")
+    private void Release(string tag, byte[] zip, string? digest = "", string asset = "Oxide.Rust.zip")
     {
         var published = digest == "" ? "sha256:" + Sha256(zip) : digest;
         _http.Routes[Latest] = () => Json(new
         {
             tag_name = tag,
             draft = false,
-            assets = new[] { new { name = "Oxide.Rust.zip", browser_download_url = Download, digest = published } },
+            assets = new[] { new { name = asset, browser_download_url = Download, digest = published } },
         });
         _http.Routes[Download] = () => Redirect(AssetHost);
         _http.Routes[AssetHost] = () => Ok(zip);
+    }
+
+    // EXILED's layout: a .tar.gz of folders and files, put into the game's AppData (Pulsar 1.0.12).
+    private static readonly AddonDefinition s_exiled = new("exiled", "EXILED", "CC-BY-SA-3.0", "https://github.com/ExMod-Team/EXILED",
+        new GitHubReleaseSource("OxideMod/Oxide.Rust", "^Exiled\\.tar\\.gz$"), Target: "profile/AppData/Roaming");
+
+    [Fact]
+    public async Task ATarGzAddonIsUnpackedIntoItsFolder()
+    {
+        Release("v9.15.2", TarGz(
+            Folder("EXILED"), Folder("EXILED/Plugins"), File_("EXILED/Plugins/Exiled.Events.dll", "events"),
+            Folder("SCP Secret Laboratory/LabAPI/plugins/global"), File_("./SCP Secret Laboratory/LabAPI/plugins/global/Exiled.Loader.dll", "loader")),
+            asset: "Exiled.tar.gz");
+
+        var record = await InstallAsync(s_exiled);
+
+        Assert.Equal("v9.15.2", record.Release);
+        Assert.Equal("Exiled.tar.gz", record.Asset);
+        Assert.Equal(["profile/AppData/Roaming/EXILED/Plugins/Exiled.Events.dll",
+            "profile/AppData/Roaming/SCP Secret Laboratory/LabAPI/plugins/global/Exiled.Loader.dll"], record.Added);
+        Assert.Equal("loader", File.ReadAllText(Path.Combine(_root, "profile", "AppData", "Roaming", "SCP Secret Laboratory", "LabAPI", "plugins", "global", "Exiled.Loader.dll")));
+    }
+
+    [Theory]
+    [InlineData(TarEntryType.SymbolicLink)]
+    [InlineData(TarEntryType.HardLink)]
+    [InlineData(TarEntryType.CharacterDevice)]
+    [InlineData(TarEntryType.Fifo)]
+    public async Task ATarGzWithALinkOrADeviceIsRefusedBeforeAnythingIsWritten(TarEntryType type)
+    {
+        var odd = new PaxTarEntry(type, "EXILED/Plugins/odd");
+        if (type is TarEntryType.SymbolicLink or TarEntryType.HardLink)
+        {
+            odd.LinkName = "C:/Windows";
+        }
+
+        Release("v9.15.2", TarGz(File_("EXILED/Plugins/first.dll", "first"), odd), asset: "Exiled.tar.gz");
+
+        Assert.Equal("addon.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_exiled))).Code);
+        Assert.False(File.Exists(Path.Combine(_root, "profile", "AppData", "Roaming", "EXILED", "Plugins", "first.dll")));
+    }
+
+    [Theory]
+    [InlineData("../../../outside.dll")]
+    [InlineData("/C:/Windows/evil.dll")]
+    public async Task ATarGzCannotWriteOutsideItsPlace(string entry)
+    {
+        Release("v9.15.2", TarGz(File_(entry, "x")), asset: "Exiled.tar.gz");
+
+        Assert.Equal("addon.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_exiled))).Code);
+    }
+
+    private static PaxTarEntry Folder(string name) => new(TarEntryType.Directory, name);
+
+    private static PaxTarEntry File_(string name, string content) =>
+        new(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content)) };
+
+    private static byte[] TarGz(params TarEntry[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var gzip = new GZipStream(buffer, CompressionLevel.Fastest, leaveOpen: true))
+        using (var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            foreach (var entry in entries)
+            {
+                tar.WriteEntry(entry);
+            }
+        }
+
+        return buffer.ToArray();
     }
 
     private static byte[] Zip(params (string Path, string Content)[] files)
@@ -365,6 +475,9 @@ public sealed class AddonInstallerTests : IDisposable
         public void CreateDirectory(string serverRoot, string relativePath) => _inner.CreateDirectory(serverRoot, relativePath);
 
         public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _inner.DeleteEmptyDirectory(serverRoot, relativePath);
+
+        public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit) =>
+            _inner.ListFiles(serverRoot, relativeDirectory, limit);
     }
 
     private sealed class FakeHttp : HttpMessageHandler

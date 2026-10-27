@@ -81,6 +81,11 @@ Console.CancelKeyPress += (_, e) =>
 
     Console.WriteLine("Test server: interrupted");
     interrupted.Set();
+    if (Console.IsInputRedirected)
+    {
+        // A read from a pipe does not end on Ctrl+C as a console's does.
+        _ = Task.Run(() => Environment.Exit(130));
+    }
 };
 
 Console.WriteLine($"Test server starting (pid {Environment.ProcessId})");

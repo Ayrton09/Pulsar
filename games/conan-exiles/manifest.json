@@ -1,0 +1,110 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "conan-exiles",
+  "version": "1.0.0",
+  "name": "Conan Exiles",
+  "description": "Conan Exiles dedicated server, installed anonymously with SteamCMD, with commands over RCON. Its world and settings live in the server's folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 70, "minMemoryMb": 16384 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Conan Exiles", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 40, "min": 1, "max": 70 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\"\\\\ ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "required": true, "maxLength": 32, "pattern": "^[^\"\\\\ ]{1,32}$",
+      "description": "Players who enter it in the game (MakeMeAdmin) become its admins." },
+    {"key": "pvp", "label": "PvP", "type": "enum", "options": [{"value": "True", "label": "On"}, {"value": "False", "label": "Off"}]},
+    {"key": "avatars", "label": "Avatars (gods)", "type": "enum", "options": [{"value": "False", "label": "On"}, {"value": "True", "label": "Off"}]},
+    {"key": "damageStructures", "label": "Players damage others’ buildings", "type": "enum", "options": [{"value": "True", "label": "On"}, {"value": "False", "label": "Off"}]},
+    {"key": "openContainers", "label": "Containers open to anyone", "type": "enum", "options": [{"value": "True", "label": "On"}, {"value": "False", "label": "Off"}]},
+    {"key": "battlEye", "label": "BattlEye", "type": "enum", "options": [{"value": "True", "label": "On"}, {"value": "False", "label": "Off"}]},
+    {"key": "xpRate", "label": "Experience rate", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "xpKill", "label": "Experience from kills", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "xpHarvest", "label": "Experience from harvesting", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "xpCraft", "label": "Experience from crafting", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "playerDamage", "label": "Damage players deal", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "playerDamageTaken", "label": "Damage players take", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "npcDamage", "label": "Damage enemies deal", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "npcHealth", "label": "Enemy health", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "npcRespawn", "label": "Enemy respawn time", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "stamina", "label": "Stamina cost", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "healthRegen", "label": "Health regeneration", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "craftCost", "label": "Crafting cost", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "craftTime", "label": "Crafting time", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "fuelBurn", "label": "Fuel burn time", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "thrallConversion", "label": "Thrall conversion time", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "decay", "label": "Building decay time", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "structureDamage", "label": "Building damage", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier. 1 is the game’s own."},
+    {"key": "nudity", "label": "Nudity", "type": "enum", "options": [{"value": "0", "label": "None"}, {"value": "1", "label": "Partial"}, {"value": "2", "label": "Full"}]},
+    {"key": "afkKick", "label": "Kick idle players after (s)", "type": "integer", "min": 0, "max": 86400, "description": "0 never kicks them."},
+    {"key": "motd", "label": "Message of the day", "type": "string", "maxLength": 200, "pattern": "^[^\"\\\\]{1,200}$"}
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7777, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27015, "description": "The server list asks here." },
+    { "name": "rcon", "label": "RCON", "protocols": ["tcp"], "default": 25575, "internal": true,
+      "description": "Only Pulsar uses it, on this machine: console commands." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 443030 },
+    { "type": "ensureDirectory", "path": "ConanSandbox/Saved/Config/WindowsServer" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 443030 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "ConanSandbox/Binaries/Win64/ConanSandboxServer-Win64-Shipping.exe",
+      "arguments": [
+        "-log",
+        "-Port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        "-MaxPlayers={{var.maxPlayers}}"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" }
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "ConanSandbox/Saved/Config/WindowsServer/Engine.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "OnlineSubsystem",
+      "set": { "ServerName": "{{var.name}}", "ServerPassword": "{{var.password}}" } },
+    { "path": "ConanSandbox/Saved/Config/WindowsServer/Game.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "RconPlugin",
+      "set": { "RconEnabled": "1", "RconPassword": "{{rcon.password}}", "RconPort": "{{port.rcon}}" } },
+    { "path": "ConanSandbox/Saved/Config/WindowsServer/ServerSettings.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "ServerSettings",
+      "set": {"AdminPassword": "{{var.adminPassword}}", "PVPEnabled": "{{var.pvp}}", "AvatarsDisabled": "{{var.avatars}}", "CanDamagePlayerOwnedStructures": "{{var.damageStructures}}", "ContainersIgnoreOwnership": "{{var.openContainers}}", "IsBattlEyeEnabled": "{{var.battlEye}}", "PlayerXPRateMultiplier": "{{var.xpRate}}", "PlayerXPKillMultiplier": "{{var.xpKill}}", "PlayerXPHarvestMultiplier": "{{var.xpHarvest}}", "PlayerXPCraftMultiplier": "{{var.xpCraft}}", "PlayerDamageMultiplier": "{{var.playerDamage}}", "PlayerDamageTakenMultiplier": "{{var.playerDamageTaken}}", "NPCDamageMultiplier": "{{var.npcDamage}}", "NPCHealthMultiplier": "{{var.npcHealth}}", "NPCRespawnMultiplier": "{{var.npcRespawn}}", "PlayerStaminaCostMultiplier": "{{var.stamina}}", "PlayerHealthRegenSpeedScale": "{{var.healthRegen}}", "CraftingCostMultiplier": "{{var.craftCost}}", "ItemConvertionMultiplier": "{{var.craftTime}}", "FuelBurnTimeMultiplier": "{{var.fuelBurn}}", "ThrallConversionMultiplier": "{{var.thrallConversion}}", "BuildingDecayTimeMultiplier": "{{var.decay}}", "StructureDamageMultiplier": "{{var.structureDamage}}", "MaxNudity": "{{var.nudity}}", "KickAFKTime": "{{var.afkKick}}", "ServerMessageOfTheDay": "{{var.motd}}"},
+      "keepIfEmpty": ["PVPEnabled", "AvatarsDisabled", "CanDamagePlayerOwnedStructures", "ContainersIgnoreOwnership", "IsBattlEyeEnabled", "PlayerXPRateMultiplier", "PlayerXPKillMultiplier", "PlayerXPHarvestMultiplier", "PlayerXPCraftMultiplier", "PlayerDamageMultiplier", "PlayerDamageTakenMultiplier", "NPCDamageMultiplier", "NPCHealthMultiplier", "NPCRespawnMultiplier", "PlayerStaminaCostMultiplier", "PlayerHealthRegenSpeedScale", "CraftingCostMultiplier", "ItemConvertionMultiplier", "FuelBurnTimeMultiplier", "ThrallConversionMultiplier", "BuildingDecayTimeMultiplier", "StructureDamageMultiplier", "MaxNudity", "KickAFKTime", "ServerMessageOfTheDay"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "query", "timeoutSeconds": 1800 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 180
+  },
+
+  "backup": {
+    "include": ["ConanSandbox/Saved/game_*.db", "ConanSandbox/Saved/Config/WindowsServer/*.ini"],
+    "exclude": ["ConanSandbox/Saved/game_*_backup_*.db"]
+  },
+  "commands": {
+    "broadcast": "broadcast {{message}}",
+    "players": {
+      "kick": "kickplayer name {{player}} Kicked by an admin",
+      "ban": "banplayer name {{player}} Banned by an admin"
+    }
+  }
+}

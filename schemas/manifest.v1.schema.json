@@ -63,12 +63,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "repo", "asset"],
-      "description": "A zip asset of a GitHub release, checked against the SHA-256 GitHub publishes for it. A fixed 'tag' cannot go with 'prerelease': true (that only picks the newest release).",
+      "description": "A zip (or, Pulsar 1.0.12, .tar.gz) asset of a GitHub release, checked against the SHA-256 GitHub publishes for it. A fixed 'tag' cannot go with 'prerelease': true (that only picks the newest release).",
       "not": { "required": ["tag", "prerelease"], "properties": { "prerelease": { "const": true } } },
       "properties": {
         "type": { "const": "githubRelease" },
         "repo": { "type": "string", "pattern": "^(?!\\.\\.?/)[A-Za-z0-9_.-]{1,100}/(?!\\.\\.?$)[A-Za-z0-9_.-]{1,100}$" },
-        "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name." },
+        "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name, ending with its archive's extension (zip, tar.gz or tgz, then $)." },
         "tag": { "type": "string", "pattern": "^(?!\\.\\.?$)[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
         "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." }
       }
@@ -170,7 +170,7 @@
     "InstallStep": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer", "minecraftBedrock", "copyFileIfMissing"] } },
+      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer", "minecraftBedrock", "copyFileIfMissing", "githubRelease", "dotnetRuntime"] } },
       "oneOf": [
         { "$ref": "#/$defs/SteamCmdStep" },
         { "$ref": "#/$defs/EnsureDirectoryStep" },
@@ -178,7 +178,9 @@
         { "$ref": "#/$defs/TestGameServerStep" },
         { "$ref": "#/$defs/MinecraftServerStep" },
         { "$ref": "#/$defs/MinecraftBedrockStep" },
-        { "$ref": "#/$defs/CopyFileIfMissingStep" }
+        { "$ref": "#/$defs/CopyFileIfMissingStep" },
+        { "$ref": "#/$defs/GitHubReleaseStep" },
+        { "$ref": "#/$defs/DotnetRuntimeStep" }
       ]
     },
     "SteamCmdStep": {
@@ -255,6 +257,31 @@
         "to": { "$ref": "#/$defs/RelativePath" }
       }
     },
+    "GitHubReleaseStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "repo", "asset"],
+      "description": "A game server published as a zip or .tar.gz asset of a GitHub release (Pulsar 1.0.12), installed as an addon is: checked against the SHA-256 GitHub publishes for it, unpacked into 'target'. An update takes the latest release (or 'tag') and removes the previous one's files that the new one no longer has; nothing is downloaded when the same asset is installed. One step per repository.",
+      "not": { "required": ["tag", "prerelease"], "properties": { "prerelease": { "const": true } } },
+      "properties": {
+        "type": { "const": "githubRelease" },
+        "repo": { "type": "string", "pattern": "^(?!\\.\\.?/)[A-Za-z0-9_.-]{1,100}/(?!\\.\\.?$)[A-Za-z0-9_.-]{1,100}$" },
+        "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name, ending with its archive's extension (zip, tar.gz or tgz, then $)." },
+        "tag": { "type": "string", "pattern": "^(?!\\.\\.?$)[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
+        "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." },
+        "target": { "type": "string", "maxLength": 260, "default": "", "description": "The folder of the server it is unpacked into; the server's own folder by default. Not the dotnet folder of a dotnetRuntime step." }
+      }
+    },
+    "DotnetRuntimeStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "channel"],
+      "description": "Microsoft's .NET runtime (Microsoft.NETCore.App) of a channel in the server's dotnet folder (Pulsar 1.0.12): its latest patch from Microsoft's release metadata, checked against the SHA-512 Microsoft lists. The agent points DOTNET_ROOT there for the game, whatever .NET the node has installed; an update brings it to the latest patch. One step.",
+      "properties": {
+        "type": { "const": "dotnetRuntime" },
+        "channel": { "type": "string", "pattern": "^([5-9]|[1-9][0-9])\\.0$", "description": "The runtime's major version, as Microsoft names its channels: '9.0'." }
+      }
+    },
     "RuntimeDefinition": {
       "type": "object",
       "additionalProperties": false,
@@ -262,6 +289,7 @@
       "properties": {
         "executable": { "$ref": "#/$defs/RelativePath", "pattern": "\\.[eE][xX][eE]$" },
         "workingDirectory": { "$ref": "#/$defs/RelativePath" },
+        "userProfile": { "$ref": "#/$defs/RelativePath", "description": "A folder of the server the game takes for its user's: USERPROFILE, APPDATA and LOCALAPPDATA point there, so what it keeps in its account's AppData is in the server's folder (Pulsar 1.0.12)." },
         "arguments": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ArgumentTemplate" } },
         "allowExtraArguments": { "type": "boolean", "default": false },
         "environment": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" }, "additionalProperties": { "type": "string" } },
@@ -294,7 +322,13 @@
         "encoding": { "enum": ["utf-8", "oem", "ansi"], "default": "utf-8" },
         "inputNewline": { "enum": ["\n", "\r\n", "\r"] },
         "sensitiveCommandPrefixes": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64 } },
-        "logFile": { "$ref": "#/$defs/RelativePath" },
+        "logFile": {
+          "anyOf": [
+            { "$ref": "#/$defs/RelativePath" },
+            { "type": "string", "maxLength": 260, "pattern": "^[^*]*\\*[^*/]*$", "description": "A relative path whose file name holds one '*'." }
+          ],
+          "description": "logfile+rcon: the console's output. pipes (Pulsar 1.0.12): the console's output for a game that writes only to its log. Its file name may hold one '*' (Pulsar 1.0.12): the agent follows the newest file it matches that appeared with the start (a game that names its log by its start)."
+        },
         "rcon": { "$ref": "#/$defs/RconDefinition" }
       }
     },
@@ -303,9 +337,9 @@
       "additionalProperties": false,
       "required": ["protocol", "port"],
       "properties": {
-        "protocol": { "enum": ["source", "telnet"] },
+        "protocol": { "enum": ["source", "telnet"], "description": "source: Source RCON. telnet: a line console with an optional password prompt (7 Days to Die)." },
         "port": { "type": "string", "description": "Name of a required port; RCON listens on its TCP side, which only needs to be reachable from the node." },
-        "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file, so the console does not add them again; an answer is added only when the log does not show it." }
+        "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file (or, Pulsar 1.0.12, its output), so the console does not add them again; an answer is added only when the log does not show it." }
       }
     },
     "QueryDefinition": {
@@ -403,7 +437,7 @@
       "required": ["path", "format", "mode", "set"],
       "properties": {
         "path": { "$ref": "#/$defs/RelativePath" },
-        "format": { "enum": ["source-cfg", "properties", "unreal-ini", "key-value", "xml-properties", "colon", "json", "space"], "description": "colon: key: value per line, # comments (SCP: Secret Laboratory). space: Key value per line, // comments (Unturned). json: members of a JSON object, each key a JSON Pointer (/gameSettings/enemyDamageFactor); patch mode only." },
+        "format": { "enum": ["source-cfg", "properties", "unreal-ini", "key-value", "xml-properties", "colon", "json", "space", "text", "xml"], "description": "colon: key: value per line, # comments (SCP: Secret Laboratory). space: Key value per line, // comments (Unturned). json: members of a JSON object, each key a JSON Pointer (/gameSettings/enemyDamageFactor); patch mode only. text: the whole file is one value, the one key 'content' (Pulsar 1.0.12); patch mode only. xml: elements' text, each key the element's path from the root (/MyConfigDedicated/ServerName, Pulsar 1.0.12); patch mode only." },
         "mode": { "enum": ["patch", "managed"], "description": "patch: only the declared keys change; managed: the whole file is written by Pulsar." },
         "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } },
         "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets. xml-properties: the root element." },

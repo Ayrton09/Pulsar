@@ -89,7 +89,7 @@ public sealed class SchemaTests
     public void TheSchemaTakesWhatTheParserTakes(string target)
     {
         var json = TestManifests.Change("css", m => m["addons"] = JsonNode.Parse($$$"""
-            [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "{{{target}}}", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]
+            [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "{{{target}}}", "source": {"type": "githubRelease", "repo": "a/b", "asset": "^x\\.zip$"}}]
             """));
 
         Assert.True(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);

@@ -88,17 +88,41 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
             return null;
         }
 
+        if (step is GitHubReleaseStep release)
+        {
+            var record = await Releases.InstallAsync(serverDirectory, AsAddon(release), force: false, progress, cancellationToken);
+            return record.Release;
+        }
+
+        if (step is DotnetRuntimeStep dotnet)
+        {
+            await new DotnetRuntimeInstaller(files, options.HttpHandler).InstallAsync(serverDirectory, dotnet.Channel, progress, cancellationToken);
+            return null;
+        }
+
         await progress(Steam.InstallStages.Installing, null);
         await Task.Run(() => Run(step, serverDirectory), cancellationToken);
         return null;
     }
 
-    /// <summary>Whether an update check can ask what the step would install: SteamCMD's and Minecraft's (Pulsar 1.0.9).</summary>
-    public static bool IsCheckable(InstallStep step) => step is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep;
+    /// <summary>
+    /// Whether an update check can ask what the step would install: SteamCMD's and Minecraft's (Pulsar 1.0.9), a GitHub
+    /// release's and the .NET runtime's (1.0.12).
+    /// </summary>
+    public static bool IsCheckable(InstallStep step) =>
+        step is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep or GitHubReleaseStep or DotnetRuntimeStep;
+
+    /// <summary>Installs <see cref="GitHubReleaseStep"/>s as addons are installed, recorded apart from the addons.</summary>
+    private AddonInstaller Releases => new(files, options.HttpHandler, GitHubReleaseStep.RecordDirectory);
+
+    /// <summary>A release step as the addon the installer takes: its repository names it in messages.</summary>
+    private static AddonDefinition AsAddon(GitHubReleaseStep step) =>
+        new(step.RecordKey, step.Repo, "", $"https://github.com/{step.Repo}", step.Source, Target: step.Target);
 
     /// <summary>
-    /// Whether one of Minecraft's steps would install something new (an update check, Pulsar 1.0.9); null for a step it
-    /// cannot ask (SteamCMD's are asked through <see cref="Steam.SteamCmdRunner"/>).
+    /// Whether one of Minecraft's steps (Pulsar 1.0.9), a GitHub release's or the .NET runtime's (1.0.12) would install
+    /// something new (an update check); null for a step it cannot ask (SteamCMD's are asked through
+    /// <see cref="Steam.SteamCmdRunner"/>).
     /// </summary>
     /// <param name="variables">The server's variable values, defaults included.</param>
     /// <exception cref="GameProcessException">The publisher could not be asked.</exception>
@@ -114,6 +138,8 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
             // A check downloads nothing, so it has no signature to verify.
             MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures ?? Unsigned.Instance)
                 .CheckAsync(serverDirectory, bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
+            GitHubReleaseStep release => await Releases.CheckAsync(serverDirectory, release.RecordKey, release.Source, cancellationToken),
+            DotnetRuntimeStep dotnet => await new DotnetRuntimeInstaller(files, options.HttpHandler).CheckAsync(serverDirectory, dotnet.Channel, cancellationToken),
             _ => null,
         };
     }
@@ -138,6 +164,10 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
                 && version != MinecraftBedrockStep.Latest
                     ? $"Getting the Minecraft Bedrock {version} server from Mojang, unless it is already installed"
                     : "Getting the latest Minecraft Bedrock server from Mojang, unless it is already installed",
+            GitHubReleaseStep release => release.Tag is { } tag
+                ? $"Getting {release.Repo}'s release {tag} from GitHub, unless it is already installed"
+                : $"Getting {release.Repo}'s latest release from GitHub, unless it is already installed",
+            DotnetRuntimeStep dotnet => $"Getting the latest .NET {dotnet.Channel} runtime from Microsoft, unless it is already installed",
             EnsureDirectoryStep ensure => $"Creating the folder {ensure.Path}",
             WriteFileIfMissingStep write => $"Writing {write.Path} if it is missing",
             CopyFileIfMissingStep copy => $"Copying {copy.From} to {copy.To} if it is missing",

@@ -101,6 +101,24 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     }
 
     [WindowsFact]
+    public async Task CtrlCReachesAGameRunWithPipesThroughItsConsoleAndNotItsHost()
+    {
+        // A console program run with pipes has a console without a window, as an Unreal Engine server opens one with -log.
+        var process = (IHostedGameProcess)await _hosts.StartAsync(_server.Spec(ConsoleMode.Pipes, "--ready-after", "100"), TestContext.Current.CancellationToken);
+        _started.Add(process.Host);
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+
+        Assert.True(process.SupportsInterrupt);
+        await process.SendInterruptAsync(TestContext.Current.CancellationToken);
+
+        // The game's own code, reported by its host: a host that took the signal for its own would be lost instead.
+        Assert.Equal(130, await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        Assert.Contains("Test server: interrupted", output.Text, StringComparison.Ordinal);
+        Assert.True(ProcessRuns(process.Host.ProcessId));
+    }
+
+    [WindowsFact]
     public void AProcessThatCannotBeOpenedIsNotTakenForGone()
     {
         // The System process (id 4) cannot be opened without elevation: "access denied" says nothing about whether a host

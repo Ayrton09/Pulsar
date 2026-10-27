@@ -232,6 +232,8 @@ public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 [JsonDerivedType(typeof(MinecraftServerStep), "minecraftServer")]
 [JsonDerivedType(typeof(MinecraftBedrockStep), "minecraftBedrock")]
 [JsonDerivedType(typeof(CopyFileIfMissingStep), "copyFileIfMissing")]
+[JsonDerivedType(typeof(GitHubReleaseStep), "githubRelease")]
+[JsonDerivedType(typeof(DotnetRuntimeStep), "dotnetRuntime")]
 public abstract record InstallStep;
 
 /// <summary>
@@ -320,14 +322,56 @@ public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallSt
     public static readonly IReadOnlyList<string> KeptFiles = ["server.properties", "allowlist.json", "permissions.json", "packetlimitconfig.json"];
 }
 
+/// <summary>
+/// Installs a game server published as a zip or .tar.gz asset of a GitHub release (Pulsar 1.0.12: TShock, Terraria's
+/// server), as an addon is installed: found through GitHub's API, checked against the SHA-256 GitHub publishes for it,
+/// unpacked into <see cref="Target"/> with the archive rules of addons. An update takes the latest release (or the one
+/// with <see cref="Tag"/>) and removes the files of the previous one that the new one no longer has; nothing is
+/// downloaded when the same asset is installed. What was installed is kept in <see cref="RecordDirectory"/>.
+/// </summary>
+/// <param name="Repo"><c>owner/name</c>.</param>
+/// <param name="Asset">A regular expression the asset's file name must match (one asset of the release).</param>
+/// <param name="Prerelease">Take the newest release even when it is marked as a pre-release.</param>
+/// <param name="Target">The folder of the server it is unpacked into ("" for the server's own folder).</param>
+public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "") : InstallStep
+{
+    /// <summary>Where the agent records what each such step installed (not an addon: the addons' records are elsewhere).</summary>
+    public const string RecordDirectory = ".pulsar/releases";
+
+    public GitHubReleaseSource Source => new(Repo, Asset, Tag, Prerelease);
+
+    /// <summary>The name of the step's record: its repository's, lowercase, <c>/</c> as <c>_</c>.</summary>
+    public string RecordKey => Repo.Replace('/', '_').ToLowerInvariant();
+}
+
+/// <summary>
+/// Installs Microsoft's .NET runtime (<c>Microsoft.NETCore.App</c>) of <see cref="Channel"/> in the server's
+/// <see cref="Folder"/> folder (Pulsar 1.0.12): its latest patch, from Microsoft's release metadata, the download checked
+/// against the SHA-512 Microsoft lists. The game's .NET programs run on it whatever the node has installed: the agent
+/// points <c>DOTNET_ROOT</c> there (the manifest's own environment cannot name <c>DOTNET_</c> variables). An update brings
+/// it to the channel's latest patch; nothing is downloaded when that one is installed.
+/// </summary>
+/// <param name="Channel">The runtime's major version, as Microsoft names its channels: <c>9.0</c>.</param>
+public sealed record DotnetRuntimeStep(string Channel) : InstallStep
+{
+    /// <summary>The server's folder the runtime goes in.</summary>
+    public const string Folder = "dotnet";
+}
+
 /// <summary>How the game runs on one platform (<c>windows-x64</c>).</summary>
+/// <param name="UserProfile">
+/// A folder of the server the game takes for its user's (Pulsar 1.0.12): the agent sets <c>USERPROFILE</c>,
+/// <c>APPDATA</c> and <c>LOCALAPPDATA</c> to it, so what the game keeps in its account's AppData (SCP: Secret
+/// Laboratory's LabAPI plugins, say) is in the server's folder, reached by the file manager and backed up.
+/// </param>
 public sealed record RuntimeDefinition(
     string Executable,
     ConsoleDefinition Console,
     IReadOnlyList<ArgumentTemplate>? Arguments = null,
     string? WorkingDirectory = null,
     bool AllowExtraArguments = false,
-    IReadOnlyDictionary<string, string>? Environment = null)
+    IReadOnlyDictionary<string, string>? Environment = null,
+    string? UserProfile = null)
 {
     public IReadOnlyList<ArgumentTemplate> ArgumentList => Arguments ?? [];
 }
@@ -362,7 +406,11 @@ public enum ManifestConsoleEncoding
     Ansi,
 }
 
-/// <param name="LogFile">For <c>logfile+rcon</c>: the log the game writes its console to (relative path).</param>
+/// <param name="LogFile">
+/// For <c>logfile+rcon</c>, or <c>pipes</c> for a game that writes only there (Pulsar 1.0.12): the log the game writes its
+/// console to (relative path). Its file name may hold one <c>*</c> (1.0.12): the newest file it matches that appeared
+/// with the start (Space Engineers names its log by the time it started).
+/// </param>
 /// <param name="Rcon">For <c>logfile+rcon</c>: how the agent sends commands.</param>
 public sealed record ConsoleDefinition(
     ManifestConsoleMode Mode,
@@ -390,9 +438,9 @@ public enum RconProtocol
 /// games): the firewall rules Pulsar manages open just those, and RCON stays reachable from the node only.
 /// </param>
 /// <param name="LogsCommands">
-/// The game writes the commands it receives over RCON to its log file (CS2 does, srcds does not): the console then
-/// shows the log instead of adding the agent's copy of each command, and adds an answer only when the log does not
-/// show it (CS2 logs the answer to <c>status</c> but not to cvar queries).
+/// The game writes the commands it receives over RCON to its log file (CS2 does, srcds does not), or (Pulsar 1.0.12) to
+/// its output (Soulmask): the console then shows the log instead of adding the agent's copy of each command, and adds
+/// an answer only when the log does not show it (CS2 logs the answer to <c>status</c> but not to cvar queries).
 /// </param>
 public sealed record RconDefinition(RconProtocol Protocol, string Port, bool LogsCommands = false);
 
@@ -493,6 +541,19 @@ public enum ConfigFileFormat
 
     /// <summary><c>Key value</c> per line, <c>//</c> starting a comment (Unturned's <c>Commands.dat</c>); values as typed (1.0.7).</summary>
     Space,
+
+    /// <summary>
+    /// A file that holds one value and nothing else (Don't Starve Together's <c>cluster_token.txt</c>): <c>set</c> has the
+    /// one key <c>content</c>, written as the whole file; an empty value empties it, unless kept. Patch mode only (1.0.12).
+    /// </summary>
+    Text,
+
+    /// <summary>
+    /// The text of elements of an XML file (Space Engineers' <c>SpaceEngineers-Dedicated.cfg</c>), each key the element's
+    /// path from the root (<c>/MyConfigDedicated/SessionSettings/MaxPlayers</c>); missing elements are added, an empty value
+    /// removes its element, the rest of the file stays. Patch mode only (1.0.12).
+    /// </summary>
+    Xml,
 }
 
 public enum ConfigFileMode

@@ -83,6 +83,29 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void AFoldersFilesAreListedButNeverThroughAJunction()
+    {
+        // A game's logs named by its start (Space Engineers): its folders and links in the folder are not files.
+        _files.Write(_server, "readme.txt", Content("x"));
+        _files.Write(_server, "instance/SpaceEngineersDedicated_1.log", Content("one"));
+        _files.Write(_server, "instance/SpaceEngineersDedicated_2.log", Content("two"));
+        Directory.CreateDirectory(Path.Combine(_server, "instance", "Saves"));
+        Run("mklink", "/J", Path.Combine(_server, "instance", "elsewhere"), _outside);
+        Run("mklink", "/J", Path.Combine(_server, "top"), _outside);
+
+        var listed = _files.ListFiles(_server, "instance", 10);
+        Assert.Equal(["SpaceEngineersDedicated_1.log", "SpaceEngineersDedicated_2.log"], listed.Select(f => f.Name).Order());
+        Assert.All(listed, f => Assert.True(f.LastWrite > DateTimeOffset.UtcNow.AddMinutes(-5)));
+        Assert.Equal(["readme.txt"], _files.ListFiles(_server, "", 10).Select(f => f.Name));
+        Assert.Empty(_files.ListFiles(_server, "missing", 10));
+        Assert.Equal("files.reparse_point", Assert.Throws<GameProcessException>(() => _files.ListFiles(_server, "top", 10)).Code);
+        Assert.Equal("files.reparse_point", Assert.Throws<GameProcessException>(() => _files.ListFiles(_server, "instance/elsewhere", 10)).Code);
+
+        // The server's account fills the folder as it likes: one with more entries than the agent takes is refused.
+        Assert.Throws<IOException>(() => _files.ListFiles(_server, "instance", 3));
+    }
+
+    [WindowsFact]
     public void AFolderThatDoesNotExistOrIsAFileInThePathMeansNothingIsThere()
     {
         File.WriteAllText(Path.Combine(_server, "afile"), "x");

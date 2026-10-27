@@ -64,7 +64,7 @@ public sealed class GameProcessTests : IDisposable
         Assert.Equal(0, await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
         await output.Completed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Contains("Test server: hello from stderr", output.Text, StringComparison.Ordinal);
-        Assert.False(process.SupportsInterrupt);
+        Assert.False(process.SupportsInterrupt); // only a host sends Ctrl+C to a game run with pipes (GameHostProcessTests)
     }
 
     [WindowsFact]
@@ -267,6 +267,37 @@ public sealed class GameProcessTests : IDisposable
 
         await output.WaitForAsync($"Test server: TEMP={Path.Combine(_server.Root, ".pulsar", "temp")}");
         await output.WaitForAsync("Test server: GAME_MODE=casual");
+    }
+
+    [WindowsFact]
+    public async Task AGameCanTakeAFolderOfTheServerForItsUsersAppData()
+    {
+        // SCP: Secret Laboratory's LabAPI keeps its plugins in its account's AppData: here, in the server's folder.
+        var spec = _server.Spec(ConsoleMode.Pipes) with { UserProfile = "profile" };
+        await using var process = await TestServerDirectory.Manager().StartAsync(spec, TestContext.Current.CancellationToken);
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+
+        await process.WriteInputAsync("env USERPROFILE\nenv APPDATA\nenv LOCALAPPDATA\n", TestContext.Current.CancellationToken);
+
+        var profile = Path.Combine(_server.Root, "profile");
+        await output.WaitForAsync($"Test server: USERPROFILE={profile}");
+        await output.WaitForAsync($"Test server: APPDATA={Path.Combine(profile, "AppData", "Roaming")}");
+        await output.WaitForAsync($"Test server: LOCALAPPDATA={Path.Combine(profile, "AppData", "Local")}");
+        Assert.True(Directory.Exists(Path.Combine(profile, "AppData", "Roaming")));
+        Assert.True(Directory.Exists(Path.Combine(profile, "AppData", "Local")));
+    }
+
+    [WindowsFact]
+    public void AnAppDataFolderFollowsTheProfileThatWindowsExpandsItFrom()
+    {
+        // What makes the folder above the game's: its account's User Shell Folders name AppData by %USERPROFILE%.
+        var environment = WindowsGameProcessManager.BuildEnvironment(new Dictionary<string, string> { ["USERPROFILE"] = @"C:\Users\pulsar-abcd2345" },
+            new Dictionary<string, string>(), @"D:\servers\abcd2345\.pulsar\temp", @"D:\servers\abcd2345\profile");
+
+        Assert.Contains("USERPROFILE=D:\\servers\\abcd2345\\profile\0", environment, StringComparison.Ordinal);
+        Assert.Contains("APPDATA=D:\\servers\\abcd2345\\profile\\AppData\\Roaming\0", environment, StringComparison.Ordinal);
+        Assert.DoesNotContain("pulsar-abcd2345", environment, StringComparison.Ordinal);
     }
 
     [WindowsFact]

@@ -1,0 +1,121 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "space-engineers",
+  "version": "1.0.0",
+  "name": "Space Engineers",
+  "description": "Space Engineers dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the instance folder of the server; a new world starts from one of the game's scenarios.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Space Engineers", "maxLength": 64, "pattern": "^[^\"<>&]{1,64}$" },
+    { "key": "world", "label": "World", "type": "string", "default": "Pulsar World", "maxLength": 64, "pattern": "^[A-Za-z0-9 _-]{1,64}$",
+      "description": "The save's name in instance/Saves." },
+    { "key": "scenario", "label": "Scenario of a new world", "type": "enum", "default": "StarSystem",
+      "options": [
+        {"value": "StarSystem", "label": "Star System", "map": {"folder": "Star System"}},
+        {"value": "EarthPlanet", "label": "Earth Planet", "map": {"folder": "Earth Planet"}},
+        {"value": "MarsPlanet", "label": "Mars Planet", "map": {"folder": "Mars Planet"}},
+        {"value": "AlienPlanet", "label": "Alien Planet", "map": {"folder": "Alien Planet"}},
+        {"value": "AlienSystem", "label": "Alien System", "map": {"folder": "Alien System"}},
+        {"value": "HomeSystem", "label": "Home System", "map": {"folder": "Home System"}},
+        {"value": "DistantMoons", "label": "Distant Moons", "map": {"folder": "Distant Moons"}},
+        {"value": "MoonBase", "label": "Moon Base", "map": {"folder": "Moon Base"}},
+        {"value": "PertamOrbiter", "label": "Pertam Orbiter", "map": {"folder": "Pertam Orbiter"}},
+        {"value": "EmptyWorld", "label": "Empty World", "map": {"folder": "Empty World"}},
+        {"value": "AsteroidArmory", "label": "Asteroid Armory", "map": {"folder": "Asteroid Armory"}},
+        {"value": "CrashedRedShip", "label": "Crashed Red Ship", "map": {"folder": "Crashed Red Ship"}},
+        {"value": "RedShip", "label": "Red Ship", "map": {"folder": "Red Ship"}},
+        {"value": "RedShip2", "label": "Red Ship 2", "map": {"folder": "Red Ship 2"}},
+        {"value": "GreenStation", "label": "Green Station", "map": {"folder": "Green Station"}},
+        {"value": "LoneSurvivor", "label": "Lone Survivor", "map": {"folder": "Lone Survivor"}},
+        {"value": "RivalPlatforms", "label": "Rival Platforms", "map": {"folder": "Rival Platforms"}},
+        {"value": "DeadDropArena", "label": "Dead Drop Arena", "map": {"folder": "Dead Drop Arena"}}
+      ],
+      "description": "Taken only while the world does not exist yet." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 64,
+      "description": "Taken when a new world is made; the world keeps its own afterwards." },
+    { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"<>&]{1,200}$" },
+    { "key": "motd", "label": "Message of the day", "type": "string", "maxLength": 200, "pattern": "^[^\"<>&]{1,200}$" },
+    { "key": "pauseWhenEmpty", "label": "Pause when empty", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "gameMode", "label": "Game mode", "type": "enum", "options": [ { "value": "Survival", "label": "Survival" }, { "value": "Creative", "label": "Creative" } ],
+      "description": "Taken when a new world is made." },
+    { "key": "inventorySize", "label": "Inventory size", "type": "number", "min": 1, "max": 100,
+      "description": "Multiplier, taken when a new world is made." },
+    { "key": "assemblerSpeed", "label": "Assembler speed", "type": "number", "min": 1, "max": 100, "description": "Multiplier, taken when a new world is made." },
+    { "key": "refinerySpeed", "label": "Refinery speed", "type": "number", "min": 1, "max": 100, "description": "Multiplier, taken when a new world is made." },
+    { "key": "welderSpeed", "label": "Welder speed", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier, taken when a new world is made." },
+    { "key": "grinderSpeed", "label": "Grinder speed", "type": "number", "min": 0.1, "max": 10, "description": "Multiplier, taken when a new world is made." },
+    { "key": "hostility", "label": "Meteorites", "type": "enum",
+      "options": [ { "value": "SAFE", "label": "None" }, { "value": "NORMAL", "label": "Normal" }, { "value": "CATACLYSM", "label": "Cataclysm" }, { "value": "CATACLYSM_UNREAL", "label": "Armageddon" } ],
+      "description": "Taken when a new world is made." },
+    { "key": "autoSave", "label": "Autosave every (minutes)", "type": "integer", "min": 1, "max": 120, "description": "Taken when a new world is made." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27016, "description": "Players connect here; the server list asks here too." },
+    { "name": "steam", "label": "Steam", "protocols": ["udp"], "default": 8766 }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 298740 },
+    { "type": "ensureDirectory", "path": "instance" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 298740 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "DedicatedServer64/SpaceEngineersDedicated.exe",
+      "workingDirectory": "DedicatedServer64",
+      "arguments": ["-console", "-path", "{{server.dir}}/instance"],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8", "logFile": "instance/SpaceEngineersDedicated_*.log" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "instance/SpaceEngineers-Dedicated.cfg", "format": "xml", "mode": "patch",
+      "set": {
+        "/MyConfigDedicated/IP": "{{port.game.ip}}",
+        "/MyConfigDedicated/ServerPort": "{{port.game}}",
+        "/MyConfigDedicated/SteamPort": "{{port.steam}}",
+        "/MyConfigDedicated/ServerName": "{{var.name}}",
+        "/MyConfigDedicated/WorldName": "{{var.world}}",
+        "/MyConfigDedicated/PremadeCheckpointPath": "{{server.dir}}/Content/CustomWorlds/{{var.scenario.folder}}",
+        "/MyConfigDedicated/RemoteApiEnabled": "false",
+        "/MyConfigDedicated/ServerDescription": "{{var.description}}",
+        "/MyConfigDedicated/MessageOfTheDay": "{{var.motd}}",
+        "/MyConfigDedicated/PauseGameWhenEmpty": "{{var.pauseWhenEmpty}}",
+        "/MyConfigDedicated/SessionSettings/MaxPlayers": "{{var.maxPlayers}}",
+        "/MyConfigDedicated/SessionSettings/GameMode": "{{var.gameMode}}",
+        "/MyConfigDedicated/SessionSettings/InventorySizeMultiplier": "{{var.inventorySize}}",
+        "/MyConfigDedicated/SessionSettings/AssemblerSpeedMultiplier": "{{var.assemblerSpeed}}",
+        "/MyConfigDedicated/SessionSettings/RefinerySpeedMultiplier": "{{var.refinerySpeed}}",
+        "/MyConfigDedicated/SessionSettings/WelderSpeedMultiplier": "{{var.welderSpeed}}",
+        "/MyConfigDedicated/SessionSettings/GrinderSpeedMultiplier": "{{var.grinderSpeed}}",
+        "/MyConfigDedicated/SessionSettings/EnvironmentHostility": "{{var.hostility}}",
+        "/MyConfigDedicated/SessionSettings/AutoSaveInMinutes": "{{var.autoSave}}"
+      },
+      "keepIfEmpty": ["/MyConfigDedicated/ServerDescription", "/MyConfigDedicated/MessageOfTheDay", "/MyConfigDedicated/PauseGameWhenEmpty",
+        "/MyConfigDedicated/SessionSettings/GameMode", "/MyConfigDedicated/SessionSettings/InventorySizeMultiplier",
+        "/MyConfigDedicated/SessionSettings/AssemblerSpeedMultiplier", "/MyConfigDedicated/SessionSettings/RefinerySpeedMultiplier",
+        "/MyConfigDedicated/SessionSettings/WelderSpeedMultiplier", "/MyConfigDedicated/SessionSettings/GrinderSpeedMultiplier",
+        "/MyConfigDedicated/SessionSettings/EnvironmentHostility", "/MyConfigDedicated/SessionSettings/AutoSaveInMinutes"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "logPattern", "pattern": "Game ready\\.\\.\\.", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 120
+  },
+
+  "backup": {
+    "include": ["instance/Saves/**", "instance/SpaceEngineers-Dedicated.cfg"],
+    "exclude": ["instance/Saves/*/Backup/**"]
+  }
+}

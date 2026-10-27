@@ -1,0 +1,81 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "icarus",
+  "version": "1.0.0",
+  "name": "Icarus",
+  "description": "Icarus dedicated server, installed anonymously with SteamCMD. Players launch and resume prospects from its lobby; its prospects and settings live in the server's folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Icarus", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 8 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "required": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players who log in with it (/AdminLogin) run its admin commands. Required: without one, anyone who types /AdminLogin would be an admin." },
+    { "key": "resume", "label": "Resume the last prospect", "type": "enum", "options": [ { "value": "True", "label": "On" }, { "value": "False", "label": "Off" } ],
+      "description": "When the server starts, it loads the prospect it last ran." },
+    { "key": "loadProspect", "label": "Prospect to load", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "The save name of a prospect to load when the server starts, before resuming the last one." },
+    { "key": "launchProspects", "label": "Players launch prospects", "type": "enum", "options": [ { "value": "True", "label": "Anyone" }, { "value": "False", "label": "Only admins" } ] },
+    { "key": "deleteProspects", "label": "Players delete prospects", "type": "enum", "options": [ { "value": "True", "label": "Anyone" }, { "value": "False", "label": "Only admins" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 17777, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27015, "description": "The server list asks here." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 2089300 },
+    { "type": "ensureDirectory", "path": "Icarus/Saved/Config/WindowsServer" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2089300 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe",
+      "arguments": [
+        "-Log",
+        "-SteamServerName={{var.name}}",
+        "-PORT={{port.game}}",
+        "-QueryPort={{port.query}}"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "Icarus/Saved/Config/WindowsServer/ServerSettings.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "/Script/Icarus.DedicatedServerSettings",
+      "set": {
+        "MaxPlayers": "{{var.maxPlayers}}",
+        "JoinPassword": "{{var.password}}",
+        "AdminPassword": "{{var.adminPassword}}",
+        "ShutdownIfNotJoinedFor": "-1.000000",
+        "ShutdownIfEmptyFor": "-1.000000",
+        "ResumeProspect": "{{var.resume}}",
+        "LoadProspect": "{{var.loadProspect}}",
+        "AllowNonAdminsToLaunchProspects": "{{var.launchProspects}}",
+        "AllowNonAdminsToDeleteProspects": "{{var.deleteProspects}}"
+      },
+      "keepIfEmpty": ["ResumeProspect", "LoadProspect", "AllowNonAdminsToLaunchProspects", "AllowNonAdminsToDeleteProspects"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "query", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["Icarus/Saved/PlayerData/**", "Icarus/Saved/Config/WindowsServer/ServerSettings.ini"]
+  }
+}

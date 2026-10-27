@@ -35,6 +35,13 @@ the closest one to `games/<key>/manifest.json` and change it:
 - `enshrouded`: a JSON file the game rewrites, an array element (`/userGroups/0/password`) and `writeIfEmpty`.
 - `arma-reforger`: a JSON file the install writes because the game does not, a choice mapped to the values the game wants.
 - `unturned`: `Key value` lines (`space`), a command stop, a port that follows another.
+- `abiotic-factor`, `icarus`, `conan-exiles`, `squad`: Unreal Engine GUI servers run with pipes and stopped with Ctrl+C
+  (Pulsar 1.0.12); `sandstorm` and `kf2` add several sections of one ini, `kf2` a log file as its console.
+- `soulmask`: RCON bound to `127.0.0.1` on an internal port, a game that prints the commands it runs.
+- `dst`: Lua console commands, a token file (`text`), `cluster.ini` sections.
+- `space-engineers`: an XML settings file (`xml`) and a log named by the time the game started (`*`).
+- `terraria`: not on Steam: a GitHub release (TShock) and the .NET runtime it needs, a pseudo console.
+- `scpsl` (1.4.0): a game's AppData in the server's folder (`userProfile`), a `.tar.gz` addon (EXILED).
 
 Then:
 
@@ -44,8 +51,10 @@ Then:
    A game whose dedicated server only an account that owns it may download says `"login": "account"`: its servers need
    a Steam account chosen in their settings (administrators add them under Steam accounts). `ensureDirectory` creates folders a game expects to
    exist; `copyFileIfMissing` makes a game's shipped settings file the server's own; `minecraftServer` installs
-   Minecraft: Java Edition, and `minecraftBedrock` Minecraft: Bedrock Edition. There is no step that runs a script or
-   downloads an arbitrary file.
+   Minecraft: Java Edition, and `minecraftBedrock` Minecraft: Bedrock Edition. A server published as a GitHub
+   release's asset (Pulsar 1.0.12 agents) takes `githubRelease` (TShock), and one that runs on a .NET it does not ship
+   takes `dotnetRuntime` with its channel (`"9.0"`): the agent points it at that runtime. There is no step that runs a
+   script or downloads an arbitrary file.
 3. **Runtime**: the executable (relative to the server's folder, `.exe`), its working directory and its arguments.
    Arguments are a list, one element per argv entry, with placeholders: `{{var.<key>}}` for settings,
    `{{port.<name>}}` and `{{port.<name>.ip}}` for allocated ports, `{{rcon.password}}` for the RCON password the agent
@@ -68,8 +77,12 @@ Then:
 6. **Console**: `pty` (the game writes to a console), `pipes` (standard output) or `logfile+rcon` (Source servers:
    output from a log file, commands over RCON). `pty` and `pipes` can take an `rcon` too, for games that print to their
    console but read commands only over RCON (`"protocol": "source"`) or telnet (`"protocol": "telnet"`, 7 Days to Die).
-   A game that writes its command line to its log would show secrets passed as arguments to whoever reads the console:
-   put them in a configuration file. Spike [0001](../spikes/0001-console-capture.md) explains how to find
+   Agents of 1.0.12 mask the values of secret variables in the console, but a game that writes its command line to its
+   log file keeps them there: where the game takes them from a configuration file, put them there. A game that writes
+   only to its log takes `pipes` with `logFile` (1.0.12), whose file name may hold one `*` for a log named by the game's
+   start. Unreal Engine servers are GUI programs: run them with pipes (and `-log`), and stop them with `ctrlC`, which
+   1.0.12 agents send to the console the game opens. A game whose AppData should be in the server's folder (its
+   plugins, its settings) takes `"userProfile": "profile"` (1.0.12). Spike [0001](../spikes/0001-console-capture.md) explains how to find
    out which a game needs; a launcher that starts the real server may hide its output (run the real executable). List in `sensitiveCommandPrefixes` the commands that carry secrets, so they are not audited
    in clear. They also keep users out of those settings in extra arguments (`-Name=…`, or `?Name=…` URL options as ARK takes them), which would store a secret in clear.
 7. **Configuration files**: settings the game reads from a file (`source-cfg`, `properties`, `unreal-ini`, `key-value`
@@ -83,7 +96,9 @@ Then:
    boolean, as is an enum whose options are all `true`/`false` (or all numbers) and a literal `true`, `false` or number;
    anything else is a string. Array elements are named by index (`"/userGroups/0/password"`), and keys listed in
    `"writeIfEmpty"` are written as an empty string instead of being removed.
-   `space` (`Key value` lines, Unturned's `Commands.dat`) needs 1.0.7 agents too.
+   `space` (`Key value` lines, Unturned's `Commands.dat`) needs 1.0.7 agents too. 1.0.12 agents add `text` (a file that
+   is one value, a token), `xml` (elements' text by their path from the root, `/MyConfigDedicated/ServerName`), and
+   several entries for one `unreal-ini` file, one per `section`.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
 9. **Query**: `"query": { "protocol": "a2s", "port": "query" }` lets the panel show the players and the map. `a2s`
@@ -95,8 +110,8 @@ Then:
    and the commands that undo a pause such as Minecraft's `save-off`). Without a confirmation line, the backup waits
    `waitSeconds`; check the game's answer in its console before giving one.
 11. **Addons** (optional): mods and mod frameworks users can install from the server's Mods tab, from the GitHub
-   releases of their authors (`cs2` and `rust` show how). The release's asset must be a zip and GitHub must list its
-   SHA-256 (the `digest` of the asset in its API); give the folder it unpacks into, what it needs and
+   releases of their authors (`cs2` and `rust` show how). The release's asset must be a zip (or, for 1.0.12 agents, a
+   `.tar.gz`: end the pattern with the extension) and GitHub must list its SHA-256 (the `digest` of the asset in its API); give the folder it unpacks into, what it needs and
    excludes, and the lines it needs in the game's files (Metamod's in `gameinfo.gi`), which the agent puts back before
    every start. Mark `reinstallAfterUpdate` when the game's updates overwrite it. Naming a repository means trusting its
    authors with code that runs as the game server.

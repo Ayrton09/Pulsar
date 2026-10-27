@@ -1019,11 +1019,14 @@ public sealed partial class GameUpdates(
     private async Task<GameManifest> ManifestAsync(Server server, CancellationToken cancellationToken) =>
         ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
 
-    /// <summary>Updates through SteamCMD or Minecraft's steps can be checked; others (a fixed download) cannot.</summary>
+    /// <summary>
+    /// Updates through SteamCMD, Minecraft's steps, a GitHub release or a .NET runtime can be checked; others (a fixed
+    /// download) cannot.
+    /// </summary>
     public static bool IsCheckable(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return (manifest.Update?.Steps ?? []).Any(s => s is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep);
+        return (manifest.Update?.Steps ?? []).Any(s => s is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep or GitHubReleaseStep or DotnetRuntimeStep);
     }
 
     private AgentConnectionInfo? Connection(NodeId node) =>

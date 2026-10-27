@@ -1,0 +1,97 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "dst",
+  "version": "1.0.0",
+  "name": "Don't Starve Together",
+  "description": "Don't Starve Together dedicated server (the overworld), installed anonymously with SteamCMD. Online with a Klei cluster token, on the local network without one. Its world and settings live in the server's folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 6, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Don't Starve Together", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$" },
+    { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"\\\\]{1,200}$",
+      "description": "Shown under the name in the server list." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 6, "min": 1, "max": 64 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\"\\\\ ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "clusterToken", "label": "Klei cluster token", "type": "string", "secret": true, "maxLength": 256, "pattern": "^[A-Za-z0-9^+/=_.-]{10,256}$",
+      "description": "Puts the server online: make one at accounts.klei.com (Games, Game Servers) with an account that owns the game. Without one the server runs on the local network only." },
+    { "key": "gameMode", "label": "Game mode", "type": "enum",
+      "options": [ { "value": "survival", "label": "Survival" }, { "value": "endless", "label": "Endless" }, { "value": "wilderness", "label": "Wilderness" } ],
+      "description": "Taken when a new world is made." },
+    { "key": "pvp", "label": "PvP", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "pauseWhenEmpty", "label": "Pause when empty", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "intention", "label": "Play style", "type": "enum",
+      "options": [ { "value": "cooperative", "label": "Cooperative" }, { "value": "social", "label": "Social" }, { "value": "competitive", "label": "Competitive" }, { "value": "madness", "label": "Madness" } ],
+      "description": "Shown in the server list." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 10999, "description": "Players connect here." },
+    { "name": "steam", "label": "Steam master server", "protocols": ["udp"], "default": 27018 },
+    { "name": "auth", "label": "Steam authentication", "protocols": ["udp"], "default": 8768 }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 343050 },
+    { "type": "ensureDirectory", "path": "save/Cluster_1/Master" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 343050 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "bin64/dontstarve_dedicated_server_nullrenderer_x64.exe",
+      "workingDirectory": "bin64",
+      "arguments": [
+        "-console",
+        "-persistent_storage_root", "{{server.dir}}",
+        "-conf_dir", "save",
+        "-cluster", "Cluster_1",
+        "-shard", "Master",
+        "-port", "{{port.game}}",
+        "-players", "{{var.maxPlayers}}",
+        "-steam_master_server_port", "{{port.steam}}",
+        "-steam_authentication_port", "{{port.auth}}",
+        { "if": "var.clusterToken", "then": [], "else": ["-offline"] }
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "GAMEPLAY",
+      "set": { "game_mode": "{{var.gameMode}}", "pvp": "{{var.pvp}}", "pause_when_empty": "{{var.pauseWhenEmpty}}" },
+      "keepIfEmpty": ["game_mode", "pvp", "pause_when_empty"] },
+    { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "NETWORK",
+      "set": { "cluster_name": "{{var.name}}", "cluster_description": "{{var.description}}", "cluster_password": "{{var.password}}",
+        "cluster_intention": "{{var.intention}}" },
+      "keepIfEmpty": ["cluster_description", "cluster_intention"] },
+    { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "MISC",
+      "set": { "console_enabled": "true" } },
+    { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "SHARD",
+      "set": { "shard_enabled": "false" } },
+    { "path": "save/Cluster_1/cluster_token.txt", "format": "text", "mode": "patch",
+      "set": { "content": "{{var.clusterToken}}" } }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Telling Client our new session identifier", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "c_shutdown(true)" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["save/**"],
+    "exclude": ["save/Cluster_1/*/server_log*.txt", "save/Cluster_1/*/server_chat_log*.txt"],
+    "save": { "commands": ["c_save()"], "waitSeconds": 5 }
+  },
+  "commands": {
+    "broadcast": "c_announce(\"{{message}}\")",
+    "players": { "kick": "TheNet:Kick(\"{{player}}\")", "ban": "TheNet:Ban(\"{{player}}\")", "byId": true }
+  }
+}

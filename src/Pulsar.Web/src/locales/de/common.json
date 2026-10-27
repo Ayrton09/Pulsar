@@ -4542,7 +4542,7 @@
       }
     },
     "scpsl": {
-      "description": "Dedizierter Server für SCP: Secret Laboratory, von seinem LocalAdmin ausgeführt, anonym mit SteamCMD installiert (ca. 1 GB). Die Konfiguration liegt im Serverordner unter config/config (config_gameplay.txt beginnt als Vorlage des Spiels); LocalAdmin legt eigene Einstellungen und Logs im Profil des Kontos ab, unter dem der Server läuft.",
+      "description": "Dedizierter Server für SCP: Secret Laboratory, vom LocalAdmin ausgeführt, anonym mit SteamCMD installiert (etwa 1 GB). Die Konfiguration liegt im Ordner des Servers, in config/config (config_gameplay.txt startet als Vorlage des Spiels), die Plugins (LabAPI, EXILED) in profile/AppData/Roaming; LocalAdmin speichert eigene Einstellungen und Logs im profile des Kontos, unter dem der Server läuft.",
       "variables": {
         "eula": {
           "label": "EULA von SCP: Secret Laboratory",
@@ -5747,6 +5747,1167 @@
         "game": {
           "label": "Spiel",
           "description": "Spieler verbinden sich hier über TCP, IPv4 und IPv6; das Spiel selbst läuft danach über UDP (siehe UDP-Ports)."
+        }
+      }
+    },
+    "abiotic-factor": {
+      "description": "Dedizierter Abiotic-Factor-Server, anonym mit SteamCMD installiert. Welt und Sandbox-Regeln liegen im Ordner des Servers.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "world": {
+          "label": "Welt",
+          "description": "Der Name des Spielstands: Ein neuer Name erzeugt eine neue Welt."
+        },
+        "maxPlayers": {
+          "label": "Slots",
+          "description": "Das Spiel ist für 6 ausgelegt; mehr funktioniert, ist aber nicht ausbalanciert."
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "adminPassword": {
+          "label": "Admin-Passwort",
+          "description": "Spieler, die es im Spiel eingeben, werden Admins. Leer lassen, um keine zu haben."
+        },
+        "difficulty": {
+          "label": "Schwierigkeit",
+          "options": {
+            "1": "Normal",
+            "2": "Schwer",
+            "3": "Apokalyptisch"
+          }
+        },
+        "hardcore": {
+          "label": "Hardcore",
+          "description": "Ein gestorbener Charakter ist endgültig verloren.",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "enemySpawnRate": {
+          "label": "Spawn-Rate der Gegner",
+          "description": "Multiplikator, wie viele Gegner erscheinen. 1 ist der Spielstandard."
+        },
+        "enemyHealth": {
+          "label": "Gesundheit der Gegner",
+          "description": "1 ist der Spielstandard."
+        },
+        "enemyDamage": {
+          "label": "Schaden der Gegner",
+          "description": "Multiplikator des Schadens, den Gegner Spielern zufügen. 1 ist der Spielstandard."
+        },
+        "friendlyFire": {
+          "label": "Schaden an Verbündeten",
+          "description": "Multiplikator des Schadens, den Spieler einander zufügen. 0.5 ist der Spielstandard."
+        },
+        "xpGain": {
+          "label": "Erfahrungsgewinn",
+          "description": "1 ist der Spielstandard."
+        },
+        "hunger": {
+          "label": "Hungergeschwindigkeit",
+          "description": "1 ist der Spielstandard."
+        },
+        "thirst": {
+          "label": "Durstgeschwindigkeit",
+          "description": "1 ist der Spielstandard."
+        },
+        "fatigue": {
+          "label": "Erschöpfungsgeschwindigkeit",
+          "description": "1 ist der Spielstandard."
+        },
+        "stackSize": {
+          "label": "Stapelgröße",
+          "description": "Multiplikator, wie viele Gegenstände in einen Stapel passen. 1 ist der Spielstandard."
+        },
+        "itemWeight": {
+          "label": "Gewicht der Gegenstände",
+          "description": "1 ist der Spielstandard."
+        },
+        "itemDurability": {
+          "label": "Haltbarkeit der Gegenstände",
+          "description": "1 ist der Spielstandard."
+        },
+        "foodSpoil": {
+          "label": "Verderbgeschwindigkeit von Nahrung",
+          "description": "1 ist der Spielstandard."
+        },
+        "dayLength": {
+          "label": "Geschwindigkeit von Tag und Nacht",
+          "description": "Multiplikator, wie schnell die Zeit vergeht. 1 ist der Spielstandard."
+        },
+        "lootRespawn": {
+          "label": "Beute-Respawn",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "deathMessages": {
+          "label": "Todesmeldungen",
+          "options": {
+            "True": "Angezeigt",
+            "False": "Ausgeblendet"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        }
+      }
+    },
+    "conan-exiles": {
+      "description": "Dedizierter Conan-Exiles-Server, anonym mit SteamCMD installiert, mit Befehlen über RCON. Welt und Einstellungen liegen im Ordner des Servers.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "adminPassword": {
+          "label": "Admin-Passwort",
+          "description": "Spieler, die es im Spiel eingeben (MakeMeAdmin), werden Admins."
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "avatars": {
+          "label": "Avatare (Götter)",
+          "options": {
+            "False": "An",
+            "True": "Aus"
+          }
+        },
+        "damageStructures": {
+          "label": "Spieler beschädigen fremde Gebäude",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "openContainers": {
+          "label": "Für jeden offene Behälter",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "xpRate": {
+          "label": "Erfahrungsrate",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "xpKill": {
+          "label": "Erfahrung durch Kills",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "xpHarvest": {
+          "label": "Erfahrung durch Sammeln",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "xpCraft": {
+          "label": "Erfahrung durch Herstellen",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "playerDamage": {
+          "label": "Schaden der Spieler",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "playerDamageTaken": {
+          "label": "Schaden an Spielern",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "npcDamage": {
+          "label": "Schaden der Gegner",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "npcHealth": {
+          "label": "Gesundheit der Gegner",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "npcRespawn": {
+          "label": "Respawn-Zeit der Gegner",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "stamina": {
+          "label": "Ausdauerkosten",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "healthRegen": {
+          "label": "Gesundheitsregeneration",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "craftCost": {
+          "label": "Herstellungskosten",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "craftTime": {
+          "label": "Herstellungszeit",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "fuelBurn": {
+          "label": "Brenndauer des Brennstoffs",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "thrallConversion": {
+          "label": "Umwandlungszeit der Thralls",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "decay": {
+          "label": "Verfallszeit von Gebäuden",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "structureDamage": {
+          "label": "Schaden an Gebäuden",
+          "description": "Multiplikator. 1 ist der Spielstandard."
+        },
+        "nudity": {
+          "label": "Nacktheit",
+          "options": {
+            "0": "Keine",
+            "1": "Teilweise",
+            "2": "Vollständig"
+          }
+        },
+        "afkKick": {
+          "label": "Inaktive Spieler kicken nach (s)",
+          "description": "0 kickt sie nie."
+        },
+        "motd": {
+          "label": "Nachricht des Tages"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "Nur Pulsar nutzt ihn, auf diesem Rechner: Konsolenbefehle."
+        }
+      }
+    },
+    "dst": {
+      "description": "Dedizierter Don't-Starve-Together-Server (die Oberwelt), anonym mit SteamCMD installiert. Online mit einem Klei-Cluster-Token, ohne eines im lokalen Netzwerk. Welt und Einstellungen liegen im Ordner des Servers.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "description": {
+          "label": "Beschreibung",
+          "description": "Wird in der Serverliste unter dem Namen angezeigt."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "clusterToken": {
+          "label": "Klei-Cluster-Token",
+          "description": "Bringt den Server online: Erstellen Sie eines auf accounts.klei.com (Games, Game Servers) mit einem Konto, das das Spiel besitzt. Ohne eines läuft der Server nur im lokalen Netzwerk."
+        },
+        "gameMode": {
+          "label": "Spielmodus",
+          "description": "Wird beim Erstellen einer neuen Welt übernommen.",
+          "options": {
+            "survival": "Überleben",
+            "endless": "Endlos",
+            "wilderness": "Wildnis"
+          }
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "true": "An",
+            "false": "Aus"
+          }
+        },
+        "pauseWhenEmpty": {
+          "label": "Pausieren, wenn leer",
+          "options": {
+            "true": "An",
+            "false": "Aus"
+          }
+        },
+        "intention": {
+          "label": "Spielstil",
+          "description": "Wird in der Serverliste angezeigt.",
+          "options": {
+            "cooperative": "Kooperativ",
+            "social": "Sozial",
+            "competitive": "Kompetitiv",
+            "madness": "Wahnsinn"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "steam": {
+          "label": "Steam-Masterserver"
+        },
+        "auth": {
+          "label": "Steam-Authentifizierung"
+        }
+      }
+    },
+    "icarus": {
+      "description": "Dedizierter Icarus-Server, anonym mit SteamCMD installiert. Spieler starten und setzen Prospektionen aus der Lobby fort; Prospektionen und Einstellungen liegen im Ordner des Servers.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "adminPassword": {
+          "label": "Admin-Passwort",
+          "description": "Spieler, die sich damit anmelden (/AdminLogin), führen die Admin-Befehle aus. Erforderlich: Ohne eines wäre jeder, der /AdminLogin eingibt, Admin."
+        },
+        "resume": {
+          "label": "Letzte Prospektion fortsetzen",
+          "description": "Beim Start lädt der Server die Prospektion, die er zuletzt ausgeführt hat.",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "loadProspect": {
+          "label": "Zu ladende Prospektion",
+          "description": "Der Speichername einer Prospektion, die beim Start des Servers geladen wird, vor der letzten."
+        },
+        "launchProspects": {
+          "label": "Spieler starten Prospektionen",
+          "options": {
+            "True": "Jeder",
+            "False": "Nur Admins"
+          }
+        },
+        "deleteProspects": {
+          "label": "Spieler löschen Prospektionen",
+          "options": {
+            "True": "Jeder",
+            "False": "Nur Admins"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        }
+      }
+    },
+    "kf2": {
+      "description": "Dedizierter Killing-Floor-2-Server, anonym mit SteamCMD installiert. Die Einstellungen sind die PCServer-Dateien in KFGame/Config, die der erste Start schreibt.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "map": {
+          "label": "Karte",
+          "description": "Die Karte, mit der der Server startet; danach folgt die Kartenrotation.",
+          "options": {
+            "KF-Airship": "Airship",
+            "KF-AshwoodAsylum": "Ashwood Asylum",
+            "KF-BarmwichTown": "Barmwich Town",
+            "KF-Biolapse": "Biolapse",
+            "KF-Bioticslab": "Biotics Lab",
+            "KF-BlackForest": "Black Forest",
+            "KF-BurningParis": "Burning Paris",
+            "KF-CarillonHamlet": "Carillon Hamlet",
+            "KF-CastleVolter": "Castle Volter",
+            "KF-Catacombs": "Catacombs",
+            "KF-ContainmentStation": "Containment Station",
+            "KF-Crash": "Crash",
+            "KF-Desolation": "Desolation",
+            "KF-DieSector": "Die Sector",
+            "KF-Elysium": "Elysium",
+            "KF-EvacuationPoint": "Evacuation Point",
+            "KF-Farmhouse": "Farmhouse",
+            "KF-HellmarkStation": "Hellmark Station",
+            "KF-HostileGrounds": "Hostile Grounds",
+            "KF-InfernalRealm": "Infernal Realm",
+            "KF-KrampusLair": "Krampus Lair",
+            "KF-Lockdown": "Lockdown",
+            "KF-MonsterBall": "Monster Ball",
+            "KF-Moonbase": "Moonbase",
+            "KF-Netherhold": "Netherhold",
+            "KF-Nightmare": "Nightmare",
+            "KF-Nuked": "Nuked",
+            "KF-Outpost": "Outpost",
+            "KF-Prison": "Prison",
+            "KF-Rig": "The Rig",
+            "KF-Sanitarium": "Sanitarium",
+            "KF-Santasworkshop": "Santa's Workshop",
+            "KF-ShoppingSpree": "Shopping Spree",
+            "KF-Spillway": "Spillway",
+            "KF-SteamFortress": "Steam Fortress",
+            "KF-Subduction": "Subduction",
+            "KF-TheDescent": "The Descent",
+            "KF-TragicKingdom": "Tragic Kingdom",
+            "KF-VolterManor": "Volter Manor",
+            "KF-ZedLanding": "Zed Landing"
+          }
+        },
+        "mode": {
+          "label": "Spielmodus",
+          "options": {
+            "survival": "Überleben",
+            "weekly": "Wöchentlicher Ausbruch",
+            "endless": "Endlos",
+            "versus": "Versus-Überleben"
+          }
+        },
+        "difficulty": {
+          "label": "Schwierigkeit",
+          "options": {
+            "0": "Normal",
+            "1": "Schwer",
+            "2": "Selbstmörderisch",
+            "3": "Hölle auf Erden"
+          }
+        },
+        "length": {
+          "label": "Spiellänge",
+          "options": {
+            "0": "Kurz (4 Wellen)",
+            "1": "Mittel (7 Wellen)",
+            "2": "Lang (10 Wellen)"
+          }
+        },
+        "maxPlayers": {
+          "label": "Slots",
+          "description": "Überleben erlaubt bis zu 6, Versus bis zu 12."
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "adminPassword": {
+          "label": "Admin-Passwort",
+          "description": "Spieler, die sich damit im Spiel anmelden (adminlogin), sind Admins."
+        },
+        "motd": {
+          "label": "Nachricht des Tages"
+        },
+        "friendlyFire": {
+          "label": "Friendly Fire",
+          "description": "Anteil des Schadens, den ein Teamkollege erhält. 0 ist der Spielstandard."
+        },
+        "mapVote": {
+          "label": "Kartenabstimmung",
+          "options": {
+            "False": "An",
+            "True": "Aus"
+          }
+        },
+        "kickVote": {
+          "label": "Kick-Abstimmung",
+          "options": {
+            "False": "An",
+            "True": "Aus"
+          }
+        },
+        "textChat": {
+          "label": "Öffentlicher Textchat",
+          "options": {
+            "False": "An",
+            "True": "Aus"
+          }
+        },
+        "voice": {
+          "label": "Sprachchat",
+          "options": {
+            "False": "An",
+            "True": "Aus"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        }
+      }
+    },
+    "sandstorm": {
+      "description": "Dedizierter Server für Insurgency: Sandstorm, anonym mit SteamCMD installiert, mit Befehlen über RCON.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "scenario": {
+          "label": "Szenario",
+          "description": "Die Karte und der Spielmodus, mit denen der Server startet.",
+          "options": {
+            "Scenario_Bab_Checkpoint_Security": "Bab: Kontrollpunkt (Sicherheit)",
+            "Scenario_Bab_Checkpoint_Insurgents": "Bab: Kontrollpunkt (Aufständische)",
+            "Scenario_Bab_Outpost": "Bab: Vorposten",
+            "Scenario_Bab_Survival": "Bab: Überleben",
+            "Scenario_Bab_Push_Security": "Bab: Vorstoß (Sicherheit)",
+            "Scenario_Bab_Push_Insurgents": "Bab: Vorstoß (Aufständische)",
+            "Scenario_Bab_Firefight_East": "Bab: Feuergefecht (Ost)",
+            "Scenario_Bab_Domination": "Bab: Dominanz",
+            "Scenario_Bab_Ambush": "Bab: Hinterhalt",
+            "Scenario_Bab_Defusal": "Bab: Entschärfung",
+            "Scenario_Citadel_Checkpoint_Security": "Citadel: Kontrollpunkt (Sicherheit)",
+            "Scenario_Citadel_Checkpoint_Insurgents": "Citadel: Kontrollpunkt (Aufständische)",
+            "Scenario_Citadel_Outpost": "Citadel: Vorposten",
+            "Scenario_Citadel_Survival": "Citadel: Überleben",
+            "Scenario_Citadel_Push_Security": "Citadel: Vorstoß (Sicherheit)",
+            "Scenario_Citadel_Push_Insurgents": "Citadel: Vorstoß (Aufständische)",
+            "Scenario_Citadel_Firefight": "Citadel: Feuergefecht",
+            "Scenario_Citadel_Domination": "Citadel: Dominanz",
+            "Scenario_Citadel_Frontline": "Citadel: Frontlinie",
+            "Scenario_Citadel_Ambush": "Citadel: Hinterhalt",
+            "Scenario_Citadel_Defusal": "Citadel: Entschärfung",
+            "Scenario_Crossing_Checkpoint_Security": "Crossing: Kontrollpunkt (Sicherheit)",
+            "Scenario_Crossing_Checkpoint_Insurgents": "Crossing: Kontrollpunkt (Aufständische)",
+            "Scenario_Crossing_Outpost": "Crossing: Vorposten",
+            "Scenario_Crossing_Push_Security": "Crossing: Vorstoß (Sicherheit)",
+            "Scenario_Crossing_Push_Insurgents": "Crossing: Vorstoß (Aufständische)",
+            "Scenario_Crossing_Firefight_West": "Crossing: Feuergefecht (West)",
+            "Scenario_Crossing_Domination": "Crossing: Dominanz",
+            "Scenario_Crossing_Frontline": "Crossing: Frontlinie",
+            "Scenario_Crossing_Ambush": "Crossing: Hinterhalt",
+            "Scenario_Crossing_Defusal": "Crossing: Entschärfung",
+            "Scenario_Crossing_Team_Deathmatch": "Crossing: Team-Deathmatch",
+            "Scenario_Crossing_FFA": "Crossing: Jeder gegen jeden",
+            "Scenario_Farmhouse_Checkpoint_Security": "Farmhouse: Kontrollpunkt (Sicherheit)",
+            "Scenario_Farmhouse_Checkpoint_Insurgents": "Farmhouse: Kontrollpunkt (Aufständische)",
+            "Scenario_Farmhouse_Outpost": "Farmhouse: Vorposten",
+            "Scenario_Farmhouse_Survival": "Farmhouse: Überleben",
+            "Scenario_Farmhouse_Push_Security": "Farmhouse: Vorstoß (Sicherheit)",
+            "Scenario_Farmhouse_Push_Insurgents": "Farmhouse: Vorstoß (Aufständische)",
+            "Scenario_Farmhouse_Firefight_East": "Farmhouse: Feuergefecht (Ost)",
+            "Scenario_Farmhouse_Firefight_West": "Farmhouse: Feuergefecht (West)",
+            "Scenario_Farmhouse_Domination": "Farmhouse: Dominanz",
+            "Scenario_Farmhouse_Frontline": "Farmhouse: Frontlinie",
+            "Scenario_Farmhouse_Ambush": "Farmhouse: Hinterhalt",
+            "Scenario_Farmhouse_Defusal": "Farmhouse: Entschärfung",
+            "Scenario_Farmhouse_Team_Deathmatch": "Farmhouse: Team-Deathmatch",
+            "Scenario_Forest_Checkpoint_Security": "Forest: Kontrollpunkt (Sicherheit)",
+            "Scenario_Forest_Checkpoint_Insurgents": "Forest: Kontrollpunkt (Aufständische)",
+            "Scenario_Forest_Outpost": "Forest: Vorposten",
+            "Scenario_Forest_Survival": "Forest: Überleben",
+            "Scenario_Forest_Push_Security": "Forest: Vorstoß (Sicherheit)",
+            "Scenario_Forest_Push_Insurgents": "Forest: Vorstoß (Aufständische)",
+            "Scenario_Forest_Firefight_East": "Forest: Feuergefecht (Ost)",
+            "Scenario_Forest_Firefight_West": "Forest: Feuergefecht (West)",
+            "Scenario_Forest_Domination": "Forest: Dominanz",
+            "Scenario_Forest_Frontline": "Forest: Frontlinie",
+            "Scenario_Forest_Ambush": "Forest: Hinterhalt",
+            "Scenario_Forest_Defusal": "Forest: Entschärfung",
+            "Scenario_Forest_TDM": "Forest: Team-Deathmatch",
+            "Scenario_Forest_FFA": "Forest: Jeder gegen jeden",
+            "Scenario_Gap_Checkpoint_Security": "Gap: Kontrollpunkt (Sicherheit)",
+            "Scenario_Gap_Checkpoint_Insurgents": "Gap: Kontrollpunkt (Aufständische)",
+            "Scenario_Gap_Outpost": "Gap: Vorposten",
+            "Scenario_Gap_Survival": "Gap: Überleben",
+            "Scenario_Gap_Push_Security": "Gap: Vorstoß (Sicherheit)",
+            "Scenario_Gap_Push_Insurgents": "Gap: Vorstoß (Aufständische)",
+            "Scenario_Gap_Firefight": "Gap: Feuergefecht",
+            "Scenario_Gap_Firefight_West": "Gap: Feuergefecht (West)",
+            "Scenario_Gap_Domination_East": "Gap: Dominanz (Ost)",
+            "Scenario_Gap_Domination_West": "Gap: Dominanz (West)",
+            "Scenario_Gap_Frontline": "Gap: Frontlinie",
+            "Scenario_Gap_Ambush": "Gap: Hinterhalt",
+            "Scenario_Gap_Defusal": "Gap: Entschärfung",
+            "Scenario_Gap_TDM": "Gap: Team-Deathmatch",
+            "Scenario_Hideout_Checkpoint_Security": "Hideout: Kontrollpunkt (Sicherheit)",
+            "Scenario_Hideout_Checkpoint_Insurgents": "Hideout: Kontrollpunkt (Aufständische)",
+            "Scenario_Hideout_Outpost": "Hideout: Vorposten",
+            "Scenario_Hideout_Survival": "Hideout: Überleben",
+            "Scenario_Hideout_Push_Security": "Hideout: Vorstoß (Sicherheit)",
+            "Scenario_Hideout_Push_Insurgents": "Hideout: Vorstoß (Aufständische)",
+            "Scenario_Hideout_Firefight_East": "Hideout: Feuergefecht (Ost)",
+            "Scenario_Hideout_Firefight_West": "Hideout: Feuergefecht (West)",
+            "Scenario_Hideout_Domination": "Hideout: Dominanz",
+            "Scenario_Hideout_Frontline": "Hideout: Frontlinie",
+            "Scenario_Hideout_Ambush": "Hideout: Hinterhalt",
+            "Scenario_Hideout_Ambush_East": "Hideout: Hinterhalt (Ost)",
+            "Scenario_Hideout_Defusal": "Hideout: Entschärfung",
+            "Scenario_Hideout_Team_Deathmatch": "Hideout: Team-Deathmatch",
+            "Scenario_Hillside_Checkpoint_Security": "Hillside: Kontrollpunkt (Sicherheit)",
+            "Scenario_Hillside_Checkpoint_Insurgents": "Hillside: Kontrollpunkt (Aufständische)",
+            "Scenario_Hillside_Outpost": "Hillside: Vorposten",
+            "Scenario_Hillside_Survival": "Hillside: Überleben",
+            "Scenario_Hillside_Push_Security": "Hillside: Vorstoß (Sicherheit)",
+            "Scenario_Hillside_Push_Insurgents": "Hillside: Vorstoß (Aufständische)",
+            "Scenario_Hillside_Firefight_East": "Hillside: Feuergefecht (Ost)",
+            "Scenario_Hillside_Firefight_West": "Hillside: Feuergefecht (West)",
+            "Scenario_Hillside_Domination": "Hillside: Dominanz",
+            "Scenario_Hillside_Frontline": "Hillside: Frontlinie",
+            "Scenario_Hillside_Ambush": "Hillside: Hinterhalt",
+            "Scenario_Hillside_Defusal": "Hillside: Entschärfung",
+            "Scenario_Hold_Checkpoint_Security": "Hold: Kontrollpunkt (Sicherheit)",
+            "Scenario_Hold_Checkpoint_Insurgents": "Hold: Kontrollpunkt (Aufständische)",
+            "Scenario_Hold_Outpost": "Hold: Vorposten",
+            "Scenario_Hold_Firefight": "Hold: Feuergefecht",
+            "Scenario_Hold_Domination": "Hold: Dominanz",
+            "Scenario_Hold_Ambush": "Hold: Hinterhalt",
+            "Scenario_Hold_Defusal": "Hold: Entschärfung",
+            "Scenario_Hold_TDM": "Hold: Team-Deathmatch",
+            "Scenario_Hold_FFA": "Hold: Jeder gegen jeden",
+            "Scenario_LastLight_Checkpoint_Security": "Last Light: Kontrollpunkt (Sicherheit)",
+            "Scenario_LastLight_Checkpoint_Insurgents": "Last Light: Kontrollpunkt (Aufständische)",
+            "Scenario_LastLight_Outpost": "Last Light: Vorposten",
+            "Scenario_LastLight_Survival": "Last Light: Überleben",
+            "Scenario_LastLight_Push_Security": "Last Light: Vorstoß (Sicherheit)",
+            "Scenario_LastLight_Push_Insurgents": "Last Light: Vorstoß (Aufständische)",
+            "Scenario_LastLight_Firefight": "Last Light: Feuergefecht",
+            "Scenario_LastLight_Domination": "Last Light: Dominanz",
+            "Scenario_LastLight_Frontline": "Last Light: Frontlinie",
+            "Scenario_LastLight_Ambush": "Last Light: Hinterhalt",
+            "Scenario_LastLight_Defusal": "Last Light: Entschärfung",
+            "Scenario_LastLight_TDM": "Last Light: Team-Deathmatch",
+            "Scenario_Ministry_Checkpoint_Security": "Ministry: Kontrollpunkt (Sicherheit)",
+            "Scenario_Ministry_Checkpoint_Insurgents": "Ministry: Kontrollpunkt (Aufständische)",
+            "Scenario_Ministry_Outpost": "Ministry: Vorposten",
+            "Scenario_Ministry_Survival": "Ministry: Überleben",
+            "Scenario_Ministry_Firefight_A": "Ministry: Feuergefecht (A)",
+            "Scenario_Ministry_Domination": "Ministry: Dominanz",
+            "Scenario_Ministry_Ambush": "Ministry: Hinterhalt",
+            "Scenario_Ministry_Defusal": "Ministry: Entschärfung",
+            "Scenario_Ministry_Team_Deathmatch": "Ministry: Team-Deathmatch",
+            "Scenario_Outskirts_Checkpoint_Security": "Outskirts: Kontrollpunkt (Sicherheit)",
+            "Scenario_Outskirts_Checkpoint_Insurgents": "Outskirts: Kontrollpunkt (Aufständische)",
+            "Scenario_Outskirts_Outpost": "Outskirts: Vorposten",
+            "Scenario_Outskirts_Survival": "Outskirts: Überleben",
+            "Scenario_Outskirts_Push_Security": "Outskirts: Vorstoß (Sicherheit)",
+            "Scenario_Outskirts_Push_Insurgents": "Outskirts: Vorstoß (Aufständische)",
+            "Scenario_Outskirts_Firefight_East": "Outskirts: Feuergefecht (Ost)",
+            "Scenario_Outskirts_Firefight_West": "Outskirts: Feuergefecht (West)",
+            "Scenario_Outskirts_Domination": "Outskirts: Dominanz",
+            "Scenario_Outskirts_Frontline": "Outskirts: Frontlinie",
+            "Scenario_Outskirts_Ambush": "Outskirts: Hinterhalt",
+            "Scenario_Outskirts_Ambush_East": "Outskirts: Hinterhalt (Ost)",
+            "Scenario_Outskirts_Defusal": "Outskirts: Entschärfung",
+            "Scenario_Outskirts_Team_Deathmatch": "Outskirts: Team-Deathmatch",
+            "Scenario_PowerPlant_Checkpoint_Security": "Power Plant: Kontrollpunkt (Sicherheit)",
+            "Scenario_PowerPlant_Checkpoint_Insurgents": "Power Plant: Kontrollpunkt (Aufständische)",
+            "Scenario_PowerPlant_Outpost": "Power Plant: Vorposten",
+            "Scenario_PowerPlant_Survival": "Power Plant: Überleben",
+            "Scenario_PowerPlant_Push_Security": "Power Plant: Vorstoß (Sicherheit)",
+            "Scenario_PowerPlant_Push_Insurgents": "Power Plant: Vorstoß (Aufständische)",
+            "Scenario_PowerPlant_Firefight_East": "Power Plant: Feuergefecht (Ost)",
+            "Scenario_PowerPlant_Firefight_West": "Power Plant: Feuergefecht (West)",
+            "Scenario_PowerPlant_Domination": "Power Plant: Dominanz",
+            "Scenario_PowerPlant_Frontline": "Power Plant: Frontlinie",
+            "Scenario_PowerPlant_Ambush": "Power Plant: Hinterhalt",
+            "Scenario_PowerPlant_Defusal": "Power Plant: Entschärfung",
+            "Scenario_PowerPlant_FFA": "Power Plant: Jeder gegen jeden",
+            "Scenario_Precinct_Checkpoint_Security": "Precinct: Kontrollpunkt (Sicherheit)",
+            "Scenario_Precinct_Checkpoint_Insurgents": "Precinct: Kontrollpunkt (Aufständische)",
+            "Scenario_Precinct_Outpost": "Precinct: Vorposten",
+            "Scenario_Precinct_Survival": "Precinct: Überleben",
+            "Scenario_Precinct_Push_Security": "Precinct: Vorstoß (Sicherheit)",
+            "Scenario_Precinct_Push_Insurgents": "Precinct: Vorstoß (Aufständische)",
+            "Scenario_Precinct_Firefight_East": "Precinct: Feuergefecht (Ost)",
+            "Scenario_Precinct_Firefight_West": "Precinct: Feuergefecht (West)",
+            "Scenario_Precinct_Domination_East": "Precinct: Dominanz (Ost)",
+            "Scenario_Precinct_Domination_West": "Precinct: Dominanz (West)",
+            "Scenario_Precinct_Frontline": "Precinct: Frontlinie",
+            "Scenario_Precinct_Ambush": "Precinct: Hinterhalt",
+            "Scenario_Precinct_Ambush_East": "Precinct: Hinterhalt (Ost)",
+            "Scenario_Precinct_Defusal": "Precinct: Entschärfung",
+            "Scenario_Precinct_Team_Deathmatch": "Precinct: Team-Deathmatch",
+            "Scenario_Precinct_FFA": "Precinct: Jeder gegen jeden",
+            "Scenario_Prison_Checkpoint_Security": "Prison: Kontrollpunkt (Sicherheit)",
+            "Scenario_Prison_Checkpoint_Insurgents": "Prison: Kontrollpunkt (Aufständische)",
+            "Scenario_Prison_Survival": "Prison: Überleben",
+            "Scenario_Prison_Push_Security": "Prison: Vorstoß (Sicherheit)",
+            "Scenario_Prison_Push_Insurgents": "Prison: Vorstoß (Aufständische)",
+            "Scenario_Prison_Firefight": "Prison: Feuergefecht",
+            "Scenario_Prison_Domination": "Prison: Dominanz",
+            "Scenario_Prison_Ambush": "Prison: Hinterhalt",
+            "Scenario_Prison_Defusal": "Prison: Entschärfung",
+            "Scenario_Prison_TDM": "Prison: Team-Deathmatch",
+            "Scenario_Prison_FFA": "Prison: Jeder gegen jeden",
+            "Scenario_Refinery_Checkpoint_Security": "Refinery: Kontrollpunkt (Sicherheit)",
+            "Scenario_Refinery_Checkpoint_Insurgents": "Refinery: Kontrollpunkt (Aufständische)",
+            "Scenario_Refinery_Outpost": "Refinery: Vorposten",
+            "Scenario_Refinery_Survival": "Refinery: Überleben",
+            "Scenario_Refinery_Push_Security": "Refinery: Vorstoß (Sicherheit)",
+            "Scenario_Refinery_Push_Insurgents": "Refinery: Vorstoß (Aufständische)",
+            "Scenario_Refinery_Firefight_West": "Refinery: Feuergefecht (West)",
+            "Scenario_Refinery_Domination": "Refinery: Dominanz",
+            "Scenario_Refinery_Frontline": "Refinery: Frontlinie",
+            "Scenario_Refinery_Ambush": "Refinery: Hinterhalt",
+            "Scenario_Refinery_Defusal": "Refinery: Entschärfung",
+            "Scenario_Refinery_Team_Deathmatch": "Refinery: Team-Deathmatch",
+            "Scenario_Summit_Checkpoint_Security": "Summit: Kontrollpunkt (Sicherheit)",
+            "Scenario_Summit_Checkpoint_Insurgents": "Summit: Kontrollpunkt (Aufständische)",
+            "Scenario_Summit_Outpost": "Summit: Vorposten",
+            "Scenario_Summit_Survival": "Summit: Überleben",
+            "Scenario_Summit_Push_Security": "Summit: Vorstoß (Sicherheit)",
+            "Scenario_Summit_Push_Insurgents": "Summit: Vorstoß (Aufständische)",
+            "Scenario_Summit_Firefight_East": "Summit: Feuergefecht (Ost)",
+            "Scenario_Summit_Firefight_West": "Summit: Feuergefecht (West)",
+            "Scenario_Summit_Domination": "Summit: Dominanz",
+            "Scenario_Summit_Frontline": "Summit: Frontlinie",
+            "Scenario_Summit_Ambush_East": "Summit: Hinterhalt (Ost)",
+            "Scenario_Summit_Ambush_West": "Summit: Hinterhalt (West)",
+            "Scenario_Summit_Defusal": "Summit: Entschärfung",
+            "Scenario_Summit_Team_Deathmatch": "Summit: Team-Deathmatch",
+            "Scenario_Tell_Checkpoint_Security": "Tell: Kontrollpunkt (Sicherheit)",
+            "Scenario_Tell_Checkpoint_Insurgents": "Tell: Kontrollpunkt (Aufständische)",
+            "Scenario_Tell_Outpost": "Tell: Vorposten",
+            "Scenario_Tell_Survival": "Tell: Überleben",
+            "Scenario_Tell_Push_Security": "Tell: Vorstoß (Sicherheit)",
+            "Scenario_Tell_Push_Insurgents": "Tell: Vorstoß (Aufständische)",
+            "Scenario_Tell_Firefight_East": "Tell: Feuergefecht (Ost)",
+            "Scenario_Tell_Firefight_West": "Tell: Feuergefecht (West)",
+            "Scenario_Tell_Domination_East": "Tell: Dominanz (Ost)",
+            "Scenario_Tell_Domination_West": "Tell: Dominanz (West)",
+            "Scenario_Tell_Frontline": "Tell: Frontlinie",
+            "Scenario_Tell_Ambush_East": "Tell: Hinterhalt (Ost)",
+            "Scenario_Tell_Ambush_West": "Tell: Hinterhalt (West)",
+            "Scenario_Tell_Defusal": "Tell: Entschärfung",
+            "Scenario_Tell_FFA": "Tell: Jeder gegen jeden",
+            "Scenario_Tideway_Checkpoint_Security": "Tideway: Kontrollpunkt (Sicherheit)",
+            "Scenario_Tideway_Checkpoint_Insurgents": "Tideway: Kontrollpunkt (Aufständische)",
+            "Scenario_Tideway_Outpost": "Tideway: Vorposten",
+            "Scenario_Tideway_Survival": "Tideway: Überleben",
+            "Scenario_Tideway_Push_Security": "Tideway: Vorstoß (Sicherheit)",
+            "Scenario_Tideway_Push_Insurgents": "Tideway: Vorstoß (Aufständische)",
+            "Scenario_Tideway_Firefight_West": "Tideway: Feuergefecht (West)",
+            "Scenario_Tideway_Domination": "Tideway: Dominanz",
+            "Scenario_Tideway_Frontline": "Tideway: Frontlinie",
+            "Scenario_Tideway_Ambush": "Tideway: Hinterhalt",
+            "Scenario_Tideway_Defusal": "Tideway: Entschärfung",
+            "Scenario_Trainyard_Checkpoint_Security": "Trainyard: Kontrollpunkt (Sicherheit)",
+            "Scenario_Trainyard_Checkpoint_Insurgents": "Trainyard: Kontrollpunkt (Aufständische)",
+            "Scenario_Trainyard_Outpost": "Trainyard: Vorposten",
+            "Scenario_Trainyard_Survival": "Trainyard: Überleben",
+            "Scenario_Trainyard_Push_Security": "Trainyard: Vorstoß (Sicherheit)",
+            "Scenario_Trainyard_Push_Insurgents": "Trainyard: Vorstoß (Aufständische)",
+            "Scenario_Trainyard_Firefight_East": "Trainyard: Feuergefecht (Ost)",
+            "Scenario_Trainyard_Firefight_West": "Trainyard: Feuergefecht (West)",
+            "Scenario_Trainyard_Domination_East": "Trainyard: Dominanz (Ost)",
+            "Scenario_Trainyard_Domination_West": "Trainyard: Dominanz (West)",
+            "Scenario_Trainyard_Frontline": "Trainyard: Frontlinie",
+            "Scenario_Trainyard_Ambush_East": "Trainyard: Hinterhalt (Ost)",
+            "Scenario_Trainyard_Ambush_West": "Trainyard: Hinterhalt (West)",
+            "Scenario_Trainyard_Defusal_East": "Trainyard: Entschärfung (Ost)",
+            "Scenario_Trainyard_Defusal_West": "Trainyard: Entschärfung (West)"
+          }
+        },
+        "lighting": {
+          "label": "Beleuchtung",
+          "options": {
+            "Day": "Tag",
+            "Night": "Nacht"
+          }
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "friendlyFire": {
+          "label": "Friendly Fire",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "friendlyFireScale": {
+          "label": "Friendly-Fire-Schaden",
+          "description": "Anteil des Schadens, den ein Teamkollege erhält. 0.2 ist der Spielstandard."
+        },
+        "deadChat": {
+          "label": "Tote sprechen mit den Lebenden",
+          "options": {
+            "True": "Ja",
+            "False": "Nein"
+          }
+        },
+        "autoBalance": {
+          "label": "Automatischer Teamausgleich",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "mapVoting": {
+          "label": "Kartenabstimmung",
+          "description": "Die Spieler stimmen am Ende einer Runde über die nächste Karte ab.",
+          "options": {
+            "True": "An",
+            "False": "Aus"
+          }
+        },
+        "minEnemies": {
+          "label": "Mindestzahl Gegner (Koop)"
+        },
+        "maxEnemies": {
+          "label": "Höchstzahl Gegner (Koop)"
+        },
+        "friendlyBots": {
+          "label": "Freundliche Bots (Koop)"
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "Listet den Server im Spielbrowser. Erstellen Sie eines für App 581320 auf steamcommunity.com/dev/managegameservers."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "Nur Pulsar nutzt ihn, auf diesem Rechner: Konsolenbefehle und sauberes Beenden."
+        }
+      }
+    },
+    "soulmask": {
+      "description": "Dedizierter Soulmask-Server, anonym mit SteamCMD installiert. Die Welt liegt im Ordner des Servers; Pulsar speichert und beendet sie über die Konsole des Spiels.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "adminPassword": {
+          "label": "Admin-Passwort",
+          "description": "Spieler, die es im Spiel eingeben (gm key), werden Game Master."
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "Aus, dann ist der Server PvE."
+        },
+        "saveInterval": {
+          "label": "Speichern alle (s)",
+          "description": "Wie oft die Welt auf die Festplatte geschrieben wird. 600 ist der Spielstandard."
+        },
+        "backupInterval": {
+          "label": "Spiel-Backup alle (s)",
+          "description": "Wie oft das Spiel die Datenbank seiner Welt daneben kopiert. 900 ist der Spielstandard."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Steam query",
+          "description": "Die Serverliste fragt hier an."
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "Das RCON des Spiels, nur auf diesem Rechner, mit einem Passwort, das Pulsar erstellt: die Befehle der Konsole, Speicherungen und ein sauberes Beenden."
+        }
+      }
+    },
+    "space-engineers": {
+      "description": "Dedizierter Space-Engineers-Server, anonym mit SteamCMD installiert. Einstellungen und Spielstände liegen im Instanzordner des Servers; eine neue Welt startet aus einem der Szenarien des Spiels.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "world": {
+          "label": "Welt",
+          "description": "Der Name des Spielstands in instance/Saves."
+        },
+        "scenario": {
+          "label": "Szenario einer neuen Welt",
+          "description": "Wird nur übernommen, solange die Welt noch nicht existiert.",
+          "options": {
+            "StarSystem": "Star System",
+            "EarthPlanet": "Earth Planet",
+            "MarsPlanet": "Mars Planet",
+            "AlienPlanet": "Alien Planet",
+            "AlienSystem": "Alien System",
+            "HomeSystem": "Home System",
+            "DistantMoons": "Distant Moons",
+            "MoonBase": "Moon Base",
+            "PertamOrbiter": "Pertam Orbiter",
+            "EmptyWorld": "Empty World",
+            "AsteroidArmory": "Asteroid Armory",
+            "CrashedRedShip": "Crashed Red Ship",
+            "RedShip": "Red Ship",
+            "RedShip2": "Red Ship 2",
+            "GreenStation": "Green Station",
+            "LoneSurvivor": "Lone Survivor",
+            "RivalPlatforms": "Rival Platforms",
+            "DeadDropArena": "Dead Drop Arena"
+          }
+        },
+        "maxPlayers": {
+          "label": "Slots",
+          "description": "Wird beim Erstellen einer neuen Welt übernommen; danach behält die Welt ihren eigenen."
+        },
+        "description": {
+          "label": "Beschreibung"
+        },
+        "motd": {
+          "label": "Nachricht des Tages"
+        },
+        "pauseWhenEmpty": {
+          "label": "Pausieren, wenn leer",
+          "options": {
+            "true": "An",
+            "false": "Aus"
+          }
+        },
+        "gameMode": {
+          "label": "Spielmodus",
+          "description": "Wird beim Erstellen einer neuen Welt übernommen.",
+          "options": {
+            "Survival": "Überleben",
+            "Creative": "Kreativ"
+          }
+        },
+        "inventorySize": {
+          "label": "Inventargröße",
+          "description": "Multiplikator, wird beim Erstellen einer neuen Welt übernommen."
+        },
+        "assemblerSpeed": {
+          "label": "Geschwindigkeit des Assemblers",
+          "description": "Multiplikator, wird beim Erstellen einer neuen Welt übernommen."
+        },
+        "refinerySpeed": {
+          "label": "Geschwindigkeit der Raffinerie",
+          "description": "Multiplikator, wird beim Erstellen einer neuen Welt übernommen."
+        },
+        "welderSpeed": {
+          "label": "Geschwindigkeit des Schweißgeräts",
+          "description": "Multiplikator, wird beim Erstellen einer neuen Welt übernommen."
+        },
+        "grinderSpeed": {
+          "label": "Geschwindigkeit des Schleifers",
+          "description": "Multiplikator, wird beim Erstellen einer neuen Welt übernommen."
+        },
+        "hostility": {
+          "label": "Meteoriten",
+          "description": "Wird beim Erstellen einer neuen Welt übernommen.",
+          "options": {
+            "SAFE": "Keine",
+            "NORMAL": "Normal",
+            "CATACLYSM": "Kataklysmus",
+            "CATACLYSM_UNREAL": "Armageddon"
+          }
+        },
+        "autoSave": {
+          "label": "Automatisch speichern alle (Min.)",
+          "description": "Wird beim Erstellen einer neuen Welt übernommen."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler; auch die Serverliste fragt hier an."
+        },
+        "steam": {
+          "label": "Steam"
+        }
+      }
+    },
+    "squad": {
+      "description": "Dedizierter Squad-Server, anonym mit SteamCMD installiert, mit Befehlen über RCON. Die Einstellungen sind die Dateien im Ordner SquadGame/ServerConfig.",
+      "variables": {
+        "name": {
+          "label": "Servername"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "reservedSlots": {
+          "label": "Reservierte Slots",
+          "description": "Slots für die Admins und Whitelist-Spieler aus Admins.cfg."
+        },
+        "advertise": {
+          "label": "Serverliste",
+          "options": {
+            "true": "Gelistet",
+            "false": "Nicht gelistet"
+          }
+        },
+        "queueLimit": {
+          "label": "Öffentliche Warteschlange",
+          "description": "Wie viele Spieler auf einen Slot warten dürfen. -1 hat keine Grenze, 0 schaltet die Warteschlange ab. 25 ist der Spielstandard."
+        },
+        "teamChanges": {
+          "label": "Teamwechsel",
+          "options": {
+            "true": "Erlaubt",
+            "false": "Nicht erlaubt"
+          }
+        },
+        "unbalancedChanges": {
+          "label": "Wechsel ins größere Team",
+          "options": {
+            "true": "Nicht erlaubt",
+            "false": "Erlaubt"
+          }
+        },
+        "teamKillKick": {
+          "label": "Kick bei Teamkills",
+          "options": {
+            "true": "An",
+            "false": "Aus"
+          }
+        },
+        "teamKillBanCount": {
+          "label": "Teamkills vor einem Bann"
+        },
+        "timeBetweenMatches": {
+          "label": "Zeit zwischen Runden (s)"
+        },
+        "messageInterval": {
+          "label": "Servernachrichten alle (s)",
+          "description": "Wie oft die Nachrichten aus ServerMessages.cfg angezeigt werden."
+        },
+        "recordDemos": {
+          "label": "Demos aufzeichnen",
+          "options": {
+            "true": "An",
+            "false": "Aus"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
+        },
+        "query": {
+          "label": "Query",
+          "description": "Der Query-Port des Spiels."
+        },
+        "beacon": {
+          "label": "Beacon"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "Nur Pulsar nutzt ihn, auf diesem Rechner: Konsolenbefehle."
+        }
+      }
+    },
+    "terraria": {
+      "description": "Dedizierter Terraria-Server über TShock, den Community-Server, aus den GitHub-Releases von TShock installiert, mit der benötigten .NET-Laufzeit im Ordner des Servers. TShock fügt Konten, Gruppen und Berechtigungen hinzu; die Einstellungen stehen in tshock/config.json.",
+      "variables": {
+        "name": {
+          "label": "Servername",
+          "description": "Wird den Spielern anstelle des Weltnamens angezeigt."
+        },
+        "world": {
+          "label": "Welt",
+          "description": "Die Datei der Welt in worlds (eine neue wird erstellt, wenn sie nicht existiert)."
+        },
+        "size": {
+          "label": "Größe einer neuen Welt",
+          "description": "Wird nur übernommen, solange die Welt noch nicht existiert.",
+          "options": {
+            "1": "Klein",
+            "2": "Mittel",
+            "3": "Groß"
+          }
+        },
+        "difficulty": {
+          "label": "Schwierigkeit einer neuen Welt",
+          "description": "Wird nur übernommen, solange die Welt noch nicht existiert.",
+          "options": {
+            "0": "Klassisch",
+            "1": "Experte",
+            "2": "Meister",
+            "3": "Reise"
+          }
+        },
+        "seed": {
+          "label": "Seed einer neuen Welt",
+          "description": "Leer lassen für einen zufälligen; geheime Seeds (für die Würdigen, nicht die Bienen) funktionieren auch. Wird nur übernommen, solange die Welt noch nicht existiert."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten, außer sie melden sich an einem TShock-Konto an. Leer lassen für einen offenen Server."
+        },
+        "pvp": {
+          "label": "PvP",
+          "options": {
+            "normal": "Spieler wählen",
+            "always": "Immer an",
+            "disabled": "Aus"
+          }
+        },
+        "spawnProtection": {
+          "label": "Spawn-Schutz",
+          "description": "Nur TShock-Admins können in der Nähe des Spawnpunkts bauen."
+        },
+        "whitelist": {
+          "label": "Whitelist",
+          "description": "Nur die Adressen in tshock/whitelist.txt können beitreten."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Hier verbinden sich die Spieler."
         }
       }
     }
