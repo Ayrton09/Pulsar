@@ -493,6 +493,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - EXILED for SCP: Secret Laboratory from its Mods tab, and its plugins (LabAPI's and EXILED's) in the server's folder, where the file manager and backups reach them.
 - New manifest features, each read only by agents that announce it (doc 03): Ctrl+C for games run with pipes (`manifest.pipes_ctrl_c`), several sections of one ini (`manifest.ini_sections`), a log file as the console with pipes and log names by pattern (`manifest.log_file_console`), `runtime.userProfile` (`manifest.user_profile`), the `text` and `xml` formats (`manifest.text_config`), `.tar.gz` addons (`addons.tar_gz`), and the `githubRelease` and `dotnetRuntime` install steps (`install.github_release`, `install.dotnet_runtime`) (doc 04).
 - Secrets never show in a server's console (doc 04, "Console"; doc 08, T47).
+- New servers start with their node's agent by default (`auto_start` on at creation); a server's settings keep their Save button and its result in view at the bottom of the form; a node can be renamed from beside its name (at the user's request).
 
 ## Before the first public release
 

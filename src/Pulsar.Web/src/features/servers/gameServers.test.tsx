@@ -766,6 +766,10 @@ describe('a game server page', () => {
       autoStart: true,
       restartOnCrash: true,
     });
+
+    // The bar beside the button says what became of the save, until something changes again.
+    await user.type(screen.getByLabelText('Server name'), '!');
+    expect(screen.queryByText('Settings saved. They apply at the next start.')).not.toBeInTheDocument();
   });
 
   it('sets CPU, memory and database limits, which others only see', async () => {
@@ -896,6 +900,8 @@ describe('a game server page', () => {
 
     expect(await screen.findByText('Type a number.')).toBeInTheDocument();
     expect(slots).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Some settings are not valid: they are marked above.')).toBeInTheDocument();
+    expect(slots).toHaveFocus(); // brought to the field the save stopped at
     expect(bodies).toEqual([]);
   });
 

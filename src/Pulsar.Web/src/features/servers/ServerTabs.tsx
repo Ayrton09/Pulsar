@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { CircleCheck } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
@@ -318,7 +319,25 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
   const [autoStart, setAutoStart] = useState(settings.autoStart);
   const [restartOnCrash, setRestartOnCrash] = useState(settings.restartOnCrash);
   const [showErrors, setShowErrors] = useState(false);
+  // Bumped at each save refused for its fields: the first of them is brought into view.
+  const [refusedAt, setRefusedAt] = useState(0);
+  const form = useRef<HTMLDivElement>(null);
   const unreadable = useUnreadableNumbers();
+  // What the bar says belongs to the values saved: a change after it is not saved yet.
+  const edited = () => {
+    if (save.isSuccess || save.isError) {
+      save.reset();
+    }
+  };
+
+  useEffect(() => {
+    if (refusedAt === 0) {
+      return;
+    }
+    const invalid = form.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    invalid?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    invalid?.focus({ preventScroll: true });
+  }, [refusedAt]);
 
   const errors = Object.fromEntries(
     definitions.map((v) => [
@@ -335,6 +354,7 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
   const submit = () => {
     if (Object.values(errors).some((e) => e !== null)) {
       setShowErrors(true);
+      setRefusedAt((count) => count + 1);
       return;
     }
     // Only what changed; a secret is sent when typed or cleared, never otherwise (the browser does not have it). An
@@ -366,82 +386,112 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
     });
   };
 
+  const invalid = showErrors && Object.values(errors).some((e) => e !== null);
+
   return (
-    <Card className="space-y-6 p-6">
-      <div>
-        <h2 className="text-lg font-semibold">{t('servers.settings.title')}</h2>
-        <p className="mt-1 text-sm text-muted">{t('servers.settings.hint')}</p>
-      </div>
-      {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
-      {save.isSuccess && (
-        <p role="status" className="text-sm text-success">
-          {t('servers.settings.saved')}
-        </p>
-      )}
-      <VariableFields
-        variables={definitions}
-        values={values}
-        onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
-        optionsOpen
-        secretsSet={secretsSet}
-        errors={showErrors ? errors : undefined}
-        onUnreadable={unreadable.mark}
-        readOnly={(variable) => !canEdit || (!variable.userEditable && !canEditProtected)}
-      />
-      {canEdit && secretsSet.size > 0 && (
-        <div className="space-y-2">
-          {definitions
-            .filter((v) => secretsSet.has(v.key))
-            .map((v) => (
-              <Checkbox
-                key={v.key}
-                label={t('servers.settings.clearSecret', { label: v.label })}
-                checked={clearSecrets.has(v.key)}
-                onChange={(e) =>
-                  setClearSecrets((current) => {
-                    const next = new Set(current);
-                    if (e.target.checked) {
-                      next.add(v.key);
-                    } else {
-                      next.delete(v.key);
-                    }
-                    return next;
-                  })
-                }
-              />
-            ))}
+    <Card className="p-6">
+      <div ref={form} className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold">{t('servers.settings.title')}</h2>
+          <p className="mt-1 text-sm text-muted">{t('servers.settings.hint')}</p>
         </div>
-      )}
-      {settings.allowExtraArguments && (
-        <Field label={t('servers.settings.extraArguments')} hint={t('servers.settings.extraArgumentsHint')}>
-          {(ids) => (
-            <textarea
-              {...ids}
-              rows={3}
-              value={extra}
-              disabled={!canEdit}
-              onChange={(e) => setExtra(e.target.value)}
-              className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm disabled:opacity-60"
-            />
-          )}
-        </Field>
-      )}
-      <div className="space-y-2">
-        <Checkbox
-          label={t('servers.settings.autoStart')}
-          checked={autoStart}
-          disabled={!canEdit}
-          onChange={(e) => setAutoStart(e.target.checked)}
+        <VariableFields
+          variables={definitions}
+          values={values}
+          onChange={(key, value) => {
+            edited();
+            setValues((current) => ({ ...current, [key]: value }));
+          }}
+          optionsOpen
+          secretsSet={secretsSet}
+          errors={showErrors ? errors : undefined}
+          onUnreadable={unreadable.mark}
+          readOnly={(variable) => !canEdit || (!variable.userEditable && !canEditProtected)}
         />
-        <Checkbox
-          label={t('servers.restartOnCrash')}
-          checked={restartOnCrash}
-          disabled={!canEdit}
-          onChange={(e) => setRestartOnCrash(e.target.checked)}
-        />
+        {canEdit && secretsSet.size > 0 && (
+          <div className="space-y-2">
+            {definitions
+              .filter((v) => secretsSet.has(v.key))
+              .map((v) => (
+                <Checkbox
+                  key={v.key}
+                  label={t('servers.settings.clearSecret', { label: v.label })}
+                  checked={clearSecrets.has(v.key)}
+                  onChange={(e) => {
+                    edited();
+                    setClearSecrets((current) => {
+                      const next = new Set(current);
+                      if (e.target.checked) {
+                        next.add(v.key);
+                      } else {
+                        next.delete(v.key);
+                      }
+                      return next;
+                    });
+                  }}
+                />
+              ))}
+          </div>
+        )}
+        {settings.allowExtraArguments && (
+          <Field label={t('servers.settings.extraArguments')} hint={t('servers.settings.extraArgumentsHint')}>
+            {(ids) => (
+              <textarea
+                {...ids}
+                rows={3}
+                value={extra}
+                disabled={!canEdit}
+                onChange={(e) => {
+                  edited();
+                  setExtra(e.target.value);
+                }}
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm disabled:opacity-60"
+              />
+            )}
+          </Field>
+        )}
+        <div className="space-y-2">
+          <Checkbox
+            label={t('servers.settings.autoStart')}
+            checked={autoStart}
+            disabled={!canEdit}
+            onChange={(e) => {
+              edited();
+              setAutoStart(e.target.checked);
+            }}
+          />
+          <Checkbox
+            label={t('servers.restartOnCrash')}
+            checked={restartOnCrash}
+            disabled={!canEdit}
+            onChange={(e) => {
+              edited();
+              setRestartOnCrash(e.target.checked);
+            }}
+          />
+        </div>
       </div>
       {canEdit && (
-        <div className="flex justify-end">
+        // Stays in view at the bottom while the form scrolls, with what became of the last save beside its button.
+        <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-6 flex flex-wrap items-center justify-end gap-3 rounded-b-2xl border-t border-border bg-surface/95 px-6 py-4 backdrop-blur">
+          <div className="min-w-0 flex-1 text-sm" aria-live="polite">
+            {save.isSuccess && (
+              <p role="status" className="flex items-center gap-2 text-success">
+                <CircleCheck aria-hidden className="size-4 shrink-0" />
+                {t('servers.settings.saved')}
+              </p>
+            )}
+            {save.isError && (
+              <p role="alert" className="text-danger">
+                {errorMessage(t, save.error)}
+              </p>
+            )}
+            {invalid && !save.isPending && (
+              <p role="alert" className="text-danger">
+                {t('servers.settings.fixFields')}
+              </p>
+            )}
+          </div>
           <Button busy={save.isPending} onClick={submit}>
             {t('actions.save')}
           </Button>

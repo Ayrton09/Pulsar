@@ -125,6 +125,16 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public void ANewServerStartsWithTheMachineAndAfterACrash()
+    {
+        // A server that stays off after a reboot until someone starts it is what nobody wants by default (1.0.12).
+        var server = NewServer();
+
+        Assert.True(server.AutoStart);
+        Assert.True(server.RestartOnCrash);
+    }
+
+    [Fact]
     public void ExtraArgumentsAreSingleBoundedLines()
     {
         var server = NewServer();

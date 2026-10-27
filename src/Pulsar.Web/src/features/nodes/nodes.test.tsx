@@ -878,6 +878,30 @@ describe('node page', () => {
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Renamed');
   });
 
+  it('renames the node from beside its name', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () => json({ node: online, credentials: [credential] }),
+      [`GET /api/v1/nodes/${online.id}/allocations`]: () => json([]),
+      [`PUT /api/v1/nodes/${online.id}`]: async (request) => {
+        body = await request.json();
+        return json({ ...online, name: 'Casa' });
+      },
+    });
+    renderAt(`/nodes/${online.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Buenos Aires 1' });
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), 'Casa');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await vi.waitFor(() => expect(body).toMatchObject({ name: 'Casa' }));
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('shows viewers the node without administration actions', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(viewer),
@@ -888,6 +912,7 @@ describe('node page', () => {
 
     expect(await screen.findByRole('heading', { name: 'Buenos Aires 1' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument();
   });

@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Pencil } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +51,7 @@ function NodeView({ id }: { id: string }) {
   useWatchNodes();
   const canManage = canOnNode(me, id, Permission.NodeManage);
   const canManageCredentials = canOnNode(me, id, Permission.NodeCredentialsManage);
+  const [renaming, setRenaming] = useState(false);
 
   if (details.isPending) {
     return <Spinner label={t('common.loading')} />;
@@ -87,8 +89,19 @@ function NodeView({ id }: { id: string }) {
             {node.panelKeyTrust === 'outdated' && <Badge tone="danger">{t('nodes.panelKeyOutdated')}</Badge>}
           </>
         }
-        actions={canManage && node.connected && <PingButton nodeId={node.id} />}
+        actions={
+          canManage && (
+            <>
+              <Button variant="secondary" onClick={() => setRenaming(true)}>
+                <Pencil aria-hidden className="size-4" />
+                {t('nodes.rename')}
+              </Button>
+              {node.connected && <PingButton nodeId={node.id} />}
+            </>
+          )
+        }
       />
+      {renaming && <EditNodeDialog node={node} onClose={() => setRenaming(false)} />}
       {node.status === 'pendingApproval' && <ApprovalNotice node={node} canManage={canManage} />}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <MachineCard node={node} />

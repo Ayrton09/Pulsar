@@ -93,6 +93,8 @@ public sealed class Server
         InstallState = InstallState.NotInstalled;
         RuntimeState = ServerRuntimeState.Offline;
         DesiredState = DesiredState.Stopped;
+        // A server starts with its node's agent (the machine) unless its settings say otherwise (1.0.12: off before).
+        AutoStart = true;
         RestartOnCrash = true;
         BackupLimit = DefaultBackupLimit;
         CreatedAt = now;

@@ -339,7 +339,7 @@ CREATE TABLE servers (
     memory_limit_mb      integer CHECK (memory_limit_mb BETWEEN 128 AND 1048576),  -- Phase 12: committed memory; NULL: no cap
     backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere
     is_suspended         boolean NOT NULL DEFAULT false,
-    auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts
+    auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts (new servers: on, 1.0.12)
     restart_on_crash     boolean NOT NULL DEFAULT true,
     extra_arguments      text[] NOT NULL DEFAULT '{}',    -- only if the manifest allows it
     memory_limit_mb      integer,              -- reserved (Job Object limits, post-v1)
