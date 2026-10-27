@@ -61,11 +61,14 @@ public sealed class PanelSessionTests : IAsyncDisposable
         _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
         await StartAsync(new AgentConnectionOptions { MinimumRenewalDelay = TimeSpan.FromMilliseconds(200), MaxBackoff = TimeSpan.FromSeconds(2) });
 
-        await EventuallyAsync(() => _panel.Hellos >= 1, () => "no Hello");
+        // It is renewed (after its floor), however long a busy machine takes to sign in again.
+        await EventuallyAsync(() => _panel.Hellos >= 2, () => $"{_panel.Hellos} Hello(s)");
+        var renewed = _panel.Hellos;
         await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
 
-        // Each renewal waits its floor, then a backoff that grows (at least 0.5 s, then 1 s): a handful at most.
-        Assert.InRange(_panel.Hellos, 2, 5);
+        // Each renewal waits its floor, then a backoff that grows (at least 0.5 s, then 1 s, then 2 s): a handful in
+        // those 3 s at most, where a loop would make dozens.
+        Assert.InRange(_panel.Hellos - renewed, 0, 4);
         Assert.NotNull(_connection!.CurrentSessionId); // the session in hand goes on meanwhile
     }
 
