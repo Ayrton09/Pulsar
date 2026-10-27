@@ -839,6 +839,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string SteamBranches = "steam.branches";
 
+    /// <summary>
+    /// Not a command: the agent speaks GoldSrc's RCON over UDP and keeps the console's log of such a game from whoever reads
+    /// the server's files (Pulsar 1.0.15, <c>goldsrc</c>); an older one refuses manifests that use it.
+    /// </summary>
+    public const string GoldSrcRcon = "manifest.goldsrc_rcon";
+
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;
 

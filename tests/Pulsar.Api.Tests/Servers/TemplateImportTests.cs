@@ -343,13 +343,14 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
-    public async Task ModsFromUmodThunderstoreAndCatalogListsGoOnlyToAgentsThatReadThem()
+    public async Task ModsFromUmodThunderstoreCatalogListsAndGoldSrcRconGoOnlyToAgentsThatReadThem()
     {
         using var admin = await factory.CreateAdminClientAsync();
         var templates = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
             .Where(t => t.Source == TemplateSource.Bundled).ToList();
 
-        // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need.
+        // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need, one before 1.0.15
+        // GoldSrc's RCON.
         string[] all = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         foreach (var (game, capability, values) in new[]
@@ -358,6 +359,8 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("valheim", AgentCapabilities.ThunderstorePackages, new Dictionary<string, string?> { ["password"] = "secret1" }),
             ("ark-sa", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
             ("arma-reforger", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
+            ("cs16", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
+            ("hldm", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
         })
         {
             var template = templates.Single(t => t.Key == game);

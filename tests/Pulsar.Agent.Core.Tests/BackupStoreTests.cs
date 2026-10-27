@@ -122,6 +122,21 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task APrivateFileNeverGoesInEvenWithoutBackupRules()
+    {
+        // GoldSrc's console log holds its RCON password: a manifest without include rules still leaves it out.
+        Write("qconsole.log", "rcon 1 \"the password\" status");
+        Write("server.cfg", "x");
+        var location = Location();
+
+        var result = await _store.CreateAsync(location, _server with { PrivateFiles = ["qconsole.log"] }, rules: null, Progress,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["server.cfg"], Entries(location.Archive));
+        Assert.Equal(1, result.FileCount);
+    }
+
+    [Fact]
     public async Task ARestorePutsTheBackedUpFilesBackAndLeavesTheRestAlone()
     {
         Write("cfg/server.cfg", "hostname old");

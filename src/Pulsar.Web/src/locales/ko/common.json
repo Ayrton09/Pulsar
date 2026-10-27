@@ -7243,6 +7243,301 @@
           "description": "할당하면 SourceTV가 활성화됩니다."
         }
       }
+    },
+    "cs16": {
+      "description": "Counter-Strike 1.6 전용 서버(hlds)로, SteamCMD로 익명 설치합니다.",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵",
+          "description": "게임 맵: as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "참가하려면 필요합니다. 공개 서버로 두려면 비워 두세요."
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "maxRounds": {
+          "label": "최대 라운드 수",
+          "description": "맵이 진행되는 라운드 수. 0: 제한 없음."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "winLimit": {
+          "label": "승리 라운드 수",
+          "description": "맵을 끝내려면 한 팀이 이겨야 하는 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "roundTime": {
+          "label": "라운드 시간(분)",
+          "description": "한 라운드의 길이(분)입니다."
+        },
+        "freezeTime": {
+          "label": "프리즈 타임(초)",
+          "description": "라운드 시작 시 플레이어가 움직일 수 없는 시간(초)입니다."
+        },
+        "buyTime": {
+          "label": "구매 시간(분)",
+          "description": "라운드 시작 시 플레이어가 구매할 수 있는 시간(분)입니다."
+        },
+        "startMoney": {
+          "label": "시작 자금"
+        },
+        "c4Timer": {
+          "label": "C4 타이머(초)"
+        },
+        "autoTeamBalance": {
+          "label": "자동 팀 밸런스",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "limitTeams": {
+          "label": "팀 인원 차이 상한",
+          "description": "한 팀이 다른 팀보다 몇 명까지 많을 수 있는지 정합니다. 0은 제한 없음입니다."
+        },
+        "tkPunish": {
+          "label": "팀킬러 처벌",
+          "description": "팀원을 죽인 플레이어는 다음 라운드에 참여하지 못합니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "allowSpectators": {
+          "label": "관전자",
+          "options": {
+            "1": "허용",
+            "0": "허용 안 함"
+          }
+        },
+        "forceCamera": {
+          "label": "사망한 플레이어 관전",
+          "options": {
+            "0": "누구나",
+            "1": "자기 팀만",
+            "2": "자기 시점만"
+          }
+        },
+        "footsteps": {
+          "label": "발소리",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "flashlight": {
+          "label": "손전등",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵과 파일을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "pausable": {
+          "label": "플레이어가 일시정지 가능",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속하며, 서버는 이곳에서 RCON에도 응답합니다(비밀번호는 Pulsar만 압니다). 모든 주소나 네트워크 주소에 할당하세요. 127.0.0.1에서는 게임을 시작할 수 없습니다."
+        }
+      }
+    },
+    "hldm": {
+      "description": "Half-Life Deathmatch 전용 서버(hlds)로, SteamCMD로 익명 설치합니다.",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵",
+          "description": "게임 맵: boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "참가하려면 필요합니다. 공개 서버로 두려면 비워 두세요."
+        },
+        "teamplay": {
+          "label": "모드",
+          "description": "맵이 바뀔 때 적용됩니다.",
+          "options": {
+            "0": "데스매치",
+            "1": "팀 데스매치(플레이어 모델별)"
+          }
+        },
+        "fragLimit": {
+          "label": "프래그 제한",
+          "description": "맵이 끝나는 킬 수입니다. 0: 제한 없음."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀 데스매치에서 팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "weaponStay": {
+          "label": "무기 유지",
+          "description": "맵의 무기를 주워도 그 자리에 남습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "forceRespawn": {
+          "label": "강제 리스폰",
+          "description": "죽은 플레이어가 키를 누르기를 기다리지 않고 자동으로 리스폰합니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "fallDamage": {
+          "label": "낙하 피해",
+          "options": {
+            "0": "고정",
+            "1": "속도에 따라"
+          }
+        },
+        "flashlight": {
+          "label": "손전등",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "footsteps": {
+          "label": "발소리",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 모두가 모두의 목소리를 듣습니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵과 파일을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "pausable": {
+          "label": "플레이어가 일시정지 가능",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속하며, 서버는 이곳에서 RCON에도 응답합니다(비밀번호는 Pulsar만 압니다). 모든 주소나 네트워크 주소에 할당하세요. 127.0.0.1에서는 게임을 시작할 수 없습니다."
+        }
+      }
     }
   },
   "gameUpdates": {

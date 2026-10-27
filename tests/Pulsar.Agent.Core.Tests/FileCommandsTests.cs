@@ -86,6 +86,73 @@ public sealed class FileCommandsTests : IDisposable
     }
 
     [Fact]
+    public void APrivateFileIsNobodysToReadOrChangeAndListingsLeaveItOut()
+    {
+        // GoldSrc writes every RCON command it gets to its console log, password included.
+        File.WriteAllText(Path.Combine(_root, "qconsole.log"), "rcon 1 \"the password\" status");
+        File.WriteAllText(Path.Combine(_root, "server.cfg"), "x");
+        var server = _server with { PrivateFiles = ["qconsole.log"] };
+
+        foreach (var command in new AgentCommand[]
+        {
+            new SendFileCommand(Guid.NewGuid(), "qconsole.log", TransferTicket.New(), 1024),
+            new SendFileCommand(Guid.NewGuid(), "QConsole.LOG", TransferTicket.New(), 1024),
+            new StatFileCommand(Guid.NewGuid(), "qconsole.log"),
+            new ListFilesCommand(Guid.NewGuid(), "qconsole.log"),
+            new MoveFileCommand(Guid.NewGuid(), "qconsole.log", "mine.txt"),
+            new MoveFileCommand(Guid.NewGuid(), "server.cfg", "qconsole.log", Replace: true),
+            new DeleteFileCommand(Guid.NewGuid(), "qconsole.log"),
+            new ReceiveFileCommand(Guid.NewGuid(), "qconsole.log", TransferTicket.New(), 1, true, null),
+            new SetFileModifiedCommand(Guid.NewGuid(), "qconsole.log", DateTimeOffset.UtcNow),
+        })
+        {
+            var ack = Execute(command, server: server);
+            Assert.Equal((AckStatus.Rejected, FileErrors.AccessDenied), (ack.Status, ack.ErrorCode));
+        }
+
+        var listing = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root), server: server).Result);
+        Assert.Equal(["server.cfg"], listing.Entries.Select(e => e.Name));
+        var page = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root, Paged: true), server: server).Result);
+        Assert.Equal(["server.cfg"], page.Entries.Select(e => e.Name));
+        Assert.DoesNotContain(new DirectServerFileManager().Walk(server), e => e.Path == "qconsole.log");
+        Assert.Equal("rcon 1 \"the password\" status", File.ReadAllText(Path.Combine(_root, "qconsole.log")));
+
+        // Other servers' files of that name are theirs.
+        Assert.Equal(AckStatus.Accepted, Execute(new StatFileCommand(Guid.NewGuid(), "qconsole.log")).Status);
+    }
+
+    [Fact]
+    public void APrivateFolderAndWhatHoldsItStayPut()
+    {
+        // HLDS's logs hold its RCON password once logging is on.
+        Directory.CreateDirectory(Path.Combine(_root, "cstrike", "logs"));
+        File.WriteAllText(Path.Combine(_root, "cstrike", "logs", "L1027000.log"), "the password");
+        File.WriteAllText(Path.Combine(_root, "cstrike", "server.cfg"), "x");
+        var server = _server with { PrivateFiles = ["qconsole.log", "cstrike/logs"] };
+
+        foreach (var command in new AgentCommand[]
+        {
+            new SendFileCommand(Guid.NewGuid(), "cstrike/logs/L1027000.log", TransferTicket.New(), 1024),
+            new ListFilesCommand(Guid.NewGuid(), "cstrike/logs"),
+            new ListFilesCommand(Guid.NewGuid(), "CSTRIKE/Logs"),
+            new MoveFileCommand(Guid.NewGuid(), "cstrike/logs", "logs"),
+            new MoveFileCommand(Guid.NewGuid(), "cstrike", "game"),
+            new MoveFileCommand(Guid.NewGuid(), "cstrike/server.cfg", "cstrike/logs/server.cfg"),
+            new DeleteFileCommand(Guid.NewGuid(), "cstrike/logs/L1027000.log"),
+        })
+        {
+            var ack = Execute(command, server: server);
+            Assert.Equal((AckStatus.Rejected, FileErrors.AccessDenied), (ack.Status, ack.ErrorCode));
+        }
+
+        var listing = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), "cstrike"), server: server).Result);
+        Assert.Equal(["server.cfg"], listing.Entries.Select(e => e.Name));
+        Assert.DoesNotContain(new DirectServerFileManager().Walk(server), e => e.Path.StartsWith("cstrike/logs", StringComparison.Ordinal));
+        Assert.Equal(AckStatus.Accepted, Execute(new MoveFileCommand(Guid.NewGuid(), "cstrike/server.cfg", "cstrike/old.cfg"), server: server).Status);
+        Assert.True(Directory.Exists(Path.Combine(_root, "cstrike", "logs")));
+    }
+
+    [Fact]
     public void PulsarsOwnFolderCanBeReadButNotChanged()
     {
         var steamCmd = Path.Combine(_root, ".pulsar", "steamcmd");
@@ -278,7 +345,7 @@ public sealed class FileCommandsTests : IDisposable
         Assert.Equal(["map.bsp"], Directory.EnumerateFileSystemEntries(_root).Select(Path.GetFileName));
     }
 
-    private CommandAck Execute(AgentCommand command, bool busy = false) =>
+    private CommandAck Execute(AgentCommand command, bool busy = false, ProvisionedServer? server = null) =>
         _commands.Execute(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow.AddSeconds(30), null, null, command), _server, busy);
+            DateTimeOffset.UtcNow.AddSeconds(30), null, null, command), server ?? _server, busy);
 }

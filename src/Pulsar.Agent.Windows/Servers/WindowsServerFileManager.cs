@@ -118,6 +118,11 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         foreach (var child in children)
         {
             var childPath = ServerFilePath.Join(path, child.Name);
+            if (root.IsPrivate(childPath))
+            {
+                continue;
+            }
+
             if (!ServerFilePath.IsValid(childPath) || !ServerFileRules.WalkKeeps(entries, child.Kind, depth + 1))
             {
                 entries.Refuse(childPath);
@@ -186,6 +191,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         Run(server, root =>
         {
             using var source = root.TryOpen(path, DeleteAccess | ReadAttributes | Synchronize) ?? throw NotFound(path);
+            root.CheckHoldsNoPrivate(source.Handle, path);
             using var directory = root.OpenDirectory(ServerFilePath.Parent(destination), ListDirectory | AddFile | AddSubdirectory | ReadAttributes | Synchronize);
 
             // Only a file found there now is replaced: anything that appears meanwhile makes the rename fail as "exists",
@@ -311,7 +317,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         {
             return impersonation.Run(server.Identity, () =>
             {
-                using var root = ServerRoot.Open(server.Directory, write);
+                using var root = ServerRoot.Open(server.Directory, write, server.PrivateFiles);
                 return action(root);
             });
         }
@@ -650,10 +656,12 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         private readonly string _path;
         private readonly string _final;
         private readonly SafeFileHandle _handle;
+        private IReadOnlyList<string> _private = [];
 
         private ServerRoot(string path, SafeFileHandle handle, string final) => (_path, _handle, _final) = (path, handle, final);
 
-        public static ServerRoot Open(string directory, bool write = true)
+        /// <param name="privateFiles">The server's <see cref="ProvisionedServer.PrivateFiles"/>.</param>
+        public static ServerRoot Open(string directory, bool write = true, IReadOnlyList<string>? privateFiles = null)
         {
             var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
 
@@ -664,7 +672,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 ?? throw new FileManagerException(FileErrors.NotFound, "The server directory does not exist.");
             try
             {
-                return new ServerRoot(path, handle, FinalPath(handle));
+                return new ServerRoot(path, handle, FinalPath(handle)) { _private = privateFiles ?? [] };
             }
             catch
             {
@@ -801,6 +809,24 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             }
         }
 
+        /// <summary>Whether <paramref name="path"/> is one of the server's private files or in one, by its name.</summary>
+        public bool IsPrivate(string path) =>
+            _private.Any(p => p.Equals(path, StringComparison.OrdinalIgnoreCase) || path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
+        /// Refuses to move what holds a private file, told by where its handle is (a short name of the folder included):
+        /// moved, the file would be where its name no longer keeps it.
+        /// </summary>
+        public void CheckHoldsNoPrivate(SafeFileHandle handle, string path)
+        {
+            if (_private.Count > 0 && _private.Any(p => Below(PrivateFull(p), FinalPath(handle))))
+            {
+                throw ServerFileRules.HoldsPrivateRefused(path);
+            }
+        }
+
+        private string PrivateFull(string path) => _final + "\\" + path.Replace('/', '\\');
+
         /// <summary>The directory's handle, for what is opened relative to it.</summary>
         public SafeFileHandle Handle => _handle;
 
@@ -820,6 +846,12 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             if (final.Equals(login, StringComparison.OrdinalIgnoreCase) || Below(final, login))
             {
                 throw ServerFileRules.SteamLoginRefused(path);
+            }
+
+            // A private file likewise, by where the handle is: QCONSO~1.LOG is qconsole.log.
+            if (_private.Any(p => final.Equals(PrivateFull(p), StringComparison.OrdinalIgnoreCase) || Below(final, PrivateFull(p))))
+            {
+                throw ServerFileRules.PrivateRefused(path);
             }
         }
 

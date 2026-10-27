@@ -1,0 +1,138 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "cs16",
+  "version": "1.0.0",
+  "name": "Counter-Strike 1.6",
+  "description": "Counter-Strike 1.6 dedicated server (hlds), installed anonymously with SteamCMD.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 2, "minMemoryMb": 512 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar CS 1.6", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "map", "label": "Starting map", "type": "string", "default": "de_dust2", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
+      "description": "The game's maps: as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 32 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "friendlyFire", "label": "Friendly fire", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Teammates can hurt each other." },
+    { "key": "maxRounds", "label": "Max rounds", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a map lasts. 0: no limit." },
+    { "key": "timeLimit", "label": "Map time limit (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "Minutes before the map changes. 0: no limit." },
+    { "key": "winLimit", "label": "Win limit", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a team must win to end the map. 0: no limit." },
+    { "key": "roundTime", "label": "Round time (min)", "type": "number", "min": 1, "max": 9,
+      "description": "Minutes a round lasts." },
+    { "key": "freezeTime", "label": "Freeze time (s)", "type": "integer", "min": 0, "max": 60,
+      "description": "Seconds players cannot move at the start of a round." },
+    { "key": "buyTime", "label": "Buy time (min)", "type": "number", "min": 0.25, "max": 9,
+      "description": "Minutes players can buy at the start of a round." },
+    { "key": "startMoney", "label": "Start money", "type": "integer", "min": 800, "max": 16000 },
+    { "key": "c4Timer", "label": "C4 timer (s)", "type": "integer", "min": 10, "max": 90 },
+    { "key": "autoTeamBalance", "label": "Auto team balance", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "limitTeams", "label": "Max team size difference", "type": "integer", "min": 0, "max": 31,
+      "description": "How many more players one team may have than the other. 0: no limit." },
+    { "key": "tkPunish", "label": "Punish team killers", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "A player who kills a teammate sits out the next round." },
+    { "key": "allTalk", "label": "All talk", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Both teams hear each other on voice chat." },
+    { "key": "voice", "label": "Voice chat", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "allowSpectators", "label": "Spectators", "type": "enum", "options": [ { "value": "1", "label": "Allowed" }, { "value": "0", "label": "Not allowed" } ] },
+    { "key": "forceCamera", "label": "Dead players spectate", "type": "enum",
+      "options": [ { "value": "0", "label": "Anyone" }, { "value": "1", "label": "Their own team" }, { "value": "2", "label": "Only from their own body" } ] },
+    { "key": "footsteps", "label": "Footsteps", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "flashlight", "label": "Flashlight", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "lan", "label": "LAN only", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Not listed on the internet and players are not authenticated." },
+    { "key": "cheats", "label": "Cheats", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Players can use cheat commands." },
+    { "key": "downloadUrl", "label": "Fast download URL", "type": "string", "maxLength": 200, "pattern": "^https?://[A-Za-z0-9._~:/?#@!$&'()*+,=%-]{1,190}$",
+      "description": "Where players download custom maps and files instead of the server." },
+    { "key": "allowDownload", "label": "Allow downloads", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "pausable", "label": "Players can pause", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP, and the server answers RCON there (only Pulsar knows its password). Assign it on every address or on a network address: the game cannot start on 127.0.0.1." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 90 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 90 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "hlds.exe",
+      "arguments": [
+        "-console", "-game", "cstrike",
+        "-condebug", "-nocrashdialog",
+        "+ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "qconsole.log",
+        "rcon": { "protocol": "goldsrc", "port": "game" },
+        "privatePaths": ["cstrike/logs"],
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "cstrike/server.cfg", "format": "source-cfg", "mode": "patch",
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "mp_friendlyfire": "{{var.friendlyFire}}",
+        "mp_maxrounds": "{{var.maxRounds}}",
+        "mp_timelimit": "{{var.timeLimit}}",
+        "mp_winlimit": "{{var.winLimit}}",
+        "mp_roundtime": "{{var.roundTime}}",
+        "mp_freezetime": "{{var.freezeTime}}",
+        "mp_buytime": "{{var.buyTime}}",
+        "mp_startmoney": "{{var.startMoney}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "mp_autoteambalance": "{{var.autoTeamBalance}}",
+        "mp_limitteams": "{{var.limitTeams}}",
+        "mp_tkpunish": "{{var.tkPunish}}",
+        "sv_alltalk": "{{var.allTalk}}",
+        "sv_voiceenable": "{{var.voice}}",
+        "allow_spectators": "{{var.allowSpectators}}",
+        "mp_forcecamera": "{{var.forceCamera}}",
+        "mp_footsteps": "{{var.footsteps}}",
+        "mp_flashlight": "{{var.flashlight}}",
+        "sv_lan": "{{var.lan}}",
+        "sv_cheats": "{{var.cheats}}",
+        "sv_downloadurl": "{{var.downloadUrl}}",
+        "sv_allowdownload": "{{var.allowDownload}}",
+        "pausable": "{{var.pausable}}"
+      },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_timelimit", "mp_winlimit", "mp_roundtime", "mp_freezetime", "mp_buytime", "mp_startmoney",
+        "mp_c4timer", "mp_autoteambalance", "mp_limitteams", "mp_tkpunish", "sv_alltalk", "sv_voiceenable", "allow_spectators", "mp_forcecamera",
+        "mp_footsteps", "mp_flashlight", "sv_lan", "sv_cheats", "sv_downloadurl", "sv_allowdownload", "pausable"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "rcon", "timeoutSeconds": 120 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 30
+  },
+
+  "backup": {
+    "include": ["cstrike/*.cfg", "cstrike/*.txt", "cstrike/addons/**"],
+    "exclude": ["**/*.log"]
+  },
+  "commands": { "broadcast": "say {{message}}", "players": { "kick": "kick \"{{player}}\"", "spaces": true } }
+}

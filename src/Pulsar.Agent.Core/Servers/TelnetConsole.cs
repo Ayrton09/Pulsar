@@ -7,14 +7,16 @@ using Pulsar.Manifests;
 namespace Pulsar.Agent.Core.Servers;
 
 /// <summary>
-/// The remote consoles the agent speaks, by the manifest's protocol: Source RCON, or a telnet console
-/// (<see cref="TelnetConsoleConnector"/>).
+/// The remote consoles the agent speaks, by the manifest's protocol: Source RCON, a telnet console
+/// (<see cref="TelnetConsoleConnector"/>), or GoldSrc's RCON (<see cref="GoldSrcRconConnector"/>).
 /// </summary>
 /// <param name="peers">Who listens where, checked before anything is sent (docs/architecture/08, T18); null checks nothing.</param>
-public sealed class RconConnectors(IRconConnector? source = null, IRconConnector? telnet = null, ILocalPeers? peers = null) : IRconConnector
+public sealed class RconConnectors(IRconConnector? source = null, IRconConnector? telnet = null, ILocalPeers? peers = null, IRconConnector? goldSrc = null)
+    : IRconConnector
 {
     private readonly IRconConnector _source = source ?? new SourceRconConnector { Peers = peers };
     private readonly IRconConnector _telnet = telnet ?? new TelnetConsoleConnector { Peers = peers };
+    private readonly IRconConnector _goldSrc = goldSrc ?? new GoldSrcRconConnector { Peers = peers };
 
     public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
     {
@@ -22,6 +24,7 @@ public sealed class RconConnectors(IRconConnector? source = null, IRconConnector
         return endpoint.Protocol switch
         {
             RconProtocol.Telnet => _telnet.ConnectAsync(endpoint, owner, cancellationToken),
+            RconProtocol.GoldSrc => _goldSrc.ConnectAsync(endpoint, owner, cancellationToken),
             _ => _source.ConnectAsync(endpoint, owner, cancellationToken),
         };
     }

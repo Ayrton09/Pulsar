@@ -510,6 +510,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - A server's Steam branch (gap point 8): the game's branches as Steam lists them, chosen on the server's page; changing it backs the stopped server up, then installs the branch (doc 05, "Steam branches"; doc 03, "Game update checks"; doc 08, T55). Agent capability `steam.branches`.
 - Lines wider than a pseudo console (220 columns), which the console host cuts once its screen is full, are joined again as the agent reads them, so a long link (SCP: Secret Laboratory's `!verify static`) comes whole and opens whole (doc 06, "Console: ConPTY vs pipes").
 
+## 1.0.15 — GoldSrc (2026-10-27, at the user's request)
+
+- Counter-Strike 1.6 (`cs16`) and Half-Life Deathmatch (`hldm`), GoldSrc's HLDS (app 90), each checked on a real server (games/<key>/README.md). Their console is `qconsole.log` and commands go over GoldSrc's RCON on UDP (`"protocol": "goldsrc"`, doc 04, "Console"): every process bound to the port must run as the server's account before anything is sent, and HLDS's console log and logs folder, which hold the password, are kept from the file manager, SFTP, zips and backups (`privatePaths`, doc 08, T56). Agent capability `manifest.goldsrc_rcon`.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

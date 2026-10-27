@@ -71,6 +71,18 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             return Rejected(envelope, FileErrors.AccessDenied, "Pulsar keeps this folder to itself.");
         }
 
+        // A file the game writes its RCON password to (GoldSrc's console log): its console shows it, masked. By name here;
+        // the Windows file manager also refuses it by where a handle leads.
+        if (PathsOf(command).FirstOrDefault(p => ServerFileRules.IsPrivate(server, p)) is { } secret)
+        {
+            return Rejected(envelope, FileErrors.AccessDenied, ServerFileRules.PrivateRefused(secret).Message);
+        }
+
+        if (command is MoveFileCommand moving && ServerFileRules.HoldsPrivate(server, moving.Path))
+        {
+            return Rejected(envelope, FileErrors.AccessDenied, ServerFileRules.HoldsPrivateRefused(moving.Path).Message);
+        }
+
         // Pulsar's own folder (the server's SteamCMD, addon records): readable, changed by Pulsar only.
         if (!IsRead(command) && PathsOf(command).Any(IsPulsarFolder))
         {
@@ -92,9 +104,9 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
                         return Rejected(envelope, FileErrors.InvalidPath, "A page starts after one name.");
                     }
 
-                    return Accepted(envelope, files.ListPage(server, page.Path, page.After));
+                    return Accepted(envelope, WithoutPrivate(server, page.Path, files.ListPage(server, page.Path, page.After)));
                 case ListFilesCommand list:
-                    return Accepted(envelope, files.List(server, list.Path));
+                    return Accepted(envelope, WithoutPrivate(server, list.Path, files.List(server, list.Path)));
                 case StatFileCommand stat:
                     return Accepted(envelope, files.Stat(server, stat.Path));
                 case SetFileModifiedCommand modified:
@@ -121,6 +133,12 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             return Rejected(envelope, ex.Code, ex.Message);
         }
     }
+
+    /// <summary>A listing of <paramref name="path"/> without the server's private files.</summary>
+    private static FileListResult WithoutPrivate(ProvisionedServer server, string path, FileListResult listing) =>
+        server.PrivateFiles.Count == 0
+            ? listing
+            : listing with { Entries = [.. listing.Entries.Where(e => !ServerFileRules.IsPrivate(server, ServerFilePath.Join(path, e.Name)))] };
 
     /// <summary>
     /// Whether <paramref name="path"/> is in (or is) the server's SteamCMD <c>config</c> folder, whatever its case or

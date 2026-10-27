@@ -473,13 +473,18 @@ public enum ManifestConsoleEncoding
 /// with the start (Space Engineers names its log by the time it started).
 /// </param>
 /// <param name="Rcon">For <c>logfile+rcon</c>: how the agent sends commands.</param>
+/// <param name="PrivatePaths">
+/// With GoldSrc's RCON (Pulsar 1.0.15): other files or folders the game writes its RCON commands to, password included
+/// (HLDS's <c>logs</c> folder once logging is on). Like the console's log, they and what is in them are Pulsar's to keep.
+/// </param>
 public sealed record ConsoleDefinition(
     ManifestConsoleMode Mode,
     ManifestConsoleEncoding Encoding = ManifestConsoleEncoding.Utf8,
     string? InputNewline = null,
     IReadOnlyList<string>? SensitiveCommandPrefixes = null,
     string? LogFile = null,
-    RconDefinition? Rcon = null);
+    RconDefinition? Rcon = null,
+    IReadOnlyList<string>? PrivatePaths = null);
 
 public enum RconProtocol
 {
@@ -488,6 +493,13 @@ public enum RconProtocol
 
     /// <summary>A line console over telnet with an optional password prompt (7 Days to Die).</summary>
     Telnet,
+
+    /// <summary>
+    /// GoldSrc's RCON over UDP (hlds: Counter-Strike 1.6, Half-Life; Pulsar 1.0.15). The game writes each command it receives
+    /// to its console, password included: its console's log file is Pulsar's to read, never served as a file.
+    /// </summary>
+    [JsonStringEnumMemberName("goldsrc")]
+    GoldSrc,
 }
 
 /// <summary>

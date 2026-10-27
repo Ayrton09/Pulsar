@@ -53,6 +53,34 @@ public sealed class LocalPeersTests
     }
 
     [WindowsFact]
+    public void TheProcessesBoundToAUdpPortAreFoundOnItsAddressAndOnEveryAddress()
+    {
+        // GoldSrc's RCON shares the game's UDP port: whoever is bound there, on the address or on every one, may get it.
+        using var any = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
+        var port = ((IPEndPoint)any.Client.LocalEndPoint!).Port;
+        using var loopback = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var loopbackPort = ((IPEndPoint)loopback.Client.LocalEndPoint!).Port;
+
+        Assert.Equal([Environment.ProcessId], _peers.UdpProcesses(IPAddress.Loopback, port));
+        Assert.Equal([Environment.ProcessId], _peers.UdpProcesses(IPAddress.Parse("192.0.2.1"), port));
+        Assert.Equal([Environment.ProcessId], _peers.UdpProcesses(IPAddress.Loopback, loopbackPort));
+        Assert.Empty(_peers.UdpProcesses(IPAddress.Parse("192.0.2.1"), loopbackPort)); // bound elsewhere
+        Assert.True(_peers.RunsAs(Environment.ProcessId, ProcessIdentity.CurrentUser));
+    }
+
+    [WindowsFact]
+    public void AUdpPortNobodyHoldsHasNoProcess()
+    {
+        int port;
+        using (var free = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+        {
+            port = ((IPEndPoint)free.Client.LocalEndPoint!).Port;
+        }
+
+        Assert.Empty(_peers.UdpProcesses(IPAddress.Loopback, port));
+    }
+
+    [WindowsFact]
     public void AConnectionThatIsNotThereHasNoPeer() =>
         Assert.Null(_peers.PeerProcess(new IPEndPoint(IPAddress.Loopback, 1), new IPEndPoint(IPAddress.Loopback, 2)));
 

@@ -201,6 +201,7 @@ public sealed class SourceRconTests
 internal sealed class FakePeers : ILocalPeers
 {
     private const int Process = 4242;
+    private const int OtherProcess = 4343;
 
     public ProcessIdentity? Owner { get; init; }
 
@@ -212,7 +213,25 @@ internal sealed class FakePeers : ILocalPeers
         return Owner is null ? null : Process;
     }
 
-    public bool RunsAs(int processId, ProcessIdentity identity) => processId == Process && identity == Owner;
+    /// <summary>Other processes bound to the UDP port besides the game (null: none).</summary>
+    public ProcessIdentity? OtherUdpOwner { get; init; }
+
+    public IReadOnlyList<int> UdpProcesses(IPAddress address, int port)
+    {
+        AskedUdp = new IPEndPoint(address, port);
+        List<int> processes = Owner is null ? [] : [Process];
+        if (OtherUdpOwner is not null)
+        {
+            processes.Add(OtherProcess);
+        }
+
+        return processes;
+    }
+
+    public IPEndPoint? AskedUdp { get; private set; }
+
+    public bool RunsAs(int processId, ProcessIdentity identity) =>
+        (processId == Process && identity == Owner) || (processId == OtherProcess && identity == OtherUdpOwner);
 }
 
 /// <summary>A machine that cannot tell who holds a connection.</summary>
@@ -220,6 +239,9 @@ internal sealed class ThrowingPeers(bool failsFindingTheProcess) : ILocalPeers
 {
     public int? PeerProcess(IPEndPoint local, IPEndPoint remote) =>
         failsFindingTheProcess ? throw new System.ComponentModel.Win32Exception(5) : 4242;
+
+    public IReadOnlyList<int> UdpProcesses(IPAddress address, int port) =>
+        failsFindingTheProcess ? throw new System.ComponentModel.Win32Exception(5) : [4242];
 
     public bool RunsAs(int processId, ProcessIdentity identity) => throw new System.ComponentModel.Win32Exception(1332);
 }

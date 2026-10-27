@@ -7243,6 +7243,301 @@
           "description": "Atribua-a para ativar o SourceTV."
         }
       }
+    },
+    "cs16": {
+      "description": "Servidor dedicado de Counter-Strike 1.6 (hlds), instalado anonimamente com o SteamCMD.",
+      "variables": {
+        "hostname": {
+          "label": "Nome do servidor"
+        },
+        "map": {
+          "label": "Mapa inicial",
+          "description": "Mapas do jogo: as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Senha de entrada",
+          "description": "Os jogadores precisam dela para entrar. Deixe vazio para um servidor público."
+        },
+        "friendlyFire": {
+          "label": "Fogo amigo",
+          "description": "Os companheiros de equipe podem se ferir.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "maxRounds": {
+          "label": "Máx. de rodadas",
+          "description": "Rodadas que um mapa dura. 0: sem limite."
+        },
+        "timeLimit": {
+          "label": "Limite de tempo do mapa (min)",
+          "description": "Minutos até o mapa mudar. 0: sem limite."
+        },
+        "winLimit": {
+          "label": "Limite de vitórias",
+          "description": "Rodadas que uma equipe precisa vencer para encerrar o mapa. 0: sem limite."
+        },
+        "roundTime": {
+          "label": "Duração da rodada (min)",
+          "description": "Minutos que uma rodada dura."
+        },
+        "freezeTime": {
+          "label": "Tempo de congelamento (s)",
+          "description": "Segundos em que os jogadores não podem se mover no início da rodada."
+        },
+        "buyTime": {
+          "label": "Tempo de compra (min)",
+          "description": "Minutos em que os jogadores podem comprar no início de uma rodada."
+        },
+        "startMoney": {
+          "label": "Dinheiro inicial"
+        },
+        "c4Timer": {
+          "label": "Temporizador do C4 (s)"
+        },
+        "autoTeamBalance": {
+          "label": "Balanceamento automático de equipes",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "limitTeams": {
+          "label": "Diferença máx. de tamanho entre equipes",
+          "description": "Quantos jogadores a mais uma equipe pode ter que a outra. 0: sem limite."
+        },
+        "tkPunish": {
+          "label": "Punir quem mata aliados",
+          "description": "Quem mata um aliado fica de fora da próxima rodada.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "allTalk": {
+          "label": "Voz global",
+          "description": "As duas equipes se ouvem no chat de voz.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "voice": {
+          "label": "Chat de voz",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "allowSpectators": {
+          "label": "Espectadores",
+          "options": {
+            "1": "Permitida",
+            "0": "Não permitidos"
+          }
+        },
+        "forceCamera": {
+          "label": "Jogadores mortos assistem",
+          "options": {
+            "0": "Qualquer um",
+            "1": "Ao próprio time",
+            "2": "Só do próprio corpo"
+          }
+        },
+        "footsteps": {
+          "label": "Passos",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "flashlight": {
+          "label": "Lanterna",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL de download rápido",
+          "description": "De onde os jogadores baixam mapas e arquivos personalizados em vez do servidor."
+        },
+        "allowDownload": {
+          "label": "Permitir downloads",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "pausable": {
+          "label": "Os jogadores podem pausar",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jogo",
+          "description": "Os jogadores se conectam por UDP, e o servidor atende RCON ali (só o Pulsar conhece a senha). Atribua-a em todos os endereços ou em um endereço de rede: o jogo não consegue iniciar em 127.0.0.1."
+        }
+      }
+    },
+    "hldm": {
+      "description": "Servidor dedicado de Half-Life Deathmatch (hlds), instalado anonimamente com o SteamCMD.",
+      "variables": {
+        "hostname": {
+          "label": "Nome do servidor"
+        },
+        "map": {
+          "label": "Mapa inicial",
+          "description": "Mapas do jogo: boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Senha de entrada",
+          "description": "Os jogadores precisam dela para entrar. Deixe vazio para um servidor público."
+        },
+        "teamplay": {
+          "label": "Modo",
+          "description": "Vale quando o mapa muda.",
+          "options": {
+            "0": "Mata-mata",
+            "1": "Deathmatch em equipes (pelo modelo do jogador)"
+          }
+        },
+        "fragLimit": {
+          "label": "Limite de frags",
+          "description": "Abates com os quais o mapa termina. 0: sem limite."
+        },
+        "timeLimit": {
+          "label": "Limite de tempo do mapa (min)",
+          "description": "Minutos até o mapa mudar. 0: sem limite."
+        },
+        "friendlyFire": {
+          "label": "Fogo amigo",
+          "description": "Colegas de equipe podem se ferir no deathmatch em equipes.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "weaponStay": {
+          "label": "Armas permanecem",
+          "description": "As armas do mapa continuam lá depois de pegas.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "forceRespawn": {
+          "label": "Renascimento forçado",
+          "description": "Jogadores mortos renascem sozinhos em vez de esperar que apertem uma tecla.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "fallDamage": {
+          "label": "Dano de queda",
+          "options": {
+            "0": "Fixo",
+            "1": "Pela velocidade"
+          }
+        },
+        "flashlight": {
+          "label": "Lanterna",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "footsteps": {
+          "label": "Passos",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "allTalk": {
+          "label": "Voz global",
+          "description": "Todos ouvem todos no chat de voz.",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "voice": {
+          "label": "Chat de voz",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL de download rápido",
+          "description": "De onde os jogadores baixam mapas e arquivos personalizados em vez do servidor."
+        },
+        "allowDownload": {
+          "label": "Permitir downloads",
+          "options": {
+            "1": "Ativado",
+            "0": "Desativado"
+          }
+        },
+        "pausable": {
+          "label": "Os jogadores podem pausar",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jogo",
+          "description": "Os jogadores se conectam por UDP, e o servidor atende RCON ali (só o Pulsar conhece a senha). Atribua-a em todos os endereços ou em um endereço de rede: o jogo não consegue iniciar em 127.0.0.1."
+        }
+      }
     }
   },
   "gameUpdates": {

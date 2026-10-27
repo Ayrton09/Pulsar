@@ -102,6 +102,70 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     }
 
     [WindowsFact]
+    public void APrivateFileIsOutOfReachByItsNameItsShortNameAndInWalks()
+    {
+        // GoldSrc's console log holds its RCON password: only its console, masked, shows it.
+        File.WriteAllText(Path.Combine(ServerDirectory, "qconsole.log"), "rcon 1 \"the password\" status");
+        var server = Server with { PrivateFiles = ["qconsole.log"] };
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(server, "QCONSOLE.log", 100)));
+        Assert.DoesNotContain(Files.Walk(server), e => e.Path == "qconsole.log");
+        var alias = ShortName(Path.Combine(ServerDirectory, "qconsole.log"));
+        if (alias.Equals("qconsole.log", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Skip("The volume keeps no 8.3 names.");
+        }
+
+        // As for the Steam login: with the test folder unlistable, .NET cannot expand the short name and it passes as written.
+        var account = "*" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+        Run("icacls", Root, "/deny", account + ":(RD)");
+        try
+        {
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(server, alias, 100)));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Stat(server, alias)));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(server, alias, "mine.txt")));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Delete(server, alias)));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Create(server, alias, 1, overwrite: true, expectedVersion: null)));
+        }
+        finally
+        {
+            Run("icacls", Root, "/remove:d", account);
+        }
+
+        Assert.Equal("rcon 1 \"the password\" status", File.ReadAllText(Path.Combine(ServerDirectory, "qconsole.log")));
+        Assert.True(Files.Stat(Server, "qconsole.log").Entry.Size > 0); // a server without private files reads it
+    }
+
+    [WindowsFact]
+    public void AFolderHoldingAPrivateFileCannotBeMovedByAnyName()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cstrike", "logs"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "cstrike", "logs", "L1027000.log"), "the password");
+        var server = Server with { PrivateFiles = ["cstrike/logs"] };
+
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(server, "cstrike", "game")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(server, "cstrike/logs", "logs")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(server, "cstrike/logs/L1027000.log", 100)));
+        Assert.DoesNotContain(Files.Walk(server), e => e.Path.StartsWith("cstrike/logs", StringComparison.Ordinal));
+        var alias = ShortName(Path.Combine(ServerDirectory, "cstrike"));
+        if (alias.Equals("cstrike", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Skip("The volume keeps no 8.3 names.");
+        }
+
+        var account = "*" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+        Run("icacls", Root, "/deny", account + ":(RD)");
+        try
+        {
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(server, alias, "game")));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(server, $"{alias}/logs/L1027000.log", 100)));
+        }
+        finally
+        {
+            Run("icacls", Root, "/remove:d", account);
+        }
+    }
+
+    [WindowsFact]
     public void TheLentSteamLoginIsOutOfReachThroughAJunctionInsideTheServer()
     {
         var config = Path.Combine(ServerDirectory, ".pulsar", "steamcmd", "config");

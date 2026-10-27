@@ -24,6 +24,7 @@ the closest one to `games/<key>/manifest.json` and change it:
 
 - `css` and `cs2`: Source engine, output from a log file and commands over RCON; `hl2dm` and `pvkii` (Pulsar 1.0.14) the
   same, `pvkii` with the 64-bit `srcds_win64.exe`.
+- `cs16` and `hldm` (Pulsar 1.0.15): GoldSrc's HLDS, output from `qconsole.log` and commands over GoldSrc's RCON on UDP.
 - `valheim`: a console game stopped with Ctrl+C, and a port that follows another.
 - `rust`: Unity, log file and RCON, an optional port with an `else`.
 - `palworld`: console output with commands over RCON, settings in an Unreal Engine ini.
@@ -78,6 +79,9 @@ Then:
 6. **Console**: `pty` (the game writes to a console), `pipes` (standard output) or `logfile+rcon` (Source servers:
    output from a log file, commands over RCON). `pty` and `pipes` can take an `rcon` too, for games that print to their
    console but read commands only over RCON (`"protocol": "source"`) or telnet (`"protocol": "telnet"`, 7 Days to Die).
+   `"protocol": "goldsrc"` (Pulsar 1.0.15) is HLDS's RCON over UDP, on a port that declares UDP, in `logfile+rcon` mode
+   with a log file named in full, and `privatePaths` for the other files or folders the game writes RCON commands to
+   (its logs): HLDS writes the password there, so Pulsar keeps them from whoever handles the server's files.
    Agents of 1.0.12 mask the values of secret variables in the console, but a game that writes its command line to its
    log file keeps them there: where the game takes them from a configuration file, put them there. A game that writes
    only to its log takes `pipes` with `logFile` (1.0.12), whose file name may hold one `*` for a log named by the game's

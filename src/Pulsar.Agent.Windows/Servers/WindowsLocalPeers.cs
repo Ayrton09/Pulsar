@@ -15,12 +15,14 @@ namespace Pulsar.Agent.Windows.Servers;
 
 /// <summary>
 /// The process at the other end of a local TCP connection, from Windows' table of connections and their owning
-/// processes (<c>GetExtendedTcpTable</c>), and the account it runs as, from its token (docs/architecture/08, T18).
+/// processes (<c>GetExtendedTcpTable</c>); the processes bound to a UDP port, from its table of UDP endpoints
+/// (<c>GetExtendedUdpTable</c>); and the account a process runs as, from its token (docs/architecture/08, T18).
 /// </summary>
 public sealed class WindowsLocalPeers : ILocalPeers
 {
     private const int Ipv4RowSize = 24; // MIB_TCPROW_OWNER_PID: state, local address, local port, remote address, remote port, process
     private const int Ipv6RowSize = 56; // MIB_TCP6ROW_OWNER_PID: local address and scope, port; remote likewise; state, process
+    private const int UdpRowSize = 12; // MIB_UDPROW_OWNER_PID: local address, local port, process
 
     public int? PeerProcess(IPEndPoint local, IPEndPoint remote)
     {
@@ -51,6 +53,35 @@ public sealed class WindowsLocalPeers : ILocalPeers
         }
 
         return null;
+    }
+
+    public IReadOnlyList<int> UdpProcesses(IPAddress address, int port)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            throw new ArgumentException("Only IPv4 addresses are checked.", nameof(address));
+        }
+
+        var table = UdpTable();
+        var count = BinaryPrimitives.ReadInt32LittleEndian(table);
+        var processes = new List<int>();
+        for (var i = 0; i < count && 4 + ((i + 1) * UdpRowSize) <= table.Length; i++)
+        {
+            var row = table.AsSpan(4 + (i * UdpRowSize), UdpRowSize);
+            var bound = Endpoint(row[..4], row[4..8]);
+            if (bound.Port == port && (bound.Address.Equals(address) || bound.Address.Equals(IPAddress.Any)))
+            {
+                processes.Add(BinaryPrimitives.ReadInt32LittleEndian(row[8..]));
+            }
+        }
+
+        return processes;
     }
 
     public bool RunsAs(int processId, ProcessIdentity identity)
@@ -107,6 +138,35 @@ public sealed class WindowsLocalPeers : ILocalPeers
             }
 
             size += 4096; // connections opened meanwhile
+        }
+
+        throw new Win32Exception((int)WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER);
+    }
+
+    /// <summary>The IPv4 UDP endpoints with their owning processes, as Windows returns them.</summary>
+    private static unsafe byte[] UdpTable()
+    {
+        uint size = 0;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var buffer = new byte[Math.Max(size, 4)];
+            uint error;
+            fixed (byte* table = buffer)
+            {
+                error = PInvoke.GetExtendedUdpTable(table, &size, false, (uint)AddressFamily.InterNetwork, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID, 0);
+            }
+
+            if (error == (uint)WIN32_ERROR.NO_ERROR)
+            {
+                return buffer;
+            }
+
+            if (error != (uint)WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER)
+            {
+                throw new Win32Exception((int)error);
+            }
+
+            size += 4096; // endpoints opened meanwhile
         }
 
         throw new Win32Exception((int)WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER);

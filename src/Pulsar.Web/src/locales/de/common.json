@@ -7243,6 +7243,301 @@
           "description": "Weisen Sie ihn zu, um SourceTV zu aktivieren."
         }
       }
+    },
+    "cs16": {
+      "description": "Dedizierter Counter-Strike-1.6-Server (hlds), anonym mit SteamCMD installiert.",
+      "variables": {
+        "hostname": {
+          "label": "Servername"
+        },
+        "map": {
+          "label": "Startkarte",
+          "description": "Die Karten des Spiels: as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "friendlyFire": {
+          "label": "Friendly Fire",
+          "description": "Teamkameraden können sich gegenseitig verletzen.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "maxRounds": {
+          "label": "Max. Runden",
+          "description": "Runden, die eine Karte dauert. 0: kein Limit."
+        },
+        "timeLimit": {
+          "label": "Zeitlimit pro Karte (Min.)",
+          "description": "Minuten bis zum Kartenwechsel. 0: keine Begrenzung."
+        },
+        "winLimit": {
+          "label": "Siegesgrenze",
+          "description": "Runden, die ein Team gewinnen muss, um die Karte zu beenden. 0: keine Begrenzung."
+        },
+        "roundTime": {
+          "label": "Rundenzeit (Min.)",
+          "description": "Minuten, die eine Runde dauert."
+        },
+        "freezeTime": {
+          "label": "Freeze-Zeit (s)",
+          "description": "Sekunden, in denen sich Spieler zu Rundenbeginn nicht bewegen können."
+        },
+        "buyTime": {
+          "label": "Kaufzeit (Min.)",
+          "description": "Minuten, in denen Spieler zu Beginn einer Runde kaufen können."
+        },
+        "startMoney": {
+          "label": "Startgeld"
+        },
+        "c4Timer": {
+          "label": "C4-Timer (s)"
+        },
+        "autoTeamBalance": {
+          "label": "Automatischer Teamausgleich",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "limitTeams": {
+          "label": "Max. Teamgrößenunterschied",
+          "description": "Um wie viele Spieler ein Team größer sein darf als das andere. 0: keine Begrenzung."
+        },
+        "tkPunish": {
+          "label": "Teamkiller bestrafen",
+          "description": "Wer einen Teamkameraden tötet, setzt die nächste Runde aus.",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        },
+        "allTalk": {
+          "label": "All Talk",
+          "description": "Beide Teams hören sich im Sprachchat.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "voice": {
+          "label": "Sprachchat",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "allowSpectators": {
+          "label": "Zuschauer",
+          "options": {
+            "1": "Erlaubt",
+            "0": "Nicht erlaubt"
+          }
+        },
+        "forceCamera": {
+          "label": "Tote Spieler beobachten",
+          "options": {
+            "0": "Jeder",
+            "1": "Ihr eigenes Team",
+            "2": "Nur aus dem eigenen Körper"
+          }
+        },
+        "footsteps": {
+          "label": "Schritte",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "flashlight": {
+          "label": "Taschenlampe",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "lan": {
+          "label": "Nur LAN",
+          "description": "Wird nicht im Internet gelistet, und Spieler werden nicht authentifiziert.",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Spieler können Cheat-Befehle benutzen.",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        },
+        "downloadUrl": {
+          "label": "Fast-Download-URL",
+          "description": "Wo Spieler eigene Karten und Dateien statt vom Server herunterladen."
+        },
+        "allowDownload": {
+          "label": "Downloads erlauben",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "pausable": {
+          "label": "Spieler können pausieren",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Spieler verbinden sich über UDP, und der Server beantwortet dort RCON (nur Pulsar kennt das Passwort). Weise ihn allen Adressen oder einer Netzwerkadresse zu: Das Spiel kann nicht auf 127.0.0.1 starten."
+        }
+      }
+    },
+    "hldm": {
+      "description": "Dedizierter Half-Life-Deathmatch-Server (hlds), anonym mit SteamCMD installiert.",
+      "variables": {
+        "hostname": {
+          "label": "Servername"
+        },
+        "map": {
+          "label": "Startkarte",
+          "description": "Die Karten des Spiels: boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Beitrittspasswort",
+          "description": "Spieler brauchen es zum Beitreten. Leer lassen für einen öffentlichen Server."
+        },
+        "teamplay": {
+          "label": "Modus",
+          "description": "Gilt ab dem nächsten Kartenwechsel.",
+          "options": {
+            "0": "Deathmatch",
+            "1": "Team-Deathmatch (nach Spielermodell)"
+          }
+        },
+        "fragLimit": {
+          "label": "Frag-Limit",
+          "description": "Kills, bei denen die Karte endet. 0: kein Limit."
+        },
+        "timeLimit": {
+          "label": "Zeitlimit pro Karte (Min.)",
+          "description": "Minuten bis zum Kartenwechsel. 0: keine Begrenzung."
+        },
+        "friendlyFire": {
+          "label": "Friendly Fire",
+          "description": "Teamkameraden können sich im Team-Deathmatch verletzen.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "weaponStay": {
+          "label": "Waffen bleiben liegen",
+          "description": "Waffen auf der Karte bleiben liegen, nachdem sie aufgehoben wurden.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "forceRespawn": {
+          "label": "Erzwungener Respawn",
+          "description": "Tote Spieler erscheinen von selbst wieder, statt auf einen Tastendruck zu warten.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "fallDamage": {
+          "label": "Fallschaden",
+          "options": {
+            "0": "Fest",
+            "1": "Nach Geschwindigkeit"
+          }
+        },
+        "flashlight": {
+          "label": "Taschenlampe",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "footsteps": {
+          "label": "Schritte",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "allTalk": {
+          "label": "All Talk",
+          "description": "Alle hören alle im Sprachchat.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "voice": {
+          "label": "Sprachchat",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "lan": {
+          "label": "Nur LAN",
+          "description": "Wird nicht im Internet gelistet, und Spieler werden nicht authentifiziert.",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Spieler können Cheat-Befehle benutzen.",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        },
+        "downloadUrl": {
+          "label": "Fast-Download-URL",
+          "description": "Wo Spieler eigene Karten und Dateien statt vom Server herunterladen."
+        },
+        "allowDownload": {
+          "label": "Downloads erlauben",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "pausable": {
+          "label": "Spieler können pausieren",
+          "options": {
+            "0": "Aus",
+            "1": "An"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Spiel",
+          "description": "Spieler verbinden sich über UDP, und der Server beantwortet dort RCON (nur Pulsar kennt das Passwort). Weise ihn allen Adressen oder einer Netzwerkadresse zu: Das Spiel kann nicht auf 127.0.0.1 starten."
+        }
+      }
     }
   },
   "gameUpdates": {

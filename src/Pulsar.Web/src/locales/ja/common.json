@@ -7243,6 +7243,301 @@
           "description": "割り当てるとSourceTVが有効になります。"
         }
       }
+    },
+    "cs16": {
+      "description": "Counter-Strike 1.6 専用サーバー (hlds)。SteamCMD で匿名インストールします。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ",
+          "description": "ゲームのマップ: as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo."
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "味方同士でダメージを与えられます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "maxRounds": {
+          "label": "最大ラウンド数",
+          "description": "マップが続くラウンド数。0:制限なし。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "winLimit": {
+          "label": "勝利ラウンド数",
+          "description": "マップを終了するためにチームが勝つ必要のあるラウンド数です。0は無制限です。"
+        },
+        "roundTime": {
+          "label": "ラウンド時間(分)",
+          "description": "1ラウンドの長さ(分)です。"
+        },
+        "freezeTime": {
+          "label": "フリーズタイム(秒)",
+          "description": "ラウンド開始時にプレイヤーが動けない秒数です。"
+        },
+        "buyTime": {
+          "label": "購入時間 (分)",
+          "description": "ラウンド開始時にプレイヤーが購入できる時間 (分)。"
+        },
+        "startMoney": {
+          "label": "初期所持金"
+        },
+        "c4Timer": {
+          "label": "C4タイマー(秒)"
+        },
+        "autoTeamBalance": {
+          "label": "チーム自動バランス",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "limitTeams": {
+          "label": "チーム人数差の上限",
+          "description": "一方のチームが他方より何人多くなれるかを指定します。0は無制限です。"
+        },
+        "tkPunish": {
+          "label": "チームキラーを罰する",
+          "description": "味方を倒したプレイヤーは次のラウンドに参加できません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "allowSpectators": {
+          "label": "観戦者",
+          "options": {
+            "1": "許可",
+            "0": "不許可"
+          }
+        },
+        "forceCamera": {
+          "label": "死亡したプレイヤーの観戦",
+          "options": {
+            "0": "全員",
+            "1": "自分のチームのみ",
+            "2": "自分の視点のみ"
+          }
+        },
+        "footsteps": {
+          "label": "足音",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "flashlight": {
+          "label": "フラッシュライト",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップやファイルをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "pausable": {
+          "label": "プレイヤーが一時停止できる",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーは UDP で接続し、サーバーはそこで RCON にも応答します (パスワードを知っているのは Pulsar だけです)。すべてのアドレスかネットワークアドレスに割り当ててください。127.0.0.1 ではゲームを起動できません。"
+        }
+      }
+    },
+    "hldm": {
+      "description": "Half-Life Deathmatch 専用サーバー (hlds)。SteamCMD で匿名インストールします。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ",
+          "description": "ゲームのマップ: boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow."
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するにはこのパスワードが必要です。公開サーバーにする場合は空のままにしてください。"
+        },
+        "teamplay": {
+          "label": "モード",
+          "description": "マップが切り替わると反映されます。",
+          "options": {
+            "0": "デスマッチ",
+            "1": "チームデスマッチ (プレイヤーモデル別)"
+          }
+        },
+        "fragLimit": {
+          "label": "フラグ上限",
+          "description": "マップが終了するキル数です。0: 無制限。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "チームデスマッチで味方同士がダメージを与え合えます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "weaponStay": {
+          "label": "武器が残る",
+          "description": "マップ上の武器は拾われた後も残ります。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "forceRespawn": {
+          "label": "強制リスポーン",
+          "description": "死亡したプレイヤーはキーを押すのを待たずに自動でリスポーンします。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "fallDamage": {
+          "label": "落下ダメージ",
+          "options": {
+            "0": "固定",
+            "1": "速度に応じる"
+          }
+        },
+        "flashlight": {
+          "label": "フラッシュライト",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "footsteps": {
+          "label": "足音",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで全員の声が全員に聞こえます。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップやファイルをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "pausable": {
+          "label": "プレイヤーが一時停止できる",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーは UDP で接続し、サーバーはそこで RCON にも応答します (パスワードを知っているのは Pulsar だけです)。すべてのアドレスかネットワークアドレスに割り当ててください。127.0.0.1 ではゲームを起動できません。"
+        }
+      }
     }
   },
   "gameUpdates": {

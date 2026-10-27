@@ -176,6 +176,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.ThunderstorePackages;
             yield return AgentCapabilities.CatalogLists;
             yield return AgentCapabilities.SteamBranches;
+            yield return AgentCapabilities.GoldSrcRcon;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -682,7 +683,7 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.unknown", "This node does not have that server.");
         }
 
-        var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+        var provisioned = Describe(server);
         var busy = Exclusive(serverId);
         return await Task.Run(() => fileCommands.Execute(envelope, provisioned, busy));
     }
@@ -923,7 +924,7 @@ public sealed partial class ServerHost(
         var serverId = server.Supervisor.ServerId;
         try
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var provisioned = Describe(server);
             var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
             var builds = new List<GameBuild>();
             IReadOnlyList<SteamBranch>? branches = null;
@@ -1035,7 +1036,7 @@ public sealed partial class ServerHost(
 
         return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var provisioned = Describe(server);
             TerminateStrays(serverId, provisioned.Identity);
             return await work(server, addon, provisioned.Directory, operationId, cancellationToken);
         }, stopFirst);
@@ -1075,7 +1076,7 @@ public sealed partial class ServerHost(
         return RunOperation(envelope, command.ServerId, operationId, exclusive: !live, stoppedMessage: live ? null : stopFirst, work: cancellationToken =>
             NotedAsync<CommandResult?>(server, "Changing the mods", login: null, async () =>
             {
-                var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+                var provisioned = Describe(server);
                 if (!live)
                 {
                     TerminateStrays(command.ServerId, provisioned.Identity); // never the game a live change leaves running
@@ -1223,7 +1224,7 @@ public sealed partial class ServerHost(
         string? version = null;
         var serverId = server.Supervisor.ServerId;
         var console = server.Supervisor.Console;
-        var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+        var provisioned = Describe(server);
         TerminateStrays(serverId, provisioned.Identity);
         foreach (var step in steps)
         {
@@ -1438,7 +1439,7 @@ public sealed partial class ServerHost(
         var location = Backup(server, command.BackupId);
         return RunOperation(envelope, command.ServerId, operationId, exclusive: false, async cancellationToken =>
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var provisioned = Describe(server);
             BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
             BackupResult made;
             await using (var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
@@ -1487,7 +1488,7 @@ public sealed partial class ServerHost(
 
         return RunOperation(envelope, serverId, operationId, exclusive: false, async cancellationToken =>
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var provisioned = Describe(server);
             return await work(provisioned, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
         });
     }
@@ -1514,7 +1515,7 @@ public sealed partial class ServerHost(
         var location = Backup(server, command.BackupId);
         return RunOperation(envelope, command.ServerId, operationId, stoppedMessage: stopFirst, work: async cancellationToken =>
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            var provisioned = Describe(server);
             TerminateStrays(command.ServerId, provisioned.Identity);
             BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
             if (command.Remote is { } remote)
@@ -1835,6 +1836,19 @@ public sealed partial class ServerHost(
 
     private async Task SendProgressAsync(Guid operationId, string stage, double? percent) =>
         _ = await panel.SendAsync(nameof(IAgentHub.OperationProgress), new OperationProgress(operationId, stage, percent, null), _stopping.Token);
+
+    /// <summary>
+    /// Where a server lives and who it runs as, with the files the file manager keeps from its users: the console log of a
+    /// game that writes its RCON password there (GoldSrc).
+    /// </summary>
+    private ProvisionedServer Describe(Server server) =>
+        provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId) with { PrivateFiles = PrivateFiles(server.Manifest) };
+
+    internal static IReadOnlyList<string> PrivateFiles(GameManifest manifest) =>
+        [.. manifest.Runtime.Values.Where(r => r.Console.Rcon?.Protocol == RconProtocol.GoldSrc && r.Console.LogFile is not null)
+            .SelectMany(r => (r.Console.PrivatePaths ?? []).Prepend(r.Console.LogFile!))
+            .Select(p => p.Replace('\\', '/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {

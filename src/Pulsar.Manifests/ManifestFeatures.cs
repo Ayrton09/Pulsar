@@ -81,6 +81,13 @@ public static class ManifestFeatures
             || manifest.ConfigFileList.Any(f => f.Lists is { Count: > 0 });
     }
 
+    /// <summary>GoldSrc's RCON over UDP (Pulsar 1.0.15): an older agent refuses the protocol.</summary>
+    public static bool UsesGoldSrcRcon(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Runtime.Values.Any(r => r.Console.Rcon?.Protocol == RconProtocol.GoldSrc);
+    }
+
     /// <summary>Thunderstore's packages (Pulsar 1.0.14): the <c>thunderstore</c> addon source, and the catalog unpacked into BepInEx's folder.</summary>
     public static bool UsesThunderstore(GameManifest manifest)
     {

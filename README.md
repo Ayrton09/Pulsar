@@ -84,9 +84,11 @@ Korean and Simplified Chinese**: each user picks theirs in My account (until the
 |---|---|---|---|
 | Counter-Strike 2 | SteamCMD | log + RCON | Metamod:Source, CounterStrikeSharp |
 | Counter-Strike: Source | SteamCMD | log + RCON | |
+| Counter-Strike 1.6 | SteamCMD | log + RCON | |
 | Team Fortress 2 | SteamCMD | log + RCON | |
 | Left 4 Dead 2 | SteamCMD | log + RCON | |
 | Half-Life 2: Deathmatch | SteamCMD | log + RCON | |
+| Half-Life Deathmatch | SteamCMD | log + RCON | |
 | Pirates, Vikings, and Knights II | SteamCMD | log + RCON | |
 | Rust | SteamCMD | log + RCON | Oxide (uMod), Carbon, uMod plugins |
 | ARK: Survival Ascended | SteamCMD | log + RCON | CurseForge mods by name |

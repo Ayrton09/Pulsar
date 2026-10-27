@@ -369,7 +369,11 @@
           ],
           "description": "logfile+rcon: the console's output. pipes (Pulsar 1.0.12): the console's output for a game that writes only to its log. Its file name may hold one '*' (Pulsar 1.0.12): the agent follows the newest file it matches that appeared with the start (a game that names its log by its start)."
         },
-        "rcon": { "$ref": "#/$defs/RconDefinition" }
+        "rcon": { "$ref": "#/$defs/RconDefinition" },
+        "privatePaths": {
+          "type": "array", "maxItems": 8, "items": { "type": "string", "minLength": 1, "maxLength": 260 },
+          "description": "With GoldSrc's RCON (Pulsar 1.0.15): other files or folders the game writes RCON commands to, password included (HLDS's logs folder). Pulsar keeps them, what is in them and the folders that hold them from whoever handles the server's files."
+        }
       }
     },
     "RconDefinition": {
@@ -377,7 +381,7 @@
       "additionalProperties": false,
       "required": ["protocol", "port"],
       "properties": {
-        "protocol": { "enum": ["source", "telnet"], "description": "source: Source RCON. telnet: a line console with an optional password prompt (7 Days to Die)." },
+        "protocol": { "enum": ["source", "telnet", "goldsrc"], "description": "source: Source RCON. telnet: a line console with an optional password prompt (7 Days to Die). goldsrc (Pulsar 1.0.15): GoldSrc's RCON over UDP on a port that declares UDP (hlds), in 'logfile+rcon' mode with a log file named in full, which Pulsar keeps from whoever reads the server's files (the game writes the password there)." },
         "port": { "type": "string", "description": "Name of a required port; RCON listens on its TCP side, which only needs to be reachable from the node." },
         "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file (or, Pulsar 1.0.12, its output), so the console does not add them again; an answer is added only when the log does not show it." }
       }

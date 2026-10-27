@@ -22,7 +22,15 @@ public interface IServerProvisioner
 
 /// <param name="Directory">Absolute path of the server directory.</param>
 /// <param name="Identity">Who the server's processes run as.</param>
-public sealed record ProvisionedServer(string Directory, ProcessIdentity Identity);
+public sealed record ProvisionedServer(string Directory, ProcessIdentity Identity)
+{
+    /// <summary>
+    /// Files and folders of the server no file operation reaches, nor anything in them, whatever name or link leads there;
+    /// walks leave them out, and the folders that hold them cannot be moved (paths as <c>ServerFilePath</c>): the console
+    /// log and the logs of a game that writes its RCON password there (GoldSrc), which only its console shows, masked.
+    /// </summary>
+    public IReadOnlyList<string> PrivateFiles { get; init; } = [];
+}
 
 public static partial class ServerShortId
 {

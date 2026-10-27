@@ -228,6 +228,31 @@ public static class ServerFileRules
 
     public static FileManagerException SteamLoginRefused(string path) => new(FileErrors.AccessDenied, $"'{path}': Pulsar keeps this folder to itself.");
 
+    /// <summary>Whether <paramref name="path"/> (a <see cref="ServerFilePath"/>) is one of the server's private files or in one, whatever its case.</summary>
+    public static bool IsPrivate(ProvisionedServer server, string path)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(path);
+        return server.PrivateFiles.Any(p => p.Equals(path, StringComparison.OrdinalIgnoreCase) || path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> holds one of the server's private files: moved, it would take the file where its name
+    /// no longer keeps it.
+    /// </summary>
+    public static bool HoldsPrivate(ProvisionedServer server, string path)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(path);
+        return server.PrivateFiles.Any(p => path.Length == 0 || p.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static FileManagerException HoldsPrivateRefused(string path) =>
+        new(FileErrors.AccessDenied, $"'{path}' holds a file the game writes its RCON password to, which Pulsar keeps to itself, so it stays where it is.");
+
+    public static FileManagerException PrivateRefused(string path) =>
+        new(FileErrors.AccessDenied, $"'{path}': the game writes its RCON password there, so Pulsar keeps it to itself; the server's console shows it.");
+
     public static string TemporaryName() => TemporaryPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)) + ".tmp";
 
     /// <summary>

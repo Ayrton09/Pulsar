@@ -1053,6 +1053,51 @@ public static partial class ManifestValidator
         {
             context.Error($"{path}.console.rcon.port", "Must name a required port of the manifest.");
         }
+        else if (console.Rcon is { Protocol: RconProtocol.GoldSrc } goldSrc)
+        {
+            // GoldSrc's RCON shares the game's UDP port, and the game writes the password to its console's log: that log
+            // must be one file Pulsar knows by name, to keep it from whoever reads the server's files.
+            if (!context.Ports[goldSrc.Port].Protocols.Contains(PortProtocol.Udp))
+            {
+                context.Error($"{path}.console.rcon.port", "GoldSrc's RCON goes over UDP: the port must declare it.");
+            }
+
+            if (console.Mode != ManifestConsoleMode.LogfileRcon || console.LogFile is not { } log || IsLogFilePattern(log))
+            {
+                context.Error($"{path}.console", "GoldSrc's RCON needs 'logfile+rcon' mode with a log file named in full.");
+            }
+
+            if (goldSrc.LogsCommands)
+            {
+                context.Error($"{path}.console.rcon.logsCommands", "GoldSrc's RCON lines in the log hold the password; the console shows the agent's copy instead.");
+            }
+        }
+
+        if (console.PrivatePaths is { } privatePaths)
+        {
+            if (console.Rcon?.Protocol != RconProtocol.GoldSrc)
+            {
+                context.Error($"{path}.console.privatePaths", "Only for GoldSrc's RCON, whose game writes the password to its logs.");
+            }
+            else if (privatePaths.Count > 8)
+            {
+                context.Error($"{path}.console.privatePaths", "At most 8.");
+            }
+            else
+            {
+                for (var i = 0; i < privatePaths.Count; i++)
+                {
+                    if (privatePaths[i].Contains('*', StringComparison.Ordinal) || privatePaths[i].Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        context.Error($"{path}.console.privatePaths[{i}]", "A file or folder of the server named in full, outside .pulsar.");
+                    }
+                    else
+                    {
+                        ValidateRelativePath($"{path}.console.privatePaths[{i}]", privatePaths[i], context.Error);
+                    }
+                }
+            }
+        }
     }
 
     private static void ValidateArguments(string path, IReadOnlyList<ArgumentTemplate> arguments, Context context, IReadOnlySet<string> guardedPorts)

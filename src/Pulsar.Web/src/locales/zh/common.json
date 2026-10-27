@@ -7243,6 +7243,301 @@
           "description": "分配后即可启用 SourceTV。"
         }
       }
+    },
+    "cs16": {
+      "description": "Counter-Strike 1.6 专用服务器（hlds），通过 SteamCMD 匿名安装。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图",
+          "description": "游戏地图：as_oilrig, cs_747, cs_assault, cs_backalley, cs_estate, cs_havana, cs_italy, cs_militia, cs_office, cs_siege, de_airstrip, de_aztec, de_cbble, de_chateau, de_dust, de_dust2, de_inferno, de_nuke, de_piranesi, de_prodigy, de_storm, de_survivor, de_torn, de_train, de_vertigo."
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "队友之间可以互相伤害。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "maxRounds": {
+          "label": "最大回合数",
+          "description": "一张地图持续的回合数。0：无限制。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "winLimit": {
+          "label": "获胜回合数",
+          "description": "一支队伍需要赢下多少回合才能结束该地图。0 表示不限制。"
+        },
+        "roundTime": {
+          "label": "回合时间（分钟）",
+          "description": "一个回合的时长（分钟）。"
+        },
+        "freezeTime": {
+          "label": "冻结时间（秒）",
+          "description": "回合开始时玩家无法移动的秒数。"
+        },
+        "buyTime": {
+          "label": "购买时间（分钟）",
+          "description": "每回合开始时玩家可以购买的分钟数。"
+        },
+        "startMoney": {
+          "label": "初始金钱"
+        },
+        "c4Timer": {
+          "label": "C4 倒计时（秒）"
+        },
+        "autoTeamBalance": {
+          "label": "自动平衡队伍",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "limitTeams": {
+          "label": "队伍人数差上限",
+          "description": "一支队伍比另一支最多可多出的人数。0 表示不限制。"
+        },
+        "tkPunish": {
+          "label": "惩罚杀害队友者",
+          "description": "杀害队友的玩家将跳过下一回合。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "allowSpectators": {
+          "label": "观察者",
+          "options": {
+            "1": "允许",
+            "0": "不允许"
+          }
+        },
+        "forceCamera": {
+          "label": "死亡玩家观战",
+          "options": {
+            "0": "任何人",
+            "1": "仅本队",
+            "2": "仅从自身视角"
+          }
+        },
+        "footsteps": {
+          "label": "脚步声",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "flashlight": {
+          "label": "手电筒",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图和文件的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "pausable": {
+          "label": "玩家可以暂停",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接，服务器也在此端口响应 RCON（只有 Pulsar 知道其密码）。请将其分配到所有地址或某个网络地址：游戏无法在 127.0.0.1 上启动。"
+        }
+      }
+    },
+    "hldm": {
+      "description": "Half-Life Deathmatch 专用服务器（hlds），通过 SteamCMD 匿名安装。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图",
+          "description": "游戏地图：boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow."
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要它才能加入。留空则为公开服务器。"
+        },
+        "teamplay": {
+          "label": "模式",
+          "description": "换图时生效。",
+          "options": {
+            "0": "死亡竞赛",
+            "1": "团队死斗（按玩家模型）"
+          }
+        },
+        "fragLimit": {
+          "label": "击杀上限",
+          "description": "地图结束时的击杀数。0:无限制。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "团队死斗中队友之间可以互相伤害。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "weaponStay": {
+          "label": "武器保留",
+          "description": "地图上的武器被拾取后仍留在原处。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "forceRespawn": {
+          "label": "强制重生",
+          "description": "死亡的玩家会自动重生，无需等待按键。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "fallDamage": {
+          "label": "坠落伤害",
+          "options": {
+            "0": "固定",
+            "1": "按速度"
+          }
+        },
+        "flashlight": {
+          "label": "手电筒",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "footsteps": {
+          "label": "脚步声",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "语音聊天中所有人都能听到所有人。",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图和文件的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "1": "开",
+            "0": "关"
+          }
+        },
+        "pausable": {
+          "label": "玩家可以暂停",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接，服务器也在此端口响应 RCON（只有 Pulsar 知道其密码）。请将其分配到所有地址或某个网络地址：游戏无法在 127.0.0.1 上启动。"
+        }
+      }
     }
   },
   "gameUpdates": {

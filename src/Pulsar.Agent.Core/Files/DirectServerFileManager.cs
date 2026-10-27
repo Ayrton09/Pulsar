@@ -106,11 +106,11 @@ public sealed class DirectServerFileManager : IServerFileManager
     {
         var root = Resolve(server, ServerFilePath.Root, allowRoot: true);
         var entries = new TreeWalk();
-        Guard(ServerFilePath.Root, () => WalkInto(root, ServerFilePath.Root, entries, 0));
+        Guard(ServerFilePath.Root, () => WalkInto(server, root, ServerFilePath.Root, entries, 0));
         return entries;
     }
 
-    private static void WalkInto(string directory, string path, TreeWalk entries, int depth)
+    private static void WalkInto(ProvisionedServer server, string directory, string path, TreeWalk entries, int depth)
     {
         foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
@@ -122,6 +122,11 @@ public sealed class DirectServerFileManager : IServerFileManager
 
             var entry = Entry(info);
             var entryPath = ServerFilePath.Join(path, entry.Name);
+            if (ServerFileRules.IsPrivate(server, entryPath))
+            {
+                continue;
+            }
+
             if (!ServerFileRules.WalkKeeps(entries, entry.Kind, depth + 1))
             {
                 entries.Refuse(entryPath);
@@ -136,7 +141,7 @@ public sealed class DirectServerFileManager : IServerFileManager
             entries.Add(new TreeEntry(entryPath, entry.Kind, entry.Size, entry.ModifiedAt));
             if (entry.Kind == FileEntryKind.Directory && !ServerFileRules.IsSteamLoginFolder(entryPath))
             {
-                WalkInto(info.FullName, entryPath, entries, depth + 1);
+                WalkInto(server, info.FullName, entryPath, entries, depth + 1);
             }
         }
     }
@@ -239,6 +244,11 @@ public sealed class DirectServerFileManager : IServerFileManager
         if (ServerFileRules.IsSteamLoginFolder(path))
         {
             throw ServerFileRules.SteamLoginRefused(path);
+        }
+
+        if (ServerFileRules.IsPrivate(server, path))
+        {
+            throw ServerFileRules.PrivateRefused(path);
         }
 
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(server.Directory));
