@@ -18,7 +18,7 @@ Checked on 2026-10-05 on Windows 11 Pro (build 26200), with the Steam build of t
 - `SaveWorld`, a 5 s wait and `DoExit` stop it in about 20–30 s; it exits with code -1.
 - It does not answer A2S queries (it is listed through Epic Online Services), so the panel shows no players.
 - An empty server uses about 10 GB of memory: a 4 GB memory limit stopped it after 100 s, reported as such.
-- Mods are CurseForge project ids (`-mods=`); the server downloads them itself.
+- Mods are CurseForge project ids (`-mods=`); the server downloads them itself. Since 1.0.14 the panel edits the list by name: it searches the game's mods on CurseForge with the administrator's key and shows each by name and author. Checked on 2026-10-27: with Super Spyglass Plus (929420) in the list, the server downloaded it from CurseForge into `ShooterGame/Binaries/Win64/ShooterGame/Mods/83374` at its start and loaded it.
 - On Windows Server, its own guides say the Amazon root certificate revocation list must be imported for it to be
   listed; Pulsar does not change the machine's certificates.
 
