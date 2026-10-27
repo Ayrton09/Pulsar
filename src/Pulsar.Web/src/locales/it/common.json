@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge non accetta questa chiave API.",
       "addon_missing": "Questi plugin funzionano su un addon che il server non ha: installalo prima, da questa scheda.",
       "bad_package": "Un pacchetto non è uno zip che Pulsar estrae, quindi non è stato cambiato nulla: {{detail}}",
-      "list_invalid": "Da 1 a 100 id di progetti CurseForge di un gioco, ciascuno un numero."
+      "list_invalid": "Gli id della lista non sono del suo catalogo, oppure sono troppi da cercare in una volta."
     },
     "modpack": {
       "unsupported": "Questo server non può installare modpack: {{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "Non è su CurseForge",
       "otherGame": "È di un altro gioco",
       "needsKey": "Senza la chiave CurseForge del pannello le mod si aggiungono per id: un amministratore la imposta in Giochi.",
+      "by": "di {{author}}"
+    },
+    "reforger": {
+      "empty": "Ancora nessuna mod: cercale nel Workshop qui sotto o aggiungine una con il suo id.",
+      "placeholder": "Id del Workshop (16 caratteri)",
+      "add": "Aggiungi",
+      "added": "Aggiunta",
+      "removeShort": "Rimuovi",
+      "remove": "Rimuovi {{name}}",
+      "invalid": "Un id del Workshop ha 16 caratteri: cifre e le lettere dalla A alla F.",
+      "duplicate": "Questa mod è già nella lista.",
+      "tooMany": "La lista è più lunga di quanto accetti questa impostazione.",
+      "search": "Cerca nel Workshop di Arma Reforger",
+      "results": "Mod trovate",
+      "noResults": "Nessun risultato.",
+      "notFound": "Non è nel Workshop",
       "by": "di {{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "Prenotazione slot (s)",
           "description": "Per quanto tempo lo slot di un giocatore disconnesso gli viene tenuto."
+        },
+        "mods": {
+          "label": "Mod",
+          "description": "Mod del Workshop di Arma Reforger, per id, separate da virgole. Il server le scarica da solo all'avvio; le mod aggiunte a mano in server.json restano."
         }
       },
       "ports": {

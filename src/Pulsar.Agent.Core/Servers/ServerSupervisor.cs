@@ -930,8 +930,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                     }
                 }
 
-                using var content = new MemoryStream(new System.Text.UTF8Encoding(false).GetBytes(ConfigFileWriter.Apply(file, existing)));
+                // A json file's lists take out only the ids the panel wrote last time: what users added by hand stays.
+                var listed = file.Lists.Count > 0 ? ConfigListRecords.Read(_files, _definition.Directory, file.Path) : null;
+                using var content = new MemoryStream(new System.Text.UTF8Encoding(false).GetBytes(ConfigFileWriter.Apply(file, existing, listed)));
                 _files.Write(_definition.Directory, file.Path, content);
+                if (file.Lists.Count > 0 && !ConfigListRecords.Write(_files, _definition.Directory, file))
+                {
+                    LogListRecordNotWritten(ServerId, file.Path);
+                }
             }
 
             // The installed addons' lines (Metamod's in gameinfo.gi), written again after a game update replaced the file.
@@ -1814,6 +1820,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         ManifestConsoleEncoding.Ansi => ConsoleEncoding.Ansi,
         _ => ConsoleEncoding.Utf8,
     };
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the record of the ids written into {Path} cannot be written; the next start leaves them in place")]
+    private partial void LogListRecordNotWritten(Guid serverId, string path);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: killed {Count} processes its account ran outside the server's job")]
     private partial void LogStraysKilled(Guid serverId, int count);

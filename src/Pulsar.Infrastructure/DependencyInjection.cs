@@ -130,6 +130,16 @@ public static class DependencyInjection
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
+        // Arma Reforger's Workshop (1.0.14): its public pages, one host, no key, no redirects.
+        services.AddScoped<IReforgerWorkshop, ReforgerWorkshopClient>();
+        services.AddHttpClient(ReforgerWorkshopClient.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(20);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+                    $"Ayrton09/Pulsar/{PanelUpdates.PanelVersionText} (https://github.com/Ayrton09/Pulsar)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
         services.AddHostedService<NodeWatchService>();
         // Pulsar's releases on GitHub (Phase 19): two small files a day, no redirects but to GitHub's release storage.
         services.AddScoped<IUpdateSource, GitHubUpdateSource>();

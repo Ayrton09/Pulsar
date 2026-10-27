@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge 不接受该 API 密钥。",
       "addon_missing": "这些插件运行在服务器没有的附加组件上：请先在此标签页安装它。",
       "bad_package": "该包不是 Pulsar 可以解压的 zip，因此没有做任何更改：{{detail}}",
-      "list_invalid": "某个游戏的 1 到 100 个 CurseForge 项目 ID，每个都是数字。"
+      "list_invalid": "列表中的 ID 不属于其目录，或数量太多，无法一次查询。"
     },
     "modpack": {
       "unsupported": "此服务器无法安装整合包：{{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "不在 CurseForge 上",
       "otherGame": "属于其他游戏",
       "needsKey": "面板没有 CurseForge 密钥时，按 ID 添加模组：管理员可在“游戏”中设置密钥。",
+      "by": "作者：{{author}}"
+    },
+    "reforger": {
+      "empty": "还没有模组：在下方的 Workshop 中搜索，或按 ID 添加。",
+      "placeholder": "Workshop ID（16 个字符）",
+      "add": "添加",
+      "added": "已添加",
+      "removeShort": "移除",
+      "remove": "移除 {{name}}",
+      "invalid": "Workshop ID 为 16 个字符：数字和字母 A 到 F。",
+      "duplicate": "该模组已在列表中。",
+      "tooMany": "列表超出了此设置允许的长度。",
+      "search": "搜索 Arma Reforger 的 Workshop",
+      "results": "找到的模组",
+      "noResults": "什么也没找到。",
+      "notFound": "不在 Workshop 中",
       "by": "作者：{{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "名额保留(秒)",
           "description": "为已断线玩家保留名额的时长。"
+        },
+        "mods": {
+          "label": "模组",
+          "description": "Arma Reforger Workshop 的模组 ID，用逗号分隔。服务器启动时会自行下载；在 server.json 中手动添加的模组会保留。"
         }
       },
       "ports": {

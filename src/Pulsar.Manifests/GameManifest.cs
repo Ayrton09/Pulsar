@@ -218,7 +218,12 @@ public sealed record VariableDefinition(
     IReadOnlyList<EnumOption>? Options = null,
     string? Description = null,
     WorkshopList? Workshop = null,
-    CurseForgeList? CurseForge = null);
+    CurseForgeList? CurseForge = null,
+    ReforgerWorkshopList? ReforgerWorkshop = null)
+{
+    /// <summary>Between the ids of a variable that lists Workshop items or catalog projects; null for any other variable.</summary>
+    public string? ListSeparator => Workshop?.Separator ?? CurseForge?.Separator ?? ReforgerWorkshop?.Separator;
+}
 
 /// <summary>
 /// A string variable that lists Steam Workshop items by id (Project Zomboid's <c>WorkshopItems</c>): the panel offers
@@ -236,6 +241,14 @@ public sealed record WorkshopList(long AppId, string Separator = ";");
 /// <param name="GameId">The game on CurseForge (ARK: Survival Ascended is 83374).</param>
 /// <param name="Separator">Between ids: <c>,</c> or <c>;</c>.</param>
 public sealed record CurseForgeList(int GameId, string Separator = ",");
+
+/// <summary>
+/// A string variable that lists mods of Arma Reforger's Workshop by id (Pulsar 1.0.14; 16 hexadecimal digits,
+/// <c>5965550F24A0C152</c>): the panel offers an editor that searches the Workshop and names them. The game downloads
+/// them itself.
+/// </summary>
+/// <param name="Separator">Between ids: <c>,</c> or <c>;</c>.</param>
+public sealed record ReforgerWorkshopList(string Separator = ",");
 
 /// <summary>One choice of an <see cref="VariableType.Enum"/> variable; <see cref="Map"/> gives its sub-values.</summary>
 public sealed record EnumOption(string Value, string Label, IReadOnlyDictionary<string, string>? Map = null);
@@ -630,8 +643,25 @@ public enum ConfigFileMode
 /// Keys of <see cref="Set"/> of a <see cref="ConfigFileFormat.Json"/> file whose empty value is written as an empty
 /// string instead of removing the member: Enshrouded makes up a password for a group that has none (1.0.7).
 /// </param>
+/// <param name="Lists">
+/// Arrays of a <see cref="ConfigFileFormat.Json"/> file that hold one object per id of a list variable (Pulsar 1.0.14;
+/// Arma Reforger's <c>/game/mods</c>), by the array's pointer. The panel's ids are merged into the array, not written
+/// over it: see <see cref="ConfigListDefinition"/>.
+/// </param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
-    string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null, IReadOnlyList<string>? WriteIfEmpty = null);
+    string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null, IReadOnlyList<string>? WriteIfEmpty = null,
+    IReadOnlyDictionary<string, ConfigListDefinition>? Lists = null);
+
+/// <summary>
+/// An array of objects that list the ids of <see cref="Variable"/>, each in its member <see cref="Key"/> (Arma
+/// Reforger's <c>{ "modId": "5965550F24A0C152" }</c>). Before every start an id the variable lists keeps its object (with
+/// whatever else it holds, a version a user pinned) or gets a new one, an id the panel wrote last time and the variable no
+/// longer lists loses its object, and the objects users added by hand stay: the agent keeps what it wrote in the server's
+/// <c>.pulsar</c> folder.
+/// </summary>
+/// <param name="Variable">A string variable that lists Workshop items or catalog projects (its separator splits the ids).</param>
+/// <param name="Key">The member of each object that holds its id (<c>modId</c>).</param>
+public sealed record ConfigListDefinition(string Variable, string Key);
 
 /// <summary>
 /// What a backup contains: globs relative to the server directory (Phase 7); and how a running game is asked to write

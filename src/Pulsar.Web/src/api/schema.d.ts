@@ -3029,6 +3029,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reforger-workshop/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReforgerWorkshopLookupRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReforgerModView"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reforger-workshop/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    query?: string;
+                    page?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReforgerSearchView"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -15416,6 +15583,26 @@ export interface components {
         RecoveryCodesResponse: {
             recoveryCodes: string[];
         };
+        ReforgerModView: {
+            id: string;
+            found: boolean;
+            name: null | string;
+            author: null | string;
+            version: null | string;
+            /** Format: int64 */
+            size: null | number;
+            /** Format: date-time */
+            updated: null | string;
+            url: null | string;
+        };
+        ReforgerSearchView: {
+            hits: components["schemas"]["ReforgerModView"][];
+            /** Format: int32 */
+            total: number;
+        };
+        ReforgerWorkshopLookupRequest: {
+            ids: string[];
+        };
         /** @enum {unknown} */
         RemoteCopyStatus: "none" | "pending" | "copied" | "failed";
         ResetPasswordRequest: {
@@ -15894,6 +16081,9 @@ export interface components {
             /** Format: int32 */
             offset?: null | number;
         };
+        TemplateReforgerWorkshop: {
+            separator: string;
+        };
         /** @enum {unknown} */
         TemplateSource: "bundled" | "imported";
         TemplateUpgradeView: {
@@ -15920,6 +16110,7 @@ export interface components {
             description: null | string;
             workshop?: null | components["schemas"]["TemplateWorkshop"];
             curseForge?: null | components["schemas"]["TemplateCurseForge"];
+            reforgerWorkshop?: null | components["schemas"]["TemplateReforgerWorkshop"];
         };
         TemplateView: {
             /** Format: uuid */

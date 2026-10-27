@@ -653,6 +653,19 @@ public static partial class ManifestValidator
                 }
             }
 
+            if (variable.ReforgerWorkshop is { } reforger)
+            {
+                if (variable.Type != VariableType.String || variable.Secret || variable.Workshop is not null || variable.CurseForge is not null)
+                {
+                    error($"{path}.reforgerWorkshop", "Only string variables that are not secret, and list nothing else, can list Arma Reforger's Workshop mods.");
+                }
+
+                if (reforger.Separator is not (";" or ","))
+                {
+                    error($"{path}.reforgerWorkshop.separator", "',' or ';'.");
+                }
+            }
+
             switch (variable.Type)
             {
                 case VariableType.String:
@@ -1276,6 +1289,8 @@ public static partial class ManifestValidator
                 }
             }
 
+            ValidateConfigLists(file, path, context);
+
             foreach (var (key, value) in file.Set)
             {
                 var keyPattern = file.Format switch
@@ -1298,6 +1313,48 @@ public static partial class ManifestValidator
                 }
 
                 ValidateTemplate($"{path}.set.{key}", value, context, TemplateUse.ConfigValue, guardedPorts: s_noPorts);
+            }
+        }
+    }
+
+    /// <summary>A json file's arrays of ids (Pulsar 1.0.14): each of a list variable, none inside a key or another list.</summary>
+    private static void ValidateConfigLists(ConfigFileDefinition file, string path, Context context)
+    {
+        if (file.Lists is not { Count: > 0 } lists)
+        {
+            return;
+        }
+
+        if (file.Format != ConfigFileFormat.Json || lists.Count > 8)
+        {
+            context.Error($"{path}.lists", "At most 8 arrays, in a 'json' file.");
+            return;
+        }
+
+        string[] pointers = [.. file.Set.Keys, .. lists.Keys];
+        foreach (var (pointer, list) in lists)
+        {
+            var at = $"{path}.lists.{pointer}";
+            if (!JsonPointerPattern().IsMatch(pointer))
+            {
+                context.Error(at, "Invalid key for this format.");
+            }
+
+            // The array is the list's own: no key writes into it, over it or around it.
+            if (pointers.Count(p => p.Equals(pointer, StringComparison.OrdinalIgnoreCase)) > 1
+                || pointers.Any(p => p.StartsWith(pointer + "/", StringComparison.OrdinalIgnoreCase) || pointer.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                context.Error(at, "A list's array is its own: no other key or list is it, or inside it, or holds it.");
+            }
+
+            if (!context.Variables.TryGetValue(list.Variable, out var variable) || variable.ListSeparator is null)
+            {
+                context.Error($"{at}.variable", "A variable that lists Workshop items or catalog projects.");
+            }
+
+            if (!JsonMemberPattern().IsMatch(list.Key))
+            {
+                context.Error($"{at}.key", "The member that holds each id ('modId').");
             }
         }
     }
@@ -1553,6 +1610,10 @@ public static partial class ManifestValidator
     /// <summary>A JSON Pointer to an object member, 1 to 8 names deep; no escapes (<c>~</c>), so no <c>/</c> inside a name.</summary>
     [GeneratedRegex(@"^(/[A-Za-z0-9_.-]{1,64}){1,8}\z", RegexOptions.CultureInvariant)]
     private static partial Regex JsonPointerPattern();
+
+    /// <summary>An object member a list's ids go into (<c>modId</c>).</summary>
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonMemberPattern();
 
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}\z", RegexOptions.CultureInvariant)]
     private static partial Regex EnvironmentNamePattern();

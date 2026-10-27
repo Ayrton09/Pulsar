@@ -123,7 +123,8 @@
         "options": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/EnumOption" } },
         "description": { "type": "string", "maxLength": 512 },
         "workshop": { "$ref": "#/$defs/WorkshopList" },
-        "curseForge": { "$ref": "#/$defs/CurseForgeList" }
+        "curseForge": { "$ref": "#/$defs/CurseForgeList" },
+        "reforgerWorkshop": { "$ref": "#/$defs/ReforgerWorkshopList" }
       }
     },
     "WorkshopList": {
@@ -144,6 +145,23 @@
       "properties": {
         "gameId": { "type": "integer", "minimum": 1, "maximum": 2147483647, "description": "The game on CurseForge (ARK: Survival Ascended is 83374)." },
         "separator": { "enum": [",", ";"], "default": "," }
+      }
+    },
+    "ReforgerWorkshopList": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Pulsar 1.0.14: the variable lists mods of Arma Reforger's Workshop by id (16 hexadecimal digits); the panel offers an editor that searches the Workshop and names them. The game downloads them itself.",
+      "properties": {
+        "separator": { "enum": [",", ";"], "default": "," }
+      }
+    },
+    "ConfigListDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variable", "key"],
+      "properties": {
+        "variable": { "type": "string", "description": "A string variable that lists Workshop items or catalog projects (workshop, curseForge or reforgerWorkshop)." },
+        "key": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$", "description": "The member of each object that holds its id (modId)." }
       }
     },
     "EnumOption": {
@@ -471,7 +489,8 @@
         "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets. xml-properties: the root element." },
         "struct": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$", "description": "unreal-ini: the keys are members of this Struct=(Key=Value,...) line instead of plain lines." },
         "keepIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "Keys of set whose line stays as the file has it when their value is empty (an option left unset); an empty value of another key removes its line." },
-        "writeIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "json only: keys of set whose empty value is written as an empty string instead of removing the member." }
+        "writeIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "json only: keys of set whose empty value is written as an empty string instead of removing the member." },
+        "lists": { "type": "object", "maxProperties": 8, "additionalProperties": { "$ref": "#/$defs/ConfigListDefinition" }, "description": "Pulsar 1.0.14, json only: arrays of objects, by their JSON Pointer (/game/mods), that hold one object per id of a list variable. Ids the variable lists keep their object or get one, ids the panel wrote last time and the variable no longer lists lose theirs, objects added by hand stay." }
       }
     },
     "ReadinessDefinition": {

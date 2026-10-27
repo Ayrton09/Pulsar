@@ -106,7 +106,13 @@ public sealed record RenderedConfigFile(string Path, ConfigFileFormat Format, Co
 
     /// <inheritdoc cref="ConfigFileDefinition.Struct"/>
     public string? Struct { get; init; }
+
+    /// <inheritdoc cref="ConfigFileDefinition.Lists"/>
+    public IReadOnlyList<ConfigList> Lists { get; init; } = [];
 }
+
+/// <summary>A json array of objects and the ids the server's variable lists now, each once (<see cref="ConfigListDefinition"/>).</summary>
+public sealed record ConfigList(string ArrayPath, string Member, IReadOnlyList<string> Ids);
 
 /// <summary>Everything a manifest is rendered with for one server.</summary>
 /// <param name="Values">Variable values (defaults fill the gaps); checked again by the renderer, whoever sent them.</param>
@@ -451,7 +457,21 @@ public static partial class LaunchPlanRenderer
                 };
             }),
         ])
-        { Section = file.Section, Struct = file.Struct }).ToList();
+        {
+            Section = file.Section,
+            Struct = file.Struct,
+            Lists = [.. (file.Lists ?? new Dictionary<string, ConfigListDefinition>()).Select(list =>
+            {
+                var ids = (resolved[list.Value.Variable] ?? "").Split(definitions[list.Value.Variable].ListSeparator ?? ",",
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (ids.Select(id => ConfigFileWriter.ValueError(ConfigFileFormat.Json, id)).FirstOrDefault(e => e is not null) is { } error)
+                {
+                    throw new LaunchPlanException($"{file.Path} {list.Key}: {error}");
+                }
+
+                return new ConfigList(list.Key, list.Value.Key, ids);
+            })],
+        }).ToList();
 
         return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
         {

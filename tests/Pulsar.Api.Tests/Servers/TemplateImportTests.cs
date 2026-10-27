@@ -343,7 +343,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
-    public async Task ModsFromUmodThunderstoreAndCurseForgeListsGoOnlyToAgentsThatReadThem()
+    public async Task ModsFromUmodThunderstoreAndCatalogListsGoOnlyToAgentsThatReadThem()
     {
         using var admin = await factory.CreateAdminClientAsync();
         var templates = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
@@ -357,6 +357,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("rust", AgentCapabilities.UmodPlugins, new Dictionary<string, string?>()),
             ("valheim", AgentCapabilities.ThunderstorePackages, new Dictionary<string, string?> { ["password"] = "secret1" }),
             ("ark-sa", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
+            ("arma-reforger", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
         })
         {
             var template = templates.Single(t => t.Key == game);

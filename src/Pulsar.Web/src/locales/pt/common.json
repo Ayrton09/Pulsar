@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "O CurseForge não aceita essa chave de API.",
       "addon_missing": "Esses plugins rodam sobre um addon que o servidor não tem: instale-o primeiro, nesta aba.",
       "bad_package": "Um pacote não é um zip que o Pulsar descompacte, então nada foi alterado: {{detail}}",
-      "list_invalid": "De 1 a 100 ids de projetos do CurseForge de um jogo, cada um um número."
+      "list_invalid": "Os ids da lista não são do catálogo dela, ou são muitos para consultar de uma vez."
     },
     "modpack": {
       "unsupported": "Este servidor não pode instalar modpacks: {{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "Não está no CurseForge",
       "otherGame": "É de outro jogo",
       "needsKey": "Sem a chave do CurseForge do painel, os mods são adicionados pelo id: um administrador define a chave em Jogos.",
+      "by": "de {{author}}"
+    },
+    "reforger": {
+      "empty": "Ainda não há mods: procure no Workshop abaixo ou adicione um pelo id.",
+      "placeholder": "Id do Workshop (16 caracteres)",
+      "add": "Adicionar",
+      "added": "Adicionado",
+      "removeShort": "Remover",
+      "remove": "Remover {{name}}",
+      "invalid": "Um id do Workshop tem 16 caracteres: dígitos e as letras de A a F.",
+      "duplicate": "Esse mod já está na lista.",
+      "tooMany": "A lista é maior do que esta configuração aceita.",
+      "search": "Procurar no Workshop do Arma Reforger",
+      "results": "Mods encontrados",
+      "noResults": "Nada encontrado.",
+      "notFound": "Não está no Workshop",
       "by": "de {{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "Reserva de slot (s)",
           "description": "Por quanto tempo o slot de um jogador desconectado é mantido para ele."
+        },
+        "mods": {
+          "label": "Mods",
+          "description": "Mods do Workshop do Arma Reforger, pelo id, separados por vírgulas. O servidor os baixa sozinho ao iniciar; os mods adicionados à mão no server.json continuam."
         }
       },
       "ports": {

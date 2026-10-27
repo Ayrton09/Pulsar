@@ -50,9 +50,10 @@ public static partial class ConfigFileWriter
     /// The new text of the file. <paramref name="existing"/> is its current text (null when missing). Patch mode
     /// changes only the declared keys (the first line setting each one is replaced, repeated ones are removed, missing
     /// ones are appended); an empty value removes the key. Declared keys belong to Pulsar: a value written there by hand
-    /// is replaced at the next start.
+    /// is replaced at the next start. <paramref name="listed"/> holds, by array, the ids the last start wrote into a json
+    /// file's lists (<see cref="RenderedConfigFile.Lists"/>), so that only those are taken out.
     /// </summary>
-    public static string Apply(RenderedConfigFile file, string? existing)
+    public static string Apply(RenderedConfigFile file, string? existing, IReadOnlyDictionary<string, IReadOnlyList<string>>? listed = null)
     {
         ArgumentNullException.ThrowIfNull(file);
         foreach (var entry in file.Entries)
@@ -76,7 +77,7 @@ public static partial class ConfigFileWriter
 
         if (file.Format == ConfigFileFormat.Json)
         {
-            return Json(file, existing, newline);
+            return Json(file, existing, listed, newline);
         }
 
         if (file.Format == ConfigFileFormat.Xml)
@@ -382,7 +383,7 @@ public static partial class ConfigFileWriter
     /// order and their values stay; the file is written again with the indentation it had. A missing file starts as an
     /// empty object.
     /// </summary>
-    private static string Json(RenderedConfigFile file, string? existing, string newline)
+    private static string Json(RenderedConfigFile file, string? existing, IReadOnlyDictionary<string, IReadOnlyList<string>>? listed, string newline)
     {
         JsonObject root;
         try
@@ -408,7 +409,7 @@ public static partial class ConfigFileWriter
                 {
                     // A missing container: an array when the name after it is an index (Enshrouded's userGroups/0).
                     next = JsonIndex(names[i + 1]) is not null ? new JsonArray() : new JsonObject();
-                    SetJsonChild(file, entry, parent, names[i], next);
+                    SetJsonChild(file, entry.Key, parent, names[i], next);
                 }
                 else if (next is not (null or JsonObject or JsonArray))
                 {
@@ -430,8 +431,13 @@ public static partial class ConfigFileWriter
             }
             else
             {
-                SetJsonChild(file, entry, parent, names[^1], JsonValueOf(file, entry));
+                SetJsonChild(file, entry.Key, parent, names[^1], JsonValueOf(file, entry));
             }
+        }
+
+        foreach (var list in file.Lists)
+        {
+            MergeJsonList(file, root, list, listed?.GetValueOrDefault(list.ArrayPath) ?? []);
         }
 
         var (character, size) = JsonIndentation(existing);
@@ -463,8 +469,79 @@ public static partial class ConfigFileWriter
         _ => null,
     };
 
+    /// <summary>
+    /// The objects of <paramref name="list"/>'s array, one per id it lists: an object already there keeps its place and its
+    /// other members, a missing one is added at the end; the object of an id in <paramref name="previous"/> (the panel's,
+    /// last time) that the list no longer has goes; anything else (added by hand) stays. Nothing to list and no array
+    /// leaves the file as it is.
+    /// </summary>
+    private static void MergeJsonList(RenderedConfigFile file, JsonObject root, ConfigList list, IReadOnlyList<string> previous)
+    {
+        var names = list.ArrayPath[1..].Split('/');
+        JsonNode? parent = root;
+        for (var i = 0; i < names.Length - 1 && parent is not null; i++)
+        {
+            var next = JsonChild(parent, names[i]);
+            if (next is null && list.Ids.Count > 0)
+            {
+                next = JsonIndex(names[i + 1]) is not null ? new JsonArray() : new JsonObject();
+                SetJsonChild(file, list.ArrayPath, parent, names[i], next);
+            }
+            else if (next is not (null or JsonObject or JsonArray))
+            {
+                throw new LaunchPlanException($"{file.Path}: {list.ArrayPath} goes through a value that is neither an object nor an array; fix the file or delete it.");
+            }
+
+            parent = next; // null: no array, and nothing to add
+        }
+
+        if (parent is null)
+        {
+            return;
+        }
+
+        var array = JsonChild(parent, names[^1]);
+        if (array is null)
+        {
+            if (list.Ids.Count == 0)
+            {
+                return;
+            }
+
+            array = new JsonArray();
+            SetJsonChild(file, list.ArrayPath, parent, names[^1], array);
+        }
+
+        if (array is not JsonArray elements)
+        {
+            throw new LaunchPlanException($"{file.Path}: {list.ArrayPath} is not an array; fix the file or delete it.");
+        }
+
+        var listed = new HashSet<string>(list.Ids, StringComparer.OrdinalIgnoreCase);
+        var dropped = new HashSet<string>(previous.Where(id => !listed.Contains(id)), StringComparer.OrdinalIgnoreCase);
+        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var kept = elements.ToList();
+        elements.Clear(); // detached, so the elements kept can go back in
+        foreach (var element in kept)
+        {
+            var id = (element as JsonObject)?[list.Member] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+            // A listed id's object stays once; the panel's former id goes; whatever else the file holds stays.
+            if (id is not null && (dropped.Contains(id) || (listed.Contains(id) && !present.Add(id))))
+            {
+                continue;
+            }
+
+            elements.Add(element);
+        }
+
+        foreach (var id in list.Ids.Where(id => !present.Contains(id)))
+        {
+            elements.Add(new JsonObject { [list.Member] = id });
+        }
+    }
+
     /// <summary>Sets a member, or an array's element: one that exists, or the one right after its last.</summary>
-    private static void SetJsonChild(RenderedConfigFile file, ConfigEntry entry, JsonNode parent, string name, JsonNode value)
+    private static void SetJsonChild(RenderedConfigFile file, string key, JsonNode parent, string name, JsonNode value)
     {
         if (parent is JsonObject members)
         {
@@ -483,7 +560,7 @@ public static partial class ConfigFileWriter
         }
         else
         {
-            throw new LaunchPlanException($"{file.Path}: {entry.Key} names an element past the end of an array, or a member of one; fix the file or delete it.");
+            throw new LaunchPlanException($"{file.Path}: {key} names an element past the end of an array, or a member of one; fix the file or delete it.");
         }
     }
 

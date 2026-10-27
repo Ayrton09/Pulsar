@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Pulsar.Agent.Core.Processes;
@@ -612,6 +613,65 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
             TestContext.Current.CancellationToken));
         Assert.Equal("gone", logAtStart);
         Assert.Equal(ConsoleMode.Pty, _processes.Specs[0].ConsoleMode); // srcds needs a console even though it writes nothing to it
+    }
+
+    [Fact]
+    public async Task AJsonListTakesOutOnlyTheIdsTheLastStartWrote()
+    {
+        // Arma Reforger's mods (1.0.14): one added by hand, one the panel wrote last time and no longer lists.
+        await File.WriteAllTextAsync(Path.Combine(_root, "server.json"),
+            """{ "game": { "mods": [ { "modId": "2222222222222222" }, { "modId": "1111111111111111" } ] } }""", TestContext.Current.CancellationToken);
+        Directory.CreateDirectory(Path.Combine(_root, ".pulsar", "lists"));
+        var record = Path.Combine(_root, ConfigListRecords.PathOf("server.json"));
+        await File.WriteAllTextAsync(record, """{ "/game/mods": [ "1111111111111111" ] }""", TestContext.Current.CancellationToken);
+        var supervisor = Supervisor(new RconReadiness(60), change: plan => plan with
+        {
+            ConfigFiles = [new RenderedConfigFile("server.json", ConfigFileFormat.Json, ConfigFileMode.Patch, [])
+            {
+                Lists = [new ConfigList("/game/mods", "modId", ["5965550F24A0C152"])],
+            }],
+        });
+
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        await supervisor.FlushAsync();
+
+        Assert.Equal("""{"game":{"mods":[{"modId":"2222222222222222"},{"modId":"5965550F24A0C152"}]}}""",
+            JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(_root, "server.json"), TestContext.Current.CancellationToken))!.ToJsonString());
+        Assert.Equal("""{"/game/mods":["5965550F24A0C152"]}""", await File.ReadAllTextAsync(record, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AFolderInPlaceOfTheListRecordDoesNotStopTheStart()
+    {
+        // The server's account can put anything in its .pulsar folder: then the panel's former ids just stay.
+        Directory.CreateDirectory(Path.Combine(_root, ConfigListRecords.PathOf("server.json")));
+        var supervisor = Supervisor(new RconReadiness(60), change: plan => plan with
+        {
+            ConfigFiles = [new RenderedConfigFile("server.json", ConfigFileFormat.Json, ConfigFileMode.Patch, [])
+            {
+                Lists = [new ConfigList("/game/mods", "modId", ["5965550F24A0C152"])],
+            }],
+        });
+
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        await supervisor.FlushAsync();
+
+        Assert.Equal("""{"game":{"mods":[{"modId":"5965550F24A0C152"}]}}""",
+            JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(_root, "server.json"), TestContext.Current.CancellationToken))!.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("""{ "/game/mods": "not a list" }""")]
+    [InlineData("""[ "a list" ]""")]
+    public void ARecordThatCannotBeReadCountsAsNone(string text)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".pulsar", "lists"));
+        File.WriteAllText(Path.Combine(_root, ConfigListRecords.PathOf("Server.json")), text);
+
+        Assert.Null(ConfigListRecords.Read(new DirectServerFiles(), _root, "server.json"));
     }
 
     [Fact]

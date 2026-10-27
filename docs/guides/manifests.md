@@ -96,6 +96,8 @@ Then:
    boolean, as is an enum whose options are all `true`/`false` (or all numbers) and a literal `true`, `false` or number;
    anything else is a string. Array elements are named by index (`"/userGroups/0/password"`), and keys listed in
    `"writeIfEmpty"` are written as an empty string instead of being removed.
+   1.0.14 agents add a json file's `"lists"`: arrays of objects that list the ids of a list variable
+   (`"/game/mods": { "variable": "mods", "key": "modId" }`, Arma Reforger), merged so that objects added by hand stay.
    `space` (`Key value` lines, Unturned's `Commands.dat`) needs 1.0.7 agents too. 1.0.12 agents add `text` (a file that
    is one value, a token), `xml` (elements' text by their path from the root, `/MyConfigDedicated/ServerName`), and
    several entries for one `unreal-ini` file, one per `section`.

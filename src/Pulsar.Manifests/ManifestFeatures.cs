@@ -70,11 +70,15 @@ public static class ManifestFeatures
         return manifest.ModList.Any(s => s.Source == ModSourceDefinition.Umod);
     }
 
-    /// <summary>A variable that lists a catalog's projects for the panel's editor (Pulsar 1.0.14: <c>curseForge</c>).</summary>
+    /// <summary>
+    /// A variable that lists a catalog's projects for the panel's editor, or a json file's array of ids (Pulsar 1.0.14:
+    /// <c>curseForge</c>, <c>reforgerWorkshop</c>, a config file's <c>lists</c>).
+    /// </summary>
     public static bool UsesCatalogLists(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.VariableList.Any(v => v.CurseForge is not null);
+        return manifest.VariableList.Any(v => v.CurseForge is not null || v.ReforgerWorkshop is not null)
+            || manifest.ConfigFileList.Any(f => f.Lists is { Count: > 0 });
     }
 
     /// <summary>Thunderstore's packages (Pulsar 1.0.14): the <c>thunderstore</c> addon source, and the catalog unpacked into BepInEx's folder.</summary>

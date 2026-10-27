@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge n'accepte pas cette clé d'API.",
       "addon_missing": "Ces plugins fonctionnent sur un addon que le serveur n'a pas : installez-le d'abord, depuis cet onglet.",
       "bad_package": "Un paquet n'est pas un zip que Pulsar décompresse, donc rien n'a été modifié : {{detail}}",
-      "list_invalid": "De 1 à 100 ids de projets CurseForge d'un jeu, chacun un nombre."
+      "list_invalid": "Les ids de la liste ne sont pas ceux de son catalogue, ou il y en a trop à chercher d'un coup."
     },
     "modpack": {
       "unsupported": "Ce serveur ne peut pas installer de modpacks : {{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "Pas sur CurseForge",
       "otherGame": "D'un autre jeu",
       "needsKey": "Sans la clé CurseForge du panneau, les mods s'ajoutent par leur id : un administrateur la définit dans Jeux.",
+      "by": "par {{author}}"
+    },
+    "reforger": {
+      "empty": "Aucun mod pour l'instant : cherchez-les dans le Workshop ci-dessous, ou ajoutez-en un par son id.",
+      "placeholder": "Id du Workshop (16 caractères)",
+      "add": "Ajouter",
+      "added": "Ajouté",
+      "removeShort": "Retirer",
+      "remove": "Retirer {{name}}",
+      "invalid": "Un id du Workshop fait 16 caractères : des chiffres et les lettres A à F.",
+      "duplicate": "Ce mod est déjà dans la liste.",
+      "tooMany": "La liste est plus longue que ce réglage n'accepte.",
+      "search": "Chercher dans le Workshop d'Arma Reforger",
+      "results": "Mods trouvés",
+      "noResults": "Rien trouvé.",
+      "notFound": "Pas dans le Workshop",
       "by": "par {{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "Réservation de slot (s)",
           "description": "Combien de temps le slot d'un joueur déconnecté lui est gardé."
+        },
+        "mods": {
+          "label": "Mods",
+          "description": "Mods du Workshop d'Arma Reforger, par id, séparés par des virgules. Le serveur les télécharge lui-même au démarrage ; les mods ajoutés à la main dans server.json restent."
         }
       },
       "ports": {

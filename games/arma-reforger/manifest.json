@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "arma-reforger",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Arma Reforger",
   "description": "Arma Reforger dedicated server, installed anonymously with SteamCMD. Its settings are in server.json and its logs, saves and mods in the profile folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -66,7 +66,10 @@
     { "key": "disableAi", "label": "Disable AI", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
       "description": "No AI at all, for PvP." },
     { "key": "slotReservationTimeout", "label": "Slot reservation (s)", "type": "integer", "min": 5, "max": 300,
-      "description": "How long a disconnected player's slot is kept for them." }
+      "description": "How long a disconnected player's slot is kept for them." },
+    { "key": "mods", "label": "Mods", "type": "string", "default": "", "maxLength": 2048, "pattern": "^([0-9A-Fa-f]{16}(,[0-9A-Fa-f]{16})*)?$",
+      "description": "Mods of the Arma Reforger Workshop, by id, separated by commas. The server downloads them itself when it starts; mods added to server.json by hand stay.",
+      "reforgerWorkshop": {} }
   ],
 
   "ports": [
@@ -125,7 +128,8 @@
       },
       "keepIfEmpty": ["/game/crossPlatform", "/game/gameProperties/disableThirdPerson", "/game/gameProperties/battlEye",
         "/game/gameProperties/serverMaxViewDistance",
-        "/game/gameProperties/networkViewDistance", "/game/gameProperties/serverMinGrassDistance", "/game/gameProperties/fastValidation", "/game/gameProperties/VONDisableUI", "/game/gameProperties/VONDisableDirectSpeechUI", "/game/gameProperties/VONCanTransmitCrossFaction", "/operating/playerSaveTime", "/operating/aiLimit", "/operating/disableAI", "/operating/slotReservationTimeout"] }
+        "/game/gameProperties/networkViewDistance", "/game/gameProperties/serverMinGrassDistance", "/game/gameProperties/fastValidation", "/game/gameProperties/VONDisableUI", "/game/gameProperties/VONDisableDirectSpeechUI", "/game/gameProperties/VONCanTransmitCrossFaction", "/operating/playerSaveTime", "/operating/aiLimit", "/operating/disableAI", "/operating/slotReservationTimeout"],
+      "lists": { "/game/mods": { "variable": "mods", "key": "modId" } } }
   ],
 
   "query": { "protocol": "a2s", "port": "query" },

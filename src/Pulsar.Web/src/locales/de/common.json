@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge akzeptiert diesen API-Schlüssel nicht.",
       "addon_missing": "Diese Plugins laufen auf einem Addon, das der Server nicht hat: installiere es zuerst, in diesem Tab.",
       "bad_package": "Ein Paket ist kein Zip, das Pulsar entpackt, daher wurde nichts geändert: {{detail}}",
-      "list_invalid": "1 bis 100 CurseForge-Projekt-IDs eines Spiels, jede eine Zahl."
+      "list_invalid": "Die IDs der Liste gehören nicht zu ihrem Katalog, oder es sind zu viele, um sie auf einmal nachzuschlagen."
     },
     "modpack": {
       "unsupported": "Dieser Server kann keine Modpacks installieren: {{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "Nicht auf CurseForge",
       "otherGame": "Von einem anderen Spiel",
       "needsKey": "Ohne den CurseForge-Schlüssel des Panels werden Mods per ID hinzugefügt: ein Administrator legt ihn unter Spiele fest.",
+      "by": "von {{author}}"
+    },
+    "reforger": {
+      "empty": "Noch keine Mods: suche sie unten im Workshop oder füge einen per ID hinzu.",
+      "placeholder": "Workshop-ID (16 Zeichen)",
+      "add": "Hinzufügen",
+      "added": "Hinzugefügt",
+      "removeShort": "Entfernen",
+      "remove": "{{name}} entfernen",
+      "invalid": "Eine Workshop-ID hat 16 Zeichen: Ziffern und die Buchstaben A bis F.",
+      "duplicate": "Dieser Mod ist schon in der Liste.",
+      "tooMany": "Die Liste ist länger, als diese Einstellung zulässt.",
+      "search": "Im Workshop von Arma Reforger suchen",
+      "results": "Gefundene Mods",
+      "noResults": "Nichts gefunden.",
+      "notFound": "Nicht im Workshop",
       "by": "von {{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "Slot-Reservierung (s)",
           "description": "Wie lange der Slot eines getrennten Spielers für ihn freigehalten wird."
+        },
+        "mods": {
+          "label": "Mods",
+          "description": "Mods aus dem Workshop von Arma Reforger, per ID, durch Kommas getrennt. Der Server lädt sie beim Start selbst herunter; von Hand in server.json eingetragene Mods bleiben."
         }
       },
       "ports": {

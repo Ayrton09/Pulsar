@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge does not accept that API key.",
       "addon_missing": "These plugins run on an addon the server does not have: install it first, from this tab.",
       "bad_package": "A package is not a zip Pulsar unpacks, so nothing was changed: {{detail}}",
-      "list_invalid": "1 to 100 CurseForge project ids of a game, each a number."
+      "list_invalid": "The list's ids are not ids of its catalog, or there are too many to look up at once."
     },
     "modpack": {
       "unsupported": "{{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "Not on CurseForge",
       "otherGame": "Another game's",
       "needsKey": "Without the panel's CurseForge key the mods are added by their ids: an administrator sets the key in Games.",
+      "by": "by {{author}}"
+    },
+    "reforger": {
+      "empty": "No mods yet: search the Workshop below, or add one by its id.",
+      "placeholder": "Workshop id (16 characters)",
+      "add": "Add",
+      "added": "Added",
+      "removeShort": "Remove",
+      "remove": "Remove {{name}}",
+      "invalid": "A Workshop id is 16 characters: digits and the letters A to F.",
+      "duplicate": "That mod is in the list already.",
+      "tooMany": "The list is longer than this setting takes.",
+      "search": "Search Arma Reforger's Workshop",
+      "results": "Mods found",
+      "noResults": "Nothing found.",
+      "notFound": "Not in the Workshop",
       "by": "by {{author}}"
     }
   },

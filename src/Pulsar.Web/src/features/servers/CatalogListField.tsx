@@ -1,31 +1,22 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError, api, unwrap, type Schemas } from '../../api/client';
+import { ApiError } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
+import { useFormatFileSize } from '../../lib/format';
 import { visibleName } from '../../lib/visibleText';
 import type { TemplateVariable } from './api';
+import type { Catalog, CatalogItem } from './catalogs';
 
-type Project = Schemas['CurseForgeProjectView'];
-
-const LOOKUP_LIMIT = 100;
-/** How long typing pauses before CurseForge is asked: each search is a request with the administrator's key. */
+/** How long typing pauses before the catalog is asked: each search is a request to it. */
 const SEARCH_DELAY = 400;
 
-function lookup(gameId: number, ids: string[]) {
-  return unwrap(api.POST('/api/v1/curseforge/lookup', { body: { gameId, ids } }));
-}
-
-/** A CurseForge project's id: a positive number without leading zeros. */
-function parseProjectId(text: string): string | null {
-  const id = text.trim();
-  return /^[1-9][0-9]{0,9}$/.test(id) && Number(id) <= 2147483647 ? id : null;
-}
-
-interface CurseForgeListFieldProps {
-  variable: TemplateVariable & { curseForge: Schemas['TemplateCurseForge'] };
+interface CatalogListFieldProps {
+  variable: TemplateVariable;
+  separator: string;
+  catalog: Catalog;
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
@@ -33,15 +24,24 @@ interface CurseForgeListFieldProps {
 }
 
 /**
- * A variable that lists CurseForge projects (Pulsar 1.0.14; ARK: Survival Ascended's mods): the projects by name, looked
- * up on CurseForge through the panel with the administrator's key, found by a search of the game's mods or added by id,
- * and removed one by one. Without a key the ids are added as typed. The value stays the game's list.
+ * A variable that lists a catalog's projects (Pulsar 1.0.14; ARK: Survival Ascended's mods on CurseForge, Arma
+ * Reforger's Workshop mods): the projects by name, looked up through the panel, found by a search or added by id, and
+ * removed one by one. When the catalog cannot be asked (CurseForge without the panel's key) the ids are added as typed.
+ * The value stays the game's list.
  */
-export function CurseForgeListField({ variable, value, disabled, onChange, control }: CurseForgeListFieldProps) {
+export function CatalogListField({
+  variable,
+  separator,
+  catalog,
+  value,
+  disabled,
+  onChange,
+  control,
+}: CatalogListFieldProps) {
   const { t } = useTranslation();
-  const { gameId, separator } = variable.curseForge;
+  const texts = `servers.${catalog.texts}`;
   const ids = split(value, separator);
-  const lookupIds = ids.filter((id) => parseProjectId(id) === id);
+  const lookupIds = ids.filter((id) => catalog.parseId(id) !== null);
   // The value when a lookup ends, not when it began: the list may have changed meanwhile.
   const latest = useRef(value);
   useLayoutEffect(() => {
@@ -57,12 +57,12 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
   }, [words]);
 
   const details = useQuery({
-    queryKey: ['curseforge', gameId, lookupIds],
+    queryKey: [...catalog.key, lookupIds],
     queryFn: async () => {
-      const found = new Map<string, Project>();
-      for (let i = 0; i < lookupIds.length; i += LOOKUP_LIMIT) {
-        for (const project of await lookup(gameId, lookupIds.slice(i, i + LOOKUP_LIMIT))) {
-          found.set(project.id, project);
+      const found = new Map<string, CatalogItem>();
+      for (let i = 0; i < lookupIds.length; i += catalog.lookupLimit) {
+        for (const item of await catalog.lookup(lookupIds.slice(i, i + catalog.lookupLimit))) {
+          found.set(item.id, item);
         }
       }
       return found;
@@ -73,22 +73,23 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
     retry: false,
   });
   const search = useQuery({
-    queryKey: ['curseforge-search', gameId, query],
-    queryFn: () => unwrap(api.GET('/api/v1/curseforge/search', { params: { query: { gameId, query, offset: 0 } } })),
+    queryKey: [...catalog.key, 'search', query],
+    queryFn: () => catalog.search(query),
     enabled: !disabled && query.length >= 2,
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
-  const check = useMutation({ mutationFn: (id: string) => lookup(gameId, [id]) });
+  const check = useMutation({ mutationFn: (id: string) => catalog.lookup([id]) });
   // Without the panel's key CurseForge cannot be asked: ids still go in as typed.
   const noKey = [details.error, search.error, check.error].some(
     (error) => error instanceof ApiError && error.code === 'mods.catalog_not_configured',
   );
+  const listed = (id: string) => ids.some((other) => same(other, id));
 
   const set = (next: string[]) => {
     const joined = next.join(separator);
     if (variable.maxLength != null && joined.length > variable.maxLength) {
-      setProblem(t('servers.curseforge.tooMany'));
+      setProblem(t(`${texts}.tooMany`));
       return;
     }
     setProblem(null);
@@ -98,24 +99,24 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
 
   const append = (id: string) => {
     const current = split(latest.current, separator);
-    if (!current.includes(id)) {
+    if (!current.some((other) => same(other, id))) {
       set([...current, id]);
     }
   };
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
-    const id = parseProjectId(text);
+    const id = catalog.parseId(text);
     if (!id) {
-      setProblem(t('servers.curseforge.invalid'));
+      setProblem(t(`${texts}.invalid`));
       return;
     }
-    if (ids.includes(id)) {
-      setProblem(t('servers.curseforge.duplicate'));
+    if (listed(id)) {
+      setProblem(t(`${texts}.duplicate`));
       return;
     }
     setProblem(null);
-    // Looked up first, so it shows by name; CurseForge out of reach (or no key), it goes in as typed. Each call appends
+    // Looked up first, so it shows by name; the catalog out of reach (or no key), it goes in as typed. Each call appends
     // its own id: mutate's own callbacks would run only for the last of two quick adds.
     void check.mutateAsync(id).then(
       () => append(id),
@@ -127,14 +128,15 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
   return (
     <div className="space-y-2">
       {ids.length === 0 ? (
-        <p className="text-sm text-muted">{t('servers.curseforge.empty')}</p>
+        <p className="text-sm text-muted">{t(`${texts}.empty`)}</p>
       ) : (
         <ul aria-label={variable.label} className="divide-y divide-border rounded-md border border-border">
           {ids.map((id) => (
-            <ProjectRow
+            <ItemRow
               key={id}
+              texts={texts}
               id={id}
-              project={details.data?.get(id)}
+              item={details.data?.get(id)}
               loading={details.isFetching && !details.data?.has(id)}
               disabled={disabled}
               onRemove={() => set(ids.filter((other) => other !== id))}
@@ -143,7 +145,7 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
         </ul>
       )}
       {noKey ? (
-        <p className="text-xs text-muted">{t('servers.curseforge.needsKey')}</p>
+        <p className="text-xs text-muted">{t(`${texts}.needsKey`)}</p>
       ) : (
         details.isError && <p className="text-xs text-danger">{errorMessage(t, details.error)}</p>
       )}
@@ -152,13 +154,13 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
           <Input
             {...control}
             value={text}
-            inputMode="numeric"
-            placeholder={t('servers.curseforge.placeholder')}
+            inputMode={catalog.numeric ? 'numeric' : 'text'}
+            placeholder={t(`${texts}.placeholder`)}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && submit(e)}
           />
           <Button type="button" variant="secondary" busy={check.isPending} onClick={() => submit()}>
-            {t('servers.curseforge.add')}
+            {t(`${texts}.add`)}
           </Button>
         </div>
       )}
@@ -171,39 +173,32 @@ export function CurseForgeListField({ variable, value, disabled, onChange, contr
         <div className="space-y-2">
           <Input
             type="search"
-            aria-label={t('servers.curseforge.search')}
-            placeholder={t('servers.curseforge.search')}
+            aria-label={t(`${texts}.search`)}
+            placeholder={t(`${texts}.search`)}
             maxLength={100}
             value={words}
             onChange={(e) => setWords(e.target.value)}
           />
           {search.isError && <p className="text-xs text-danger">{errorMessage(t, search.error)}</p>}
           {search.data && search.data.hits.length === 0 && (
-            <p className="text-xs text-muted">{t('servers.curseforge.noResults')}</p>
+            <p className="text-xs text-muted">{t(`${texts}.noResults`)}</p>
           )}
           {search.data && search.data.hits.length > 0 && (
-            <ul
-              aria-label={t('servers.curseforge.results')}
-              className="divide-y divide-border rounded-md border border-border"
-            >
+            <ul aria-label={t(`${texts}.results`)} className="divide-y divide-border rounded-md border border-border">
               {search.data.hits.map((hit) => (
                 <li key={hit.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                   <div className="min-w-0">
                     <span className="break-words">{visibleName(hit.name ?? hit.id)}</span>
-                    <p className="text-xs text-muted">
-                      {[hit.id, hit.author ? t('servers.curseforge.by', { author: hit.author }) : null]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
+                    <Notes texts={texts} id={hit.id} item={hit} />
                   </div>
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    disabled={ids.includes(hit.id)}
+                    disabled={listed(hit.id)}
                     onClick={() => append(hit.id)}
                   >
-                    {ids.includes(hit.id) ? t('servers.curseforge.added') : t('servers.curseforge.add')}
+                    {listed(hit.id) ? t(`${texts}.added`) : t(`${texts}.add`)}
                   </Button>
                 </li>
               ))}
@@ -222,15 +217,53 @@ function split(value: string, separator: string) {
     .filter(Boolean);
 }
 
-function ProjectRow({
+/** Ids of one project: Arma Reforger's are hexadecimal, in capitals or not. */
+function same(a: string, b: string) {
+  return a.toUpperCase() === b.toUpperCase();
+}
+
+/** Its id, author, version and size, and why it is suspect. */
+function Notes({
+  texts,
   id,
-  project,
+  item,
+  loading = false,
+}: {
+  texts: string;
+  id: string;
+  item: CatalogItem | undefined;
+  loading?: boolean;
+}) {
+  const { t } = useTranslation();
+  const formatSize = useFormatFileSize();
+  return (
+    <p className="text-xs text-muted">
+      {[
+        item?.found ? id : null,
+        item?.author ? t(`${texts}.by`, { author: item.author }) : null,
+        item?.version ? `v${item.version}` : null,
+        item?.size ? formatSize(item.size) : null,
+        loading ? t('common.loading') : null,
+        item && !item.found ? t(`${texts}.notFound`) : null,
+        item?.otherGame ? t(`${texts}.otherGame`) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+    </p>
+  );
+}
+
+function ItemRow({
+  texts,
+  id,
+  item,
   loading,
   disabled,
   onRemove,
 }: {
+  texts: string;
   id: string;
-  project: Project | undefined;
+  item: CatalogItem | undefined;
   loading: boolean;
   disabled: boolean;
   onRemove: () => void;
@@ -238,14 +271,14 @@ function ProjectRow({
   const { t } = useTranslation();
   const noteId = useId();
   // An author chose the name: its hidden characters are shown, not acted on.
-  const name = project?.found ? visibleName(project.name ?? id) : id;
+  const name = item?.found ? visibleName(item.name ?? id) : id;
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
       <div className="min-w-0">
-        {project?.url ? (
+        {item?.url ? (
           <>
             <a
-              href={project.url}
+              href={item.url}
               aria-describedby={noteId}
               target="_blank"
               rel="noreferrer noopener"
@@ -260,26 +293,11 @@ function ProjectRow({
         ) : (
           <span className="break-words">{name}</span>
         )}
-        <p className="text-xs text-muted">
-          {[
-            project?.found ? id : null,
-            project?.author ? t('servers.curseforge.by', { author: project.author }) : null,
-            loading ? t('common.loading') : null,
-            project && !project.found ? t('servers.curseforge.notFound') : null,
-            project?.otherGame ? t('servers.curseforge.otherGame') : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
+        <Notes texts={texts} id={id} item={item} loading={loading} />
       </div>
       {!disabled && (
-        <Button
-          type="button"
-          variant="secondary"
-          aria-label={t('servers.curseforge.remove', { name })}
-          onClick={onRemove}
-        >
-          {t('servers.curseforge.removeShort')}
+        <Button type="button" variant="secondary" aria-label={t(`${texts}.remove`, { name })} onClick={onRemove}>
+          {t(`${texts}.removeShort`)}
         </Button>
       )}
     </li>

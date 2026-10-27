@@ -506,7 +506,7 @@
       "curseforge_key_rejected": "CurseForge はその API キーを受け付けません。",
       "addon_missing": "これらのプラグインは、サーバーにないアドオンの上で動きます。先にこのタブからアドオンをインストールしてください。",
       "bad_package": "パッケージが Pulsar で展開できる zip ではないため、何も変更していません: {{detail}}",
-      "list_invalid": "ゲームの CurseForge プロジェクト ID を 1～100 個、それぞれ数字で指定してください。"
+      "list_invalid": "リストの ID がそのカタログのものではないか、一度に調べるには多すぎます。"
     },
     "modpack": {
       "unsupported": "このサーバーには Modpack をインストールできません: {{detail}}",
@@ -1426,6 +1426,22 @@
       "notFound": "CurseForge にありません",
       "otherGame": "別のゲームのものです",
       "needsKey": "パネルに CurseForge のキーがないため、Mod は ID で追加します。管理者が「ゲーム」でキーを設定できます。",
+      "by": "作者: {{author}}"
+    },
+    "reforger": {
+      "empty": "まだ Mod はありません。下の Workshop で検索するか、ID で追加してください。",
+      "placeholder": "Workshop の ID（16 文字）",
+      "add": "追加",
+      "added": "追加済み",
+      "removeShort": "削除",
+      "remove": "{{name}} を削除",
+      "invalid": "Workshop の ID は 16 文字で、数字と A～F の文字です。",
+      "duplicate": "その Mod はすでにリストにあります。",
+      "tooMany": "この設定に入る長さを超えています。",
+      "search": "Arma Reforger の Workshop を検索",
+      "results": "見つかった Mod",
+      "noResults": "見つかりませんでした。",
+      "notFound": "Workshop にありません",
       "by": "作者: {{author}}"
     }
   },
@@ -2933,6 +2949,10 @@
         "slotReservationTimeout": {
           "label": "スロット予約(秒)",
           "description": "切断したプレイヤーのスロットを確保しておく時間です。"
+        },
+        "mods": {
+          "label": "Mod",
+          "description": "Arma Reforger の Workshop の Mod を ID でカンマ区切りで指定します。サーバーが起動時に自分でダウンロードします。server.json に手で追加した Mod はそのまま残ります。"
         }
       },
       "ports": {

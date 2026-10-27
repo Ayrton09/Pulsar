@@ -48,13 +48,17 @@ public sealed record TemplateVariable(
     IReadOnlyList<TemplateOption> Options,
     string? Description,
     TemplateWorkshop? Workshop = null,
-    TemplateCurseForge? CurseForge = null);
+    TemplateCurseForge? CurseForge = null,
+    TemplateReforgerWorkshop? ReforgerWorkshop = null);
 
 /// <summary>The variable lists Steam Workshop items of <paramref name="AppId"/>, separated by <paramref name="Separator"/>.</summary>
 public sealed record TemplateWorkshop(long AppId, string Separator);
 
 /// <summary>The variable lists CurseForge projects of the game (Pulsar 1.0.14).</summary>
 public sealed record TemplateCurseForge(int GameId, string Separator);
+
+/// <summary>The variable lists mods of Arma Reforger's Workshop (Pulsar 1.0.14).</summary>
+public sealed record TemplateReforgerWorkshop(string Separator);
 
 /// <param name="Follows">The port this one comes with (its port number plus <paramref name="Offset"/>): not chosen on its own.</param>
 public sealed record TemplatePort(string Name, string Label, IReadOnlyList<PortProtocol> Protocols, int Default, bool Required, string? Description,
@@ -259,7 +263,8 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
         v.Default is { } value ? VariableValues.FromJson(value) : null, v.Required, v.Secret, v.UserEditable, v.Pattern, v.MaxLength, v.Min, v.Max,
         [.. (v.Options ?? []).Select(o => new TemplateOption(o.Value, o.Label))], v.Description,
         v.Workshop is { } workshop ? new TemplateWorkshop(workshop.AppId, workshop.Separator) : null,
-        v.CurseForge is { } curseForge ? new TemplateCurseForge(curseForge.GameId, curseForge.Separator) : null);
+        v.CurseForge is { } curseForge ? new TemplateCurseForge(curseForge.GameId, curseForge.Separator) : null,
+        v.ReforgerWorkshop is { } reforger ? new TemplateReforgerWorkshop(reforger.Separator) : null);
 
     /// <summary>Top-level manifest sections whose content differs (what an administrator should look at first).</summary>
     private static IReadOnlyList<string> ChangedSections(string before, string after)
