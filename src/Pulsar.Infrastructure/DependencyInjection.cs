@@ -112,6 +112,7 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         // uMod's plugin directory and Thunderstore's packages (1.0.14): one host each, no key, no redirects.
+        services.AddSingleton(new UmodBudget());
         services.AddScoped<IModCatalog, UmodClient>();
         services.AddScoped<IModCatalog, ThunderstoreClient>();
         services.AddHttpClient(ThunderstoreClient.ClientName, client =>

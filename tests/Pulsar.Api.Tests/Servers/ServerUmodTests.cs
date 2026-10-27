@@ -143,6 +143,8 @@ public sealed class UmodApiFactory : PulsarApiFactory
         {
             services.AddSingleton(new TemplateOptions { EnableTestGame = true, BundledDirectory = _games });
             services.AddHttpClient(UmodClient.ClientName).ConfigurePrimaryHttpMessageHandler(() => Umod);
+            // The tests of one class run in the same minute: uMod's budget would refuse the panel what a test asks for.
+            services.AddSingleton(new UmodBudget(requestsPerMinute: 10_000));
         });
     }
 }

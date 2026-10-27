@@ -16,7 +16,7 @@ namespace Pulsar.Infrastructure.Mods;
 /// release, with that file's SHA-1, and lists no dependencies. Project ids are uMod's slugs (<c>rust-kits</c>), version
 /// ids its version numbers (<c>4.4.10</c>).
 /// </summary>
-public sealed partial class UmodClient(IHttpClientFactory clients) : IModCatalog
+public sealed partial class UmodClient(IHttpClientFactory clients, UmodBudget budget) : IModCatalog
 {
     public const string ClientName = "Pulsar.Umod";
     public static readonly Uri BaseAddress = new("https://umod.org/");
@@ -47,15 +47,6 @@ public sealed partial class UmodClient(IHttpClientFactory clients) : IModCatalog
     private static readonly ConcurrentDictionary<string, (DateTimeOffset At, PluginResponse? Plugin)> s_pages = new(StringComparer.Ordinal);
 
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
-
-    // uMod answers an address 30 times a minute (X-RateLimit-Limit), and a node on the panel's machine downloads from the
-    // same address: the whole panel asks it at most this often, which leaves the nodes room.
-    private static readonly FixedWindowRateLimiter s_budget = new(new FixedWindowRateLimiterOptions
-    {
-        PermitLimit = 20,
-        Window = TimeSpan.FromMinutes(1),
-        QueueLimit = 0,
-    });
 
     public string Source => SourceName;
 
@@ -195,7 +186,7 @@ public sealed partial class UmodClient(IHttpClientFactory clients) : IModCatalog
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken, bool notFoundIsNull = false)
     {
-        using var permit = s_budget.AttemptAcquire();
+        using var permit = budget.Limiter.AttemptAcquire();
         if (!permit.IsAcquired)
         {
             throw new ModCatalogUnavailableException("This panel asked uMod too often in the last minute.", busy: true);
@@ -301,4 +292,22 @@ public sealed partial class UmodClient(IHttpClientFactory clients) : IModCatalog
         [property: JsonPropertyName("latest_release_version_checksum")] string? LatestReleaseVersionChecksum,
         [property: JsonPropertyName("latest_release_at_atom")] DateTimeOffset? LatestReleaseAtAtom,
         [property: JsonPropertyName("updated_at_atom")] DateTimeOffset? UpdatedAtAtom);
+}
+
+/// <summary>
+/// How often the whole panel asks uMod, one for the panel (a singleton). uMod answers an address 30 times a minute
+/// (X-RateLimit-Limit), and a node on the panel's machine downloads from the same address: 20 a minute leaves the nodes room.
+/// </summary>
+public sealed class UmodBudget(int requestsPerMinute = UmodBudget.RequestsPerMinute) : IDisposable
+{
+    public const int RequestsPerMinute = 20;
+
+    public FixedWindowRateLimiter Limiter { get; } = new(new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = requestsPerMinute,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0,
+    });
+
+    public void Dispose() => Limiter.Dispose();
 }
