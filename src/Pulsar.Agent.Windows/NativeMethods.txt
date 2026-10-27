@@ -57,6 +57,7 @@ PROCESS_INFORMATION
 CreateFile
 GetFinalPathNameByHandle
 SetConsoleCtrlHandler
+PeekNamedPipe
 
 // Ctrl+C for a game run with pipes, through the console it opened for itself (docs/architecture/06)
 AttachConsole

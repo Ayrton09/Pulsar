@@ -38,8 +38,11 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
     private const nuint ProcThreadAttributeJobList = 0x0002000D;
     private const nuint ProcThreadAttributePseudoConsole = 0x00020016;
 
-    /// <summary>Pseudo console size: wide and fixed, never resized per viewer (docs/architecture/06).</summary>
-    private static readonly COORD s_consoleSize = new() { X = 220, Y = 50 };
+    /// <summary>
+    /// Pseudo console size: wide and fixed, never resized per viewer (docs/architecture/06). Wider costs the console host
+    /// time on every line a game writes; the lines it wraps are joined again (<see cref="PseudoConsoleWraps"/>).
+    /// </summary>
+    private static readonly COORD s_consoleSize = new() { X = PseudoConsoleWraps.Width, Y = 50 };
 
     private static readonly WindowsServerFiles s_files = new();
 
@@ -232,7 +235,7 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
             inWrite = default;
             var result = new WindowsGameProcess(job, process, (int)info.dwProcessId, input, pty ? new UTF8Encoding(false) : outputEncoding,
                 pseudoConsole, clock, resources, pipesInterrupt: !pty && hostsOneGame);
-            result.StartReader(new SafeFileHandle((nint)outRead.Value, ownsHandle: true), outputEncoding, "out");
+            result.StartReader(new SafeFileHandle((nint)outRead.Value, ownsHandle: true), outputEncoding, "out", pty ? new PseudoConsoleWraps() : null);
             outRead = default;
             if (!pty)
             {

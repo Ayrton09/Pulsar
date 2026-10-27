@@ -499,6 +499,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - SCP: Secret Laboratory 1.4.1: LocalAdmin without `--printStd`, so the console no longer carries the engine's own warnings, and the game with `-silent-crashes` (`games/scpsl/README.md`, "Console").
 
+## 1.0.14 — Long console lines (2026-10-27, at the user's request)
+
+- Lines wider than a pseudo console (220 columns), which the console host cuts once its screen is full, are joined again as the agent reads them, so a long link (SCP: Secret Laboratory's `!verify static`) comes whole and opens whole (doc 06, "Console: ConPTY vs pipes").
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

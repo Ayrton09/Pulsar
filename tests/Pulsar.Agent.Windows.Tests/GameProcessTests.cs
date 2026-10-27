@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Windows.Processes;
 
 namespace Pulsar.Agent.Windows.Tests;
@@ -79,6 +80,31 @@ public sealed class GameProcessTests : IDisposable
         {
             Assert.Contains($"arg[{argument}]", output.Text, StringComparison.Ordinal);
         }
+    }
+
+    [WindowsFact]
+    public async Task ALineWiderThanThePseudoConsoleArrivesWhole()
+    {
+        // Once its screen is full, the console host cuts a line wider than it and writes the last cell again: the link
+        // SCP: Secret Laboratory's "!verify static" prints came in two, with a character doubled.
+        var cancellation = TestContext.Current.CancellationToken;
+        await using var process = await Start(ConsoleMode.Pty);
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+        await process.WriteInputAsync("spam 60 40\r\n", cancellation);
+        await output.WaitForAsync("Test server: spam 59 ");
+
+        var link = "https://example.com/verify?" + string.Concat(Enumerable.Range(0, 480).Select(i => (char)('a' + (i % 26))));
+        await process.WriteInputAsync($"color {link}\r\nspam 20 700\r\nsay done\r\n", cancellation);
+        await output.WaitForAsync("Test server: done");
+
+        var lines = new ConsoleLines().Add(output.Text);
+        Assert.Contains($"Test server: {link}", lines);
+        var spam = lines.Where(l => l.StartsWith("Test server: spam ", StringComparison.Ordinal) && l.Length > 100).ToList();
+        Assert.Equal(20, spam.Count);
+        Assert.All(spam, l => Assert.Matches("^Test server: spam [0-9]+ (abcdefghijklmnopqrstuvwxyz)+[a-z]* end$", l));
+        Assert.All(spam, l => Assert.Equal(700, l.Length));
+        Assert.DoesNotContain($";{PseudoConsoleWraps.Width}H", output.Text, StringComparison.Ordinal);
     }
 
     [WindowsFact]

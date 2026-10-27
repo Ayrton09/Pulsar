@@ -8,7 +8,7 @@
 //   --ignore-interrupt        survive Ctrl+C
 //   --exit-after <ms> <code>  exit by itself with <code> after a delay (a crash when <code> is not 0)
 //   --print-args              print every argument between brackets (argv round trip)
-// Commands (one per line): quit, crash <code>, say <text>, conout <text>, spawn, whoami, env <name>, read <path>,
+// Commands (one per line): quit, crash <code>, say <text>, color <text>, conout <text>, spam <count> <length>, spawn, whoami, env <name>, read <path>,
 //   write <path>, handle <value>, privileges, allocate <MB>, burn <seconds>, save-off, save, save-on (a world saved to
 //   world.dat, like Minecraft's), lock <path> (a file held open with no sharing, like a game's world).
 using System.Diagnostics;
@@ -113,8 +113,27 @@ while ((line = Console.ReadLine()) is not null)
         case "say":
             Console.WriteLine($"Test server: {argument}");
             break;
+        case "color":
+            // Coloured through the console API, as LocalAdmin (SCP: Secret Laboratory) writes.
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.Write("Test server: ");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine(argument);
+            Console.ResetColor();
+            break;
         case "conout":
             WriteToConsoleBuffer(argument);
+            break;
+        case "spam":
+            // <count> lines of <length> characters as fast as it can, as a game engine logs while it starts.
+            var spam = argument.Split(' ');
+            var length = int.Parse(spam[1], CultureInfo.InvariantCulture);
+            for (var n = 0; n < int.Parse(spam[0], CultureInfo.InvariantCulture); n++)
+            {
+                var head = $"Test server: spam {n} ";
+                Console.WriteLine(head + string.Concat(Enumerable.Range(0, Math.Max(0, length - head.Length - 4)).Select(i => (char)('a' + (i % 26)))) + " end");
+            }
+
             break;
         case "spawn":
             using (var child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--child") { UseShellExecute = false }))

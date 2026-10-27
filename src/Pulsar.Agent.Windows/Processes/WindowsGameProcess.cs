@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Microsoft.Win32.SafeHandles;
 using Pulsar.Agent.Core.Processes;
 using Windows.Win32;
+using Windows.Win32.Foundation;
 using Windows.Win32.System.Console;
 
 namespace Pulsar.Agent.Windows.Processes;
@@ -65,11 +66,12 @@ internal sealed class WindowsGameProcess : IGameProcess
     /// </summary>
     public bool SupportsInterrupt => _pseudoConsole != default || _pipesInterrupt;
 
-    internal void StartReader(SafeFileHandle handle, Encoding encoding, string name)
+    /// <param name="wraps">A pseudo console's output: the lines it wraps are joined again.</param>
+    internal void StartReader(SafeFileHandle handle, Encoding encoding, string name, PseudoConsoleWraps? wraps = null)
     {
         var stream = new FileStream(handle, FileAccess.Read, 1);
         Interlocked.Increment(ref _readersRunning);
-        new Thread(() => Read(stream, encoding)) { IsBackground = true, Name = $"pulsar-output-{ProcessId}-{name}" }.Start();
+        new Thread(() => Read(stream, encoding, wraps)) { IsBackground = true, Name = $"pulsar-output-{ProcessId}-{name}" }.Start();
     }
 
     /// <summary>Waits on the process handle without blocking a thread (a thread-pool wait registration).</summary>
@@ -272,11 +274,12 @@ internal sealed class WindowsGameProcess : IGameProcess
         }
     }
 
-    private void Read(FileStream stream, Encoding encoding)
+    private void Read(FileStream stream, Encoding encoding, PseudoConsoleWraps? wraps)
     {
         var decoder = encoding.GetDecoder();
         var bytes = new byte[16 * 1024];
         var chars = new char[encoding.GetMaxCharCount(bytes.Length)];
+        Func<bool> moreWaiting = () => MoreWaiting(stream.SafeFileHandle);
         try
         {
             int read;
@@ -284,9 +287,15 @@ internal sealed class WindowsGameProcess : IGameProcess
             {
                 // Stateful: a UTF-8 sequence split across two reads is decoded once both halves arrived.
                 var count = decoder.GetChars(bytes, 0, read, chars, 0, flush: false);
-                if (count > 0)
+                var text = count > 0 ? new string(chars, 0, count) : "";
+                if (wraps is not null && text.Length > 0)
                 {
-                    Publish(new ConsoleChunk(_clock.GetUtcNow(), new string(chars, 0, count)));
+                    text = wraps.Add(text, moreWaiting);
+                }
+
+                if (text.Length > 0)
+                {
+                    Publish(new ConsoleChunk(_clock.GetUtcNow(), text));
                 }
             }
         }
@@ -296,6 +305,11 @@ internal sealed class WindowsGameProcess : IGameProcess
         }
         finally
         {
+            if (wraps?.Flush() is { Length: > 0 } held)
+            {
+                Publish(new ConsoleChunk(_clock.GetUtcNow(), held));
+            }
+
             stream.Dispose();
             if (Interlocked.Decrement(ref _readersRunning) == 0)
             {
@@ -303,6 +317,17 @@ internal sealed class WindowsGameProcess : IGameProcess
                 _readersDone.TrySetResult();
             }
         }
+    }
+
+    /// <summary>
+    /// Whether the pipe holds more output already: the console host writes a screen update at once, so a wrap cut by a
+    /// read is still waiting there, while a line break that ended an update has nothing after it.
+    /// </summary>
+    private static unsafe bool MoreWaiting(SafeFileHandle pipe)
+    {
+        // The reader's own thread closes the pipe, after its last read: the handle is still open here.
+        uint available = 0;
+        return PInvoke.PeekNamedPipe((HANDLE)pipe.DangerousGetHandle(), null, 0, null, &available, null) && available > 0;
     }
 
     private void Publish(ConsoleChunk chunk)
