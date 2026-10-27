@@ -52,6 +52,9 @@ public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdenti
 /// <param name="Branch">The branch the server follows (<see cref="SteamBuilds.PublicBranch"/> without a beta).</param>
 public sealed record SteamBuildQuery(Guid ServerId, string ServerRoot, ProcessIdentity Identity, int AppId, string Branch);
 
+/// <summary>What Steam offers of an app: the latest build on the query's branch, and the app's branches (Pulsar 1.0.14).</summary>
+public sealed record SteamAppBuilds(string Latest, IReadOnlyList<SteamBranch> Branches);
+
 /// <summary>
 /// Runs SteamCMD for a server (docs/architecture/06, "SteamCMD"). Each server has its own copy in its directory and
 /// SteamCMD runs as the server's account, under a pseudo console (live output), in the server's Job: it can write only
@@ -168,7 +171,12 @@ public sealed partial class SteamCmdRunner(
     /// <c>steamcmd.busy</c> while an install or update of the server uses its SteamCMD; <c>steamcmd.no_build</c> when
     /// Steam's answer names no build for the branch; another <c>steamcmd.*</c> code when SteamCMD fails.
     /// </exception>
-    public async Task<string> LatestBuildAsync(SteamBuildQuery query, CancellationToken cancellationToken)
+    public async Task<string> LatestBuildAsync(SteamBuildQuery query, CancellationToken cancellationToken) =>
+        (await AppBuildsAsync(query, cancellationToken)).Latest;
+
+    /// <summary>The latest build on the query's branch with the app's branches (<see cref="LatestBuildAsync"/>, Pulsar 1.0.14).</summary>
+    /// <inheritdoc cref="LatestBuildAsync" path="/exception"/>
+    public async Task<SteamAppBuilds> AppBuildsAsync(SteamBuildQuery query, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
         var copy = Lock(_copies, query.ServerId);
@@ -205,7 +213,7 @@ public sealed partial class SteamCmdRunner(
         }
     }
 
-    private async Task<string> CheckAsync(SteamBuildQuery query, CancellationToken cancellationToken)
+    private async Task<SteamAppBuilds> CheckAsync(SteamBuildQuery query, CancellationToken cancellationToken)
     {
         await PrepareCopyAsync(new SteamCmdJob(query.ServerId, query.ServerRoot, query.Identity, query.AppId, null, null, false), cancellationToken);
         // SteamCMD may print the app info it cached instead of asking again (LinuxGSM removes it too).
@@ -225,7 +233,7 @@ public sealed partial class SteamCmdRunner(
             if (SteamBuilds.Latest(text, query.AppId, query.Branch) is { } build)
             {
                 LogLatestBuild(query.ServerId, query.AppId, query.Branch, build);
-                return build;
+                return new SteamAppBuilds(build, SteamBuilds.Branches(text, query.AppId));
             }
 
             if (exitCode == SelfUpdateExitCode && selfUpdates < options.MaxSelfUpdates)

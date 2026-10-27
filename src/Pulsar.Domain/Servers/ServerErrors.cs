@@ -73,6 +73,25 @@ public static class ServerErrors
 
     public static DomainError UpdateUnsupported { get; } = new("server.update_unsupported", "This game has no update steps.");
 
+    /// <summary>A Steam branch is chosen among those its node's last update check listed (Pulsar 1.0.14).</summary>
+    public static DomainError SteamBranchUnknown { get; } = new("server.steam_branch_unknown",
+        "That is not one of the game's Steam branches the last update check found: check for updates, then choose again.");
+
+    /// <summary>Pulsar does not ask for, or keep, the passwords of Steam branches.</summary>
+    public static DomainError SteamBranchPasswordRequired { get; } = new("server.steam_branch_password_required",
+        "That Steam branch needs a password, which Pulsar does not install with.");
+
+    /// <summary>Only a game downloaded with SteamCMD has branches.</summary>
+    public static DomainError SteamBranchUnsupported { get; } = new("server.steam_branch_unsupported", "This game is not downloaded from Steam.");
+
+    /// <summary>A branch change backs the server up, then updates it: whoever asks must be allowed both.</summary>
+    public static DomainError SteamBranchForbidden { get; } = new("server.steam_branch_forbidden",
+        "Changing the Steam branch needs the permissions to update the server and to back it up.");
+
+    /// <summary>The node's agent is older than Pulsar 1.0.14 (it would install the template's branch whatever the server chose).</summary>
+    public static DomainError SteamBranchAgentTooOld { get; } = new("server.steam_branch_agent_too_old",
+        "The node's agent is too old to follow a Steam branch: update it first.");
+
     public static DomainError GameUpdatesInvalid { get; } = new("server.game_updates_invalid",
         $"Game updates are off, notified or installed, with at most {GameUpdateWatch.MaxWarningMinutes} minutes of warning.");
 

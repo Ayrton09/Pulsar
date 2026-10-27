@@ -395,7 +395,8 @@
         "game_update_check_requested": "A demandé de vérifier une mise à jour du jeu",
         "game_update_started": "A lancé une mise à jour du jeu",
         "game_update_cancelled": "A annulé une mise à jour du jeu",
-        "template_update_started": "A commencé à passer un serveur à un modèle plus récent"
+        "template_update_started": "A commencé à passer un serveur à un modèle plus récent",
+        "steam_branch_changed": "A changé la branche Steam d'un serveur"
       },
       "template": {
         "imported": "Importation d'un modèle de jeu"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "Les mises à jour de ce jeu ne peuvent pas être vérifiées.",
       "when_empty_unsupported": "Pulsar ne peut pas savoir qui joue à ce jeu, il ne peut donc pas attendre que personne ne joue.",
       "game_updates_forbidden": "Installer les mises à jour d'elles-mêmes demande les permissions de mettre à jour, arrêter et démarrer le serveur (et d'envoyer des commandes de console, pour avertir les joueurs).",
-      "update_check_unsupported": "L'agent de ce nœud ne peut pas vérifier les mises à jour du jeu : mettez Pulsar à jour sur ce nœud."
+      "update_check_unsupported": "L'agent de ce nœud ne peut pas vérifier les mises à jour du jeu : mettez Pulsar à jour sur ce nœud.",
+      "steam_branch_unknown": "Ce n'est pas une des branches Steam du jeu que la dernière vérification a trouvées : vérifiez les mises à jour, puis choisissez de nouveau.",
+      "steam_branch_password_required": "Cette branche Steam demande un mot de passe, avec lequel Pulsar n'installe pas.",
+      "steam_branch_unsupported": "Ce jeu n'est pas téléchargé depuis Steam.",
+      "steam_branch_agent_too_old": "L'agent du nœud est trop ancien pour suivre une branche Steam : mettez-le à jour d'abord.",
+      "steam_branch_forbidden": "Changer la branche Steam demande les permissions de mettre à jour le serveur et de le sauvegarder."
     },
     "console": {
       "invalid_input": "Une commande tient sur une seule ligne, sans caractères de contrôle (comme les tabulations).",
@@ -7315,6 +7321,21 @@
       "off": "Ne rien faire",
       "notify": "Me prévenir (l’afficher sur la page du serveur)",
       "install": "L’appliquer (prévenir, arrêter, réinstaller avec, redémarrer)"
+    },
+    "runningBranch": "Changement de branche Steam : étape {{step}} sur {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "Le dernier changement de branche Steam a échoué : {{error}}",
+      "cancelled": "Le dernier changement de branche Steam a été annulé."
+    },
+    "branch": {
+      "label": "Branche Steam",
+      "hint": "Versions antérieures et de test que le jeu publie sur Steam. La changer sauvegarde le serveur, puis installe la branche.",
+      "build": "build {{build}}",
+      "password": "demande un mot de passe",
+      "unknown": "Vérifiez les mises à jour pour voir les branches du jeu.",
+      "change": "Changer de branche",
+      "confirm": "Sauvegarder {{name}} et installer la branche Steam « {{branch}} » ? Une version antérieure peut ne pas ouvrir des mondes plus récents : la sauvegarde permet de revenir en arrière.",
+      "stopFirst": "Arrêtez le serveur pour changer sa branche."
     }
   },
   "players": {

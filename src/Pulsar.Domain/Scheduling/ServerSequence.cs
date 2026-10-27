@@ -69,6 +69,9 @@ public enum SequenceOrigin
 
     /// <summary>An automatic move to a newer version of the server's template (warn, stop, move, start again).</summary>
     TemplateUpdate,
+
+    /// <summary>A change of the game's Steam branch (Pulsar 1.0.14): a backup, then the chosen branch installed.</summary>
+    SteamBranch,
 }
 
 /// <summary>

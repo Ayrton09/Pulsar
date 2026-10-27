@@ -45,6 +45,10 @@ internal sealed class NoServerPlayers : IServerPlayers
 /// The version an automatic move would go to: the newest one a Pulsar update brought (not an imported one, not a
 /// pre-release), when it is above the server's.
 /// </param>
+/// <param name="SteamBranch">The Steam branch the game follows (1.0.14); null: its template's own (public).</param>
+/// <param name="Branches">The game's Steam branches as the last check found them; empty for games not on Steam, or until then.</param>
+/// <param name="BranchesSupported">The game is downloaded from Steam, so it has branches to choose from.</param>
+/// <param name="CurrentBranch">The branch it installs now: <paramref name="SteamBranch"/>, or its template's (public unless the template names one).</param>
 public sealed record GameUpdateView(
     GameUpdatePolicy Policy,
     bool WhenEmpty,
@@ -68,12 +72,21 @@ public sealed record GameUpdateView(
     GameUpdatePolicy TemplatePolicy = GameUpdatePolicy.Notify,
     string? NewerTemplate = null,
     bool TemplatePending = false,
-    string? AutoTemplate = null);
+    string? AutoTemplate = null,
+    string? SteamBranch = null,
+    IReadOnlyList<GameBranchView>? Branches = null,
+    bool BranchesSupported = false,
+    string? CurrentBranch = null);
+
+/// <summary>A branch of the game's Steam app (1.0.14): its build and what its publisher says of it.</summary>
+/// <param name="PasswordRequired">Steam installs it only with a password, which Pulsar does not ask for: it cannot be chosen.</param>
+public sealed record GameBranchView(string Name, string? Build, string? Description, bool PasswordRequired, DateTimeOffset? Updated);
 
 /// <param name="Step">The step being done, from 0.</param>
 /// <param name="Template">A move to a newer template (1.0.10); false: a game update.</param>
+/// <param name="SteamBranch">A change of the game's Steam branch (1.0.14): a backup, then the branch installed.</param>
 public sealed record GameUpdateRunView(Guid Id, SequenceStatus Status, int Step, int Steps, SequenceStepKind? StepKind, DateTimeOffset? WakeAt,
-    DateTimeOffset CreatedAt, string? ErrorCode, string? Message, bool Template = false);
+    DateTimeOffset CreatedAt, string? ErrorCode, string? Message, bool Template = false, bool SteamBranch = false);
 
 /// <summary>
 /// A server's game updates (Pulsar 1.0.9): every <see cref="GameUpdateWatch.CheckInterval"/> the server's node asks the
@@ -105,6 +118,9 @@ public sealed partial class GameUpdates(
 {
     /// <summary>Who acts for automatic updates in the audit log.</summary>
     public const string ActorName = "Game updates";
+
+    /// <summary>Who acts for a change of Steam branch in the audit log (its backup and update).</summary>
+    public const string BranchActorName = "Steam branch change";
 
     /// <summary>Checks sent per pass: each one waits for its node's ack.</summary>
     public const int ChecksPerPass = 20;
@@ -272,6 +288,105 @@ public sealed partial class GameUpdates(
     }
 
     /// <summary>
+    /// Changes the Steam branch the game follows (Pulsar 1.0.14) and installs it now, the server stopped: a backup first
+    /// (going back to an older version can break a world), then the branch's files, every one verified. The branch is one
+    /// the node's last update check listed, without a password (or <c>public</c>). Needs the rights the sequence uses:
+    /// updating the server and backing it up.
+    /// </summary>
+    public async Task<Result<GameUpdateView>> ChangeBranchAsync(ServerId id, string branch, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(branch);
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var manifest = await ManifestAsync(server, cancellationToken);
+        if (!HasBranches(manifest) || manifest.Update is null)
+        {
+            return ServerErrors.SteamBranchUnsupported;
+        }
+
+        if (server.InstallState != InstallState.Installed)
+        {
+            return ServerErrors.NotInstalled;
+        }
+
+        if (server.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        if (Connection(server.NodeId) is not { } agent)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        if (!agent.Capabilities.Contains(AgentCapabilities.SteamBranches))
+        {
+            return ServerErrors.SteamBranchAgentTooOld;
+        }
+
+        if (!await MayChangeBranchAsync(server, cancellationToken))
+        {
+            return ServerErrors.SteamBranchForbidden;
+        }
+
+        var watch = await TrackedAsync(id, cancellationToken);
+        var chosen = string.Equals(branch, GameBranch.Public, StringComparison.OrdinalIgnoreCase)
+            ? new GameBranch(GameBranch.Public, null, null, false, null)
+            : watch.Branches.FirstOrDefault(b => string.Equals(b.Name, branch, StringComparison.OrdinalIgnoreCase));
+        if (chosen is null)
+        {
+            return ServerErrors.SteamBranchUnknown;
+        }
+
+        if (chosen.PasswordRequired)
+        {
+            return ServerErrors.SteamBranchPasswordRequired;
+        }
+
+        var before = server.SteamBranch;
+        var now = clock.GetUtcNow();
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
+        {
+            var set = server.SetSteamBranch(chosen.Name, now);
+            if (!set.IsSuccess)
+            {
+                return set.Error!;
+            }
+
+            var started = await ServerSequences.StartAsync(db, locks, server, SequenceOrigin.SteamBranch, BranchActorName,
+                [new SequenceStep(SequenceStepKind.Backup), new SequenceStep(SequenceStepKind.Update, Validate: true)], now, cancellationToken);
+            if (!started.IsSuccess)
+            {
+                return started.Error!;
+            }
+
+            watch.BranchChangeStarted(started.Value.Id, before, now);
+            audit.Record(AuditActions.Server.SteamBranchChanged, metadata: new { from = before ?? GameBranch.Public, to = chosen.Name })
+                .WithServer(server.Id, server.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return ScheduleErrors.SequenceRunning; // the server or its watch changed meanwhile
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        // Its update sends the spec again anyway: this only spares the node a check of the old branch meanwhile.
+        await servers.SyncSpecAsync(server.Id, cancellationToken);
+        LogBranchChangeStarted(server.Id, before, chosen.Name);
+        signal.Notify();
+        return await ViewAsync(server, watch, cancellationToken);
+    }
+
+    /// <summary>
     /// Cancels the automatic update: what is left of it is not done, the update it started is cancelled, and the server is
     /// started again if it was running (a cancel never leaves it stopped). One that waits to start is skipped.
     /// </summary>
@@ -292,6 +407,7 @@ public sealed partial class GameUpdates(
             var now = clock.GetUtcNow();
             var operation = sequence?.OperationId;
             string? template = null;
+            var undone = false;
             if (sequence is null || !sequence.Cancel(now).IsSuccess)
             {
                 // Not started yet (waiting for the players): this build, or this template, is not installed by itself.
@@ -317,6 +433,11 @@ public sealed partial class GameUpdates(
                 template = watch.AttemptedTemplate;
                 operation = null;
             }
+            else if (sequence.Origin == SequenceOrigin.SteamBranch && sequence.Status != SequenceStatus.Running)
+            {
+                // Ended now (none of its steps always runs): the server goes back to the branch it followed, and its update is cancelled.
+                undone = await EndBranchChangeAsync(watch, succeeded: false, cancellationToken);
+            }
 
             audit.Record(AuditActions.Server.GameUpdateCancelled, metadata: template is null ? new { latest = watch.Latest } : new { template })
                 .WithServer(server.Id, server.NodeId);
@@ -328,8 +449,13 @@ public sealed partial class GameUpdates(
                 await servers.CancelOperationAsync(server.Id, inFlight.Value, cancellationToken);
             }
 
+            if (undone)
+            {
+                await servers.SyncSpecAsync(server.Id, cancellationToken);
+            }
+
             signal.Notify();
-            return await ViewAsync(server, watch, cancellationToken);
+            return await ViewAsync(await db.Servers.AsNoTracking().SingleAsync(s => s.Id == id, cancellationToken), watch, cancellationToken);
         });
     }
 
@@ -430,9 +556,22 @@ public sealed partial class GameUpdates(
             .Where(w => w.SequenceId != null && db.ServerSequences.Any(s => s.Id == w.SequenceId && s.Status != SequenceStatus.Running))
             .Take(ChecksPerPass)
             .ToListAsync(cancellationToken);
+        var undone = new List<ServerId>();
         foreach (var watch in stale)
         {
-            watch.AutoUpdateEnded(now);
+            if (watch.BranchChanging)
+            {
+                var status = await db.ServerSequences.AsNoTracking().Where(s => s.Id == watch.SequenceId).Select(s => s.Status)
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (await EndBranchChangeAsync(watch, status == SequenceStatus.Succeeded, cancellationToken))
+                {
+                    undone.Add(watch.ServerId);
+                }
+            }
+            else
+            {
+                watch.AutoUpdateEnded(now);
+            }
         }
 
         if (stale.Count > 0)
@@ -443,10 +582,14 @@ public sealed partial class GameUpdates(
             }
             catch (DbUpdateConcurrencyException)
             {
-                // The next pass.
+                undone.Clear(); // the next pass
             }
 
             db.ChangeTracker.Clear();
+            foreach (var id in undone)
+            {
+                await servers.SyncSpecAsync(id, cancellationToken);
+            }
         }
     }
 
@@ -473,7 +616,8 @@ public sealed partial class GameUpdates(
             var now = clock.GetUtcNow();
             // A node is not trusted with what browsers and notifications show: only short printable text.
             var fresh = watch.Checked(Text(check.Installed, GameUpdateWatch.MaxBuildLength), Text(check.Latest, GameUpdateWatch.MaxBuildLength),
-                check.ErrorCode is null ? check.Available : null, Code(check.ErrorCode), Text(check.Message, GameUpdateWatch.MaxMessageLength), now);
+                check.ErrorCode is null ? check.Available : null, Code(check.ErrorCode), Text(check.Message, GameUpdateWatch.MaxMessageLength), now,
+                check.Branches is null ? null : Branches(check.Branches));
             LogChecked(server.Id, watch.Installed, watch.Latest, watch.Available, watch.CheckErrorCode);
             if (fresh)
             {
@@ -494,7 +638,7 @@ public sealed partial class GameUpdates(
     public async Task SequenceEndedAsync(ServerSequence sequence, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sequence);
-        if (sequence.Origin is not (SequenceOrigin.GameUpdate or SequenceOrigin.TemplateUpdate))
+        if (sequence.Origin is not (SequenceOrigin.GameUpdate or SequenceOrigin.TemplateUpdate or SequenceOrigin.SteamBranch))
         {
             return;
         }
@@ -508,7 +652,22 @@ public sealed partial class GameUpdates(
                 return false;
             }
 
+            if (sequence.Origin == SequenceOrigin.SteamBranch)
+            {
+                // A user asked and watches it: its outcome shows on the server's page. One that did not end well leaves the
+                // server on its former branch, so nothing installs the new one without the backup it was to have.
+                var undone = await EndBranchChangeAsync(watch, sequence.Status == SequenceStatus.Succeeded, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                if (undone)
+                {
+                    await servers.SyncSpecAsync(sequence.ServerId, cancellationToken);
+                }
+
+                return true;
+            }
+
             watch.AutoUpdateEnded(clock.GetUtcNow());
+
             var error = sequence.Message ?? sequence.ErrorCode;
             switch (sequence.Status, sequence.Origin)
             {
@@ -913,7 +1072,8 @@ public sealed partial class GameUpdates(
         var manifest = await ManifestAsync(server, cancellationToken);
         // The one running, or the last one with its outcome.
         var sequence = await db.ServerSequences.AsNoTracking()
-            .Where(s => s.ServerId == server.Id && (s.Origin == SequenceOrigin.GameUpdate || s.Origin == SequenceOrigin.TemplateUpdate))
+            .Where(s => s.ServerId == server.Id
+                && (s.Origin == SequenceOrigin.GameUpdate || s.Origin == SequenceOrigin.TemplateUpdate || s.Origin == SequenceOrigin.SteamBranch))
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
         var (newer, auto) = await TemplatesAboveAsync(server, cancellationToken);
@@ -928,9 +1088,11 @@ public sealed partial class GameUpdates(
                 ? null
                 : new GameUpdateRunView(sequence.Id.Value, sequence.Status, sequence.StepIndex, sequence.Steps.Count, sequence.Current?.Kind,
                     sequence.Status == SequenceStatus.Running ? sequence.WakeAt : null, sequence.CreatedAt, sequence.ErrorCode, sequence.Message,
-                    sequence.Origin == SequenceOrigin.TemplateUpdate),
+                    sequence.Origin == SequenceOrigin.TemplateUpdate, sequence.Origin == SequenceOrigin.SteamBranch),
             (watch.AutoUpdateDue || templatePending) && watch.AutoUpdateNotBefore is { } notBefore && notBefore > now ? notBefore : null,
-            watch.TemplatePolicy, newer?.Version, templatePending, auto?.Version);
+            watch.TemplatePolicy, newer?.Version, templatePending, auto?.Version, server.SteamBranch,
+            [.. watch.Branches.Select(b => new GameBranchView(b.Name, b.Build, b.Description, b.PasswordRequired, b.Updated))], HasBranches(manifest),
+            HasBranches(manifest) ? server.SteamBranch ?? TemplateBranch(manifest) ?? GameBranch.Public : null);
     }
 
     /// <summary>Watches for installed servers that have none yet (checked and notified, the default).</summary>
@@ -1016,6 +1178,57 @@ public sealed partial class GameUpdates(
         return !warns || await permissions.HasAsync(user, Permissions.Server.ConsoleWrite, target, cancellationToken);
     }
 
+    /// <summary>
+    /// Ends the watch's change of Steam branch (1.0.14). One that did not succeed puts the server (tracked here, saved by the
+    /// caller) back on the branch it followed, so nothing installs the new one later without the backup it was to have; true
+    /// then (the caller sends its spec again once saved).
+    /// </summary>
+    private async Task<bool> EndBranchChangeAsync(GameUpdateWatch watch, bool succeeded, CancellationToken cancellationToken)
+    {
+        var (undo, before) = watch.BranchChangeEnded(succeeded, clock.GetUtcNow());
+        if (!undo || await db.Servers.SingleOrDefaultAsync(s => s.Id == watch.ServerId, cancellationToken) is not { } server)
+        {
+            return false;
+        }
+
+        server.RestoreSteamBranch(before, clock.GetUtcNow());
+        LogBranchChangeUndone(server.Id, before);
+        return true;
+    }
+
+    /// <summary>A branch change backs the server up, then updates it.</summary>
+    private async Task<bool> MayChangeBranchAsync(Server server, CancellationToken cancellationToken)
+    {
+        if (request.UserId is not { } user)
+        {
+            return false;
+        }
+
+        var target = AccessTarget.ForServer(server.Id, server.NodeId);
+        return await permissions.HasAsync(user, Permissions.Server.Install, target, cancellationToken)
+            && await permissions.HasAsync(user, Permissions.Server.BackupsCreate, target, cancellationToken);
+    }
+
+    /// <summary>A game downloaded with SteamCMD has branches (1.0.14): its app's, its install's first SteamCMD step's.</summary>
+    public static bool HasBranches(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).OfType<SteamCmdStep>().Any();
+    }
+
+    /// <summary>The branch the template's own SteamCMD step for the game's app names (<c>beta</c>); null: public.</summary>
+    private static string? TemplateBranch(GameManifest manifest)
+    {
+        var app = (manifest.Install?.Steps ?? []).OfType<SteamCmdStep>().FirstOrDefault()?.AppId;
+        return (manifest.Update?.Steps ?? []).OfType<SteamCmdStep>().FirstOrDefault(s => s.AppId == app)?.Beta;
+    }
+
+    /// <summary>A node's list of branches: names SteamCMD takes, and printable text within bounds.</summary>
+    private static List<GameBranch> Branches(IReadOnlyList<SteamBranch> branches) =>
+        [.. branches.Where(b => GameBranch.IsName(b.Name)).Take(GameBranch.MaxBranches)
+            .Select(b => new GameBranch(b.Name, Text(b.Build, GameUpdateWatch.MaxBuildLength), Text(b.Description, GameBranch.MaxDescriptionLength),
+                b.PasswordRequired, b.Updated))];
+
     private async Task<GameManifest> ManifestAsync(Server server, CancellationToken cancellationToken) =>
         ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
 
@@ -1055,6 +1268,12 @@ public sealed partial class GameUpdates(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: its node reported an update check nobody asked for (or answered twice); ignored")]
     private partial void LogUnasked(ServerId serverId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: the Steam branch change did not end well; back to {Branch}")]
+    private partial void LogBranchChangeUndone(ServerId serverId, string? branch);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: Steam branch change from {From} to {To} started")]
+    private partial void LogBranchChangeStarted(ServerId serverId, string? from, string to);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: automatic game update from {Installed} to {Latest} started")]
     private partial void LogAutoUpdateStarted(ServerId serverId, string? installed, string? latest);

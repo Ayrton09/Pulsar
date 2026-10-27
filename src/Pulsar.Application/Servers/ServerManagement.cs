@@ -825,6 +825,21 @@ public sealed partial class ServerManagement(
             return login.Error!;
         }
 
+        // The Steam branch it follows (1.0.14) is in its spec: the agent has the one chosen last before it updates.
+        if (server.SteamBranch is not null)
+        {
+            if (!agent.Capabilities.Contains(AgentCapabilities.SteamBranches))
+            {
+                return ServerErrors.SteamBranchAgentTooOld;
+            }
+
+            var synced = await SyncSpecAsync(id, cancellationToken);
+            if (!synced.IsSuccess)
+            {
+                return synced.Error!;
+            }
+        }
+
         var operation = Operation.Create(OperationType.ServerUpdate, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
             via, clock.GetUtcNow());
         var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate, login.Value), beforeSave: null, cancellationToken);
@@ -912,7 +927,8 @@ public sealed partial class ServerManagement(
     /// Sends the server's current spec to its agent (values, ports, arguments): changes made in the panel apply at the
     /// next start, even when they were made while the node was disconnected.
     /// </summary>
-    private async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
+    /// <summary>Sends the server's spec to its agent now (a running game gets it at its next start); nothing when it is not installed or its node is away.</summary>
+    public async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null || server.InstallState == InstallState.NotInstalled || Connection(server.NodeId) is not { } agent)

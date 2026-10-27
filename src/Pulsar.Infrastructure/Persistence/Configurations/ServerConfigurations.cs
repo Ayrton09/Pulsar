@@ -61,6 +61,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.DatabaseLimit).HasDefaultValue(Server.DefaultDatabaseLimit).HasSentinel(-1);
         builder.HasIndex(s => s.NodeId);
         builder.HasOne<SteamAccount>().WithMany().HasForeignKey(s => s.SteamAccountId).OnDelete(DeleteBehavior.Restrict);
+        builder.Property(s => s.SteamBranch).HasMaxLength(GameBranch.MaxNameLength);
         builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(s => s.Variables).HasField("_variables").UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -323,6 +324,8 @@ internal sealed class SftpSettingsConfiguration : IEntityTypeConfiguration<SftpS
 
 internal sealed class GameUpdateWatchConfiguration : IEntityTypeConfiguration<GameUpdateWatch>
 {
+    private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
+
     public void Configure(EntityTypeBuilder<GameUpdateWatch> builder)
     {
         builder.ToTable("game_update_watches", t =>
@@ -345,6 +348,12 @@ internal sealed class GameUpdateWatchConfiguration : IEntityTypeConfiguration<Ga
         builder.Property(w => w.AttemptedLatest).HasMaxLength(GameUpdateWatch.MaxBuildLength);
         builder.Property(w => w.CheckErrorCode).HasMaxLength(GameUpdateWatch.MaxErrorCodeLength);
         builder.Property(w => w.CheckError).HasMaxLength(GameUpdateWatch.MaxMessageLength);
+        builder.Property(w => w.BranchBefore).HasMaxLength(GameBranch.MaxNameLength);
+        builder.Property(w => w.Branches).HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").HasConversion(
+            branches => JsonSerializer.Serialize(branches, s_json),
+            json => JsonSerializer.Deserialize<List<GameBranch>>(json, s_json) ?? new List<GameBranch>(),
+            new ValueComparer<IReadOnlyList<GameBranch>>((a, b) => a!.SequenceEqual(b!),
+                branches => branches.Aggregate(0, (hash, branch) => HashCode.Combine(hash, branch)), branches => branches.ToList()));
         builder.Ignore(w => w.AutoUpdateDue);
         // Checks (the pass, the node's answer) and users (settings) can race: the loser reads it again.
         builder.Property<uint>("Version").IsRowVersion();

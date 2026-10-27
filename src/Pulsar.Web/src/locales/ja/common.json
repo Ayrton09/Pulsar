@@ -395,7 +395,8 @@
         "game_update_check_requested": "ゲームのアップデート確認を依頼",
         "game_update_started": "ゲームのアップデートを開始",
         "game_update_cancelled": "ゲームのアップデートをキャンセル",
-        "template_update_started": "サーバーの新しいテンプレートへの移行を開始しました"
+        "template_update_started": "サーバーの新しいテンプレートへの移行を開始しました",
+        "steam_branch_changed": "サーバーの Steam ブランチを変更しました"
       },
       "template": {
         "imported": "ゲームテンプレートをインポート"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "このゲームのアップデートは確認できません。",
       "when_empty_unsupported": "Pulsar はこのゲームのプレイヤーを把握できないため、誰もいなくなるまで待てません。",
       "game_updates_forbidden": "アップデートを自動でインストールするには、サーバーの更新・停止・起動の権限（プレイヤーへの通知にはコンソールコマンドの送信権限も）が必要です。",
-      "update_check_unsupported": "このノードのエージェントはゲームのアップデートを確認できません。Pulsar を更新してください。"
+      "update_check_unsupported": "このノードのエージェントはゲームのアップデートを確認できません。Pulsar を更新してください。",
+      "steam_branch_unknown": "前回の更新確認で見つかったゲームの Steam ブランチではありません。更新を確認してから選び直してください。",
+      "steam_branch_password_required": "その Steam ブランチにはパスワードが必要で、Pulsar はそれを使ってインストールしません。",
+      "steam_branch_unsupported": "このゲームは Steam からダウンロードされません。",
+      "steam_branch_agent_too_old": "ノードのエージェントが古すぎて Steam ブランチに対応できません。先に更新してください。",
+      "steam_branch_forbidden": "Steam ブランチの変更には、サーバーを更新する権限とバックアップする権限が必要です。"
     },
     "console": {
       "invalid_input": "コマンドは、制御文字(タブなど)を含まない1行で入力してください。",
@@ -7315,6 +7321,21 @@
       "off": "何もしない",
       "notify": "知らせる（サーバーページに表示）",
       "install": "適用する（警告、停止、再インストール、再起動）"
+    },
+    "runningBranch": "Steam ブランチを変更中: {{steps}} 中 {{step}} 番目（{{what}}）",
+    "lastBranchRun": {
+      "failed": "前回の Steam ブランチの変更に失敗しました: {{error}}",
+      "cancelled": "前回の Steam ブランチの変更はキャンセルされました。"
+    },
+    "branch": {
+      "label": "Steam ブランチ",
+      "hint": "ゲームが Steam で公開している旧バージョンやテスト版です。変更すると、サーバーをバックアップしてからそのブランチをインストールします。",
+      "build": "ビルド {{build}}",
+      "password": "パスワードが必要",
+      "unknown": "ゲームのブランチを見るには更新を確認してください。",
+      "change": "ブランチを変更",
+      "confirm": "{{name}} をバックアップして Steam ブランチ「{{branch}}」をインストールしますか？ 旧バージョンでは新しいワールドを開けないことがあります。戻すためにバックアップが残ります。",
+      "stopFirst": "ブランチを変更するにはサーバーを停止してください。"
     }
   },
   "players": {

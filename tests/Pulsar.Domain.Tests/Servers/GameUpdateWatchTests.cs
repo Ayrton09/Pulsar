@@ -82,6 +82,61 @@ public sealed class GameUpdateWatchTests
     }
 
     [Fact]
+    public void TheBranchesACheckListsAreKeptWithinBoundsUntilAnotherListsThem()
+    {
+        var watch = GameUpdateWatch.Create(ServerId.New(), s_now);
+        GameBranch[] reported =
+        [
+            new("public", "100", null, false, null),
+            new("previous", "90", new string('x', 300), false, null),
+            new("PREVIOUS", "91", null, false, null), // the same branch again
+            new("-beta", "1", null, false, null), // SteamCMD would take it for an option
+            new("with space", "2", null, false, null),
+            .. Enumerable.Range(0, 80).Select(i => new GameBranch($"b{i}", "3", null, false, null)),
+        ];
+
+        watch.Checked("100", "100", false, null, null, s_now, reported);
+
+        Assert.Equal(GameBranch.MaxBranches, watch.Branches.Count);
+        Assert.Equal(["public", "previous", "b0"], watch.Branches.Take(3).Select(b => b.Name));
+        Assert.Equal(GameBranch.MaxDescriptionLength, watch.Branches[1].Description!.Length);
+        // A failed check, or one that lists none (an older agent), keeps them.
+        watch.Checked(null, null, null, "steamcmd.rate_limited", null, s_now.AddMinutes(15), [new("other", "5", null, false, null)]);
+        watch.Checked("100", "100", false, null, null, s_now.AddMinutes(30));
+        Assert.Equal("public", watch.Branches[0].Name);
+        Assert.Equal(GameBranch.MaxBranches, watch.Branches.Count);
+    }
+
+    [Fact]
+    public void AChangeOfBranchThatDoesNotSucceedSaysWhichBranchToPutBack()
+    {
+        var watch = GameUpdateWatch.Create(ServerId.New(), s_now);
+        var sequence = ServerSequenceId.New();
+
+        watch.BranchChangeStarted(sequence, "staging", s_now);
+        Assert.Equal((true, "staging", sequence), (watch.BranchChanging, watch.BranchBefore, watch.SequenceId));
+        Assert.Equal((true, "staging"), watch.BranchChangeEnded(succeeded: false, s_now));
+        // Ended: the watch is free, and what is installed is checked again.
+        Assert.Equal((false, null, null), (watch.BranchChanging, watch.BranchBefore, watch.SequenceId));
+        Assert.True(watch.CheckDue(s_now));
+
+        watch.BranchChangeStarted(ServerSequenceId.New(), null, s_now);
+        Assert.Equal((false, null), watch.BranchChangeEnded(succeeded: true, s_now));
+        Assert.Equal((false, null), watch.BranchChangeEnded(succeeded: false, s_now)); // nothing runs: nothing to undo
+    }
+
+    [Fact]
+    public void AServerFollowsOnlyABranchNameSteamCmdTakes()
+    {
+        var server = Server.Create(NodeId.New(), TemplateId.New(), "Branchy", null, "k3x7m2qa", s_now).Value;
+
+        Assert.True(server.SetSteamBranch("previous_build", s_now).IsSuccess);
+        Assert.Equal("previous_build", server.SteamBranch);
+        Assert.Equal(ServerErrors.SteamBranchUnknown, server.SetSteamBranch("-beta x", s_now).Error);
+        Assert.Equal("previous_build", server.SteamBranch);
+    }
+
+    [Fact]
     public void AnAutomaticUpdateIsTriedOncePerBuild()
     {
         var watch = GameUpdateWatch.Create(ServerId.New(), s_now);

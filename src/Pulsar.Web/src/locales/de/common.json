@@ -395,7 +395,8 @@
         "game_update_check_requested": "Hat eine Prüfung auf ein Spiel-Update angefordert",
         "game_update_started": "Hat ein Spiel-Update gestartet",
         "game_update_cancelled": "Hat ein Spiel-Update abgebrochen",
-        "template_update_started": "Umstellung eines Servers auf eine neuere Vorlage gestartet"
+        "template_update_started": "Umstellung eines Servers auf eine neuere Vorlage gestartet",
+        "steam_branch_changed": "Hat den Steam-Branch eines Servers gewechselt"
       },
       "template": {
         "imported": "Spielvorlage importiert"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "Die Updates dieses Spiels können nicht geprüft werden.",
       "when_empty_unsupported": "Pulsar kann nicht erkennen, wer dieses Spiel spielt, und kann daher nicht warten, bis niemand spielt.",
       "game_updates_forbidden": "Updates von selbst zu installieren braucht die Rechte, den Server zu aktualisieren, zu stoppen und zu starten (und Konsolenbefehle zu senden, um die Spieler zu warnen).",
-      "update_check_unsupported": "Der Agent dieses Knotens kann keine Spiel-Updates prüfen: Aktualisiere Pulsar darauf."
+      "update_check_unsupported": "Der Agent dieses Knotens kann keine Spiel-Updates prüfen: Aktualisiere Pulsar darauf.",
+      "steam_branch_unknown": "Das ist keiner der Steam-Branches, die die letzte Update-Prüfung gefunden hat: nach Updates suchen und erneut wählen.",
+      "steam_branch_password_required": "Dieser Steam-Branch braucht ein Passwort, mit dem Pulsar nicht installiert.",
+      "steam_branch_unsupported": "Dieses Spiel wird nicht über Steam heruntergeladen.",
+      "steam_branch_agent_too_old": "Der Agent des Knotens ist zu alt, um einem Steam-Branch zu folgen: aktualisiere ihn zuerst.",
+      "steam_branch_forbidden": "Den Steam-Branch zu wechseln braucht die Berechtigungen, den Server zu aktualisieren und zu sichern."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -7315,6 +7321,21 @@
       "off": "Nichts tun",
       "notify": "Mich informieren (auf der Serverseite anzeigen)",
       "install": "Anwenden (warnen, stoppen, damit neu installieren, wieder starten)"
+    },
+    "runningBranch": "Steam-Branch wird gewechselt: Schritt {{step}} von {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "Der letzte Wechsel des Steam-Branches ist fehlgeschlagen: {{error}}",
+      "cancelled": "Der letzte Wechsel des Steam-Branches wurde abgebrochen."
+    },
+    "branch": {
+      "label": "Steam-Branch",
+      "hint": "Ältere Versionen und Test-Builds, die das Spiel auf Steam veröffentlicht. Beim Wechsel sichert Pulsar den Server und installiert dann den Branch.",
+      "build": "Build {{build}}",
+      "password": "braucht ein Passwort",
+      "unknown": "Nach Updates suchen, um die Branches des Spiels zu sehen.",
+      "change": "Branch wechseln",
+      "confirm": "{{name}} sichern und den Steam-Branch \"{{branch}}\" installieren? Eine ältere Version öffnet neuere Welten womöglich nicht: das Backup erlaubt den Weg zurück.",
+      "stopFirst": "Halte den Server an, um seinen Branch zu wechseln."
     }
   },
   "players": {

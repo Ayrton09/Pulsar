@@ -27,7 +27,8 @@ public static class ApiProblems
     {
         _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
         "access.escalation" or "access.self_change" or "server.variable_protected" or "operation.forbidden" or "schedules.forbidden" or "server.create_forbidden"
-            or "server.port_numbers_forbidden" or "server.game_updates_forbidden" or "players.admin_forbidden" => StatusCodes.Status403Forbidden,
+            or "server.port_numbers_forbidden" or "server.game_updates_forbidden" or "players.admin_forbidden" or "server.steam_branch_forbidden"
+            => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
             or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring" or "panel_key.nodes_outdated"
             or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.command_rejected"
@@ -44,6 +45,7 @@ public static class ApiProblems
             or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many" or "backup_storage.holds_copies"
             or "database_host.in_use" or "database_host.too_many" or "database_host.name_taken" or "database.name_taken" or "database.limit_reached"
             or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required" or "steam_account.name_taken"
+            or "server.steam_branch_unknown" or "server.steam_branch_password_required" or "server.steam_branch_unsupported" or "server.steam_branch_agent_too_old"
             => StatusCodes.Status409Conflict,
         "files.changed" => StatusCodes.Status412PreconditionFailed,
         "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,

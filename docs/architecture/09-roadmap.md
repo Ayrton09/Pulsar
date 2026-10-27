@@ -507,6 +507,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Arma Reforger's mods by name (gap point 7): its `mods` setting is a list editor that searches the game's Workshop and names its mods, read from the Workshop's pages; they go into `server.json`'s `game.mods`, merged so that mods added there by hand, and the versions pinned on the panel's, stay (doc 04, "Configuration files"; doc 08, T54).
 - Workshop items added one after another, before the first is looked up on Steam, all go into the list (only the last one did).
 - Two more games, each checked on a real server (games/<key>/README.md): Half-Life 2: Deathmatch (`hl2dm`) and Pirates, Vikings, and Knights II (`pvkii`, the 64-bit srcds), Source servers like CS:S. Counter-Strike 1.6, Half-Life Deathmatch (GoldSrc's HLDS, whose console and RCON differ) and Synergy (it needs Half-Life 2 itself, downloaded with an account that owns it) wait.
+- A server's Steam branch (gap point 8): the game's branches as Steam lists them, chosen on the server's page; changing it backs the stopped server up, then installs the branch (doc 05, "Steam branches"; doc 03, "Game update checks"; doc 08, T55). Agent capability `steam.branches`.
 - Lines wider than a pseudo console (220 columns), which the console host cuts once its screen is full, are joined again as the agent reads them, so a long link (SCP: Secret Laboratory's `!verify static`) comes whole and opens whole (doc 06, "Console: ConPTY vs pipes").
 
 ## Before the first public release

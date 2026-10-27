@@ -395,7 +395,8 @@
         "game_update_check_requested": "Ha chiesto di controllare un aggiornamento del gioco",
         "game_update_started": "Ha avviato un aggiornamento del gioco",
         "game_update_cancelled": "Ha annullato un aggiornamento del gioco",
-        "template_update_started": "Ha iniziato a passare un server a un modello più recente"
+        "template_update_started": "Ha iniziato a passare un server a un modello più recente",
+        "steam_branch_changed": "Ha cambiato il ramo di Steam di un server"
       },
       "template": {
         "imported": "Ha importato un modello di gioco"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "Gli aggiornamenti di questo gioco non possono essere controllati.",
       "when_empty_unsupported": "Pulsar non può sapere chi gioca a questo gioco, quindi non può aspettare che non giochi nessuno.",
       "game_updates_forbidden": "Installare gli aggiornamenti da soli richiede i permessi per aggiornare, fermare e avviare il server (e per inviare comandi di console, per avvisare i giocatori).",
-      "update_check_unsupported": "L'agente di questo nodo non può controllare gli aggiornamenti del gioco: aggiorna Pulsar su quel nodo."
+      "update_check_unsupported": "L'agente di questo nodo non può controllare gli aggiornamenti del gioco: aggiorna Pulsar su quel nodo.",
+      "steam_branch_unknown": "Non è uno dei rami di Steam del gioco trovati dall'ultimo controllo: controlla gli aggiornamenti e scegli di nuovo.",
+      "steam_branch_password_required": "Quel ramo di Steam richiede una password, con cui Pulsar non installa.",
+      "steam_branch_unsupported": "Questo gioco non si scarica da Steam.",
+      "steam_branch_agent_too_old": "L'agente del nodo è troppo vecchio per seguire un ramo di Steam: aggiornalo prima.",
+      "steam_branch_forbidden": "Cambiare il ramo di Steam richiede i permessi per aggiornare il server e farne i backup."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -7315,6 +7321,21 @@
       "off": "Non fare nulla",
       "notify": "Avvisami (mostralo nella pagina del server)",
       "install": "Applicalo (avvisa, ferma, reinstalla con esso, riavvia)"
+    },
+    "runningBranch": "Cambio del ramo di Steam: passo {{step}} di {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "L'ultimo cambio del ramo di Steam non è riuscito: {{error}}",
+      "cancelled": "L'ultimo cambio del ramo di Steam è stato annullato."
+    },
+    "branch": {
+      "label": "Ramo di Steam",
+      "hint": "Versioni precedenti e di prova che il gioco pubblica su Steam. Cambiarlo fa un backup del server, poi installa il ramo.",
+      "build": "build {{build}}",
+      "password": "richiede una password",
+      "unknown": "Controlla gli aggiornamenti per vedere i rami del gioco.",
+      "change": "Cambia ramo",
+      "confirm": "Fare un backup di {{name}} e installare il ramo di Steam \"{{branch}}\"? Una versione precedente potrebbe non aprire mondi più recenti: il backup serve per tornare indietro.",
+      "stopFirst": "Ferma il server per cambiarne il ramo."
     }
   },
   "players": {

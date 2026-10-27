@@ -118,6 +118,89 @@ describe('game updates', () => {
     await waitFor(() => expect(installs).toEqual(['install']));
   });
 
+  it('changes the Steam branch of a stopped server after a backup, among the branches Steam listed', async () => {
+    const changes: unknown[] = [];
+    const branchy: Schemas['GameUpdateView'] = {
+      ...found,
+      branchesSupported: true,
+      branches: [
+        { name: 'public', build: '20500001', description: null, passwordRequired: false, updated: null },
+        {
+          name: 'default_old',
+          build: '20221240',
+          description: 'Previous stable',
+          passwordRequired: false,
+          updated: null,
+        },
+        { name: 'secret', build: '1', description: null, passwordRequired: true, updated: null },
+      ],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...updater,
+        permissions: [...updater.permissions, 'server.backups.create'],
+      }),
+      [`GET /api/v1/servers/${serverId}`]: () => json({ ...details, server: { ...server, runtimeState: 'offline' } }),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json(branchy),
+      [`PUT /api/v1/servers/${serverId}/game-updates/branch`]: async (request) => {
+        changes.push(await request.json());
+        return json({ ...branchy, steamBranch: 'default_old' });
+      },
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderAt(`/servers/${serverId}`);
+
+    const card = await screen.findByRole('region', { name: 'Game updates' });
+    const picker = within(card).getByRole('combobox', { name: 'Steam branch' });
+    expect(within(picker).getByRole('option', { name: /secret/ })).toBeDisabled(); // Pulsar does not ask for its password
+    const change = within(card).getByRole('button', { name: 'Change branch' });
+    expect(change).toBeDisabled(); // public, as it is
+    await userEvent.selectOptions(picker, 'default_old');
+    expect(
+      within(picker).getByRole('option', { name: /default_old · Previous stable · build 20221240/ }),
+    ).toBeInTheDocument();
+    await userEvent.click(change);
+
+    await waitFor(() => expect(changes).toEqual([{ branch: 'default_old' }]));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('Back up Survival and install the Steam branch "default_old"'),
+    );
+  });
+
+  it('asks to stop the server before its branch changes', async () => {
+    const branchy: Schemas['GameUpdateView'] = { ...found, branchesSupported: true, branches: [] };
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...updater,
+        permissions: [...updater.permissions, 'server.backups.create'],
+      }),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json(branchy),
+    });
+
+    renderAt(`/servers/${serverId}`);
+
+    const card = await screen.findByRole('region', { name: 'Game updates' });
+    expect(within(card).getByText('Stop the server to change its branch.')).toBeInTheDocument();
+    expect(within(card).getByText("Check for updates to see the game's branches.")).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Change branch' })).toBeDisabled();
+  });
+
+  it('offers a change of branch only to who may also back the server up', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(updater),
+      [`GET /api/v1/servers/${serverId}`]: () => json({ ...details, server: { ...server, runtimeState: 'offline' } }),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json({ ...found, branchesSupported: true }),
+    });
+
+    renderAt(`/servers/${serverId}`);
+
+    const card = await screen.findByRole('region', { name: 'Game updates' });
+    expect(within(card).getByRole('combobox', { name: 'Steam branch' })).toBeDisabled();
+    expect(within(card).queryByRole('button', { name: 'Change branch' })).not.toBeInTheDocument();
+  });
+
   it('says why an automatic update waits, and lets it be skipped', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(updater),
@@ -239,6 +322,7 @@ describe('game updates', () => {
         errorCode: null,
         message: null,
         template: true,
+        steamBranch: false,
       },
     };
     await router.navigate(`/servers/${serverId}`);

@@ -833,6 +833,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string CatalogLists = "manifest.catalog_lists";
 
+    /// <summary>
+    /// Not a command: the agent follows the Steam branch of a server's spec (<see cref="ServerRuntimeSpec.SteamBranch"/>)
+    /// and lists the game's branches in its update checks (<see cref="GameUpdateCheck.Branches"/>, Pulsar 1.0.14).
+    /// </summary>
+    public const string SteamBranches = "steam.branches";
+
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;
 

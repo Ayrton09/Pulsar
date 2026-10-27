@@ -1914,7 +1914,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_sequences", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule', 'template_update')");
+                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule', 'steam_branch', 'template_update')");
 
                             t.HasCheckConstraint("ck_server_sequences_status", "status IN ('cancelled', 'failed', 'running', 'succeeded')");
                         });
@@ -2225,6 +2225,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<bool?>("Available")
                         .HasColumnType("boolean")
                         .HasColumnName("available");
+
+                    b.Property<string>("BranchBefore")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("branch_before");
+
+                    b.Property<bool>("BranchChanging")
+                        .HasColumnType("boolean")
+                        .HasColumnName("branch_changing");
+
+                    b.Property<string>("Branches")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("branches")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("CheckError")
                         .HasMaxLength(300)
@@ -2579,6 +2595,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SteamAccountId")
                         .HasColumnType("uuid")
                         .HasColumnName("steam_account_id");
+
+                    b.Property<string>("SteamBranch")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("steam_branch");
 
                     b.Property<Guid>("TemplateId")
                         .HasColumnType("uuid")

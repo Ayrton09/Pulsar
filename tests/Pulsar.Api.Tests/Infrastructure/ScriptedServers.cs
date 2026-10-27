@@ -48,6 +48,12 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     /// <summary>The build a scripted Steam offers per app on its public branch: what an install writes, what a check finds.</summary>
     public ConcurrentDictionary<string, string> LatestBuilds { get; } = new() { ["232330"] = "1000", ["730"] = "2000" };
 
+    /// <summary>The branches a scripted Steam offers per app besides public (Pulsar 1.0.14): name, build, description, password needed.</summary>
+    public ConcurrentDictionary<string, IReadOnlyList<(string Name, string Build, string? Description, bool Password)>> Branches { get; } = new();
+
+    /// <summary>The <c>-beta</c> each install or update ran with, in order (null: none).</summary>
+    public ConcurrentQueue<string?> SteamBetas { get; } = new();
+
     /// <summary>
     /// The Steam Guard code a scripted Steam asks for when an account signs in with its password; null asks for none. A
     /// sign-in without the password works only with the login a previous one cached (as SteamCMD's config.vdf).
@@ -111,8 +117,12 @@ public sealed class ScriptedProcessManager : IGameProcessManager
             process.Print($"AppID : {asked}, change number : 1/0, last change : Sun Oct 25 12:00:00 2026\r\n");
             if (LatestBuilds.TryGetValue(asked, out var latest))
             {
+                var others = string.Concat(Branches.GetValueOrDefault(asked, []).Select(b =>
+                    $"\t\t\t\"{b.Name}\"\r\n\t\t\t{{\r\n\t\t\t\t\"buildid\"\t\t\"{b.Build}\"\r\n"
+                    + (b.Description is null ? "" : $"\t\t\t\t\"description\"\t\t\"{b.Description}\"\r\n")
+                    + (b.Password ? "\t\t\t\t\"pwdrequired\"\t\t\"1\"\r\n" : "") + "\t\t\t}\r\n"));
                 process.Print($"\"{asked}\"\r\n{{\r\n\t\"depots\"\r\n\t{{\r\n\t\t\"branches\"\r\n\t\t{{\r\n\t\t\t\"public\"\r\n\t\t\t{{\r\n" +
-                    $"\t\t\t\t\"buildid\"\t\t\"{latest}\"\r\n\t\t\t}}\r\n\t\t}}\r\n\t}}\r\n}}\r\n");
+                    $"\t\t\t\t\"buildid\"\t\t\"{latest}\"\r\n\t\t\t}}\r\n{others}\t\t}}\r\n\t}}\r\n}}\r\n");
             }
 
             process.Exit(0);
@@ -125,6 +135,10 @@ public sealed class ScriptedProcessManager : IGameProcessManager
         }
 
         var app = spec.Arguments[arguments.IndexOf("+app_update") + 1];
+        var beta = arguments.IndexOf("-beta") is >= 0 and var at ? arguments[at + 1] : null;
+        SteamBetas.Enqueue(beta);
+        // A branch installs its own build; public (or none) the app's latest.
+        var build = Branches.GetValueOrDefault(app, []).FirstOrDefault(b => b.Name == beta).Build ?? LatestBuilds.GetValueOrDefault(app, "1");
         if (AppExecutables.TryGetValue(app, out var executable))
         {
             var path = Path.Combine(spec.ServerRoot, executable);
@@ -136,7 +150,7 @@ public sealed class ScriptedProcessManager : IGameProcessManager
         var appManifest = Path.Combine(spec.ServerRoot, "steamapps", $"appmanifest_{app}.acf");
         Directory.CreateDirectory(Path.GetDirectoryName(appManifest)!);
         await File.WriteAllTextAsync(appManifest,
-            $"\"AppState\"\n{{\n\t\"appid\"\t\t\"{app}\"\n\t\"buildid\"\t\t\"{LatestBuilds.GetValueOrDefault(app, "1")}\"\n}}\n");
+            $"\"AppState\"\n{{\n\t\"appid\"\t\t\"{app}\"\n\t\"buildid\"\t\t\"{build}\"\n}}\n");
 
         process.Print(" Update state (0x61) downloading, progress: 45.00 (450 / 1000)\r\n");
         if (SteamCmdGate is { } gate)

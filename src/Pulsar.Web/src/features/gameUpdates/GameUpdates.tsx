@@ -13,9 +13,11 @@ import {
   gameUpdatePolicies,
   useCancelGameUpdate,
   useChangeGameUpdates,
+  useChangeSteamBranch,
   useCheckGameUpdate,
   useGameUpdates,
   useInstallGameUpdate,
+  type GameBranch,
   type GameUpdatePolicy,
   type GameUpdateView,
 } from './api';
@@ -43,6 +45,7 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
   }
 
   const canInstall = canOnServer(me, server, Permission.ServerInstall);
+  const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
   // Updating the way an automatic update does stops and starts the server.
   const canRestart =
     canInstall && canOnServer(me, server, Permission.ServerStop) && canOnServer(me, server, Permission.ServerStart);
@@ -66,11 +69,18 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
         )}
         {running && (
           <p role="status" className="text-sm">
-            {t(running.template ? 'gameUpdates.runningTemplate' : 'gameUpdates.running', {
-              step: running.step + 1,
-              steps: running.steps,
-              what: t(`gameUpdates.steps.${running.stepKind ?? 'wait'}`),
-            })}
+            {t(
+              running.steamBranch
+                ? 'gameUpdates.runningBranch'
+                : running.template
+                  ? 'gameUpdates.runningTemplate'
+                  : 'gameUpdates.running',
+              {
+                step: running.step + 1,
+                steps: running.steps,
+                what: t(`gameUpdates.steps.${running.stepKind ?? 'wait'}`),
+              },
+            )}
           </p>
         )}
         {!running && view.templatePending && view.autoTemplate && (
@@ -92,10 +102,23 @@ export function GameUpdatesCard({ details }: { details: ServerDetails }) {
         )}
         {last && (
           <p className="text-sm text-muted">
-            {t(`gameUpdates.${last.template ? 'lastTemplateRun' : 'lastRun'}.${last.status}`, {
-              error: last.message ?? last.errorCode,
-            })}
+            {t(
+              `gameUpdates.${last.steamBranch ? 'lastBranchRun' : last.template ? 'lastTemplateRun' : 'lastRun'}.${last.status}`,
+              {
+                error: last.message ?? last.errorCode,
+              },
+            )}
           </p>
+        )}
+        {checks && view.branchesSupported && (
+          // Keyed by the branch it follows: changed elsewhere (another tab, a change that did not end well), the picker starts over.
+          <SteamBranchPicker
+            key={view.currentBranch ?? 'public'}
+            server={server}
+            view={view}
+            stopped={stopped}
+            running={!!running}
+          />
         )}
         {checks && (
           <p className="text-xs text-muted">
@@ -166,6 +189,77 @@ function Status({ view }: { view: GameUpdateView }) {
   return <Badge>{t('gameUpdates.status.unknown')}</Badge>;
 }
 
+/**
+ * The Steam branch the game follows (Pulsar 1.0.14), among those the last check listed: changing it backs the stopped
+ * server up, then installs the branch. A branch with a password cannot be chosen (Pulsar does not ask for it).
+ */
+function SteamBranchPicker({
+  server,
+  view,
+  stopped,
+  running,
+}: {
+  server: ServerDetails['server'];
+  view: GameUpdateView;
+  stopped: boolean;
+  running: boolean;
+}) {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const formatDate = useFormatDate();
+  const change = useChangeSteamBranch(server.id);
+  const current = view.currentBranch ?? view.steamBranch ?? 'public';
+  const branches: GameBranch[] = view.branches?.length
+    ? view.branches
+    : [{ name: 'public', build: null, description: null, passwordRequired: false, updated: null }];
+  const [chosen, setChosen] = useState(current);
+  const may =
+    canOnServer(me, server, Permission.ServerInstall) && canOnServer(me, server, Permission.ServerBackupsCreate);
+  const label = (branch: GameBranch) =>
+    [
+      branch.name,
+      branch.description,
+      branch.build ? t('gameUpdates.branch.build', { build: branch.build }) : null,
+      branch.updated ? formatDate(branch.updated) : null,
+      branch.passwordRequired ? t('gameUpdates.branch.password') : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <Field label={t('gameUpdates.branch.label')} hint={t('gameUpdates.branch.hint')}>
+        {(ids) => (
+          <Select {...ids} value={chosen} disabled={!may || running} onChange={(e) => setChosen(e.target.value)}>
+            {branches.map((branch) => (
+              <option key={branch.name} value={branch.name} disabled={branch.passwordRequired}>
+                {label(branch)}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {!view.branches?.length && <p className="text-xs text-muted">{t('gameUpdates.branch.unknown')}</p>}
+      {change.error && <Alert>{errorMessage(t, change.error)}</Alert>}
+      {may && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            busy={change.isPending}
+            disabled={chosen === current || !stopped || running}
+            onClick={() =>
+              window.confirm(t('gameUpdates.branch.confirm', { name: server.name, branch: chosen })) &&
+              change.mutate(chosen)
+            }
+          >
+            {t('gameUpdates.branch.change')}
+          </Button>
+          {!stopped && <p className="text-xs text-muted">{t('gameUpdates.branch.stopFirst')}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Installed and latest builds, as the game names them (a Steam build id, a Minecraft version). */
 function Builds({ view }: { view: GameUpdateView }) {
   const { t } = useTranslation();
@@ -178,6 +272,12 @@ function Builds({ view }: { view: GameUpdateView }) {
       <dd className="font-mono break-all">{view.installed ?? t('gameUpdates.unknownBuild')}</dd>
       <dt className="text-muted">{t('gameUpdates.latest')}</dt>
       <dd className="font-mono break-all">{view.latest ?? t('gameUpdates.unknownBuild')}</dd>
+      {view.currentBranch && view.currentBranch !== 'public' && (
+        <>
+          <dt className="text-muted">{t('gameUpdates.branch.label')}</dt>
+          <dd className="font-mono break-all">{view.currentBranch}</dd>
+        </>
+      )}
     </dl>
   );
 }

@@ -20,6 +20,9 @@ public sealed record GameUpdateSettingsRequest(
     [property: StringLength(GameUpdateWatch.MaxWarningMessageLength)] string? WarningMessage,
     GameUpdatePolicy? TemplatePolicy = null);
 
+/// <param name="Branch">A branch the last update check listed, or <c>public</c>.</param>
+public sealed record SteamBranchRequest([property: Required, StringLength(GameBranch.MaxNameLength, MinimumLength = 1)] string Branch);
+
 /// <summary>
 /// A server's game updates (Pulsar 1.0.9): what the last check found and how updates are followed (off, notified or
 /// installed by themselves), a check now, an update installed now the way an automatic one is (warn, stop, update,
@@ -42,6 +45,10 @@ public static class GameUpdateEndpoints
         updates.MapPost("/install", async (Guid id, GameUpdates u, CancellationToken ct) => (await u.InstallNowAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.Install);
         updates.MapPost("/cancel", async (Guid id, GameUpdates u, CancellationToken ct) => (await u.CancelAsync(new ServerId(id), ct)).ToHttp())
+            .RequirePermission(Permissions.Server.Install);
+        // Pulsar 1.0.14: the game's Steam branch, installed now after a backup (the service also checks the right to back up).
+        updates.MapPut("/branch", async (Guid id, SteamBranchRequest request, GameUpdates u, CancellationToken ct) =>
+                (await u.ChangeBranchAsync(new ServerId(id), request.Branch, ct)).ToHttp())
             .RequirePermission(Permissions.Server.Install);
         return api;
     }

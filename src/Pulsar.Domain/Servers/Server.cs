@@ -153,6 +153,11 @@ public sealed class Server
     /// <summary>The Steam account SteamCMD signs in with for this server (Phase 13); null: anonymous.</summary>
     public SteamAccountId? SteamAccountId { get; private set; }
 
+    /// <summary>
+    /// The Steam branch its game follows (Pulsar 1.0.14; <c>public</c>, <c>previous_build</c>); null: its template's own.
+    /// </summary>
+    public string? SteamBranch { get; private set; }
+
     /// <summary>How many MySQL/MariaDB databases the server may have (Phase 13); 0: none.</summary>
     public int DatabaseLimit { get; private set; } = DefaultDatabaseLimit;
 
@@ -460,6 +465,26 @@ public sealed class Server
     public void SetSteamAccount(SteamAccountId? account, DateTimeOffset now)
     {
         SteamAccountId = account;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The Steam branch the game follows from its next install or update (Pulsar 1.0.14).</summary>
+    public Result SetSteamBranch(string branch, DateTimeOffset now)
+    {
+        if (!GameBranch.IsName(branch))
+        {
+            return ServerErrors.SteamBranchUnknown;
+        }
+
+        SteamBranch = branch;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>Puts back the branch a change that did not end well replaced (null: the template's own).</summary>
+    public void RestoreSteamBranch(string? branch, DateTimeOffset now)
+    {
+        SteamBranch = branch is null || GameBranch.IsName(branch) ? branch : null;
         UpdatedAt = now;
     }
 

@@ -1,5 +1,6 @@
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Steam;
+using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Tests;
 
@@ -60,6 +61,57 @@ public sealed class SteamBuildsTests : IDisposable
     public SteamBuildsTests() => Directory.CreateDirectory(Path.Combine(_root, "steamapps"));
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    [Fact]
+    public void TheAppsBranchesAreReadFromWhatSteamCmdPrinted()
+    {
+        var branches = SteamBuilds.Branches(AppInfo, 896660);
+
+        Assert.Equal(
+            [new SteamBranch("public", "20476133", null, false, DateTimeOffset.FromUnixTimeSeconds(1760000000)),
+                new SteamBranch("public-test", "20500001", "Public \"test\" branch", true, null)],
+            branches);
+        Assert.Empty(SteamBuilds.Branches(AppInfo, 896661)); // another app's
+    }
+
+    [Fact]
+    public void ABranchSteamCmdCouldNotTakeIsLeftOutAndADescriptionIsCleaned()
+    {
+        var info = $$"""
+            "17575"
+            {
+            	"depots"
+            	{
+            		"branches"
+            		{
+            			"previous"
+            			{
+            				"buildid"		"16187474"
+            				"description"		"Old	one{{"‮"}}"
+            			}
+            			"-beta"
+            			{
+            				"buildid"		"1"
+            			}
+            			"with space"
+            			{
+            				"buildid"		"2"
+            			}
+            			"public"
+            			{
+            				"buildid"		"not a build"
+            				"timeupdated"		"-5"
+            			}
+            		}
+            	}
+            }
+            """;
+
+        var branches = SteamBuilds.Branches(info, 17575);
+
+        // Public first; a name SteamCMD would read as an option, or as two arguments, is no branch to offer.
+        Assert.Equal([new SteamBranch("public", null, null, false, null), new SteamBranch("previous", "16187474", "Oldone", false, null)], branches);
+    }
 
     [Fact]
     public void TheLatestBuildOfABranchIsReadFromWhatSteamCmdPrinted()

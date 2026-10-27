@@ -13538,6 +13538,96 @@
         }
       }
     },
+    "/api/v1/servers/{id}/game-updates/branch": {
+      "put": {
+        "tags": [
+          "Game updates"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteamBranchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameUpdateView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications/channels": {
       "get": {
         "tags": [
@@ -16897,6 +16987,43 @@
           }
         }
       },
+      "GameBranchView": {
+        "required": [
+          "name",
+          "build",
+          "description",
+          "passwordRequired",
+          "updated"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "build": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "passwordRequired": {
+            "type": "boolean"
+          },
+          "updated": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "GameSaveResult": {
         "enum": [
           "confirmed",
@@ -16975,6 +17102,10 @@
             ]
           },
           "template": {
+            "type": "boolean",
+            "default": false
+          },
+          "steamBranch": {
             "type": "boolean",
             "default": false
           }
@@ -17154,6 +17285,31 @@
             "default": false
           },
           "autoTemplate": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "steamBranch": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "branches": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GameBranchView"
+            }
+          },
+          "branchesSupported": {
+            "type": "boolean",
+            "default": false
+          },
+          "currentBranch": {
             "type": [
               "null",
               "string"
@@ -20973,6 +21129,19 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SteamBranchRequest": {
+        "required": [
+          "branch"
+        ],
+        "type": "object",
+        "properties": {
+          "branch": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
           }
         }
       },

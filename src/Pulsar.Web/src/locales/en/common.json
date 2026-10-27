@@ -395,7 +395,8 @@
         "game_update_check_requested": "Asked to check for a game update",
         "game_update_started": "Started a game update",
         "game_update_cancelled": "Cancelled a game update",
-        "template_update_started": "Started moving a server to a newer template"
+        "template_update_started": "Started moving a server to a newer template",
+        "steam_branch_changed": "Changed a server's Steam branch"
       },
       "template": {
         "imported": "Imported a game template"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "This game's updates cannot be checked.",
       "when_empty_unsupported": "Pulsar cannot tell who plays this game, so it cannot wait until nobody does.",
       "game_updates_forbidden": "Installing updates by themselves needs the permissions to update, stop and start the server (and to send console commands, to warn the players).",
-      "update_check_unsupported": "This node's agent cannot check for game updates: update Pulsar on it."
+      "update_check_unsupported": "This node's agent cannot check for game updates: update Pulsar on it.",
+      "steam_branch_unknown": "That is not one of the game's Steam branches the last update check found: check for updates, then choose again.",
+      "steam_branch_password_required": "That Steam branch needs a password, which Pulsar does not install with.",
+      "steam_branch_unsupported": "This game is not downloaded from Steam.",
+      "steam_branch_agent_too_old": "The node's agent is too old to follow a Steam branch: update it first.",
+      "steam_branch_forbidden": "Changing the Steam branch needs the permissions to update the server and to back it up."
     },
     "console": {
       "invalid_input": "A command is one line without control characters (such as tabs).",
@@ -2517,6 +2523,21 @@
       "off": "Do nothing",
       "notify": "Tell me (show it on the server page)",
       "install": "Apply it (warn, stop, install again with it, start again)"
+    },
+    "runningBranch": "Changing the Steam branch: step {{step}} of {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "The last change of Steam branch failed: {{error}}",
+      "cancelled": "The last change of Steam branch was cancelled."
+    },
+    "branch": {
+      "label": "Steam branch",
+      "hint": "Older versions and test builds the game publishes on Steam. Changing it backs the server up, then installs the branch.",
+      "build": "build {{build}}",
+      "password": "needs a password",
+      "unknown": "Check for updates to see the game's branches.",
+      "change": "Change branch",
+      "confirm": "Back up {{name}} and install the Steam branch \"{{branch}}\"? An older version may not open newer worlds: the backup is there to go back.",
+      "stopFirst": "Stop the server to change its branch."
     }
   },
   "players": {

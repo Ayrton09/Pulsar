@@ -395,7 +395,8 @@
         "game_update_check_requested": "请求检查游戏更新",
         "game_update_started": "开始了游戏更新",
         "game_update_cancelled": "取消了游戏更新",
-        "template_update_started": "开始将服务器切换到较新的模板"
+        "template_update_started": "开始将服务器切换到较新的模板",
+        "steam_branch_changed": "更换了服务器的 Steam 分支"
       },
       "template": {
         "imported": "导入了游戏模板"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "无法检查此游戏的更新。",
       "when_empty_unsupported": "Pulsar 无法知道谁在玩这个游戏，因此不能等到没有人在玩。",
       "game_updates_forbidden": "自动安装更新需要更新、停止和启动服务器的权限（要通知玩家还需要发送控制台命令的权限）。",
-      "update_check_unsupported": "此节点的代理无法检查游戏更新：请在该节点上更新 Pulsar。"
+      "update_check_unsupported": "此节点的代理无法检查游戏更新：请在该节点上更新 Pulsar。",
+      "steam_branch_unknown": "这不是上次更新检查找到的游戏 Steam 分支之一：请检查更新后重新选择。",
+      "steam_branch_password_required": "该 Steam 分支需要密码，Pulsar 不会用密码安装。",
+      "steam_branch_unsupported": "此游戏不是从 Steam 下载的。",
+      "steam_branch_agent_too_old": "节点的代理版本太旧，无法跟随 Steam 分支：请先更新它。",
+      "steam_branch_forbidden": "更换 Steam 分支需要更新服务器和备份服务器的权限。"
     },
     "console": {
       "invalid_input": "命令必须是单行内容，且不含控制字符（如制表符）。",
@@ -7315,6 +7321,21 @@
       "off": "什么都不做",
       "notify": "提醒我（在服务器页面显示）",
       "install": "自动应用（提醒、停止、重新安装、重新启动）"
+    },
+    "runningBranch": "正在更换 Steam 分支：第 {{step}}/{{steps}} 步（{{what}}）",
+    "lastBranchRun": {
+      "failed": "上次更换 Steam 分支失败：{{error}}",
+      "cancelled": "上次更换 Steam 分支已取消。"
+    },
+    "branch": {
+      "label": "Steam 分支",
+      "hint": "游戏在 Steam 上发布的旧版本和测试版本。更换时 Pulsar 会先备份服务器，再安装该分支。",
+      "build": "构建 {{build}}",
+      "password": "需要密码",
+      "unknown": "检查更新以查看游戏的分支。",
+      "change": "更换分支",
+      "confirm": "要备份 {{name}} 并安装 Steam 分支“{{branch}}”吗？旧版本可能无法打开较新的世界：备份可用于回退。",
+      "stopFirst": "请先停止服务器再更换分支。"
     }
   },
   "players": {

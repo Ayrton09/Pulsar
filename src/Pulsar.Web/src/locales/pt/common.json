@@ -395,7 +395,8 @@
         "game_update_check_requested": "Pediu para verificar uma atualização do jogo",
         "game_update_started": "Iniciou uma atualização do jogo",
         "game_update_cancelled": "Cancelou uma atualização do jogo",
-        "template_update_started": "Começou a passar um servidor para um modelo mais novo"
+        "template_update_started": "Começou a passar um servidor para um modelo mais novo",
+        "steam_branch_changed": "Mudou a branch da Steam de um servidor"
       },
       "template": {
         "imported": "Importou um modelo de jogo"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "As atualizações deste jogo não podem ser verificadas.",
       "when_empty_unsupported": "O Pulsar não consegue saber quem joga este jogo, então não pode esperar até ninguém estar jogando.",
       "game_updates_forbidden": "Instalar atualizações sozinhas exige as permissões para atualizar, parar e iniciar o servidor (e para enviar comandos de console, para avisar os jogadores).",
-      "update_check_unsupported": "O agente deste nó não consegue verificar atualizações do jogo: atualize o Pulsar nele."
+      "update_check_unsupported": "O agente deste nó não consegue verificar atualizações do jogo: atualize o Pulsar nele.",
+      "steam_branch_unknown": "Essa não é uma das branches da Steam que a última verificação encontrou: verifique atualizações e escolha de novo.",
+      "steam_branch_password_required": "Essa branch da Steam pede uma senha, com a qual o Pulsar não instala.",
+      "steam_branch_unsupported": "Este jogo não é baixado da Steam.",
+      "steam_branch_agent_too_old": "O agente do nó é antigo demais para seguir uma branch da Steam: atualize-o primeiro.",
+      "steam_branch_forbidden": "Mudar a branch da Steam exige as permissões para atualizar o servidor e fazer backups dele."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -7315,6 +7321,21 @@
       "off": "Não fazer nada",
       "notify": "Avisar-me (mostrar na página do servidor)",
       "install": "Aplicar (avisar, parar, instalar de novo com ele, iniciar de novo)"
+    },
+    "runningBranch": "Mudando a branch da Steam: passo {{step}} de {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "A última mudança de branch da Steam falhou: {{error}}",
+      "cancelled": "A última mudança de branch da Steam foi cancelada."
+    },
+    "branch": {
+      "label": "Branch da Steam",
+      "hint": "Versões anteriores e de teste que o jogo publica na Steam. Ao mudá-la, o Pulsar faz um backup do servidor e depois instala a branch.",
+      "build": "build {{build}}",
+      "password": "pede senha",
+      "unknown": "Verifique atualizações para ver as branches do jogo.",
+      "change": "Mudar branch",
+      "confirm": "Fazer backup de {{name}} e instalar a branch da Steam \"{{branch}}\"? Uma versão anterior pode não abrir mundos mais novos: o backup fica para voltar.",
+      "stopFirst": "Pare o servidor para mudar a branch."
     }
   },
   "players": {

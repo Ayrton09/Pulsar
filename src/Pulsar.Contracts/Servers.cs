@@ -64,6 +64,11 @@ public enum StateChangeReason
 /// <param name="Ports">The node allocation given to each manifest port.</param>
 /// <param name="Limits">Caps on the server's resources; null (or older panels) for none.</param>
 /// <param name="Addons">Keys of the manifest's addons installed on the server (their lines are kept at every start).</param>
+/// <param name="SteamBranch">
+/// The Steam branch the game follows (Pulsar 1.0.14; <c>public</c>, <c>previous_build</c>), passed to SteamCMD as
+/// <c>-beta</c> for the game's app whenever it installs, updates or checks it; null keeps the template's own. SteamCMD
+/// stays on a branch it installed until told another, so going back is <c>public</c>, never null.
+/// </param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
@@ -73,7 +78,8 @@ public sealed record ServerRuntimeSpec(
     bool RestartOnCrash,
     IReadOnlyDictionary<string, ServerPort>? Ports = null,
     ServerLimits? Limits = null,
-    IReadOnlyList<string>? Addons = null)
+    IReadOnlyList<string>? Addons = null,
+    string? SteamBranch = null)
 {
     // Variables may hold secrets: never print them.
     public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";
@@ -136,9 +142,32 @@ public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, Operat
 /// <param name="Latest">What its publisher offers for the version or branch the server follows; null when unknown.</param>
 /// <param name="Available">An update would bring something the server does not have; null when the check failed.</param>
 /// <param name="ErrorCode">Why the check failed (<c>steamcmd.*</c>, <c>minecraft.*</c>); null when it did not.</param>
+/// <param name="Branches">
+/// The Steam branches of the game's app (Pulsar 1.0.14), as Steam lists them in the same answer; null for games not on
+/// Steam, older agents, and checks that failed.
+/// </param>
 public sealed record GameUpdateCheck(Guid ServerId, string? Installed, string? Latest, bool? Available, string? ErrorCode, string? Message,
-    DateTimeOffset At)
+    DateTimeOffset At, IReadOnlyList<SteamBranch>? Branches = null)
 {
     public const int MaxBuildLength = 64;
     public const int MaxMessageLength = 300;
+}
+
+/// <summary>A branch of a Steam app (Pulsar 1.0.14): its name, its current build and what its publisher says of it.</summary>
+/// <param name="PasswordRequired">Steam installs it only with the branch's password.</param>
+/// <param name="Updated">When its build last changed.</param>
+public sealed record SteamBranch(string Name, string? Build, string? Description, bool PasswordRequired, DateTimeOffset? Updated)
+{
+    public const string Public = "public";
+
+    /// <summary>Branches kept of one app: 7 Days to Die lists every version it ever shipped, about twenty.</summary>
+    public const int MaxBranches = 64;
+
+    public const int MaxNameLength = 64;
+    public const int MaxDescriptionLength = 128;
+
+    /// <summary>A branch name SteamCMD takes after <c>-beta</c> as one argument: letters, digits, <c>.</c>, <c>_</c> and <c>-</c>, not first.</summary>
+    public static bool IsName(string? name) =>
+        name is { Length: > 0 and <= MaxNameLength } && char.IsAsciiLetterOrDigit(name[0])
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 }

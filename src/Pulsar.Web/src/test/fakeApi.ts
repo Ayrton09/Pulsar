@@ -79,6 +79,10 @@ export const noGameUpdates: Schemas['GameUpdateView'] = {
   pending: false,
   playersOnline: null,
   running: null,
+  steamBranch: null,
+  branches: [],
+  branchesSupported: false,
+  currentBranch: null,
 };
 
 export const adminUser: Schemas['CurrentUserResponse'] = {

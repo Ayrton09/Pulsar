@@ -395,7 +395,8 @@
         "game_update_check_requested": "Pidió revisar si hay una actualización del juego",
         "game_update_started": "Inició una actualización del juego",
         "game_update_cancelled": "Canceló una actualización del juego",
-        "template_update_started": "Empezó a pasar un servidor a una plantilla más nueva"
+        "template_update_started": "Empezó a pasar un servidor a una plantilla más nueva",
+        "steam_branch_changed": "Cambió la rama de Steam de un servidor"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -657,7 +658,12 @@
       "game_updates_unsupported": "Las actualizaciones de este juego no se pueden revisar.",
       "when_empty_unsupported": "Pulsar no puede saber quién juega a este juego, así que no puede esperar a que no juegue nadie.",
       "game_updates_forbidden": "Instalar actualizaciones solas necesita los permisos para actualizar, detener e iniciar el servidor (y para enviar comandos de consola, para avisar a los jugadores).",
-      "update_check_unsupported": "El agente de este nodo no puede revisar actualizaciones del juego: actualizá Pulsar en ese nodo."
+      "update_check_unsupported": "El agente de este nodo no puede revisar actualizaciones del juego: actualizá Pulsar en ese nodo.",
+      "steam_branch_unknown": "Esa no es una de las ramas de Steam del juego que encontró la última comprobación: comprobá actualizaciones y elegí de nuevo.",
+      "steam_branch_password_required": "Esa rama de Steam pide una contraseña, con la que Pulsar no instala.",
+      "steam_branch_unsupported": "Este juego no se descarga de Steam.",
+      "steam_branch_agent_too_old": "El agente del nodo es demasiado viejo para seguir una rama de Steam: actualizalo primero.",
+      "steam_branch_forbidden": "Cambiar la rama de Steam requiere los permisos para actualizar el servidor y para hacerle backups."
     },
     "console": {
       "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones).",
@@ -7315,6 +7321,21 @@
       "off": "No hacer nada",
       "notify": "Avisarme (mostrarlo en la página del servidor)",
       "install": "Aplicarla (avisar, detener, reinstalar con ella, volver a arrancar)"
+    },
+    "runningBranch": "Cambiando la rama de Steam: paso {{step}} de {{steps}} ({{what}})",
+    "lastBranchRun": {
+      "failed": "El último cambio de rama de Steam falló: {{error}}",
+      "cancelled": "El último cambio de rama de Steam se canceló."
+    },
+    "branch": {
+      "label": "Rama de Steam",
+      "hint": "Versiones anteriores y de prueba que el juego publica en Steam. Al cambiarla, Pulsar hace un backup del servidor y después instala la rama.",
+      "build": "build {{build}}",
+      "password": "pide contraseña",
+      "unknown": "Comprobá si hay actualizaciones para ver las ramas del juego.",
+      "change": "Cambiar rama",
+      "confirm": "¿Hacer un backup de {{name}} e instalar la rama de Steam \"{{branch}}\"? Una versión anterior puede no abrir mundos más nuevos: el backup queda para volver atrás.",
+      "stopFirst": "Detené el servidor para cambiar su rama."
     }
   },
   "players": {

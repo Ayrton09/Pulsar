@@ -175,6 +175,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.UmodPlugins;
             yield return AgentCapabilities.ThunderstorePackages;
             yield return AgentCapabilities.CatalogLists;
+            yield return AgentCapabilities.SteamBranches;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -809,6 +810,11 @@ public sealed partial class ServerHost(
                 return Rejected(envelope, "server.invalid_spec", "The server's limits are out of range.");
             }
 
+            if (spec.SteamBranch is { } branch && !SteamBranch.IsName(branch))
+            {
+                return Rejected(envelope, "server.invalid_spec", "The server's Steam branch is not a branch name.");
+            }
+
             if (manifest.Install?.Steps.OfType<TestGameServerStep>().Any() == true && !installOptions.TestGameAvailable)
             {
                 return Rejected(envelope, "install.test_game_unavailable", "This agent was not started with the test game server.");
@@ -920,14 +926,20 @@ public sealed partial class ServerHost(
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
             var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
             var builds = new List<GameBuild>();
+            IReadOnlyList<SteamBranch>? branches = null;
             foreach (var step in steps)
             {
                 if (step is SteamCmdStep steam)
                 {
-                    var latest = await steamCmd.LatestBuildAsync(new SteamBuildQuery(serverId, provisioned.Directory, provisioned.Identity, steam.AppId,
-                        steam.Beta ?? SteamBuilds.PublicBranch), cancellationToken);
+                    var app = await steamCmd.AppBuildsAsync(new SteamBuildQuery(serverId, provisioned.Directory, provisioned.Identity, steam.AppId,
+                        BranchOf(server.Spec, server.Manifest, steam) ?? SteamBuilds.PublicBranch), cancellationToken);
                     var installed = SteamBuilds.Installed(files, provisioned.Directory, steam.AppId);
-                    builds.Add(new GameBuild(installed, latest, installed != latest));
+                    builds.Add(new GameBuild(installed, app.Latest, installed != app.Latest));
+                    // The game's own app has the branches a server may follow (Pulsar 1.0.14).
+                    if (steam.AppId == GameApp(server.Manifest))
+                    {
+                        branches ??= app.Branches;
+                    }
                 }
                 else if (await installSteps.CheckAsync(step, provisioned.Directory, variables, cancellationToken) is { } build)
                 {
@@ -938,7 +950,7 @@ public sealed partial class ServerHost(
             // A game of two apps names both builds.
             var installedBuilds = builds.Select(b => b.Installed).ToList();
             return new GameUpdateCheck(serverId, installedBuilds.Contains(null) ? null : Build(string.Join(" + ", installedBuilds)),
-                Build(string.Join(" + ", builds.Select(b => b.Latest))), builds.Any(b => b.Available), null, null, clock.GetUtcNow());
+                Build(string.Join(" + ", builds.Select(b => b.Latest))), builds.Any(b => b.Available), null, null, clock.GetUtcNow(), branches);
         }
         catch (GameProcessException ex)
         {
@@ -957,6 +969,16 @@ public sealed partial class ServerHost(
     }
 
     private AddonInstaller Addons => new(files, installOptions.HttpHandler);
+
+    /// <summary>
+    /// The Steam branch a step installs (Pulsar 1.0.14): the server's own for the game's app, the template's otherwise.
+    /// Once set it is always passed (<c>public</c> included): SteamCMD stays on a branch it installed until told another.
+    /// </summary>
+    internal static string? BranchOf(ServerRuntimeSpec spec, GameManifest manifest, SteamCmdStep step) =>
+        spec.SteamBranch is { } branch && step.AppId == GameApp(manifest) ? branch : step.Beta;
+
+    /// <summary>The game's own Steam app: its install's first SteamCMD step's.</summary>
+    private static int? GameApp(GameManifest manifest) => (manifest.Install?.Steps ?? []).OfType<SteamCmdStep>().FirstOrDefault()?.AppId;
 
     /// <summary>Installs one of the manifest's addons, or brings it to its latest release (docs/architecture/04, "Addons").</summary>
     private CommandAck InstallAddon(CommandEnvelope envelope, InstallAddonCommand command) =>
@@ -1212,8 +1234,10 @@ public sealed partial class ServerHost(
                     throw new GameProcessException("steamcmd.account_required", "Only a Steam account that owns this game's dedicated server may download it.");
                 }
 
-                var betaPassword = steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
-                var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
+                // The server's own branch replaces the template's, whose password is not for it.
+                var beta = BranchOf(server.Spec, server.Manifest, steam);
+                var betaPassword = beta == steam.Beta && steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
+                var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, beta, betaPassword,
                     validate ?? steam.Validate, login);
                 await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
             }
@@ -1877,6 +1901,11 @@ public sealed partial class ServerHost(
         if (spec.Limits is { IsValid: false })
         {
             throw new LaunchPlanException("The server's limits are out of range.");
+        }
+
+        if (spec.SteamBranch is { } branch && !SteamBranch.IsName(branch))
+        {
+            throw new LaunchPlanException("The server's Steam branch is not a branch name.");
         }
 
         var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });

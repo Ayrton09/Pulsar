@@ -15,6 +15,21 @@ public enum GameUpdatePolicy
     Install,
 }
 
+/// <summary>A branch of the server's Steam app, as its node's last check found it (Pulsar 1.0.14).</summary>
+/// <param name="PasswordRequired">Steam installs it only with the branch's password, which Pulsar does not ask for.</param>
+public sealed record GameBranch(string Name, string? Build, string? Description, bool PasswordRequired, DateTimeOffset? Updated)
+{
+    public const string Public = "public";
+    public const int MaxBranches = 64;
+    public const int MaxNameLength = 64;
+    public const int MaxDescriptionLength = 128;
+
+    /// <summary>A name SteamCMD takes after <c>-beta</c> as one argument: letters, digits, <c>.</c>, <c>_</c> and <c>-</c>, not first.</summary>
+    public static bool IsName(string? name) =>
+        name is { Length: > 0 and <= MaxNameLength } && char.IsAsciiLetterOrDigit(name[0])
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+}
+
 /// <summary>
 /// How a server follows its game's updates (Pulsar 1.0.9): its node asks the publisher (Steam through SteamCMD, Mojang)
 /// every <see cref="CheckInterval"/>, and the panel shows, notifies or installs what is new. Since 1.0.10 it follows the
@@ -99,6 +114,15 @@ public sealed class GameUpdateWatch
     public string? CheckErrorCode { get; private set; }
 
     public string? CheckError { get; private set; }
+
+    /// <summary>The branches of the server's Steam app, as the last check that listed them found (Pulsar 1.0.14); empty until then.</summary>
+    public IReadOnlyList<GameBranch> Branches { get; private set; } = [];
+
+    /// <summary>A change of Steam branch runs (1.0.14): one that does not end well puts back <see cref="BranchBefore"/>.</summary>
+    public bool BranchChanging { get; private set; }
+
+    /// <summary>The branch the server followed before the change that runs (null: its template's own).</summary>
+    public string? BranchBefore { get; private set; }
 
     /// <summary>When the node took the check it has not answered yet.</summary>
     public DateTimeOffset? CheckRequestedAt { get; private set; }
@@ -218,7 +242,8 @@ public sealed class GameUpdateWatch
     /// What the node found. True when it is an update nobody was notified of yet, and the last notification is old enough
     /// (and notes that it now is notified).
     /// </summary>
-    public bool Checked(string? installed, string? latest, bool? available, string? errorCode, string? error, DateTimeOffset now)
+    public bool Checked(string? installed, string? latest, bool? available, string? errorCode, string? error, DateTimeOffset now,
+        IReadOnlyList<GameBranch>? branches = null)
     {
         CheckedAt = now;
         CheckRequestedAt = null;
@@ -232,6 +257,18 @@ public sealed class GameUpdateWatch
         }
 
         (CheckErrorCode, CheckError) = (null, null);
+        if (branches is not null)
+        {
+            // What a node says is kept within bounds: its server's account controls the SteamCMD that printed it.
+            Branches = [.. branches.Where(b => GameBranch.IsName(b.Name)).DistinctBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(GameBranch.MaxBranches)
+                .Select(b => b with
+                {
+                    Build = b.Build is null ? null : Cut(b.Build, MaxBuildLength),
+                    Description = b.Description is null ? null : Cut(b.Description, GameBranch.MaxDescriptionLength),
+                })];
+        }
+
         Installed = installed is null ? null : Cut(installed, MaxBuildLength);
         Latest = latest is null ? null : Cut(latest, MaxBuildLength);
         Available = available;
@@ -305,6 +342,32 @@ public sealed class GameUpdateWatch
         }
 
         UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// A change of the game's Steam branch started (Pulsar 1.0.14), from <paramref name="before"/>: followed as an update a
+    /// user asked for, and undone when it does not end well (<see cref="BranchChangeEnded"/>).
+    /// </summary>
+    public void BranchChangeStarted(ServerSequenceId sequence, string? before, DateTimeOffset now)
+    {
+        SequenceId = sequence;
+        BranchChanging = true;
+        BranchBefore = before;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// The change of branch ended. When it did not succeed (its backup failed, it was cancelled) the server goes back to the
+    /// branch it followed, which this returns with true: otherwise the next check would find the new branch's build and an
+    /// automatic update would install it with no backup.
+    /// </summary>
+    public (bool Undo, string? Branch) BranchChangeEnded(bool succeeded, DateTimeOffset now)
+    {
+        var undo = BranchChanging && !succeeded;
+        var before = BranchBefore;
+        (BranchChanging, BranchBefore) = (false, null);
+        AutoUpdateEnded(now);
+        return (undo, before);
     }
 
     /// <summary>The automatic update ended (or a user started one): what is installed now is checked.</summary>

@@ -100,6 +100,9 @@ public static class AuditActions
         public const string BackupLimitChanged = "server.backup_limit_changed";
         public const string LimitsChanged = "server.limits_changed";
         public const string SteamAccountChanged = "server.steam_account_changed";
+
+        /// <summary>The game's Steam branch was changed (Pulsar 1.0.14): a backup, then the branch installed.</summary>
+        public const string SteamBranchChanged = "server.steam_branch_changed";
         public const string DatabaseCreated = "server.database_created";
         public const string DatabaseDeleted = "server.database_deleted";
         public const string DatabasePasswordRotated = "server.database_password_rotated";

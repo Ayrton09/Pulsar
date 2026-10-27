@@ -13111,6 +13111,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/game-updates/branch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SteamBranchRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GameUpdateView"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/channels": {
         parameters: {
             query?: never;
@@ -15039,6 +15125,14 @@ export interface components {
         FilePathRequest: {
             path: string;
         };
+        GameBranchView: {
+            name: string;
+            build: null | string;
+            description: null | string;
+            passwordRequired: boolean;
+            /** Format: date-time */
+            updated: null | string;
+        };
         /** @enum {unknown} */
         GameSaveResult: "confirmed" | "waited" | "unconfirmed" | null;
         /** @enum {unknown} */
@@ -15060,6 +15154,8 @@ export interface components {
             message: null | string;
             /** @default false */
             template: boolean;
+            /** @default false */
+            steamBranch: boolean;
         };
         GameUpdateSettingsRequest: {
             policy: components["schemas"]["GameUpdatePolicy"];
@@ -15099,6 +15195,11 @@ export interface components {
             /** @default false */
             templatePending: boolean;
             autoTemplate?: null | string;
+            steamBranch?: null | string;
+            branches?: null | components["schemas"]["GameBranchView"][];
+            /** @default false */
+            branchesSupported: boolean;
+            currentBranch?: null | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -16029,6 +16130,9 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        SteamBranchRequest: {
+            branch: string;
         };
         TemplateCapabilities: {
             executable: string;

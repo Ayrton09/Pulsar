@@ -220,6 +220,114 @@ public sealed class GameUpdateTests(PulsarApiFactory factory) : IClassFixture<Pu
     }
 
     [DatabaseFact]
+    public async Task AServerFollowsTheSteamBranchChosenAfterABackup()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await using var agent = await ConnectedAgentAsync(admin, "branch");
+        agent.Processes.Branches["232330"] = [("previous_build", "900", "Previous build", false), ("secret", "950", null, true)];
+        var server = await RunningCssAsync(admin, agent, "27070-27075");
+
+        // The check lists the game's branches, as Steam names them.
+        var listed = await CheckedAsync(admin, server, v => v.Branches is { Count: 3 });
+        Assert.Equal((true, null), (listed.BranchesSupported, listed.SteamBranch));
+        Assert.Equal([("public", "1000", false), ("previous_build", "900", false), ("secret", "950", true)],
+            listed.Branches!.Select(b => (b.Name, b.Build, b.PasswordRequired)));
+        Assert.Equal("Previous build", listed.Branches![1].Description);
+
+        // The server is stopped first; the branch is one the check found, and without a password.
+        await ProblemAsync(await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("previous_build")),
+            HttpStatusCode.Conflict, ServerErrors.MustBeStopped.Code);
+        await ServerApi.CommandAsync(admin, server, "stop");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped");
+        await ProblemAsync(await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("experimental")),
+            HttpStatusCode.Conflict, ServerErrors.SteamBranchUnknown.Code);
+        await ProblemAsync(await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("secret")),
+            HttpStatusCode.Conflict, ServerErrors.SteamBranchPasswordRequired.Code);
+        await ProblemAsync(await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("-beta")),
+            HttpStatusCode.Conflict, ServerErrors.SteamBranchUnknown.Code);
+
+        // It backs the server up, then installs the branch (written as Steam names it), every file verified.
+        using var updater = await scenario.SignedInWithAsync("branch-updater", Permissions.Server.View, Permissions.Server.Install);
+        await ProblemAsync(await updater.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("previous_build")),
+            HttpStatusCode.Forbidden, ServerErrors.SteamBranchForbidden.Code);
+        var updates = agent.Processes.SteamBetas.Count;
+        GameUpdateView changed;
+        using (var put = await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("Previous_Build")))
+        {
+            await AccessScenario.EnsureSuccessAsync(put);
+            changed = (await put.Content.ReadFromJsonAsync<GameUpdateView>(AccessScenario.Json, Ct))!;
+        }
+
+        Assert.Equal(("previous_build", true), (changed.SteamBranch, changed.Running?.SteamBranch));
+        var done = await FinishedAsync(admin, server);
+        Assert.Equal(SequenceStatus.Succeeded, done.Running!.Status);
+        var operations = (await ServerApi.GetAsync(admin, server))!.RecentOperations;
+        Assert.Contains(operations, o => o.Type == OperationType.BackupCreate && o.Status == OperationStatus.Succeeded);
+        Assert.Contains(operations, o => o.Type == OperationType.ServerUpdate && o.Status == OperationStatus.Succeeded);
+        Assert.Equal(["previous_build"], agent.Processes.SteamBetas.Skip(updates));
+        // The branch's build is installed, and checked against that branch from now on.
+        await CheckedAsync(admin, server, v => v.Installed == "900" && v.Latest == "900" && v.Available == false, ask: false);
+        Assert.Equal(GameUpdates.BranchActorName,
+            Assert.Single(await AuditAsync(server), a => a.Action == AuditActions.Server.UpdateRequested && a.ActorType == AuditActorType.System).ActorDisplay);
+        Assert.Contains(await AuditAsync(server), a => a.Action == AuditActions.Server.SteamBranchChanged && a.ActorType == AuditActorType.User);
+
+        // Going back is "public" said out loud: SteamCMD stays on a branch it installed until told another.
+        updates = agent.Processes.SteamBetas.Count;
+        using (var back = await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("public")))
+        {
+            await AccessScenario.EnsureSuccessAsync(back);
+        }
+
+        Assert.Equal(SequenceStatus.Succeeded, (await FinishedAsync(admin, server)).Running!.Status);
+        Assert.Equal(["public"], agent.Processes.SteamBetas.Skip(updates));
+        await CheckedAsync(admin, server, v => v.Installed == "1000" && v.Available == false, ask: false);
+    }
+
+    [DatabaseFact]
+    public async Task AChangeOfBranchThatDoesNotEndWellPutsBackTheFormerBranch()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "branch-undo");
+        agent.Processes.Branches["232330"] = [("previous_build", "900", null, false)];
+        var server = await RunningCssAsync(admin, agent, "27080-27085");
+        await CheckedAsync(admin, server, v => v.Branches is { Count: 2 });
+        await ServerApi.CommandAsync(admin, server, "stop");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped");
+
+        // Cancelled while it installs the branch: its backup was taken, the branch was not.
+        agent.Processes.SteamCmdGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            using (var put = await admin.PutAsync($"/api/v1/servers/{server}/game-updates/branch", new SteamBranchRequest("previous_build")))
+            {
+                await AccessScenario.EnsureSuccessAsync(put);
+            }
+
+            await InProcessAgent.EventuallyAsync(async () =>
+            {
+                await DriveAsync();
+                return (await GetAsync(admin, server)).Running?.StepKind == SequenceStepKind.Update;
+            }, "the branch being installed");
+            using var cancel = await admin.PostAsync($"/api/v1/servers/{server}/game-updates/cancel");
+            await AccessScenario.EnsureSuccessAsync(cancel);
+        }
+        finally
+        {
+            agent.Processes.SteamCmdGate.TrySetResult();
+        }
+
+        var view = await FinishedAsync(admin, server);
+        Assert.Equal(SequenceStatus.Cancelled, view.Running!.Status);
+        // Back on the branch it followed: nothing installs the new one later without its backup.
+        Assert.Equal((null, "public"), (view.SteamBranch, view.CurrentBranch));
+        await using var scope = factory.Services.CreateAsyncScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Servers.AsNoTracking()
+            .SingleAsync(s => s.Id == new ServerId(server), Ct);
+        Assert.Null(stored.SteamBranch);
+    }
+
+    [DatabaseFact]
     public async Task ANodeCannotReportAChecksNobodyAskedFor()
     {
         using var admin = await factory.CreateAdminClientAsync();

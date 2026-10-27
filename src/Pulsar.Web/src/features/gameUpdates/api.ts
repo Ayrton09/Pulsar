@@ -6,6 +6,7 @@ import { invalidateServer } from '../servers/api';
 export type GameUpdateView = Schemas['GameUpdateView'];
 export type GameUpdatePolicy = Schemas['GameUpdatePolicy'];
 export type GameUpdateSettings = Schemas['GameUpdateSettingsRequest'];
+export type GameBranch = Schemas['GameBranchView'];
 
 export const gameUpdatePolicies: GameUpdatePolicy[] = ['off', 'notify', 'install'];
 
@@ -66,6 +67,18 @@ export function useCancelGameUpdate(serverId: string) {
   return useMutation({
     mutationFn: () =>
       unwrap(api.POST('/api/v1/servers/{id}/game-updates/cancel', { params: { path: { id: serverId } } })),
+    onSettled: changed,
+  });
+}
+
+/** Backs the stopped server up, then installs the chosen Steam branch (1.0.14). */
+export function useChangeSteamBranch(serverId: string) {
+  const changed = useChanged(serverId);
+  return useMutation({
+    mutationFn: (branch: string) =>
+      unwrap(
+        api.PUT('/api/v1/servers/{id}/game-updates/branch', { params: { path: { id: serverId } }, body: { branch } }),
+      ),
     onSettled: changed,
   });
 }
