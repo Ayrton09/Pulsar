@@ -1914,7 +1914,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_sequences", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('game_update', 'schedule', 'steam_branch', 'template_update')");
+                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('clone', 'game_update', 'schedule', 'steam_branch', 'template_update')");
 
                             t.HasCheckConstraint("ck_server_sequences_status", "status IN ('cancelled', 'failed', 'running', 'succeeded')");
                         });

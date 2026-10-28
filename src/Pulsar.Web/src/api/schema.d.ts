@@ -7206,6 +7206,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CloneServerRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerDetails"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/servers/{id}/limits": {
         parameters: {
             query?: never;
@@ -14975,6 +15061,11 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        CloneServerRequest: {
+            /** Format: uuid */
+            nodeId: string;
+            name: string;
+        };
         CompressFilesRequest: {
             directory: null | string;
             names: string[];
@@ -15931,7 +16022,7 @@ export interface components {
             always: boolean;
         };
         /** @enum {unknown} */
-        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | "upgradeTemplate";
+        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | "upgradeTemplate" | "copyFrom";
         SequenceStepRequest: {
             kind: components["schemas"]["SequenceStepKind"];
             text?: null | string;
@@ -15951,6 +16042,14 @@ export interface components {
             ipAddress: string;
             /** Format: int32 */
             port: number;
+        };
+        ServerCopyView: {
+            /** Format: uuid */
+            sourceId: null | string;
+            sourceName: null | string;
+            status: components["schemas"]["SequenceStatus"];
+            errorCode: null | string;
+            message: null | string;
         };
         ServerDatabaseCredentials: {
             database: components["schemas"]["ServerDatabaseView"];
@@ -15998,6 +16097,7 @@ export interface components {
             hasMods: boolean;
             gameVersion?: null | string;
             players?: null | components["schemas"]["ServerPlayersView"];
+            copy?: null | components["schemas"]["ServerCopyView"];
         };
         ServerLimitsRequest: {
             /** Format: int32 */

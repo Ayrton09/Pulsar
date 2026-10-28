@@ -154,6 +154,45 @@ public sealed class Backup
         return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now);
     }
 
+    /// <summary>
+    /// The copy of <paramref name="source"/>, another server's backup, that <paramref name="restore"/> fetches onto
+    /// <paramref name="server"/>'s node and restores there (a clone, Pulsar 1.0.16): being made until the restore ends,
+    /// with the source's archive's size, files and SHA-256 (the node checks it gets exactly that archive).
+    /// </summary>
+    public static Backup Receiving(Server server, Backup source, Operation restore, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(restore);
+        if (source is not { Status: BackupStatus.Completed, Sha256: not null, SizeBytes: not null })
+        {
+            throw new ArgumentException("Only a completed backup is copied.", nameof(source));
+        }
+
+        return new Backup(BackupId.New(), server.Id, server.NodeId, source.Name, restore.Id, null, OperationRequester.System, now)
+        {
+            SizeBytes = source.SizeBytes,
+            FileCount = source.FileCount,
+            SkippedFiles = source.SkippedFiles,
+            Sha256 = source.Sha256,
+            CopyMode = source.CopyMode,
+            GameSave = source.GameSave,
+        };
+    }
+
+    /// <summary>How the restore that fetched it ended (<see cref="Receiving"/>): the archive is now on the node, or not.</summary>
+    public void Received(bool succeeded, string? errorMessage, DateTimeOffset now)
+    {
+        if (Status != BackupStatus.Creating || Sha256 is null)
+        {
+            return;
+        }
+
+        Status = succeeded ? BackupStatus.Completed : BackupStatus.Failed;
+        ErrorMessage = succeeded || errorMessage is null ? null : Truncate(errorMessage);
+        CompletedAt = now;
+    }
+
     /// <summary>The node copies this backup to <paramref name="storage"/> once made.</summary>
     public void CopyTo(BackupStorage storage, string serverShortId)
     {

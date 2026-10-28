@@ -178,6 +178,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.SteamBranches;
             yield return AgentCapabilities.GoldSrcRcon;
             yield return AgentCapabilities.ChangeGame;
+            yield return AgentCapabilities.ReceiveBackup;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -1532,9 +1533,19 @@ public sealed partial class ServerHost(
             {
                 await backups.FetchAsync(location, remote, command.Sha256, command.SizeBytes, progress, cancellationToken);
             }
+            else if (command.Ticket is { } ticket && command.SizeBytes is { } size)
+            {
+                // Another node's archive, relayed by the panel (a clone's, a transfer's): its progress once per percent.
+                var reported = -1;
+                await backups.ReceiveAsync(location, (output, token) => fileCommands.ReceiveIntoAsync(ticket, output, size, received =>
+                {
+                    var percent = size == 0 ? 100 : (int)(received * 100 / size);
+                    return percent == reported ? Task.CompletedTask : progress(BackupStages.Downloading, reported = percent);
+                }, token), command.Sha256, size, progress, cancellationToken);
+            }
 
             await backups.RestoreAsync(location, provisioned, command.Sha256, command.Clean ? new CleanRestore(server.Manifest.Backup) : null,
-                progress, cancellationToken);
+                progress, cancellationToken, received: command.Ticket is not null);
         });
     }
 

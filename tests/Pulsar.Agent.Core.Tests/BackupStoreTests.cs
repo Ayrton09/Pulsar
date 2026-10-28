@@ -58,6 +58,37 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AnotherNodesArchiveIsKeptOnlyWhenItIsExactlyTheBackupItMade()
+    {
+        // A clone's (Pulsar 1.0.16): the archive the panel relays from the other node.
+        Write("cfg/server.cfg", "hostname");
+        var made = Location();
+        var result = await _store.CreateAsync(made, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        var archive = await File.ReadAllBytesAsync(made.Archive, TestContext.Current.CancellationToken);
+        var received = new BackupLocation(BackupsRoot, "other1", Guid.NewGuid());
+        Task Send(byte[] bytes, Stream output, CancellationToken token) => output.WriteAsync(bytes, token).AsTask();
+
+        // Another archive of the same size, or a cut one: refused, nothing kept.
+        var changed = (byte[])archive.Clone();
+        changed[^30] ^= 0xFF;
+        foreach (var wrong in new[] { changed, archive[..^1] })
+        {
+            await Assert.ThrowsAsync<BackupException>(() => _store.ReceiveAsync(received, (output, token) => Send(wrong, output, token), result.Sha256,
+                result.Size, Progress, TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(received.Archive));
+            Assert.False(File.Exists(received.Partial));
+        }
+
+        await _store.ReceiveAsync(received, (output, token) => Send(archive, output, token), result.Sha256, result.Size, Progress,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(archive, await File.ReadAllBytesAsync(received.Archive, TestContext.Current.CancellationToken));
+        // Marked as another node's: every restore of it deletes by this server's own rules only.
+        Assert.True(File.Exists(received.ReceivedMarker));
+        Assert.True(_store.Delete(received));
+        Assert.False(File.Exists(received.ReceivedMarker));
+    }
+
+    [Fact]
     public async Task ABackupHoldsWhatTheManifestIncludesAndNothingElse()
     {
         Write("cfg/server.cfg", "hostname \"Pulsar\"");

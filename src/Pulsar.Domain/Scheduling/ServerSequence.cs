@@ -32,6 +32,13 @@ public enum SequenceStepKind
     /// be stopped) and waits until it is installed again with it. The panel's own: scheduled tasks cannot have it.
     /// </summary>
     UpgradeTemplate,
+
+    /// <summary>
+    /// Copies another server's files into this one (a clone, Pulsar 1.0.16; <see cref="SequenceStep.Text"/>: the other
+    /// server's id): a backup of it, then, once this server is installed, that backup restored here, relayed by the panel
+    /// from the other server's node. The panel's own: scheduled tasks cannot have it.
+    /// </summary>
+    CopyFrom,
 }
 
 /// <param name="Text">The console command, or the message to broadcast.</param>
@@ -72,6 +79,9 @@ public enum SequenceOrigin
 
     /// <summary>A change of the game's Steam branch (Pulsar 1.0.14): a backup, then the chosen branch installed.</summary>
     SteamBranch,
+
+    /// <summary>A new server's copy of another one's files (a clone, Pulsar 1.0.16).</summary>
+    Clone,
 }
 
 /// <summary>
@@ -169,9 +179,10 @@ public sealed class ServerSequence
             return ScheduleErrors.NameInvalid;
         }
 
-        // A move to another template is the template updates' own step.
+        // A move to another template is the template updates' own step, a copy of another server's files a clone's.
         if (steps.Count is 0 or > MaxSteps || steps.Any(s => !IsValid(s))
-            || (origin != SequenceOrigin.TemplateUpdate && steps.Any(s => s.Kind == SequenceStepKind.UpgradeTemplate)))
+            || (origin != SequenceOrigin.TemplateUpdate && steps.Any(s => s.Kind == SequenceStepKind.UpgradeTemplate))
+            || (origin != SequenceOrigin.Clone && steps.Any(s => s.Kind == SequenceStepKind.CopyFrom)))
         {
             return ScheduleErrors.StepsInvalid;
         }
@@ -189,6 +200,7 @@ public sealed class ServerSequence
                 && text.Length <= (step.Kind == SequenceStepKind.Command ? SequenceStep.MaxTextLength : SequenceStep.MaxMessageLength),
             SequenceStepKind.Wait => step.Seconds is > 0 and <= SequenceStep.MaxWaitSeconds,
             SequenceStepKind.UpgradeTemplate => Guid.TryParse(text, out var template) && template != Guid.Empty,
+            SequenceStepKind.CopyFrom => Guid.TryParse(text, out var source) && source != Guid.Empty,
             _ => Enum.IsDefined(step.Kind),
         };
     }

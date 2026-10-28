@@ -632,6 +632,57 @@ describe('server page', () => {
     await waitFor(() => expect(body).toEqual({ templateId: scpsl.id, variables: { eula: 'accepted' } }));
   });
 
+  it('clones the server onto a node the user may create servers on, and says how the copy goes', async () => {
+    let body: unknown;
+    const clone = {
+      ...installedOffline,
+      id: '0192f1a0-0000-7000-8000-0000000000e9',
+      name: 'Retakes (copy)',
+      installState: 'installing' as const,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.backups.create', 'server.files.view'],
+      }),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+      'GET /api/v1/nodes': () =>
+        json([
+          { id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
+          { id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Córdoba 1', connected: true, status: 'active' },
+        ]),
+      [`POST /api/v1/servers/${installedOffline.id}/clone`]: async (request) => {
+        body = await request.json();
+        return json(details(clone));
+      },
+      [`GET /api/v1/servers/${clone.id}`]: () =>
+        json({
+          ...details(clone),
+          copy: {
+            sourceId: installedOffline.id,
+            sourceName: 'Retakes',
+            status: 'failed',
+            errorCode: 'server.not_installed',
+            message: 'x',
+          },
+        }),
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Clone' }));
+    const dialog = screen.getByRole('dialog', { name: 'Clone' });
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Retakes (copy)');
+    await user.selectOptions(await within(dialog).findByLabelText('Node'), 'Córdoba 1');
+    await user.click(within(dialog).getByRole('button', { name: 'Clone' }));
+
+    await waitFor(() =>
+      expect(body).toEqual({ nodeId: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Retakes (copy)' }),
+    );
+    // The clone's page says the copy failed, and why.
+    expect(await screen.findByText(/The files of Retakes could not be copied into this server/)).toBeInTheDocument();
+  });
+
   it('starts a stopped server', async () => {
     const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
     fakeApi({

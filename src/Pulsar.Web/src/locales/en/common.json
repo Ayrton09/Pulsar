@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "The node's agent is too old to follow a Steam branch: update it first.",
       "steam_branch_forbidden": "Changing the Steam branch needs the permissions to update the server and to back it up.",
       "change_game_forbidden": "Changing the server's game deletes its files: it also needs the permission to delete the server.",
-      "change_game_unsupported": "The server's node has an agent too old to change its game: update it."
+      "change_game_unsupported": "The server's node has an agent too old to change its game: update it.",
+      "clone_forbidden": "Cloning a server copies its files: it needs the permissions to back the server up and to see its files.",
+      "clone_running": "A clone of this server, or onto that node, is still copying its files: wait until it ends.",
+      "copy_unsupported": "A node has an agent too old to copy a server's files to another node: update it.",
+      "backup_corrupt": "The node sent an archive of another size than the backup it made."
     },
     "console": {
       "invalid_input": "A command is one line without control characters (such as tabs).",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "Cancelling…",
       "showConsole": "Show in the console"
+    },
+    "clone": {
+      "title": "Clone",
+      "hint": "A new server of the same game, with this server's options and a copy of its files (worlds, configuration, mods), on this node or another. It installs first, then the files are copied from a backup of this server; this one is left as it is.",
+      "defaultName": "{{name}} (copy)",
+      "action": "Clone",
+      "copying": "Copying the files of {{source}} into this server: it installs first, then a backup of {{source}} is restored here.",
+      "failed": "The files of {{source}} could not be copied into this server.",
+      "sourceGone": "a server that no longer exists"
     },
     "changeGame": {
       "title": "Change game",
@@ -2481,7 +2494,8 @@
       "restart": "restarting the server",
       "backup": "taking a backup",
       "update": "updating the game",
-      "upgradeTemplate": "moving to the newer template"
+      "upgradeTemplate": "moving to the newer template",
+      "copyFrom": "copying another server's files"
     },
     "waitingForPlayers": "The update waits until nobody plays (online now: {{players}}).",
     "waiting": "The update starts as soon as the server is free.",

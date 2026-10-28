@@ -527,10 +527,23 @@ public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 /// storage sends more than this, so a bucket serving a huge object cannot fill the node's disk. Null (a panel that does
 /// not send it, or a backup without a recorded size): no limit.
 /// </param>
+/// <param name="Ticket">
+/// An archive another node made (a clone's or a transfer's, Pulsar 1.0.16): the node fetches it from the panel with this
+/// single-use ticket when it does not have it, exactly <paramref name="SizeBytes"/> bytes hashing to
+/// <paramref name="Sha256"/>, and keeps it as this backup. Only for agents that announce <see cref="AgentCapabilities.ReceiveBackup"/>.
+/// </param>
 public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false,
-    long? SizeBytes = null) : AgentCommand
+    long? SizeBytes = null, string? Ticket = null) : AgentCommand
 {
     public const string Type = "server.backup_restore";
+
+    protected override bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"ServerId = {ServerId}, BackupId = {BackupId}, Sha256 = {Sha256}, Remote = {Remote}, Clean = {Clean}, SizeBytes = {SizeBytes}, Ticket = {(Ticket is null ? "null" : "***")}");
+        return true;
+    }
 }
 
 /// <summary>
@@ -851,6 +864,9 @@ public static class AgentCapabilities
 
     /// <summary>The agent provisions a server clean (<see cref="ProvisionServerCommand.Clean"/>, Pulsar 1.0.16): it becomes another game.</summary>
     public const string ChangeGame = "server.change_game";
+
+    /// <summary>A restore takes an archive another node made, relayed by the panel (<see cref="RestoreBackupCommand.Ticket"/>, Pulsar 1.0.16).</summary>
+    public const string ReceiveBackup = "backups.receive";
 
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;

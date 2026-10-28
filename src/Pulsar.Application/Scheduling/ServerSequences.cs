@@ -223,6 +223,9 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
                 case SequenceStepKind.UpgradeTemplate:
                     await TemplateAsync(services, db, sequence, server, step, now, cancellationToken);
                     break;
+                case SequenceStepKind.CopyFrom:
+                    await CopyFromAsync(services, db, sequence, server, new ServerId(Guid.Parse(step.Text!)), now, cancellationToken);
+                    break;
                 default:
                     sequence.StepFailed("schedules.step_unknown", $"Unknown step {step.Kind}.", now);
                     break;
@@ -430,6 +433,89 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
                 sequence.WaitUntil(now + PollInterval);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Another server's files copied into this one (a clone, 1.0.16), in two operations the step follows in turn: a backup
+    /// of the other server, then, once this one is installed, that backup restored here, relayed by the panel.
+    /// </summary>
+    private static async Task CopyFromAsync(IServiceProvider services, IPulsarDbContext db, ServerSequence sequence, Server server, ServerId source,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var backups = services.GetRequiredService<ServerBackups>();
+        if (!sequence.StepBegun)
+        {
+            // Begun with the backup's operation in the save that records it, as any operation step.
+            var made = await backups.CreateAsync(source, null, OperationRequester.System, cancellationToken,
+                started => sequence.Began(now, Observed(server), started));
+            if (!made.IsSuccess || !sequence.StepBegun)
+            {
+                var reason = made.Error ?? ServerErrors.CommandRejected;
+                sequence.StepFailed(reason.Code, reason.Message, now);
+                return;
+            }
+
+            sequence.WaitUntil(now + PollInterval);
+            return;
+        }
+
+        var operation = await db.Operations.AsNoTracking().SingleOrDefaultAsync(o => o.Id == sequence.OperationId, cancellationToken);
+        if (operation is null || operation.IsActive)
+        {
+            if (operation is null)
+            {
+                sequence.StepFailed("operation.not_found", "The operation did not complete.", now);
+            }
+            else
+            {
+                sequence.WaitUntil(now + PollInterval);
+            }
+
+            return;
+        }
+
+        if (operation.Status != OperationStatus.Succeeded)
+        {
+            sequence.StepFailed(operation.ErrorCode ?? "operation.cancelled", operation.ErrorMessage ?? "The operation did not complete.", now);
+            return;
+        }
+
+        if (operation.Type == OperationType.BackupRestore)
+        {
+            sequence.StepDone(now);
+            return;
+        }
+
+        // The backup is made: restored here once this server is installed (a new server installs first).
+        if (server.InstallState == InstallState.Installing || server.ActiveOperationId is not null)
+        {
+            sequence.WaitUntil(now + PollInterval);
+            return;
+        }
+
+        if (server.InstallState != InstallState.Installed)
+        {
+            sequence.StepFailed(ServerErrors.NotInstalled.Code, ServerErrors.NotInstalled.Message, now);
+            return;
+        }
+
+        var backup = await db.Backups.AsNoTracking().SingleOrDefaultAsync(b => b.OperationId == operation.Id && b.ServerId == source, cancellationToken);
+        if (backup is null)
+        {
+            sequence.StepFailed(ServerErrors.BackupNotFound.Code, ServerErrors.BackupNotFound.Message, now);
+            return;
+        }
+
+        var restore = await backups.RestoreFromAsync(server.Id, source, backup.Id, OperationRequester.System, cancellationToken,
+            started => sequence.Began(now, Observed(server), started));
+        if (!restore.IsSuccess || sequence.OperationId != restore.Value.Id)
+        {
+            var reason = restore.Error ?? ServerErrors.CommandRejected;
+            sequence.StepFailed(reason.Code, reason.Message, now);
+            return;
+        }
+
+        sequence.WaitUntil(now + PollInterval);
     }
 
     /// <summary>

@@ -20,11 +20,15 @@ export const stepPermissions: Record<SequenceStepKind, string | null> = {
   backup: Permission.ServerBackupsCreate,
   update: Permission.ServerInstall,
   upgradeTemplate: Permission.ServerInstall,
+  copyFrom: Permission.ServerCreate,
 };
 
-/** The kinds the editor offers: moving to a newer template is the template updates' own step, never a task's. */
+/**
+ * The kinds the editor offers: moving to a newer template is the template updates' own step, copying another server's
+ * files a clone's, never a task's.
+ */
 export const stepKinds = (Object.keys(stepPermissions) as SequenceStepKind[]).filter(
-  (kind) => kind !== 'upgradeTemplate',
+  (kind) => kind !== 'upgradeTemplate' && kind !== 'copyFrom',
 );
 
 /** A step being edited: a wait in seconds or minutes, as typed. */

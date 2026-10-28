@@ -242,6 +242,15 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                     }
 
                     break;
+                case OperationType.BackupRestore:
+                    // 1.0.16: another node's backup the restore fetched (a clone's) is now this node's, or not.
+                    foreach (var received in await db.Backups.Where(b => b.OperationId == operation.Id && b.Status == BackupStatus.Creating)
+                                 .ToListAsync(cancellationToken))
+                    {
+                        received.Received(operation.Status == OperationStatus.Succeeded, operation.ErrorMessage ?? operation.ErrorCode, now);
+                    }
+
+                    break;
                 case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
                     // Its allocations become free for other servers.
                     foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))

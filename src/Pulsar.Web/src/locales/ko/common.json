@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "노드의 에이전트가 너무 오래되어 Steam 브랜치를 따를 수 없습니다. 먼저 업데이트하세요.",
       "steam_branch_forbidden": "Steam 브랜치를 바꾸려면 서버를 업데이트하고 백업할 권한이 필요합니다.",
       "change_game_forbidden": "서버의 게임을 바꾸면 파일이 삭제되므로 서버 삭제 권한도 필요합니다.",
-      "change_game_unsupported": "서버 노드의 에이전트가 너무 오래되어 게임을 바꿀 수 없습니다. 업데이트하세요."
+      "change_game_unsupported": "서버 노드의 에이전트가 너무 오래되어 게임을 바꿀 수 없습니다. 업데이트하세요.",
+      "clone_forbidden": "서버를 복제하면 파일이 복사되므로 백업 권한과 파일 보기 권한이 필요합니다.",
+      "clone_running": "이 서버의 복제 또는 해당 노드로의 복제가 아직 파일을 복사하는 중입니다. 끝날 때까지 기다리세요.",
+      "copy_unsupported": "노드의 에이전트가 너무 오래되어 서버 파일을 다른 노드로 복사할 수 없습니다. 업데이트하세요.",
+      "backup_corrupt": "노드가 만든 백업과 크기가 다른 아카이브를 보냈습니다."
     },
     "console": {
       "invalid_input": "명령은 제어 문자(탭 등)가 없는 한 줄이어야 합니다.",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "취소 중…",
       "showConsole": "콘솔에서 보기"
+    },
+    "clone": {
+      "title": "복제",
+      "hint": "같은 게임의 새 서버를 이 서버의 옵션과 파일(월드, 설정, 모드) 사본과 함께 이 노드나 다른 노드에 만듭니다. 먼저 설치한 뒤 이 서버의 백업에서 파일을 복사하며, 이 서버는 그대로 둡니다.",
+      "defaultName": "{{name}} (사본)",
+      "action": "복제",
+      "copying": "{{source}}의 파일을 이 서버로 복사하는 중입니다. 먼저 설치한 뒤 {{source}}의 백업을 여기에 복원합니다.",
+      "failed": "{{source}}의 파일을 이 서버로 복사하지 못했습니다.",
+      "sourceGone": "더 이상 존재하지 않는 서버"
     },
     "changeGame": {
       "title": "게임 변경",
@@ -7574,7 +7587,8 @@
       "restart": "서버 재시작 중",
       "backup": "백업 중",
       "update": "게임 업데이트 중",
-      "upgradeTemplate": "새 템플릿으로 옮기는 중"
+      "upgradeTemplate": "새 템플릿으로 옮기는 중",
+      "copyFrom": "다른 서버의 파일 복사 중"
     },
     "waitingForPlayers": "아무도 플레이하지 않을 때까지 업데이트를 기다립니다 (현재 접속: {{players}}).",
     "waiting": "서버가 비는 대로 업데이트를 시작합니다.",

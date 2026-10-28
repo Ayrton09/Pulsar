@@ -373,6 +373,66 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         await ReportAsync(result);
     }
 
+    /// <summary>
+    /// Writes into <paramref name="destination"/> the content the panel relays with <paramref name="ticket"/> (a backup
+    /// another node made, Pulsar 1.0.16): exactly <paramref name="size"/> bytes, or it fails.
+    /// </summary>
+    /// <exception cref="FileManagerException">The content did not all arrive, or more did.</exception>
+    public async Task ReceiveIntoAsync(string ticket, Stream destination, long size, Func<long, Task> progress, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(progress);
+        if (!TransferTicket.IsWellFormed(ticket) || size < 0)
+        {
+            throw new FileManagerException(FileErrors.TransferFailed, "The transfer ticket is malformed, or the size negative.");
+        }
+
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token, cancellationToken);
+            using var http = panel.CreateHttpClient() ?? throw new HttpRequestException("Not connected to the panel.");
+            using var idle = new IdleTimeout(options.IdleTimeout, linked.Token);
+            using var response = await http.GetAsync(new Uri(AgentProtocol.Transfer(ticket).TrimStart('/'), UriKind.Relative),
+                HttpCompletionOption.ResponseHeadersRead, idle.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"The panel answered {(int)response.StatusCode}.");
+            }
+
+            await using var body = await response.Content.ReadAsStreamAsync(idle.Token);
+            var buffer = new byte[81920];
+            long received = 0;
+            while (true)
+            {
+                idle.Reset();
+                var read = await body.ReadAsync(buffer, idle.Token);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                received += read;
+                if (received > size)
+                {
+                    throw new FileManagerException(FileErrors.TransferFailed, $"More than the {size} bytes announced arrived.");
+                }
+
+                await destination.WriteAsync(buffer.AsMemory(0, read), idle.Token);
+                await progress(received);
+            }
+
+            if (received != size)
+            {
+                throw new FileManagerException(FileErrors.TransferFailed, $"Received {received} of {size} bytes.");
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw new FileManagerException(FileErrors.TransferFailed, $"The transfer was interrupted: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>The panel is waiting for this result to answer the browser; offered again while the connection is down.</summary>
     private async Task ReportAsync(TransferResult result)
     {

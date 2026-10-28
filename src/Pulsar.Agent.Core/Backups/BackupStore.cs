@@ -66,6 +66,12 @@ public sealed record BackupLocation(string Root, string ShortId, Guid BackupId)
     public string Partial => Archive + PartialSuffix;
 
     internal const string PartialSuffix = ".partial";
+
+    /// <summary>
+    /// Beside an archive another node made (Pulsar 1.0.16): every restore of it deletes by the server's own rules, never
+    /// by those the archive records, and checks it fits first.
+    /// </summary>
+    public string ReceivedMarker => Path.Combine(Directory, $"{BackupId:N}.received");
 }
 
 /// <summary>
@@ -247,11 +253,16 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// like an 8.3 short name that leads to another folder of the server (<c>PULSAR~1</c>, <c>.pulsar</c>'s): what the
     /// backup has there is left out, the rest is written.
     /// </summary>
+    /// <param name="received">
+    /// The archive came from another node (a clone, Pulsar 1.0.16): a clean restore deletes by this server's manifest's
+    /// rules only, never by those the archive records, and what it holds must fit on the drive before anything is written.
+    /// </param>
     public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool received = false)
     {
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
+        received |= File.Exists(location.ReceivedMarker);
         await progress(BackupStages.Checking, null);
         await using var input = OpenArchive(location, FileOptions.Asynchronous);
         var (_, hash) = await HashAsync(input, cancellationToken);
@@ -263,8 +274,26 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         input.Position = 0;
         try
         {
+            // Its list of entries bounded before .NET reads it: an archive can come from another node (a clone, a transfer).
+            await FileArchives.CheckDirectoryAsync(input, cancellationToken);
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
             var entries = Check(archive);
+            if (received)
+            {
+                long total = 0;
+                foreach (var (entry, path, directory) in entries)
+                {
+                    if (!directory && (entry.Length < 0 || entry.Length > long.MaxValue / 2 - total))
+                    {
+                        throw Corrupt(path, "it says it holds more than any drive");
+                    }
+
+                    total += directory ? 0 : entry.Length;
+                }
+
+                FileArchives.EnsureSpace(server.Directory, total);
+            }
+
             var elsewhere = ShortNamesElsewhere(server, entries.Select(e => e.Path));
             var leftOut = entries.Where(e => !e.Directory && elsewhere.Contains(FirstSegment(e.Path))).Select(e => e.Path).ToList();
             entries.RemoveAll(e => elsewhere.Contains(FirstSegment(e.Path)));
@@ -277,7 +306,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             if (clean is not null)
             {
                 await progress(BackupStages.Cleaning, null);
-                var rules = RecordedRules(archive.Comment) ?? clean.Rules;
+                var rules = (received ? null : RecordedRules(archive.Comment)) ?? clean.Rules;
                 undeleted = DeleteNewer(location, server, rules, entries.Where(e => !e.Directory).Select(e => e.Path), cancellationToken);
             }
 
@@ -416,6 +445,50 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         }
     }
 
+    /// <summary>
+    /// Keeps as this backup an archive another node made (Pulsar 1.0.16), which <paramref name="receive"/> writes into the
+    /// stream it is given: it must be <paramref name="sizeBytes"/> bytes hashing to <paramref name="sha256"/>, or nothing
+    /// is kept. One the node has already is not fetched again.
+    /// </summary>
+    public async Task ReceiveAsync(BackupLocation location, Func<Stream, CancellationToken, Task> receive, string sha256, long sizeBytes,
+        BackupProgress progress, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        ArgumentNullException.ThrowIfNull(receive);
+        ArgumentNullException.ThrowIfNull(progress);
+        if (File.Exists(location.Archive))
+        {
+            return;
+        }
+
+        System.IO.Directory.CreateDirectory(location.Directory);
+        // Its size is the other node's word: the drive must take it, with room to spare, before a byte is written.
+        FileArchives.EnsureSpace(location.Directory, sizeBytes);
+        try
+        {
+            await progress(BackupStages.Downloading, 0);
+            await using (var output = new FileStream(location.Partial, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, FileOptions.Asynchronous))
+            {
+                await receive(output, cancellationToken);
+            }
+
+            var (size, hash) = await HashAsync(location.Partial, cancellationToken);
+            if (size != sizeBytes || !string.Equals(hash, sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BackupException(BackupErrors.Corrupt, "The archive that arrived is not the backup the other node made (its size or SHA-256 differs).");
+            }
+
+            // Marked before it is the archive: a restore never finds it without the mark.
+            File.WriteAllBytes(location.ReceivedMarker, []);
+            File.Move(location.Partial, location.Archive);
+            LogReceived(location.ShortId, location.BackupId, size);
+        }
+        finally
+        {
+            TryDelete(location.Partial);
+        }
+    }
+
     /// <summary>Opens the archive to send it, from remote storage when the node no longer has it.</summary>
     public async Task<OpenedFile> OpenAsync(BackupLocation location, RemoteBackupTarget? target, CancellationToken cancellationToken)
     {
@@ -460,6 +533,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         try
         {
             File.Delete(location.Archive);
+            TryDelete(location.ReceivedMarker);
             LogDeleted(location.ShortId, location.BackupId);
             return true;
         }
@@ -707,6 +781,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} fetched from remote storage (bucket {Bucket})")]
     private partial void LogFetched(string shortId, Guid backupId, string bucket);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of {ShortId} received from the panel ({Bytes} bytes)")]
+    private partial void LogReceived(string shortId, Guid backupId, long bytes);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} sent from remote storage")]
     private partial void LogOpenedRemote(string shortId, Guid backupId);

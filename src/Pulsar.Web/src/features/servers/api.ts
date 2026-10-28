@@ -98,6 +98,16 @@ export function useCreateServer() {
   });
 }
 
+/** A new server like this one on a node of the user's choosing, with a copy of its files (copied after it installs). */
+export function useCloneServer() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Schemas['CloneServerRequest']) =>
+      unwrap(api.POST('/api/v1/servers/{id}/clone', { params: { path: { id } }, body })),
+    onSuccess: changed,
+  });
+}
+
 export type ServerCommand = 'start' | 'stop' | 'restart' | 'kill';
 
 export function useServerCommand() {

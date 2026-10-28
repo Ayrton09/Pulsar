@@ -62,6 +62,18 @@ public static class ServerErrors
     public static DomainError ChangeGameForbidden { get; } = new("server.change_game_forbidden",
         "Changing the server's game deletes its files: it also needs the permission to delete the server.");
 
+    public static DomainError CloneForbidden { get; } = new("server.clone_forbidden",
+        "Cloning a server copies its files: it needs the permissions to back the server up and to see its files.");
+
+    public static DomainError CloneRunning { get; } = new("server.clone_running",
+        "A clone of this server, or onto that node, is still copying its files: wait until it ends.");
+
+    public static DomainError CopyUnsupported { get; } = new("server.copy_unsupported",
+        "A node has an agent too old to copy a server's files to another node: update it.");
+
+    public static DomainError BackupCorrupt { get; } = new("server.backup_corrupt",
+        "The node sent an archive of another size than the backup it made.");
+
     public static DomainError ChangeGameUnsupported { get; } = new("server.change_game_unsupported",
         "The server's node has an agent too old to change its game: update it.");
 

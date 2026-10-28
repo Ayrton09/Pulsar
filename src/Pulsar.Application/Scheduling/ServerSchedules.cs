@@ -413,7 +413,7 @@ public sealed class ServerSchedules(
         }
 
         if (definition.Action == ScheduledAction.Sequence
-            && definition.Steps?.Any(s => s is not null && (!Enum.IsDefined(s.Kind) || s.Kind == SequenceStepKind.UpgradeTemplate)) == true)
+            && definition.Steps?.Any(s => s is not null && (!Enum.IsDefined(s.Kind) || s.Kind is SequenceStepKind.UpgradeTemplate or SequenceStepKind.CopyFrom)) == true)
         {
             return ScheduleErrors.StepsInvalid;
         }

@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "节点的代理版本太旧，无法跟随 Steam 分支：请先更新它。",
       "steam_branch_forbidden": "更换 Steam 分支需要更新服务器和备份服务器的权限。",
       "change_game_forbidden": "更换服务器的游戏会删除其文件：还需要删除服务器的权限。",
-      "change_game_unsupported": "服务器所在节点的代理版本过旧，无法更换游戏：请更新它。"
+      "change_game_unsupported": "服务器所在节点的代理版本过旧，无法更换游戏：请更新它。",
+      "clone_forbidden": "克隆服务器会复制其文件：需要备份该服务器和查看其文件的权限。",
+      "clone_running": "此服务器的克隆，或到该节点的克隆，仍在复制文件：请等待完成。",
+      "copy_unsupported": "某个节点的代理版本过旧，无法将服务器的文件复制到另一个节点：请更新它。",
+      "backup_corrupt": "节点发送的归档大小与其创建的备份不同。"
     },
     "console": {
       "invalid_input": "命令必须是单行内容，且不含控制字符（如制表符）。",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "正在取消…",
       "showConsole": "在控制台中查看"
+    },
+    "clone": {
+      "title": "克隆",
+      "hint": "在此节点或其他节点上创建同一游戏的新服务器，带有此服务器的选项及其文件（世界、配置、模组）的副本。先安装，然后从此服务器的备份复制文件；此服务器保持不变。",
+      "defaultName": "{{name}}（副本）",
+      "action": "克隆",
+      "copying": "正在将 {{source}} 的文件复制到此服务器：先安装，然后在此恢复 {{source}} 的备份。",
+      "failed": "无法将 {{source}} 的文件复制到此服务器。",
+      "sourceGone": "一个已不存在的服务器"
     },
     "changeGame": {
       "title": "更换游戏",
@@ -7574,7 +7587,8 @@
       "restart": "重启服务器",
       "backup": "备份",
       "update": "更新游戏",
-      "upgradeTemplate": "正在切换到较新的模板"
+      "upgradeTemplate": "正在切换到较新的模板",
+      "copyFrom": "正在复制另一台服务器的文件"
     },
     "waitingForPlayers": "更新会等到没有人在玩（当前在线：{{players}}）。",
     "waiting": "服务器一空闲就开始更新。",

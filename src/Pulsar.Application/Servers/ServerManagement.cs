@@ -75,7 +75,14 @@ public sealed record ServerDetails(
     ServerSteamView? Steam = null,
     bool HasMods = false,
     string? GameVersion = null,
-    ServerPlayersView? Players = null);
+    ServerPlayersView? Players = null,
+    ServerCopyView? Copy = null);
+
+/// <summary>
+/// The copy of another server's files into this one, for a clone (Pulsar 1.0.16): from which server (null once it is
+/// gone), and how it goes.
+/// </summary>
+public sealed record ServerCopyView(Guid? SourceId, string? SourceName, Domain.Scheduling.SequenceStatus Status, string? ErrorCode, string? Message);
 
 /// <summary>The Steam account a server's SteamCMD signs in with (Phase 13).</summary>
 /// <param name="Required">Its game's dedicated server can only be downloaded with an account.</param>
@@ -1120,7 +1127,21 @@ public sealed partial class ServerManagement(
             newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0,
             new ServerSteamView(SteamAccounts.NeedsAccount(manifest), server.SteamAccountId?.Value, server.SteamAccountId is { } account
                 ? await db.SteamAccounts.AsNoTracking().Where(a => a.Id == account).Select(a => a.Name).SingleOrDefaultAsync(cancellationToken)
-                : null), manifest.ModList.Count > 0, server.GameVersion, ServerPlayers.View(manifest));
+                : null), manifest.ModList.Count > 0, server.GameVersion, ServerPlayers.View(manifest), await CopyViewAsync(server.Id, cancellationToken));
+    }
+
+    /// <summary>The last copy of another server's files into this one (a clone's), if any.</summary>
+    private async Task<ServerCopyView?> CopyViewAsync(ServerId id, CancellationToken cancellationToken)
+    {
+        var copy = await db.ServerSequences.AsNoTracking().Where(s => s.ServerId == id && s.Origin == Domain.Scheduling.SequenceOrigin.Clone)
+            .OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (copy is not { Steps: [{ Text: { } text }, ..] } || !Guid.TryParse(text, out var sourceId))
+        {
+            return null;
+        }
+
+        var name = await db.Servers.AsNoTracking().Where(s => s.Id == new ServerId(sourceId)).Select(s => s.Name).SingleOrDefaultAsync(cancellationToken);
+        return new ServerCopyView(name is null ? null : sourceId, name, copy.Status, copy.ErrorCode, copy.Message);
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)

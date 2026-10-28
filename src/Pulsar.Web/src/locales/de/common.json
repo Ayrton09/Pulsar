@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "Der Agent des Knotens ist zu alt, um einem Steam-Branch zu folgen: aktualisiere ihn zuerst.",
       "steam_branch_forbidden": "Den Steam-Branch zu wechseln braucht die Berechtigungen, den Server zu aktualisieren und zu sichern.",
       "change_game_forbidden": "Das Wechseln des Spiels löscht die Dateien des Servers: Dafür ist auch die Berechtigung zum Löschen des Servers nötig.",
-      "change_game_unsupported": "Der Agent auf dem Node des Servers ist zu alt, um das Spiel zu wechseln: Aktualisiere ihn."
+      "change_game_unsupported": "Der Agent auf dem Node des Servers ist zu alt, um das Spiel zu wechseln: Aktualisiere ihn.",
+      "clone_forbidden": "Das Klonen eines Servers kopiert seine Dateien: Dafür sind die Berechtigungen für Backups und zum Ansehen seiner Dateien nötig.",
+      "clone_running": "Ein Klon dieses Servers oder auf diesen Node kopiert noch seine Dateien: Warte, bis er fertig ist.",
+      "copy_unsupported": "Ein Node hat einen zu alten Agent, um die Dateien eines Servers auf einen anderen Node zu kopieren: Aktualisiere ihn.",
+      "backup_corrupt": "Der Node hat ein Archiv anderer Größe als das von ihm erstellte Backup gesendet."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "Wird abgebrochen…",
       "showConsole": "In der Konsole ansehen"
+    },
+    "clone": {
+      "title": "Klonen",
+      "hint": "Ein neuer Server desselben Spiels mit den Optionen dieses Servers und einer Kopie seiner Dateien (Welten, Konfiguration, Mods), auf diesem oder einem anderen Node. Er wird zuerst installiert, dann werden die Dateien aus einem Backup dieses Servers kopiert; dieser bleibt, wie er ist.",
+      "defaultName": "{{name}} (Kopie)",
+      "action": "Klonen",
+      "copying": "Die Dateien von {{source}} werden auf diesen Server kopiert: Er wird zuerst installiert, dann wird hier ein Backup von {{source}} wiederhergestellt.",
+      "failed": "Die Dateien von {{source}} konnten nicht auf diesen Server kopiert werden.",
+      "sourceGone": "einem Server, den es nicht mehr gibt"
     },
     "changeGame": {
       "title": "Spiel wechseln",
@@ -7574,7 +7587,8 @@
       "restart": "startet den Server neu",
       "backup": "erstellt ein Backup",
       "update": "aktualisiert das Spiel",
-      "upgradeTemplate": "Umstellung auf die neuere Vorlage"
+      "upgradeTemplate": "Umstellung auf die neuere Vorlage",
+      "copyFrom": "Kopieren der Dateien eines anderen Servers"
     },
     "waitingForPlayers": "Das Update wartet, bis niemand spielt (jetzt online: {{players}}).",
     "waiting": "Das Update beginnt, sobald der Server frei ist.",

@@ -529,9 +529,12 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
         return elsewhere;
     }
 
-    private static void EnsureSpace(ProvisionedServer server, long needed)
+    private static void EnsureSpace(ProvisionedServer server, long needed) => EnsureSpace(server.Directory, needed);
+
+    /// <summary>Refuses <paramref name="needed"/> bytes the drive of <paramref name="directory"/> cannot take with <see cref="FreeSpaceMargin"/> to spare.</summary>
+    internal static void EnsureSpace(string directory, long needed)
     {
-        var root = Path.GetPathRoot(Path.GetFullPath(server.Directory));
+        var root = Path.GetPathRoot(Path.GetFullPath(directory));
         if (root is { Length: > 0 } && new DriveInfo(root).AvailableFreeSpace - needed < FreeSpaceMargin)
         {
             throw new FileManagerException(FileErrors.DiskFull, $"The files ({needed} bytes) do not fit on the drive with {FreeSpaceMargin / (1024 * 1024)} MiB to spare.");

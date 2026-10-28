@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "O agente do nó é antigo demais para seguir uma branch da Steam: atualize-o primeiro.",
       "steam_branch_forbidden": "Mudar a branch da Steam exige as permissões para atualizar o servidor e fazer backups dele.",
       "change_game_forbidden": "Trocar o jogo do servidor apaga seus arquivos: também é preciso a permissão para apagar o servidor.",
-      "change_game_unsupported": "O agente do nó do servidor é antigo demais para trocar o jogo: atualize-o."
+      "change_game_unsupported": "O agente do nó do servidor é antigo demais para trocar o jogo: atualize-o.",
+      "clone_forbidden": "Clonar um servidor copia seus arquivos: são precisas as permissões para fazer backups dele e ver seus arquivos.",
+      "clone_running": "Um clone deste servidor, ou para esse nó, ainda está copiando os arquivos: espere terminar.",
+      "copy_unsupported": "Um nó tem um agente antigo demais para copiar os arquivos de um servidor para outro nó: atualize-o.",
+      "backup_corrupt": "O nó enviou um arquivo de tamanho diferente do backup que fez."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "Cancelando…",
       "showConsole": "Ver no console"
+    },
+    "clone": {
+      "title": "Clonar",
+      "hint": "Um novo servidor do mesmo jogo, com as opções deste e uma cópia dos seus arquivos (mundos, configuração, mods), neste nó ou em outro. Primeiro ele é instalado, depois os arquivos são copiados de um backup deste servidor; este fica como está.",
+      "defaultName": "{{name}} (cópia)",
+      "action": "Clonar",
+      "copying": "Copiando os arquivos de {{source}} para este servidor: primeiro ele é instalado, depois um backup de {{source}} é restaurado aqui.",
+      "failed": "Não foi possível copiar os arquivos de {{source}} para este servidor.",
+      "sourceGone": "um servidor que não existe mais"
     },
     "changeGame": {
       "title": "Trocar de jogo",
@@ -7574,7 +7587,8 @@
       "restart": "reiniciando o servidor",
       "backup": "fazendo um backup",
       "update": "atualizando o jogo",
-      "upgradeTemplate": "passando para o modelo mais novo"
+      "upgradeTemplate": "passando para o modelo mais novo",
+      "copyFrom": "copiando os arquivos de outro servidor"
     },
     "waitingForPlayers": "A atualização espera até ninguém estar jogando (online agora: {{players}}).",
     "waiting": "A atualização começa assim que o servidor ficar livre.",

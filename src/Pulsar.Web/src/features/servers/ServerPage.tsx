@@ -1,6 +1,7 @@
 import {
   Archive,
   CalendarClock,
+  Copy,
   Clock,
   Cpu,
   Database,
@@ -55,6 +56,7 @@ import {
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { ChangeGameDialog } from './ChangeGameDialog';
+import { CloneServerDialog } from './CloneServerDialog';
 import { ConsoleTab } from './ConsoleTab';
 import { useGameText } from './gameText';
 import { PowerButtons } from './PowerButtons';
@@ -181,6 +183,7 @@ function ServerView({ id }: { id: string }) {
         {tab === 'overview' && (
           <>
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              {details.data.copy && details.data.copy.status !== 'succeeded' && <CopyNotice copy={details.data.copy} />}
               <OverviewCard details={details.data} />
               <GameUpdatesCard details={details.data} />
               {((server.runtimeState === 'running' && metrics?.query) ||
@@ -437,6 +440,30 @@ function Facts({ items }: { items: [string, ReactNode][] }) {
   );
 }
 
+/** A clone's copy of its source's files, while it runs or when it failed (Pulsar 1.0.16). */
+function CopyNotice({ copy }: { copy: NonNullable<ServerDetails['copy']> }) {
+  const { t } = useTranslation();
+  const source = copy.sourceName ?? t('servers.clone.sourceGone');
+  if (copy.status === 'running') {
+    return (
+      <p role="status" className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm xl:col-span-2">
+        {t('servers.clone.copying', { source })}
+      </p>
+    );
+  }
+  const reason = copy.errorCode
+    ? t(`errors.${copy.errorCode}`, { defaultValue: copy.message ?? copy.errorCode, detail: copy.message ?? '' })
+    : null;
+  return (
+    <div className="xl:col-span-2">
+      <Alert>
+        {t('servers.clone.failed', { source })}
+        {reason && <> {reason}</>}
+      </Alert>
+    </div>
+  );
+}
+
 function OverviewCard({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const gameText = useGameText(details.server.templateKey);
@@ -549,11 +576,16 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const templateUpdates = useGameUpdates(details.server.id);
   const [validate, setValidate] = useState(false);
   const [changingGame, setChangingGame] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const { server } = details;
   const available = serverActions(server);
   const canInstall = canOnServer(me, details.server, Permission.ServerInstall);
   const canDelete = canOnServer(me, details.server, Permission.ServerDelete);
-  if (!canInstall && !canDelete) {
+  // A clone is a backup of this server copied into a new one: its files, readable there.
+  const canClone =
+    canOnServer(me, details.server, Permission.ServerBackupsCreate) &&
+    canOnServer(me, details.server, Permission.ServerFilesView);
+  if (!canInstall && !canDelete && !canClone) {
     return null;
   }
 
@@ -614,6 +646,16 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
             {t('servers.reinstall')}
           </Button>
         )}
+        {canClone && (
+          <Button
+            variant="secondary"
+            icon={Copy}
+            disabled={server.installState !== 'installed' || !server.nodeConnected}
+            onClick={() => setCloning(true)}
+          >
+            {t('servers.clone.title')}
+          </Button>
+        )}
         {canInstall && canDelete && (
           <Button
             variant="secondary"
@@ -648,6 +690,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
       )}
       <p className="text-xs text-muted">{t('servers.administrationHint')}</p>
       {changingGame && <ChangeGameDialog details={details} onClose={() => setChangingGame(false)} />}
+      {cloning && <CloneServerDialog details={details} onClose={() => setCloning(false)} />}
     </section>
   );
 }

@@ -668,7 +668,11 @@
       "steam_branch_agent_too_old": "L'agente del nodo è troppo vecchio per seguire un ramo di Steam: aggiornalo prima.",
       "steam_branch_forbidden": "Cambiare il ramo di Steam richiede i permessi per aggiornare il server e farne i backup.",
       "change_game_forbidden": "Cambiare il gioco del server ne elimina i file: serve anche il permesso di eliminare il server.",
-      "change_game_unsupported": "L'agent del nodo del server è troppo vecchio per cambiarne il gioco: aggiornalo."
+      "change_game_unsupported": "L'agent del nodo del server è troppo vecchio per cambiarne il gioco: aggiornalo.",
+      "clone_forbidden": "Clonare un server ne copia i file: servono i permessi di farne backup e di vederne i file.",
+      "clone_running": "Un clone di questo server, o verso quel nodo, sta ancora copiando i file: aspetta che finisca.",
+      "copy_unsupported": "Un nodo ha un agent troppo vecchio per copiare i file di un server su un altro nodo: aggiornalo.",
+      "backup_corrupt": "Il nodo ha inviato un archivio di dimensione diversa dal backup che ha fatto."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -1212,6 +1216,15 @@
       },
       "cancelling": "Annullamento…",
       "showConsole": "Vedi nella console"
+    },
+    "clone": {
+      "title": "Clona",
+      "hint": "Un nuovo server dello stesso gioco, con le opzioni di questo e una copia dei suoi file (mondi, configurazione, mod), su questo nodo o un altro. Prima si installa, poi i file vengono copiati da un backup di questo server; questo resta com'è.",
+      "defaultName": "{{name}} (copia)",
+      "action": "Clona",
+      "copying": "Copia dei file di {{source}} su questo server: prima si installa, poi qui viene ripristinato un backup di {{source}}.",
+      "failed": "Non è stato possibile copiare i file di {{source}} su questo server.",
+      "sourceGone": "un server che non esiste più"
     },
     "changeGame": {
       "title": "Cambia gioco",
@@ -7574,7 +7587,8 @@
       "restart": "riavvio del server",
       "backup": "backup",
       "update": "aggiornamento del gioco",
-      "upgradeTemplate": "passaggio al modello più recente"
+      "upgradeTemplate": "passaggio al modello più recente",
+      "copyFrom": "copia dei file di un altro server"
     },
     "waitingForPlayers": "L'aggiornamento aspetta che non giochi nessuno (online ora: {{players}}).",
     "waiting": "L'aggiornamento parte appena il server è libero.",
