@@ -115,6 +115,9 @@ describe('usage history', () => {
     expect(within(cpuTable).getAllByRole('row')).toHaveLength(3);
     expect(cpuTable).toHaveTextContent('20 %');
     expect(cpuTable).toHaveTextContent('40 %');
+    // Hidden by its wrapper: a table grows past sr-only's 1px with its rows, and a long history made the page taller.
+    expect(cpuTable).not.toHaveClass('sr-only');
+    expect(cpuTable.parentElement).toHaveClass('sr-only');
 
     await userEvent.click(within(historyCard()).getByRole('button', { name: '7 d' }));
 

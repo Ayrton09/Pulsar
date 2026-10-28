@@ -186,25 +186,29 @@ export function HistoryChart({
           </div>
         </div>
       </div>
-      <table className="sr-only">
-        <caption>{t('history.tableLabel', { chart: title })}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('history.time')}</th>
-            <th scope="col">{t('history.average')}</th>
-            <th scope="col">{t('history.peak')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((point) => (
-            <tr key={point.at}>
-              <td>{formatTime(point.at)}</td>
-              <td>{formatValue(point.average)}</td>
-              <td>{formatValue(point.peak)}</td>
+      {/* A table ignores a height below its rows', so the wrapper is what sr-only shrinks: on the table, a long history
+          made the page taller than its layout and scrolled the sidebar away. */}
+      <div className="sr-only">
+        <table>
+          <caption>{t('history.tableLabel', { chart: title })}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('history.time')}</th>
+              <th scope="col">{t('history.average')}</th>
+              <th scope="col">{t('history.peak')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {points.map((point) => (
+              <tr key={point.at}>
+                <td>{formatTime(point.at)}</td>
+                <td>{formatValue(point.average)}</td>
+                <td>{formatValue(point.peak)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
