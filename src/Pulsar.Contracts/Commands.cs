@@ -133,7 +133,11 @@ public sealed record ListPortsInUseCommand : AgentCommand
 /// Operation (the envelope carries its id): creates or repairs the server's directory and Windows account and stores
 /// its runtime spec. Completion is reported with <see cref="OperationCompleted"/>.
 /// </summary>
-public sealed record ProvisionServerCommand(Guid ServerId, ServerRuntimeSpec Spec) : AgentCommand
+/// <param name="Clean">
+/// The server becomes another game (Pulsar 1.0.16): its directory and account are deleted first, so it starts empty,
+/// with a new account. Only for a stopped server; agents announce <see cref="AgentCapabilities.ChangeGame"/>.
+/// </param>
+public sealed record ProvisionServerCommand(Guid ServerId, ServerRuntimeSpec Spec, bool Clean = false) : AgentCommand
 {
     public const string Type = "server.provision";
 }
@@ -844,6 +848,9 @@ public static class AgentCapabilities
     /// the server's files (Pulsar 1.0.15, <c>goldsrc</c>); an older one refuses manifests that use it.
     /// </summary>
     public const string GoldSrcRcon = "manifest.goldsrc_rcon";
+
+    /// <summary>The agent provisions a server clean (<see cref="ProvisionServerCommand.Clean"/>, Pulsar 1.0.16): it becomes another game.</summary>
+    public const string ChangeGame = "server.change_game";
 
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;

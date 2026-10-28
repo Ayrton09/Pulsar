@@ -59,6 +59,12 @@ public static class ServerErrors
         "A player is 1 to 64 letters, digits and _ - . (and spaces, if the game takes them), as the game names them.");
 
     /// <summary>A game's admin (Minecraft's operator) runs its commands in game, so making one is as much as a console command.</summary>
+    public static DomainError ChangeGameForbidden { get; } = new("server.change_game_forbidden",
+        "Changing the server's game deletes its files: it also needs the permission to delete the server.");
+
+    public static DomainError ChangeGameUnsupported { get; } = new("server.change_game_unsupported",
+        "The server's node has an agent too old to change its game: update it.");
+
     public static DomainError PlayerAdminForbidden { get; } = new("players.admin_forbidden",
         "Making a player the game's admin, or taking it away, also needs the permission to send console commands.");
 

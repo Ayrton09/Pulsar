@@ -353,6 +353,7 @@
         "kill": "サーバーを強制終了",
         "install_requested": "サーバーの再インストールを要求",
         "template_changed": "サーバーをテンプレートの別バージョンへ移行",
+        "game_changed": "サーバーのゲームを変更しました",
         "update_requested": "ゲームの更新を要求",
         "settings_changed": "サーバーの設定を変更",
         "ports_changed": "サーバーのポートを変更",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "その Steam ブランチにはパスワードが必要で、Pulsar はそれを使ってインストールしません。",
       "steam_branch_unsupported": "このゲームは Steam からダウンロードされません。",
       "steam_branch_agent_too_old": "ノードのエージェントが古すぎて Steam ブランチに対応できません。先に更新してください。",
-      "steam_branch_forbidden": "Steam ブランチの変更には、サーバーを更新する権限とバックアップする権限が必要です。"
+      "steam_branch_forbidden": "Steam ブランチの変更には、サーバーを更新する権限とバックアップする権限が必要です。",
+      "change_game_forbidden": "サーバーのゲームを変更するとファイルが削除されるため、サーバーを削除する権限も必要です。",
+      "change_game_unsupported": "サーバーのノードのエージェントが古すぎてゲームを変更できません。更新してください。"
     },
     "console": {
       "invalid_input": "コマンドは、制御文字(タブなど)を含まない1行で入力してください。",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "キャンセル中…",
       "showConsole": "コンソールで見る"
+    },
+    "changeGame": {
+      "title": "ゲームを変更",
+      "warning": "{{name}} は選んだゲーム（または同じゲームを最初から）になります。ワールド、設定、Mod、プラグインなど、すべてのファイルがバックアップなしで削除されます。名前、アクセス権、制限、バックアップは残り、新しいゲームは既定のオプションで始まります。",
+      "understood": "サーバーのファイルが削除され、復元できないことを理解しました。",
+      "understoodRequired": "ファイルが削除されることを理解したことを確認してください。",
+      "action": "ファイルを削除してゲームを変更"
     },
     "administration": "管理",
     "administrationHint": "再インストールすると、サーバーのフォルダーとアカウントを再び準備し、インストールを実行します。削除すると、ノードからファイル、バックアップ、Windowsアカウントが削除されます。",

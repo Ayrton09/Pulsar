@@ -201,6 +201,73 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         await ServerApi.CommandAsync(admin, server, "stop");
     }
 
+    [DatabaseFact]
+    public async Task AServerBecomesAnotherGameFromNothingKeepingItsPortsAndName()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await using var agent = await ConnectedAgentAsync(admin, "change-game");
+        await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await InstalledAsync(admin, agent, "css");
+        var before = (await ServerApi.GetAsync(admin, server))!;
+        using (var renamed = await admin.PutAsync($"/api/v1/servers/{server}/settings",
+                   new UpdateServerSettingsRequest(new Dictionary<string, string?> { ["hostname"] = "Old game" }, [], false, true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(renamed);
+        }
+
+        using (var scheduled = await admin.PostAsync($"/api/v1/servers/{server}/schedules",
+                   new ScheduledTaskRequest("Old game's restart", "0 4 * * *", "UTC", Pulsar.Domain.Scheduling.ScheduledAction.Restart, null, false, false, true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(scheduled);
+        }
+
+        var folder = Path.Combine(agent.ServersRoot, before.Server.ShortId);
+        await File.WriteAllTextAsync(Path.Combine(folder, "old-world.dat"), "the old game's", Ct);
+        var hl2dm = await TemplateAsync(admin, "hl2dm");
+
+        // It deletes the server's files: installing is not enough.
+        using (var installer = await scenario.SignedInWithAsync("installer", Pulsar.Domain.Access.Permissions.Server.View, Pulsar.Domain.Access.Permissions.Server.Install))
+        using (var refused = await installer.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+
+        // Never while it runs.
+        await ServerApi.CommandAsync(admin, server, "start");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
+        using (var running = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, running.StatusCode);
+        }
+
+        await ServerApi.CommandAsync(admin, server, "stop");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped");
+        using (var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
+        {
+            await AccessScenario.EnsureSuccessAsync(changed);
+        }
+
+        var after = await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null
+            && s.Server.TemplateKey == "hl2dm", "installed as the new game");
+        Assert.Equal((before.Server.Name, before.Server.ShortId), (after.Server.Name, after.Server.ShortId));
+        Assert.Equal(before.Ports.Single(p => p.Name == "game").Port, after.Ports.Single(p => p.Name == "game").Port);
+        Assert.False(File.Exists(Path.Combine(folder, "old-world.dat")));
+        var settings = await admin.Http.GetFromJsonAsync<ServerSettings>(new Uri($"/api/v1/servers/{server}/settings", UriKind.Relative), AccessScenario.Json, Ct);
+        Assert.DoesNotContain(settings!.Variables, v => v.Value == "Old game");
+        Assert.Contains(after.RecentOperations, o => o.Type == OperationType.ServerProvision && o.Status == OperationStatus.Succeeded);
+        // Its scheduled tasks were the old game's: paused until someone looks at them.
+        var tasks = await admin.Http.GetFromJsonAsync<Pulsar.Application.Scheduling.ScheduledTaskList>(new Uri($"/api/v1/servers/{server}/schedules", UriKind.Relative),
+            AccessScenario.Json, Ct);
+        Assert.False(Assert.Single(tasks!.Tasks).Enabled);
+
+        // The new game runs.
+        await ServerApi.CommandAsync(admin, server, "start");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running as the new game");
+        Assert.Contains("hl2mp", string.Join(' ', agent.Processes.Started.Last(p => !p.IsSteamCmd).Arguments), StringComparison.Ordinal);
+        await ServerApi.CommandAsync(admin, server, "stop");
+    }
+
     /// <summary>A version newer than <paramref name="version"/> ("1.1.0" gives "1.2.0"), for a test's own newer template.</summary>
     internal static string NextVersion(string version)
     {

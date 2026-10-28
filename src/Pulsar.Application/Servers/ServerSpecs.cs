@@ -247,8 +247,9 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
     /// given (null releases an optional port), otherwise the current one, otherwise the free allocation on the port's
     /// default (or the lowest free port) for required ports.
     /// </summary>
+    /// <param name="prefer">Free allocations taken first for a port that needs one (those the server had for its old game).</param>
     public async Task<Result> AssignPortsAsync(Server server, GameManifest manifest, IReadOnlyDictionary<string, Guid?>? requested,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IReadOnlySet<AllocationId>? prefer = null)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(manifest);
@@ -300,7 +301,7 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
                 {
                     var free = nodeAllocations.Where(a => a.ServerId is null && !chosen.ContainsValue(a) && chosen.Values.All(c => c.Port != a.Port)
                             && FollowersFit(port, a))
-                        .OrderBy(a => a.Port == port.Default ? 0 : 1).ThenBy(a => a.Port).ThenBy(a => a.IpAddress, StringComparer.Ordinal);
+                        .OrderBy(a => prefer?.Contains(a.Id) == true ? 0 : 1).ThenBy(a => a.Port == port.Default ? 0 : 1).ThenBy(a => a.Port).ThenBy(a => a.IpAddress, StringComparer.Ordinal);
                     allocation = free.FirstOrDefault();
                     if (allocation is null)
                     {

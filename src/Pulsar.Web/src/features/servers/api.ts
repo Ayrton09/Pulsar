@@ -154,6 +154,22 @@ export function useUpgradeTemplate() {
   });
 }
 
+/**
+ * Makes a stopped server another game, or its own again from nothing: its files are deleted and the game chosen is
+ * installed with the values given (as at its creation).
+ */
+export function useChangeGame() {
+  const changed = useServersChanged();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Schemas['ChangeGameRequest']) =>
+      unwrap(api.POST('/api/v1/servers/{id}/game', { params: { path: { id } }, body })),
+    // Another game: other variables, ports and tabs.
+    onSuccess: (_, { id }) =>
+      Promise.all([changed(), queryClient.invalidateQueries({ queryKey: serverKeys.settings(id) })]),
+  });
+}
+
 /** Sets the server's CPU and memory caps (null removes one); a running server gets them at once. */
 export function useSetServerLimits() {
   const changed = useServersChanged();

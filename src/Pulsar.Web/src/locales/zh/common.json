@@ -353,6 +353,7 @@
         "kill": "强制终止了服务器",
         "install_requested": "请求重新安装服务器",
         "template_changed": "将服务器切换到其模板的另一个版本",
+        "game_changed": "更换了服务器的游戏",
         "update_requested": "请求更新游戏",
         "settings_changed": "更改了服务器设置",
         "ports_changed": "更改了服务器端口",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "该 Steam 分支需要密码，Pulsar 不会用密码安装。",
       "steam_branch_unsupported": "此游戏不是从 Steam 下载的。",
       "steam_branch_agent_too_old": "节点的代理版本太旧，无法跟随 Steam 分支：请先更新它。",
-      "steam_branch_forbidden": "更换 Steam 分支需要更新服务器和备份服务器的权限。"
+      "steam_branch_forbidden": "更换 Steam 分支需要更新服务器和备份服务器的权限。",
+      "change_game_forbidden": "更换服务器的游戏会删除其文件：还需要删除服务器的权限。",
+      "change_game_unsupported": "服务器所在节点的代理版本过旧，无法更换游戏：请更新它。"
     },
     "console": {
       "invalid_input": "命令必须是单行内容，且不含控制字符（如制表符）。",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "正在取消…",
       "showConsole": "在控制台中查看"
+    },
+    "changeGame": {
+      "title": "更换游戏",
+      "warning": "{{name}} 将变为你选择的游戏（或从头重新安装同一游戏）。它的所有文件都会被删除且不做备份：世界、配置、模组和插件。名称、访问权限、限制和备份会保留；新游戏使用其默认选项启动。",
+      "understood": "我了解服务器的文件会被删除且无法恢复。",
+      "understoodRequired": "请确认你了解文件会被删除。",
+      "action": "删除文件并更换游戏"
     },
     "administration": "管理",
     "administrationHint": "重新安装会重新准备服务器的文件夹和账户，并运行其安装。删除会从节点上移除其文件、备份和 Windows 账户。",

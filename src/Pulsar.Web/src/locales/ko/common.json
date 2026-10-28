@@ -353,6 +353,7 @@
         "kill": "서버 강제 종료",
         "install_requested": "서버 재설치 요청",
         "template_changed": "서버를 템플릿의 다른 버전으로 이동",
+        "game_changed": "서버의 게임을 변경함",
         "update_requested": "게임 업데이트 요청",
         "settings_changed": "서버 설정 변경",
         "ports_changed": "서버 포트 변경",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "그 Steam 브랜치는 비밀번호가 필요하며, Pulsar는 그것으로 설치하지 않습니다.",
       "steam_branch_unsupported": "이 게임은 Steam에서 다운로드되지 않습니다.",
       "steam_branch_agent_too_old": "노드의 에이전트가 너무 오래되어 Steam 브랜치를 따를 수 없습니다. 먼저 업데이트하세요.",
-      "steam_branch_forbidden": "Steam 브랜치를 바꾸려면 서버를 업데이트하고 백업할 권한이 필요합니다."
+      "steam_branch_forbidden": "Steam 브랜치를 바꾸려면 서버를 업데이트하고 백업할 권한이 필요합니다.",
+      "change_game_forbidden": "서버의 게임을 바꾸면 파일이 삭제되므로 서버 삭제 권한도 필요합니다.",
+      "change_game_unsupported": "서버 노드의 에이전트가 너무 오래되어 게임을 바꿀 수 없습니다. 업데이트하세요."
     },
     "console": {
       "invalid_input": "명령은 제어 문자(탭 등)가 없는 한 줄이어야 합니다.",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "취소 중…",
       "showConsole": "콘솔에서 보기"
+    },
+    "changeGame": {
+      "title": "게임 변경",
+      "warning": "{{name}}이(가) 선택한 게임(또는 같은 게임을 처음부터)으로 바뀝니다. 월드, 설정, 모드, 플러그인 등 모든 파일이 백업 없이 삭제됩니다. 이름, 접근 권한, 제한, 백업은 유지되고 새 게임은 기본 옵션으로 시작합니다.",
+      "understood": "서버의 파일이 삭제되며 복구할 수 없다는 것을 이해했습니다.",
+      "understoodRequired": "파일이 삭제된다는 것을 이해했다고 확인하세요.",
+      "action": "파일을 삭제하고 게임 변경"
     },
     "administration": "관리",
     "administrationHint": "재설치하면 서버의 폴더와 계정을 다시 준비하고 설치를 실행합니다. 삭제하면 노드에서 서버의 파일, 백업, Windows 계정이 제거됩니다.",

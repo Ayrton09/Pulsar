@@ -514,6 +514,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 1.6 (`cs16`) and Half-Life Deathmatch (`hldm`), GoldSrc's HLDS (app 90), each checked on a real server (games/<key>/README.md). Their console is `qconsole.log` and commands go over GoldSrc's RCON on UDP (`"protocol": "goldsrc"`, doc 04, "Console"): every process bound to the port must run as the server's account before anything is sent, and HLDS's console log and logs folder, which hold the password, are kept from the file manager, SFTP, zips and backups (`privatePaths`, doc 08, T56). Agent capability `manifest.goldsrc_rcon`.
 
+## 1.0.16 — Change game, clone, transfer (gap point 9, at the user's request)
+
+- Change a server's game (doc 02, "Changing a server's game"): files deleted without a backup (the user's choice), name, access, limits, backups and ports kept where they fit; checked on a real node (Terraria to Minecraft: Java Edition, then started).
+- The six findings of the 2026-10-28 audit fixed (mods' writes undone, settling before loading, requirements' versions, sequence steps saved with their operation, agent update attempts, modpack zips).
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

@@ -353,6 +353,7 @@
         "kill": "Arrêt forcé d'un serveur",
         "install_requested": "Demande de réinstallation d'un serveur",
         "template_changed": "Passage d'un serveur à une autre version de son modèle",
+        "game_changed": "Jeu d'un serveur changé",
         "update_requested": "Demande de mise à jour d'un jeu",
         "settings_changed": "Modification des paramètres d'un serveur",
         "ports_changed": "Modification des ports d'un serveur",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "Cette branche Steam demande un mot de passe, avec lequel Pulsar n'installe pas.",
       "steam_branch_unsupported": "Ce jeu n'est pas téléchargé depuis Steam.",
       "steam_branch_agent_too_old": "L'agent du nœud est trop ancien pour suivre une branche Steam : mettez-le à jour d'abord.",
-      "steam_branch_forbidden": "Changer la branche Steam demande les permissions de mettre à jour le serveur et de le sauvegarder."
+      "steam_branch_forbidden": "Changer la branche Steam demande les permissions de mettre à jour le serveur et de le sauvegarder.",
+      "change_game_forbidden": "Changer le jeu du serveur supprime ses fichiers : il faut aussi la permission de supprimer le serveur.",
+      "change_game_unsupported": "L'agent du nœud du serveur est trop ancien pour changer son jeu : mettez-le à jour."
     },
     "console": {
       "invalid_input": "Une commande tient sur une seule ligne, sans caractères de contrôle (comme les tabulations).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Annulation…",
       "showConsole": "Voir dans la console"
+    },
+    "changeGame": {
+      "title": "Changer de jeu",
+      "warning": "{{name}} devient le jeu choisi (ou le sien, depuis zéro). Tous ses fichiers sont supprimés, sans sauvegarde : mondes, configuration, mods et plugins. Son nom, ses accès, ses limites et ses sauvegardes restent ; le nouveau jeu démarre avec ses propres options.",
+      "understood": "Je comprends que les fichiers du serveur sont supprimés et ne peuvent pas être récupérés.",
+      "understoodRequired": "Confirmez que vous comprenez que les fichiers sont supprimés.",
+      "action": "Supprimer ses fichiers et changer de jeu"
     },
     "administration": "Administration",
     "administrationHint": "La réinstallation prépare de nouveau le dossier et le compte du serveur, puis exécute son installation. La suppression retire du nœud ses fichiers, ses sauvegardes et son compte Windows.",

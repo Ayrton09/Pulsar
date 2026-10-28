@@ -226,6 +226,19 @@ public sealed class ScheduledTask
         return Result.Success();
     }
 
+    /// <summary>Stops it running until someone enables it again (its server became another game, Pulsar 1.0.16: its steps were the old game's).</summary>
+    public void Pause(DateTimeOffset now)
+    {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
+        IsEnabled = false;
+        NextRunAt = null;
+        UpdatedAt = now;
+    }
+
     /// <summary>
     /// What is due at <paramref name="now"/>: one skipped run standing for every occurrence older than
     /// <see cref="MissedAfter"/>, then a run for an occurrence that is still on time. The next run moves past now.

@@ -14,6 +14,7 @@ import {
   Puzzle,
   RotateCcw,
   Settings,
+  Shuffle,
   Terminal,
   Trash2,
   Users,
@@ -53,6 +54,7 @@ import {
   type ServerDetails,
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
+import { ChangeGameDialog } from './ChangeGameDialog';
 import { ConsoleTab } from './ConsoleTab';
 import { useGameText } from './gameText';
 import { PowerButtons } from './PowerButtons';
@@ -546,6 +548,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const upgrade = useUpgradeTemplate();
   const templateUpdates = useGameUpdates(details.server.id);
   const [validate, setValidate] = useState(false);
+  const [changingGame, setChangingGame] = useState(false);
   const { server } = details;
   const available = serverActions(server);
   const canInstall = canOnServer(me, details.server, Permission.ServerInstall);
@@ -611,6 +614,16 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
             {t('servers.reinstall')}
           </Button>
         )}
+        {canInstall && canDelete && (
+          <Button
+            variant="secondary"
+            icon={Shuffle}
+            disabled={!available.reinstall}
+            onClick={() => setChangingGame(true)}
+          >
+            {t('servers.changeGame.title')}
+          </Button>
+        )}
         {canDelete && (
           <Button
             variant="danger"
@@ -634,6 +647,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
         />
       )}
       <p className="text-xs text-muted">{t('servers.administrationHint')}</p>
+      {changingGame && <ChangeGameDialog details={details} onClose={() => setChangingGame(false)} />}
     </section>
   );
 }

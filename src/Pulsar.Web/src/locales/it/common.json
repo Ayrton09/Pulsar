@@ -353,6 +353,7 @@
         "kill": "Ha forzato l'arresto di un server",
         "install_requested": "Ha chiesto di reinstallare un server",
         "template_changed": "Ha spostato un server a un'altra versione del suo modello",
+        "game_changed": "Cambiato il gioco di un server",
         "update_requested": "Ha chiesto di aggiornare un gioco",
         "settings_changed": "Ha modificato le impostazioni di un server",
         "ports_changed": "Ha modificato le porte di un server",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "Quel ramo di Steam richiede una password, con cui Pulsar non installa.",
       "steam_branch_unsupported": "Questo gioco non si scarica da Steam.",
       "steam_branch_agent_too_old": "L'agente del nodo è troppo vecchio per seguire un ramo di Steam: aggiornalo prima.",
-      "steam_branch_forbidden": "Cambiare il ramo di Steam richiede i permessi per aggiornare il server e farne i backup."
+      "steam_branch_forbidden": "Cambiare il ramo di Steam richiede i permessi per aggiornare il server e farne i backup.",
+      "change_game_forbidden": "Cambiare il gioco del server ne elimina i file: serve anche il permesso di eliminare il server.",
+      "change_game_unsupported": "L'agent del nodo del server è troppo vecchio per cambiarne il gioco: aggiornalo."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Annullamento…",
       "showConsole": "Vedi nella console"
+    },
+    "changeGame": {
+      "title": "Cambia gioco",
+      "warning": "{{name}} diventa il gioco scelto (o di nuovo il suo, da zero). Tutti i suoi file vengono eliminati, senza backup: mondi, configurazione, mod e plugin. Nome, accessi, limiti e backup restano; il nuovo gioco parte con le sue opzioni.",
+      "understood": "Capisco che i file del server vengono eliminati e non si possono recuperare.",
+      "understoodRequired": "Conferma di aver capito che i file vengono eliminati.",
+      "action": "Elimina i file e cambia gioco"
     },
     "administration": "Amministrazione",
     "administrationHint": "Reinstallare prepara di nuovo la cartella e l'account del server ed esegue la sua installazione. Eliminare rimuove dal nodo i suoi file, i suoi backup e il suo account Windows.",

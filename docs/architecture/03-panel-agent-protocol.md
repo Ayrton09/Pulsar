@@ -91,7 +91,7 @@ public enum AckStatus { Accepted, AlreadyInState, Rejected, Busy, UnsupportedCom
 
 | Command | Main content |
 |---|---|
-| `ProvisionServerCommand` | ServerId, ShortId, relative directory, `ServerRuntimeSpec`. Creates the folder, Windows account and ACLs. |
+| `ProvisionServerCommand` | ServerId, ShortId, relative directory, `ServerRuntimeSpec`. Creates the folder, Windows account and ACLs. From 1.0.16, `Clean` (agents announcing `server.change_game`) first ends the account's processes and deletes the folder, account and firewall rules: the server becomes another game (doc 02, "Changing a server's game"). |
 | `ApplyServerSpecCommand` | New `ServerRuntimeSpec` (variables, ports, arguments, restart policy) for the next start. Same manifest and short id only. The panel sends it before every start and restart. |
 | `InstallServerCommand` / `UpdateServerCommand` | ServerId (+ `Validate` for updates); the envelope carries the `OperationId`. |
 | `StartServerCommand` / `StopServerCommand` / `RestartServerCommand` / `KillServerCommand` | ServerId (+ optional stop timeout). |

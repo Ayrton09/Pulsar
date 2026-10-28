@@ -67,6 +67,7 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     public static IReadOnlyDictionary<string, string> AppExecutables { get; } = new Dictionary<string, string>
     {
         ["232330"] = "srcds.exe",
+        ["232370"] = "srcds.exe",
         ["730"] = "game/bin/win64/cs2.exe",
     };
 

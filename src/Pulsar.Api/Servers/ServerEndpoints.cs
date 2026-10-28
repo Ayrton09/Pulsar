@@ -62,6 +62,10 @@ public sealed record SteamAccountRequest(
 /// <param name="TemplateId">A newer version of the server's game template.</param>
 public sealed record UpgradeTemplateRequest(Guid TemplateId);
 
+/// <param name="TemplateId">The game template the server becomes (its own too: it starts again from nothing).</param>
+/// <param name="Variables">The new game's first values, as at a server's creation.</param>
+public sealed record ChangeGameRequest(Guid TemplateId, Dictionary<string, string?>? Variables = null);
+
 /// <param name="CpuPercent">Share of the node's CPU, 1–100; null: no cap. Both caps are replaced by every request.</param>
 /// <param name="MemoryMb">Memory the server's processes may commit, in MiB; null: no cap.</param>
 /// <param name="Databases">How many databases the server may have, 0–50; null or left out keeps the current limit.</param>
@@ -117,6 +121,10 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.SettingsEdit);
         servers.MapPut("/{id:guid}/template", (Guid id, UpgradeTemplateRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpgradeTemplateAsync(new ServerId(id), request.TemplateId, ct)))
+            .RequirePermission(Permissions.Server.Install);
+        // Deletes the server's files: server.delete is needed too (checked by the change).
+        servers.MapPost("/{id:guid}/game", (Guid id, ChangeGameRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.ChangeGameAsync(new ServerId(id), request.TemplateId, request.Variables, ct)))
             .RequirePermission(Permissions.Server.Install);
         servers.MapPut("/{id:guid}/limits", (Guid id, ServerLimitsRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, request.Databases, ct)))

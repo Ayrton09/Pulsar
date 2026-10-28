@@ -353,6 +353,7 @@
         "kill": "Killed a server",
         "install_requested": "Asked to reinstall a server",
         "template_changed": "Moved a server to another version of its template",
+        "game_changed": "Changed a server's game",
         "update_requested": "Asked to update a game",
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "That Steam branch needs a password, which Pulsar does not install with.",
       "steam_branch_unsupported": "This game is not downloaded from Steam.",
       "steam_branch_agent_too_old": "The node's agent is too old to follow a Steam branch: update it first.",
-      "steam_branch_forbidden": "Changing the Steam branch needs the permissions to update the server and to back it up."
+      "steam_branch_forbidden": "Changing the Steam branch needs the permissions to update the server and to back it up.",
+      "change_game_forbidden": "Changing the server's game deletes its files: it also needs the permission to delete the server.",
+      "change_game_unsupported": "The server's node has an agent too old to change its game: update it."
     },
     "console": {
       "invalid_input": "A command is one line without control characters (such as tabs).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Cancelling…",
       "showConsole": "Show in the console"
+    },
+    "changeGame": {
+      "title": "Change game",
+      "warning": "{{name}} becomes the game you choose (or its own again, from nothing). All its files are deleted, with no backup: worlds, configuration, mods and plugins. Its name, access, limits and backups stay; the new game starts with its own options.",
+      "understood": "I understand that the server's files are deleted and cannot be recovered.",
+      "understoodRequired": "Confirm that you understand the files are deleted.",
+      "action": "Delete its files and change game"
     },
     "administration": "Administration",
     "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files, its backups and its Windows account from the node.",

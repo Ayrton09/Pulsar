@@ -353,6 +353,7 @@
         "kill": "Forçou o encerramento de um servidor",
         "install_requested": "Pediu para reinstalar um servidor",
         "template_changed": "Mudou um servidor para outra versão do seu modelo",
+        "game_changed": "Trocou o jogo de um servidor",
         "update_requested": "Pediu para atualizar um jogo",
         "settings_changed": "Alterou as configurações de um servidor",
         "ports_changed": "Alterou as portas de um servidor",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "Essa branch da Steam pede uma senha, com a qual o Pulsar não instala.",
       "steam_branch_unsupported": "Este jogo não é baixado da Steam.",
       "steam_branch_agent_too_old": "O agente do nó é antigo demais para seguir uma branch da Steam: atualize-o primeiro.",
-      "steam_branch_forbidden": "Mudar a branch da Steam exige as permissões para atualizar o servidor e fazer backups dele."
+      "steam_branch_forbidden": "Mudar a branch da Steam exige as permissões para atualizar o servidor e fazer backups dele.",
+      "change_game_forbidden": "Trocar o jogo do servidor apaga seus arquivos: também é preciso a permissão para apagar o servidor.",
+      "change_game_unsupported": "O agente do nó do servidor é antigo demais para trocar o jogo: atualize-o."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Cancelando…",
       "showConsole": "Ver no console"
+    },
+    "changeGame": {
+      "title": "Trocar de jogo",
+      "warning": "{{name}} passa a ser o jogo escolhido (ou o mesmo, do zero). Todos os seus arquivos são apagados, sem backup: mundos, configuração, mods e plugins. Nome, acessos, limites e backups ficam; o novo jogo começa com suas próprias opções.",
+      "understood": "Entendo que os arquivos do servidor são apagados e não podem ser recuperados.",
+      "understoodRequired": "Confirme que entende que os arquivos são apagados.",
+      "action": "Apagar seus arquivos e trocar de jogo"
     },
     "administration": "Administração",
     "administrationHint": "Reinstalar prepara novamente a pasta e a conta do servidor e executa a instalação. Excluir remove do nó seus arquivos, seus backups e sua conta do Windows.",

@@ -369,6 +369,40 @@ public sealed class Server
         return Result.Success();
     }
 
+    /// <summary>
+    /// Makes the stopped server another game's, or its own again from nothing (Pulsar 1.0.16): its template becomes
+    /// <paramref name="next"/>, and what belonged to the old game goes: its values (the new game's are set next), extra arguments,
+    /// game version and Steam branch. Its name, access, limits, backups and Steam account stay. Its files go with the
+    /// provisioning that follows.
+    /// </summary>
+    public Result ChangeGame(GameTemplate current, GameTemplate next, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(next);
+        if (current.Id != TemplateId)
+        {
+            return ServerErrors.TemplateNotFound;
+        }
+
+        if (ActiveOperationId is not null)
+        {
+            return ServerErrors.Busy;
+        }
+
+        if (RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        _variables.Clear();
+        ExtraArguments = [];
+        GameVersion = null;
+        SteamBranch = null;
+        TemplateId = next.Id;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
     /// <summary>Sets a plain variable value (null removes it, so the manifest default applies).</summary>
     public void SetVariable(string key, string? value, UserId? by, DateTimeOffset now)
     {

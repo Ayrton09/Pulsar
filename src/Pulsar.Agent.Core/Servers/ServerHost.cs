@@ -177,6 +177,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.CatalogLists;
             yield return AgentCapabilities.SteamBranches;
             yield return AgentCapabilities.GoldSrcRcon;
+            yield return AgentCapabilities.ChangeGame;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -844,6 +845,15 @@ public sealed partial class ServerHost(
             {
                 var desired = store.Load(command.ServerId)?.DesiredRunning ?? false;
                 store.Save(new ServerRecord(command.ServerId, spec, desired, ResumeOnStart: false, rconPassword));
+            }
+
+            if (command.Clean)
+            {
+                // Another game: nothing of the old one stays, its files nor its account (a process of it either).
+                TerminateStrays(command.ServerId, provisioner.Describe(root, spec.ShortId).Identity);
+                firewall.Remove(spec.ShortId);
+                await Task.Run(() => provisioner.Deprovision(root, spec.ShortId), CancellationToken.None); // never left half done
+                LogCleaned(command.ServerId, spec.ShortId);
             }
 
             await Task.Run(() => provisioner.Provision(root, spec.ShortId));
@@ -2065,6 +2075,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} provisioned ({ShortId})")]
     private partial void LogProvisioned(Guid serverId, string shortId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} ({ShortId}) emptied to become another game: its folder and account were deleted")]
+    private partial void LogCleaned(Guid serverId, string shortId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} installed")]
     private partial void LogInstalled(Guid serverId);

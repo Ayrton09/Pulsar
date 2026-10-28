@@ -562,6 +562,76 @@ describe('server card buttons', () => {
 });
 
 describe('server page', () => {
+  it('changes the game only once the user says the files go, with what the new game needs', async () => {
+    let body: unknown;
+    const scpsl = {
+      id: '0192f1a0-0000-7000-8000-0000000000f9',
+      key: 'scpsl',
+      version: '1.4.1',
+      name: 'SCP: Secret Laboratory',
+      description: null,
+      isTestGame: false,
+      source: 'bundled',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+      'GET /api/v1/templates': () => json([scpsl]),
+      [`GET /api/v1/templates/${scpsl.id}`]: () =>
+        json({
+          template: scpsl,
+          minDiskGb: null,
+          minMemoryMb: null,
+          variables: [
+            {
+              key: 'eula',
+              label: 'EULA',
+              type: 'enum',
+              required: true,
+              default: null,
+              secret: false,
+              options: [{ value: 'accepted', label: 'I accept it' }],
+            },
+            {
+              key: 'serverName',
+              label: 'Server name',
+              type: 'string',
+              required: false,
+              default: 'x',
+              secret: false,
+              options: [],
+            },
+          ],
+          ports: [],
+          allowExtraArguments: false,
+          canUpdate: true,
+          capabilities: { executable: 'LocalAdmin.exe', steamAppIds: [996560], configFiles: [], consoleMode: 'pty' },
+        }),
+      [`POST /api/v1/servers/${installedOffline.id}/game`]: async (request) => {
+        body = await request.json();
+        return json(details(installedOffline));
+      },
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Change game' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change game' });
+    expect(within(dialog).getByText(/All its files are deleted, with no backup/)).toBeInTheDocument();
+    await user.selectOptions(await within(dialog).findByLabelText('Game'), 'SCP: Secret Laboratory');
+    // Only what the new game cannot do without.
+    await user.selectOptions(await within(dialog).findByLabelText(/EULA/), 'accepted');
+    expect(within(dialog).queryByLabelText(/Server name/)).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete its files and change game' }));
+    expect(within(dialog).getByText('Confirm that you understand the files are deleted.')).toBeInTheDocument();
+    expect(body).toBeUndefined();
+
+    await user.click(within(dialog).getByLabelText(/I understand that the server's files are deleted/));
+    await user.click(within(dialog).getByRole('button', { name: 'Delete its files and change game' }));
+    await waitFor(() => expect(body).toEqual({ templateId: scpsl.id, variables: { eula: 'accepted' } }));
+  });
+
   it('starts a stopped server', async () => {
     const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
     fakeApi({

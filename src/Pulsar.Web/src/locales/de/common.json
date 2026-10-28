@@ -353,6 +353,7 @@
         "kill": "Server beendet (erzwungen)",
         "install_requested": "Neuinstallation eines Servers angefordert",
         "template_changed": "Server auf eine andere Version seiner Vorlage umgestellt",
+        "game_changed": "Spiel eines Servers gewechselt",
         "update_requested": "Aktualisierung eines Spiels angefordert",
         "settings_changed": "Einstellungen eines Servers geändert",
         "ports_changed": "Ports eines Servers geändert",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "Dieser Steam-Branch braucht ein Passwort, mit dem Pulsar nicht installiert.",
       "steam_branch_unsupported": "Dieses Spiel wird nicht über Steam heruntergeladen.",
       "steam_branch_agent_too_old": "Der Agent des Knotens ist zu alt, um einem Steam-Branch zu folgen: aktualisiere ihn zuerst.",
-      "steam_branch_forbidden": "Den Steam-Branch zu wechseln braucht die Berechtigungen, den Server zu aktualisieren und zu sichern."
+      "steam_branch_forbidden": "Den Steam-Branch zu wechseln braucht die Berechtigungen, den Server zu aktualisieren und zu sichern.",
+      "change_game_forbidden": "Das Wechseln des Spiels löscht die Dateien des Servers: Dafür ist auch die Berechtigung zum Löschen des Servers nötig.",
+      "change_game_unsupported": "Der Agent auf dem Node des Servers ist zu alt, um das Spiel zu wechseln: Aktualisiere ihn."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Wird abgebrochen…",
       "showConsole": "In der Konsole ansehen"
+    },
+    "changeGame": {
+      "title": "Spiel wechseln",
+      "warning": "{{name}} wird zu dem Spiel, das du wählst (oder neu zu seinem eigenen). Alle seine Dateien werden ohne Backup gelöscht: Welten, Konfiguration, Mods und Plugins. Name, Zugriffe, Limits und Backups bleiben; das neue Spiel startet mit seinen eigenen Optionen.",
+      "understood": "Ich verstehe, dass die Dateien des Servers gelöscht werden und nicht wiederhergestellt werden können.",
+      "understoodRequired": "Bestätige, dass die Dateien gelöscht werden.",
+      "action": "Dateien löschen und Spiel wechseln"
     },
     "administration": "Verwaltung",
     "administrationHint": "Beim Neuinstallieren werden Ordner und Konto des Servers erneut vorbereitet und seine Installation ausgeführt. Beim Löschen werden seine Dateien, seine Backups und sein Windows-Konto vom Node entfernt.",

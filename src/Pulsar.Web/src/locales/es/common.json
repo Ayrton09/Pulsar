@@ -353,6 +353,7 @@
         "kill": "Forzó el cierre de un servidor",
         "install_requested": "Pidió reinstalar un servidor",
         "template_changed": "Pasó un servidor a otra versión de su plantilla",
+        "game_changed": "Cambió el juego de un servidor",
         "update_requested": "Pidió actualizar un juego",
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
@@ -665,7 +666,9 @@
       "steam_branch_password_required": "Esa rama de Steam pide una contraseña, con la que Pulsar no instala.",
       "steam_branch_unsupported": "Este juego no se descarga de Steam.",
       "steam_branch_agent_too_old": "El agente del nodo es demasiado viejo para seguir una rama de Steam: actualizalo primero.",
-      "steam_branch_forbidden": "Cambiar la rama de Steam requiere los permisos para actualizar el servidor y para hacerle backups."
+      "steam_branch_forbidden": "Cambiar la rama de Steam requiere los permisos para actualizar el servidor y para hacerle backups.",
+      "change_game_forbidden": "Cambiar el juego del servidor borra sus archivos: también hace falta el permiso para borrar el servidor.",
+      "change_game_unsupported": "El nodo del servidor tiene un agente demasiado viejo para cambiar su juego: actualizalo."
     },
     "console": {
       "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones).",
@@ -1209,6 +1212,13 @@
       },
       "cancelling": "Cancelando…",
       "showConsole": "Ver en la consola"
+    },
+    "changeGame": {
+      "title": "Cambiar juego",
+      "warning": "{{name}} pasa a ser el juego que elijas (o el mismo, desde cero). Se borran todos sus archivos, sin backup: mundos, configuración, mods y plugins. Se conservan su nombre, accesos, límites y backups; el juego nuevo arranca con sus opciones por defecto.",
+      "understood": "Entiendo que los archivos del servidor se borran y no se pueden recuperar.",
+      "understoodRequired": "Confirmá que entendés que se borran los archivos.",
+      "action": "Borrar sus archivos y cambiar de juego"
     },
     "administration": "Administración",
     "administrationHint": "Reinstalar vuelve a preparar la carpeta y la cuenta del servidor y corre su instalación. Eliminar borra sus archivos, sus backups y su cuenta de Windows del nodo.",
