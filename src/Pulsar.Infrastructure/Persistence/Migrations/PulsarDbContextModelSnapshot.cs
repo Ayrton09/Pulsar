@@ -3043,6 +3043,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("attempt_id");
 
+                    b.Property<bool>("AttemptReported")
+                        .HasColumnType("boolean")
+                        .HasColumnName("attempt_reported");
+
                     b.Property<string>("Error")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")

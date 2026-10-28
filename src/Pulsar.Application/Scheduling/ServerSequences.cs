@@ -389,27 +389,29 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         var via = sequence.Origin == SequenceOrigin.Schedule ? OperationRequester.Schedule : OperationRequester.System;
         if (!sequence.StepBegun)
         {
-            Guid? operation;
+            // Begun with the operation's id in the save that records the operation, before its command goes out: a panel
+            // stopped in between finds the step following that operation, never asks for a second one.
+            void Recorded(OperationId started) => sequence.Began(now, Observed(server), started);
             DomainError? error;
             if (step.Kind == SequenceStepKind.Backup)
             {
-                var backup = await services.GetRequiredService<ServerBackups>().CreateAsync(server.Id, null, via, cancellationToken);
-                (operation, error) = backup.IsSuccess ? (backup.Value.OperationId, (DomainError?)null) : ((Guid?)null, backup.Error);
+                var backup = await services.GetRequiredService<ServerBackups>().CreateAsync(server.Id, null, via, cancellationToken, Recorded);
+                error = backup.IsSuccess ? null : backup.Error;
             }
             else
             {
-                var update = await services.GetRequiredService<ServerManagement>().RequestUpdateAsync(server.Id, step.Validate, via, cancellationToken);
-                (operation, error) = update.IsSuccess ? (update.Value.Operation.Id.Value, (DomainError?)null) : ((Guid?)null, update.Error);
+                var update = await services.GetRequiredService<ServerManagement>()
+                    .RequestUpdateAsync(server.Id, step.Validate, via, cancellationToken, recorded: Recorded);
+                error = update.IsSuccess ? null : update.Error;
             }
 
-            if (operation is not { } started)
+            if (error is not null || !sequence.StepBegun)
             {
                 var reason = error ?? ServerErrors.CommandRejected;
                 sequence.StepFailed(reason.Code, reason.Message, now);
                 return;
             }
 
-            sequence.Began(now, Observed(server), new OperationId(started));
             sequence.WaitUntil(now + PollInterval);
             return;
         }

@@ -40,7 +40,7 @@ public static class ApiProblems
             or "backups.unsupported" or "backups.clean_unsupported" or "backups.clean_incomplete" or "server.limits_unsupported" or "backups.not_completed" or "backups.locked" or "backups.in_use" or "backups.corrupt"
             or "api_key.too_many" or "ssh_key.too_many" or "ssh_key.duplicate" or "enrollment_token.too_many" or "addon.unsupported" or "addon.requires" or "addon.conflicts" or "addon.required_by"
             or "schedules.too_many" or "schedules.sequence_running" or "schedules.sequence_over" or "server.update_check_unsupported"
-            or "mods.change_running" or "mods.required_by" or "mods.incompatible" or "mods.path_taken" or "mods.too_many"
+            or "mods.change_running" or "mods.required_by" or "mods.incompatible" or "mods.version_conflict" or "mods.path_taken" or "mods.too_many"
             or "mods.catalog_not_configured" or "mods.distribution_forbidden" or "mods.addon_missing"
             or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many" or "backup_storage.holds_copies"
             or "database_host.in_use" or "database_host.too_many" or "database_host.name_taken" or "database.name_taken" or "database.limit_reached"

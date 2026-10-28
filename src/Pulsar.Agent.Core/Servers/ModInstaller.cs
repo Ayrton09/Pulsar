@@ -15,7 +15,8 @@ public sealed record PackageRecord(string Package, IReadOnlyList<string> Files);
 /// <summary>
 /// Puts a mod catalog's files into a server and deletes others (<see cref="ChangeModsCommand"/>, Pulsar 1.0.9;
 /// docs/architecture/04, "Mods"). Every file is downloaded first, over HTTPS from the catalog's own hosts, and checked
-/// against its SHA-512 or SHA-1; only then are files deleted and written, so a failed download changes nothing. Files go
+/// against its SHA-512 or SHA-1; only then are files deleted and written, so a failed download changes nothing, and a
+/// write that fails puts back what was deleted or written over and deletes what was new (<see cref="Undo"/>). Files go
 /// only into the folders the game's manifest names for its catalogs, ending as it says (<c>.jar</c>; uMod's <c>.cs</c>).
 /// A Thunderstore package (Pulsar 1.0.14) is a zip, which Thunderstore publishes no checksum for, taken from its own hosts
 /// only and unpacked into BepInEx's folder: its plugins and patchers each in a folder named after it, its configuration
@@ -24,6 +25,9 @@ public sealed record PackageRecord(string Package, IReadOnlyList<string> Files);
 public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 {
     public const string PackageRecords = ".pulsar/packages";
+
+    /// <summary>A write failed and the server's files could not all be put back as they were.</summary>
+    public const string LeftPartial = "mods.left_partial";
 
     /// <summary>A mod or plugin larger than this is not one.</summary>
     public const long MaximumFile = 256L * 1024 * 1024;
@@ -52,7 +56,10 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 
     /// <param name="folders">The folders the game's manifest puts catalog files into.</param>
     /// <param name="packageFolders">The BepInEx folders it unpacks packages into (Thunderstore's).</param>
-    /// <exception cref="GameProcessException">With a <c>mods.*</c> code; nothing was changed unless the code is <c>mods.write_failed</c>.</exception>
+    /// <exception cref="GameProcessException">
+    /// With a <c>mods.*</c> code; nothing was changed unless the code is <see cref="LeftPartial"/> (a write failed and what
+    /// it changed could not all be put back: the files it removed or replaced may be gone).
+    /// </exception>
     public async Task ChangeAsync(string serverDirectory, IReadOnlyDictionary<string, IReadOnlyList<string>> folders, IReadOnlyList<ModDownload> add,
         IReadOnlyList<string> remove, Func<string, double?, Task> progress, CancellationToken cancellationToken,
         IReadOnlySet<string>? packageFolders = null)
@@ -163,16 +170,18 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
             }
 
             await progress(Steam.InstallStages.Installing, null);
+            using var undo = new Undo(files, serverDirectory);
             try
             {
                 foreach (var path in remove)
                 {
                     if (ModFiles.IsPackagePath(path, packageFolders))
                     {
-                        RemovePackage(serverDirectory, path);
+                        RemovePackage(serverDirectory, path, undo);
                     }
                     else
                     {
+                        undo.Keep(path);
                         Delete(serverDirectory, path);
                     }
                 }
@@ -180,17 +189,24 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                 foreach (var (file, content) in downloaded.Where(d => d.File.Layout is null))
                 {
                     content.Position = 0;
+                    undo.Keep(file.Path);
                     files.Write(serverDirectory, file.Path, content);
                 }
 
                 foreach (var (file, _, entries) in unpacking)
                 {
-                    WritePackage(serverDirectory, file.Path, entries);
+                    WritePackage(serverDirectory, file.Path, entries, undo);
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            // The node's own files report theirs as files.* (GameProcessException), a test's or another's as IOException.
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or GameProcessException)
             {
-                throw Failed("mods.write_failed", $"The mods could not all be written: {ex.Message}", ex);
+                if (!undo.PutBack())
+                {
+                    throw Failed(LeftPartial, $"The mods could not all be written, nor the files they replaced all put back (install again those the server lists no more): {ex.Message}", ex);
+                }
+
+                throw Failed("mods.write_failed", $"The mods could not all be written, so the server's files were put back as they were: {ex.Message}", ex);
             }
             finally
             {
@@ -286,14 +302,17 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
     }
 
     /// <summary>Records what it writes before the first file, so a failure midway leaves a record its removal trusts.</summary>
-    private void WritePackage(string serverDirectory, string packagePath, IReadOnlyList<(ZipArchiveEntry Entry, string Path, bool Config)> entries)
+    private void WritePackage(string serverDirectory, string packagePath, IReadOnlyList<(ZipArchiveEntry Entry, string Path, bool Config)> entries,
+        Undo undo)
     {
         var (_, package) = ModFiles.SplitPackagePath(packagePath);
         var written = entries.Where(e => !e.Config || !Exists(serverDirectory, e.Path)).ToList();
+        undo.Keep(RecordPath(package));
         WriteRecord(serverDirectory, new PackageRecord(package, [.. written.Where(e => !e.Config).Select(e => e.Path)]));
         foreach (var (entry, path, _) in written)
         {
             using var content = BoundedEntryStream.Open(entry);
+            undo.Keep(path);
             files.Write(serverDirectory, path, content);
         }
     }
@@ -302,12 +321,13 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
     /// Deletes the files the package's record lists (its configuration stays), then its folders once empty, then the
     /// record. With its record lost, the files right in its own folders go.
     /// </summary>
-    private void RemovePackage(string serverDirectory, string packagePath)
+    private void RemovePackage(string serverDirectory, string packagePath, Undo undo)
     {
         var (folder, package) = ModFiles.SplitPackagePath(packagePath);
         var listed = Record(serverDirectory, folder, package)?.Files ?? Loose(serverDirectory, folder, package);
         foreach (var path in listed)
         {
+            undo.Keep(path);
             Delete(serverDirectory, path);
         }
 
@@ -327,6 +347,7 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
             }
         }
 
+        undo.Keep(RecordPath(package));
         Delete(serverDirectory, RecordPath(package));
 
         static IEnumerable<string> Parents(string path)
@@ -429,4 +450,80 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
     }
 
     private static GameProcessException Failed(string code, string message, Exception? inner = null) => new(code, message, inner);
+
+    /// <summary>
+    /// What a change deleted or wrote over, copied first (into temporary files of the agent's, gone once closed), and the
+    /// files it created: <see cref="PutBack"/> deletes those and writes the copies back. A path is kept once, as it was
+    /// before the change.
+    /// </summary>
+    private sealed class Undo(IServerFiles files, string serverDirectory) : IDisposable
+    {
+        private readonly Dictionary<string, FileStream?> _before = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Copies the file at <paramref name="path"/> before it is deleted or written; none there is one to delete again.</summary>
+        public void Keep(string path)
+        {
+            if (_before.ContainsKey(path))
+            {
+                return;
+            }
+
+            using var existing = files.OpenRead(serverDirectory, path);
+            FileStream? copy = null;
+            if (existing is not null)
+            {
+                copy = new FileStream(Path.GetTempFileName(), FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose);
+                try
+                {
+                    existing.CopyTo(copy);
+                }
+                catch
+                {
+                    copy.Dispose();
+                    throw;
+                }
+            }
+
+            _before[path] = copy;
+        }
+
+        /// <summary>Puts every kept path back as it was; false when one could not be.</summary>
+        public bool PutBack()
+        {
+            var all = true;
+            foreach (var (path, copy) in _before)
+            {
+                try
+                {
+                    if (copy is null)
+                    {
+                        files.Delete(serverDirectory, path);
+                    }
+                    else
+                    {
+                        copy.Position = 0;
+                        files.Write(serverDirectory, path, copy);
+                    }
+                }
+                catch (DirectoryNotFoundException) when (copy is null)
+                {
+                    // Never created.
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GameProcessException)
+                {
+                    all = false;
+                }
+            }
+
+            return all;
+        }
+
+        public void Dispose()
+        {
+            foreach (var copy in _before.Values)
+            {
+                copy?.Dispose();
+            }
+        }
+    }
 }

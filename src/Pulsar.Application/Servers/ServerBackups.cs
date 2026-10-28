@@ -84,7 +84,9 @@ public sealed partial class ServerBackups(
     /// snapshot of its volume when it can; otherwise files it writes then may be captured half written).
     /// <paramref name="name"/> defaults to the time it was asked for.
     /// </summary>
-    public async Task<Result<BackupView>> CreateAsync(ServerId id, string? name, OperationRequester via, CancellationToken cancellationToken)
+    /// <param name="recorded">Called with the operation's id just before it is first saved: what follows it is saved with it.</param>
+    public async Task<Result<BackupView>> CreateAsync(ServerId id, string? name, OperationRequester via, CancellationToken cancellationToken,
+        Action<OperationId>? recorded = null)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -116,6 +118,7 @@ public sealed partial class ServerBackups(
         var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote), () =>
         {
             db.Backups.Add(backup);
+            recorded?.Invoke(operation.Id);
             audit.Record(AuditActions.Server.BackupRequested, metadata: new { backup = backup.Id.Value, backup.Name })
                 .WithServer(server.Id, server.NodeId);
         }, cancellationToken);

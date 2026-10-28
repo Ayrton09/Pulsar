@@ -99,7 +99,7 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
             var packs = new VerifiedDownloader(http, s_packHosts, "modpack", "modpacks") { StallTimeout = StallTimeout };
             prepared.Pack = await Download(() => packs.DownloadAsync(VerifiedDownloader.Https(pack.Url, "modpack"), algorithm, pack.Hash,
                 percent => progress(Steam.InstallStages.Downloading, percent / 10), cancellationToken, MaximumSize));
-            prepared.Archive = new ZipArchive(prepared.Pack, ZipArchiveMode.Read);
+            prepared.Archive = await OpenZipAsync(prepared.Pack, cancellationToken);
             if (serverPack is not null)
             {
                 await PrepareServerPackAsync(prepared, packs, serverPack, loader, gameVersion, loaderVersionError, progress, cancellationToken);
@@ -170,8 +170,27 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
         prepared.LoaderVersion = id[prefix.Length..];
         prepared.ServerPack = await Download(() => packs.DownloadAsync(VerifiedDownloader.Https(serverPack.Url, "modpack"), serverPack.Algorithm!.Value,
             serverPack.Hash, percent => progress(Steam.InstallStages.Downloading, 10 + percent * 0.9), cancellationToken, MaximumSize));
-        prepared.ServerArchive = new ZipArchive(prepared.ServerPack, ZipArchiveMode.Read);
+        prepared.ServerArchive = await OpenZipAsync(prepared.ServerPack, cancellationToken);
         prepared.Overrides = ServerPackFiles(prepared.ServerArchive);
+    }
+
+    /// <summary>
+    /// The pack's zip, its list of entries bounded before .NET reads it into memory (as every other zip the agent opens):
+    /// one of far too many entries, even of those never installed, is refused first.
+    /// </summary>
+    private static async Task<ZipArchive> OpenZipAsync(FileStream content, CancellationToken cancellationToken)
+    {
+        content.Position = 0;
+        try
+        {
+            await FileArchives.CheckDirectoryAsync(content, cancellationToken);
+        }
+        catch (FileManagerException ex)
+        {
+            throw Failed("modpack.too_large", $"The modpack is larger than Pulsar installs: {ex.Message}", ex);
+        }
+
+        return new ZipArchive(content, ZipArchiveMode.Read);
     }
 
     private static CurseForgeManifest ReadManifest(ZipArchive archive)

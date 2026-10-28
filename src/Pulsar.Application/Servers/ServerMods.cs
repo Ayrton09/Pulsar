@@ -96,7 +96,9 @@ public sealed partial class ServerMods(
     private sealed record Target(IModCatalog Catalog, ModSource Source, ModSourceDefinition Definition, ModTargetDefinition Kind, string? GameVersion,
         IReadOnlySet<string> Provided);
 
-    private sealed record Planned(ModSource Source, CatalogVersion Version, CatalogFile File, string Path, bool Dependency, string? Layout = null);
+    /// <param name="Requires">The projects it requires, those named by a version only too.</param>
+    private sealed record Planned(ModSource Source, CatalogVersion Version, CatalogFile File, string Path, bool Dependency, IReadOnlyList<string> Requires,
+        string? Layout = null);
 
     private enum Change
     {
@@ -216,6 +218,7 @@ public sealed partial class ServerMods(
     /// </summary>
     public async Task<Result<ModsView>> InstallAsync(ServerId id, string source, string projectId, string? versionId, CancellationToken cancellationToken)
     {
+        await SettleAsync(id, cancellationToken);
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
@@ -254,13 +257,13 @@ public sealed partial class ServerMods(
     /// </summary>
     public async Task<Result<ModsView>> UpdateAsync(ServerId id, IReadOnlyList<ServerModId>? modIds, CancellationToken cancellationToken)
     {
+        await SettleAsync(id, cancellationToken);
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
         }
 
-        await SettleAsync(server.Id, cancellationToken);
         var installed = await db.ServerMods.Where(m => m.ServerId == server.Id).ToListAsync(cancellationToken);
         if (installed.Any(m => m.State != ServerModState.Installed))
         {
@@ -315,13 +318,13 @@ public sealed partial class ServerMods(
     /// <summary>Removes a mod; one another installed mod requires stays (<c>mods.required_by</c>).</summary>
     public async Task<Result<ModsView>> RemoveAsync(ServerId id, ServerModId modId, CancellationToken cancellationToken)
     {
+        await SettleAsync(id, cancellationToken);
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
         }
 
-        await SettleAsync(server.Id, cancellationToken);
         var installed = await db.ServerMods.Where(m => m.ServerId == server.Id).ToListAsync(cancellationToken);
         if (installed.FirstOrDefault(m => m.Id == modId) is not { } mod)
         {
@@ -387,7 +390,9 @@ public sealed partial class ServerMods(
 
     /// <summary>
     /// A finished operation's outcome on the mods it changed: those it added are installed and those it deleted gone, or,
-    /// when it did not succeed, the other way round. Not saved.
+    /// when it did not succeed, the other way round. A write the node could not undo (<c>mods.left_partial</c>) may have
+    /// taken the files it was removing or replacing: those are no longer taken as installed, so installing them again
+    /// puts them back. Not saved.
     /// </summary>
     public static async Task CompletedAsync(IPulsarDbContext db, Operation operation, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -400,6 +405,7 @@ public sealed partial class ServerMods(
 
         var changed = await db.ServerMods.Where(m => m.OperationId == operation.Id).ToListAsync(cancellationToken);
         var succeeded = operation.Status == OperationStatus.Succeeded;
+        var partial = operation.ErrorCode == ModErrors.LeftPartialCode;
         foreach (var mod in changed)
         {
             switch (mod.State, succeeded)
@@ -408,6 +414,9 @@ public sealed partial class ServerMods(
                     mod.Installed(now);
                     break;
                 case (ServerModState.Removing, true) or (ServerModState.Installing, false):
+                    db.ServerMods.Remove(mod);
+                    break;
+                case (ServerModState.Removing, false) when partial:
                     db.ServerMods.Remove(mod);
                     break;
                 case (ServerModState.Removing, false):
@@ -419,7 +428,9 @@ public sealed partial class ServerMods(
 
     /// <summary>
     /// Mods left changing by an operation that ended unheard of (a panel that stopped meanwhile) take its outcome; those
-    /// whose operation is gone (deleted with the operations' history) are taken as not changed.
+    /// whose operation is gone (deleted with the operations' history) are taken as not changed. Forgets everything the
+    /// context tracks: called before the server a change goes on is loaded, never after (a server loaded before would be
+    /// left detached, and the operation then saved without the server taken for it).
     /// </summary>
     private async Task SettleAsync(ServerId serverId, CancellationToken cancellationToken)
     {
@@ -463,9 +474,9 @@ public sealed partial class ServerMods(
         db.ChangeTracker.Clear();
     }
 
+    /// <summary>The catalog and the mods for a change, the mods settled by the caller (<see cref="SettleAsync"/>) before it loaded the server.</summary>
     private async Task<Result<(Target Target, List<ServerMod> Installed)>> PrepareAsync(Server server, string source, CancellationToken cancellationToken)
     {
-        await SettleAsync(server.Id, cancellationToken);
         var target = await TargetAsync(server, source, cancellationToken);
         if (!target.IsSuccess)
         {
@@ -483,8 +494,10 @@ public sealed partial class ServerMods(
 
     /// <summary>
     /// What an install or update brings: each version asked for (or the project's newest for the server, a release when
-    /// there is one) and, recursively, the newest of each project it requires that the server does not have; one that is
-    /// installed in that version already is left out. <c>Dependency</c> says how each asked-for project is recorded.
+    /// there is one) and, recursively, each project it requires: the version required, or, when any will do, the newest
+    /// unless the server has one. One that is installed in that version already is left out. Two projects needing one in
+    /// different versions conflict (one that takes any gives way to the version another needs). <c>Dependency</c> says how
+    /// each asked-for project is recorded; a project the server has keeps how it was recorded.
     /// </summary>
     private static async Task<Result<List<Planned>>> PlanAsync(Target target, IReadOnlyList<ServerMod> installed,
         IReadOnlyList<(string Project, string? Version, bool Dependency)> asked, CancellationToken cancellationToken)
@@ -492,7 +505,8 @@ public sealed partial class ServerMods(
         var plan = new List<Planned>();
         var pending = new Queue<(string Project, string? Version, bool Dependency, string? NeededBy)>(asked.Select(a => (a.Project, a.Version, a.Dependency,
             (string?)null)));
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // Each project's version so far, and whether that version was needed (asked for by version, or a project asked for itself).
+        var chosen = new Dictionary<string, (CatalogVersion Version, bool Exact)>(StringComparer.Ordinal);
         while (pending.TryDequeue(out var next))
         {
             var version = await ChooseAsync(target, next.Project, next.Version, cancellationToken);
@@ -501,13 +515,25 @@ public sealed partial class ServerMods(
                 return next.NeededBy is { } neededBy ? ModErrors.RequirementMissing(neededBy) : ModErrors.NoVersion;
             }
 
-            if (!seen.Add(version.ProjectId))
+            var exact = next.Version is not null || next.NeededBy is null;
+            if (chosen.TryGetValue(version.ProjectId, out var earlier))
             {
-                continue;
+                if (!exact || earlier.Version.Id == version.Id)
+                {
+                    continue;
+                }
+
+                if (earlier.Exact)
+                {
+                    return ModErrors.VersionConflict(version.Name, earlier.Version.VersionNumber, version.VersionNumber);
+                }
+
+                plan.RemoveAll(p => p.Version.ProjectId == version.ProjectId); // any version would do there: this one, then
             }
 
+            chosen[version.ProjectId] = (version, exact);
             var existing = installed.FirstOrDefault(m => m.Source == target.Source && m.ProjectId == version.ProjectId);
-            if ((next.NeededBy is not null && existing is not null) || existing?.VersionId == version.Id)
+            if ((next.NeededBy is not null && next.Version is null && existing is not null) || existing?.VersionId == version.Id)
             {
                 continue; // a requirement the server has (any version will do), or that version is installed
             }
@@ -526,14 +552,7 @@ public sealed partial class ServerMods(
                 return ModErrors.FileInvalid;
             }
 
-            // A package goes into its own folder of plugins (Thunderstore publishes no checksum: the node takes it from its hosts only).
-            plan.Add(new Planned(target.Source, version, file with { Hash = file.Hash.ToLowerInvariant() },
-                package ? $"{target.Kind.Folder}/plugins/{version.ProjectId}" : $"{target.Kind.Folder}/{file.FileName}", next.Dependency, target.Kind.Layout));
-            if (plan.Count > MaxProjectsPerInstall)
-            {
-                return ModErrors.TooMany;
-            }
-
+            var requires = new List<string>();
             foreach (var dependency in version.Dependencies)
             {
                 if (dependency.Type == "incompatible" && dependency.ProjectId is { } other
@@ -545,22 +564,47 @@ public sealed partial class ServerMods(
                 if (dependency.Type == "required" && (dependency.ProjectId ?? dependency.VersionId) is { } wanted && IsCatalogId(wanted)
                     && (dependency.ProjectId is null || !target.Provided.Contains(dependency.ProjectId)))
                 {
-                    var project = dependency.ProjectId ?? await ProjectOfAsync(target, wanted, cancellationToken) ?? wanted;
+                    // Named by its version only: its project is what the server records it needs.
+                    if ((dependency.ProjectId ?? await ProjectOfAsync(target, wanted, cancellationToken)) is not { } project)
+                    {
+                        return ModErrors.RequirementMissing(version.Name);
+                    }
+
+                    requires.Add(project);
                     pending.Enqueue((project, dependency.VersionId, true, version.Name));
                 }
+            }
+
+            // A package goes into its own folder of plugins (Thunderstore publishes no checksum: the node takes it from its hosts only).
+            plan.Add(new Planned(target.Source, version, file with { Hash = file.Hash.ToLowerInvariant() },
+                package ? $"{target.Kind.Folder}/plugins/{version.ProjectId}" : $"{target.Kind.Folder}/{file.FileName}",
+                next.NeededBy is not null && existing is not null ? existing.Dependency : next.Dependency, [.. requires.Distinct(StringComparer.Ordinal)],
+                target.Kind.Layout));
+            if (plan.Count > MaxProjectsPerInstall)
+            {
+                return ModErrors.TooMany;
             }
         }
 
         return plan;
     }
 
-    /// <summary>The version to install: the one asked for when it suits the server, else the project's newest that does (a release first).</summary>
+    /// <summary>
+    /// The version to install: the one asked for, which must be the project's and suit the server (never another in its
+    /// place), else the project's newest that does (a release first). A project named by its slug finds the version asked
+    /// for among its own.
+    /// </summary>
     private static async Task<CatalogVersion?> ChooseAsync(Target target, string projectId, string? versionId, CancellationToken cancellationToken)
     {
-        if (versionId is not null && await target.Catalog.VersionAsync(versionId, cancellationToken) is { } asked
-            && (asked.ProjectId == projectId || asked.Id == versionId) && Suits(target, asked))
+        if (versionId is not null)
         {
-            return asked;
+            if (await target.Catalog.VersionAsync(versionId, cancellationToken) is { } asked && asked.ProjectId == projectId)
+            {
+                return Suits(target, asked) ? asked : null;
+            }
+
+            var own = await target.Catalog.VersionsAsync(projectId, target.Kind.LoaderList, target.GameVersion, cancellationToken);
+            return own.FirstOrDefault(v => v.Id == versionId && Suits(target, v));
         }
 
         var versions = await target.Catalog.VersionsAsync(projectId, target.Kind.LoaderList, target.GameVersion, cancellationToken);
@@ -633,10 +677,9 @@ public sealed partial class ServerMods(
         {
             foreach (var planned in add)
             {
-                var requires = planned.Version.Dependencies.Where(d => d.Type == "required" && d.ProjectId is not null).Select(d => d.ProjectId!).ToList();
                 db.ServerMods.Add(ServerMod.Installing(server.Id, planned.Source, planned.Version.ProjectId, planned.Version.Id,
                     names.GetValueOrDefault((planned.Source, planned.Version.ProjectId), planned.Version.Name), planned.Version.VersionNumber, planned.Path,
-                    planned.File.Hash, planned.File.Size, planned.Dependency, requires, operation.Id, now));
+                    planned.File.Hash, planned.File.Size, planned.Dependency, planned.Requires, operation.Id, now));
             }
 
             foreach (var mod in leaving)

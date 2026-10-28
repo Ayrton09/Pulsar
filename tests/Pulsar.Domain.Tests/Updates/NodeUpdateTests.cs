@@ -94,6 +94,30 @@ public sealed class NodeUpdateTests
     }
 
     [Fact]
+    public void OnceTheRequestReportedWithItsIdAResultWithoutOneIsAnEarlierOne()
+    {
+        // An installer's result from before request ids, of the same version, sent again after a reconnection.
+        var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
+        var attempt = update.AttemptId!.Value;
+        Assert.True(Report(update, NodeUpdate.Downloading, attempt));
+        Assert.True(update.AttemptReported);
+        Assert.False(Report(update, NodeUpdate.Failed, null, "x"));
+        Assert.True(Report(update, NodeUpdate.Installing, attempt));
+        Assert.False(Report(update, NodeUpdate.RolledBack, null, "The panel did not start."));
+        Assert.False(Report(update, NodeUpdate.Succeeded, null));
+        Assert.Equal((NodeUpdate.Installing, null), (update.Status, update.Error));
+
+        Assert.True(Report(update, NodeUpdate.Succeeded, attempt));
+        // Ended: the setups' result of another version is still news.
+        Assert.True(update.Reported(NodeUpdate.Succeeded, "1.0.3", "1.0.4", null, null, s_now));
+
+        // A new request starts without knowing: an agent older than ids answers it without one.
+        update.RequestAgain("1.0.4", "1.0.5", null, s_now);
+        Assert.False(update.AttemptReported);
+        Assert.True(update.Reported(NodeUpdate.Downloading, "1.0.4", "1.0.5", null, null, s_now));
+    }
+
+    [Fact]
     public void AFailureWhileDownloadingIsTakenWithoutARequestId()
     {
         var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);

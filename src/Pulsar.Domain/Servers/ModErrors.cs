@@ -64,6 +64,13 @@ public static class ModErrors
     public static DomainError RequiredBy(string name, string other) =>
         new("mods.required_by", $"{name} is needed by {other}: remove {other} first.");
 
+    /// <summary>The node's code for a write that failed and could not all be undone: the files it was removing may be gone.</summary>
+    public const string LeftPartialCode = "mods.left_partial";
+
+    /// <summary>Two projects of one install need the same project in different versions.</summary>
+    public static DomainError VersionConflict(string name, string version, string other) =>
+        new("mods.version_conflict", $"{name} is needed in two versions, {version} and {other}: install them one at a time.");
+
     public static DomainError Incompatible(string name, string other) =>
         new("mods.incompatible", $"{name} does not work with {other}, which is on the server.");
 

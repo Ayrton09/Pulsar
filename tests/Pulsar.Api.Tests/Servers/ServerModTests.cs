@@ -39,6 +39,9 @@ public sealed class FakeModrinth : HttpMessageHandler
 
     public HttpStatusCode? Failure { get; set; }
 
+    /// <summary>While set, the CDN answers only once it completes.</summary>
+    public TaskCompletionSource? HoldFiles { get; set; }
+
     public List<string> Requests { get; } = [];
 
     /// <summary>A version of a project with one file (served by the CDN), for one game version and loader.</summary>
@@ -92,6 +95,11 @@ public sealed class FakeModrinth : HttpMessageHandler
 
         if (uri.Host is "cdn.modrinth.com" or "edge.forgecdn.net")
         {
+            if (HoldFiles is { } hold)
+            {
+                await hold.Task.WaitAsync(cancellationToken);
+            }
+
             return Files.TryGetValue(uri.OriginalString, out var file)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(file) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -381,6 +389,99 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         Assert.Contains(audit, a => a.Action == AuditActions.Server.ModsUpdateRequested);
         Assert.Equal(2, audit.Count(a => a.Action == AuditActions.Server.ModsRemoveRequested));
     }
+
+    [DatabaseFact]
+    public async Task RequirementsAreMetInTheVersionTheyNameAndRecordedEvenByVersionOnly()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "versions");
+        var server = await InstalledAsync(admin, agent, "Versions");
+        await SetAsync(admin, server, "fabric");
+
+        // Gamma 1 on the server; Delta needs Gamma 2 exactly: Gamma is brought to 2, still not a dependency.
+        factory.Modrinth.Version("vgamma", "vgamma1", "1.0", Encoding.UTF8.GetBytes("gamma 1"));
+        factory.Modrinth.Version("vgamma", "vgamma2", "2.0", Encoding.UTF8.GetBytes("gamma 2"));
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vgamma", "vgamma1")));
+        await SettledAsync(admin, server, list => list.Count == 1);
+        Requires(factory.Modrinth.Version("vdelta", "vdelta1", "1.0", Encoding.UTF8.GetBytes("delta")), "vgamma", "vgamma2");
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vdelta", null)));
+        var view = await SettledAsync(admin, server, list => list.Count == 2 && list.Any(m => m.VersionId == "vgamma2"));
+        Assert.False(view.Installed.Single(m => m.ProjectId == "vgamma").Dependency);
+
+        // A requirement named by its version only is recorded: what needs it keeps it on the server.
+        factory.Modrinth.Version("vbeta", "vbeta1", "1.0", Encoding.UTF8.GetBytes("beta 1"));
+        Requires(factory.Modrinth.Version("valpha", "valpha1", "1.0", Encoding.UTF8.GetBytes("alpha")), null, "vbeta1");
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("valpha", null)));
+        view = await SettledAsync(admin, server, list => list.Count == 4);
+        var beta = view.Installed.Single(m => m.ProjectId == "vbeta");
+        Assert.Equal((true, "vbeta1"), (beta.Dependency, beta.VersionId));
+        Assert.Equal(["valpha 1.0"], beta.RequiredBy);
+        await ProblemAsync(await admin.DeleteAsync($"/api/v1/servers/{server}/mods/{beta.Id}"), HttpStatusCode.Conflict, "mods.required_by");
+
+        // One install needing a project in two versions conflicts.
+        factory.Modrinth.Version("vbeta", "vbeta2", "2.0", Encoding.UTF8.GetBytes("beta 2"));
+        Requires(factory.Modrinth.Version("veps", "veps1", "1.0", Encoding.UTF8.GetBytes("eps")), "vbeta", "vbeta1");
+        Requires(factory.Modrinth.Version("vzeta", "vzeta1", "1.0", Encoding.UTF8.GetBytes("zeta")), "vbeta", "vbeta2");
+        var eta = factory.Modrinth.Version("veta", "veta1", "1.0", Encoding.UTF8.GetBytes("eta"));
+        Requires(eta, "veps", null);
+        Requires(eta, "vzeta", null);
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("veta", null)), HttpStatusCode.Conflict,
+            "mods.version_conflict");
+
+        // A version asked for is that project's and suits the server, or nothing is installed: never another in its place.
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vomega", "vgamma1")), HttpStatusCode.BadRequest,
+            "mods.no_version");
+        factory.Modrinth.Version("vomega", "vomega1", "1.0", Encoding.UTF8.GetBytes("omega paper"), loader: "paper");
+        factory.Modrinth.Version("vomega", "vomega2", "2.0", Encoding.UTF8.GetBytes("omega fabric"));
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vomega", "vomega1")), HttpStatusCode.BadRequest,
+            "mods.no_version");
+        Assert.Equal(4, (await ModsAsync(admin, server)).Installed.Count);
+    }
+
+    [DatabaseFact]
+    public async Task AChangeAfterOneThatEndedUnheardOfStillTakesTheServer()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "settled");
+        var server = await InstalledAsync(admin, agent, "Settled");
+        await SetAsync(admin, server, "fabric");
+        factory.Modrinth.Version("ssodium", "ssodium1", "1.0", Encoding.UTF8.GetBytes("sodium"));
+        factory.Modrinth.Version("siris", "siris1", "1.0", Encoding.UTF8.GetBytes("iris"));
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("ssodium", null)));
+        await SettledAsync(admin, server, list => list.Count == 1);
+
+        // Its removal ended while the panel was away: the next change settles it first.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var ended = await db.Operations.Where(o => o.ServerId == new ServerId(server) && o.Type == OperationType.ModsChange).SingleAsync(Ct);
+            (await db.ServerMods.SingleAsync(m => m.ServerId == new ServerId(server), Ct)).Removing(ended.Id, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        factory.Modrinth.HoldFiles = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("siris", null)));
+            await using var scope = factory.Services.CreateAsyncScope();
+            var row = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Servers.AsNoTracking()
+                .SingleAsync(s => s.Id == new ServerId(server), Ct);
+            Assert.Equal(OperationType.ModsChange, row.ActiveOperationType);
+            Assert.NotNull(row.ActiveOperationId);
+        }
+        finally
+        {
+            factory.Modrinth.HoldFiles.TrySetResult();
+            factory.Modrinth.HoldFiles = null;
+        }
+
+        var view = await SettledAsync(admin, server, list => list.Count == 1 && list[0].ProjectId == "siris");
+        Assert.Equal(ServerModState.Installed, view.Installed[0].State);
+    }
+
+    /// <summary>The version requires a project (by its id, its version's, or both).</summary>
+    private static void Requires(JsonObject version, string? project, string? versionId) =>
+        version["dependencies"]!.AsArray().Add(new JsonObject { ["project_id"] = project, ["version_id"] = versionId, ["dependency_type"] = "required" });
 
     [DatabaseFact]
     public async Task AFileThatIsNotModrinthsChangesNothing()

@@ -126,6 +126,7 @@ public sealed partial class ServerMods
     public async Task<Result<ModsView>> InstallModpackAsync(ServerId id, string catalogSource, string projectId, string? versionId,
         CancellationToken cancellationToken)
     {
+        await SettleModpacksAsync(id, cancellationToken);
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
@@ -137,7 +138,6 @@ public sealed partial class ServerMods
             return ModpackErrors.NoVersion;
         }
 
-        await SettleModpacksAsync(server.Id, cancellationToken);
         var manifest = await ManifestAsync(server, cancellationToken);
         var packs = await PackCatalogAsync(manifest, catalogSource, cancellationToken);
         if (!packs.IsSuccess)
@@ -310,7 +310,10 @@ public sealed partial class ServerMods
         pack.Installed(loaderVersion, now);
     }
 
-    /// <summary>Packs left installing by an operation that ended unheard of take its outcome; those whose operation is gone are dropped.</summary>
+    /// <summary>
+    /// Packs left installing by an operation that ended unheard of take its outcome; those whose operation is gone are
+    /// dropped. Forgets everything the context tracks: called before the server a change goes on is loaded, never after.
+    /// </summary>
     private async Task SettleModpacksAsync(ServerId serverId, CancellationToken cancellationToken)
     {
         // Read untracked: the node's report may settle a pack between this read and what follows, which then reads it again

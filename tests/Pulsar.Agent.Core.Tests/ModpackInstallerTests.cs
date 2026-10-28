@@ -159,6 +159,22 @@ public sealed class ModpackInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task APackClaimingTooManyEntriesIsRefusedBeforeItsListIsRead()
+    {
+        // Its Zip64 end record, the locator pointing at it, and the classic end record whose fields say "see Zip64".
+        var tail = new byte[56 + 20 + 22];
+        BitConverter.TryWriteBytes(tail.AsSpan(0), 0x06064b50u);
+        BitConverter.TryWriteBytes(tail.AsSpan(32), (long)Pulsar.Agent.Core.Files.FileArchives.MaxEntries + 1);
+        BitConverter.TryWriteBytes(tail.AsSpan(56), 0x07064b50u);
+        BitConverter.TryWriteBytes(tail.AsSpan(56 + 8), 0L);
+        BitConverter.TryWriteBytes(tail.AsSpan(76), 0x06054b50u);
+        BitConverter.TryWriteBytes(tail.AsSpan(76 + 10), ushort.MaxValue);
+        BitConverter.TryWriteBytes(tail.AsSpan(76 + 16), uint.MaxValue);
+
+        Assert.Equal("modpack.too_large", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(tail))).Code);
+    }
+
+    [Fact]
     public async Task APackWithoutAnIndexOfMinecraftsIsNotOne()
     {
         var notAPack = Pack(null, ("overrides/server.properties", "motd=x"));

@@ -260,8 +260,58 @@ public sealed class ModInstallerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "BepInEx", "plugins", "ValheimModding-Jotunn", "Jotunn.dll")));
     }
 
-    private Task ChangeAsync(IReadOnlyList<ModDownload> add, IReadOnlyList<string> remove) =>
-        new ModInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AWriteThatFailsPutsBackWhatItReplacedAndDeletesWhatWasNew(bool windows)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "mods"));
+        File.WriteAllText(Path.Combine(_root, "mods", "lithium-fabric-0.17.0.jar"), "old");
+        var files = new FailingFiles { FailWrite = path => path == "mods/fabric-api-0.130.0.jar", Windows = windows };
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync(
+            [Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium), Download("mods/fabric-api-0.130.0.jar", FabricApi, _fabricApi)],
+            ["mods/lithium-fabric-0.17.0.jar"], files));
+
+        Assert.Equal("mods.write_failed", error.Code);
+        Assert.Equal("old", File.ReadAllText(Path.Combine(_root, "mods", "lithium-fabric-0.17.0.jar")));
+        Assert.Equal(["lithium-fabric-0.17.0.jar"], Directory.EnumerateFiles(Path.Combine(_root, "mods")).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task AFailedPackageWriteLeavesTheOldPackageAndItsRecord()
+    {
+        _http.Routes[Jotunn] = Package(("plugins/Jotunn.dll", "jotunn 1"));
+        await ChangeAsync([PackageDownload(JotunnPath, Jotunn)], []);
+        var record = File.ReadAllText(Path.Combine(_root, ".pulsar", "packages", "ValheimModding-Jotunn.json"));
+        _http.Routes[Jotunn] = Package(("plugins/Jotunn.dll", "jotunn 2"), ("plugins/Extra.dll", "extra"));
+        var files = new FailingFiles { FailWrite = path => path.EndsWith("Extra.dll", StringComparison.Ordinal) };
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync([PackageDownload(JotunnPath, Jotunn)], [JotunnPath], files));
+
+        Assert.Equal("mods.write_failed", error.Code);
+        Assert.Equal("jotunn 1", File.ReadAllText(Path.Combine(_root, "BepInEx", "plugins", "ValheimModding-Jotunn", "Jotunn.dll")));
+        Assert.Equal(record, File.ReadAllText(Path.Combine(_root, ".pulsar", "packages", "ValheimModding-Jotunn.json")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AWriteThatCannotBeUndoneSaysSo(bool windows)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "mods"));
+        File.WriteAllText(Path.Combine(_root, "mods", "lithium-fabric-0.17.0.jar"), "old");
+        // The new file cannot be written, nor the old one put back.
+        var files = new FailingFiles { FailWrite = path => path.StartsWith("mods/lithium", StringComparison.Ordinal), Windows = windows };
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync([Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium)],
+            ["mods/lithium-fabric-0.17.0.jar"], files));
+
+        Assert.Equal(ModInstaller.LeftPartial, error.Code);
+    }
+
+    private Task ChangeAsync(IReadOnlyList<ModDownload> add, IReadOnlyList<string> remove, IServerFiles? files = null) =>
+        new ModInstaller(files ?? new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }
             .ChangeAsync(_root, s_folders, add, remove, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken,
                 new HashSet<string>(StringComparer.Ordinal) { "BepInEx" });
 
@@ -291,6 +341,38 @@ public sealed class ModInstallerTests : IDisposable
 
     private static ModDownload Download(string path, string url, byte[] content) =>
         new(path, url, Convert.ToHexStringLower(SHA512.HashData(content)), content.Length);
+
+    /// <summary>The server's files, with a write that fails for the paths a test names.</summary>
+    private sealed class FailingFiles : IServerFiles
+    {
+        private readonly DirectServerFiles _files = new();
+
+        public Func<string, bool> FailWrite { get; init; } = _ => false;
+
+        /// <summary>Fails as the node's own files do (a files.* code), not with an IOException.</summary>
+        public bool Windows { get; init; }
+
+        public Stream? OpenRead(string serverRoot, string relativePath) => _files.OpenRead(serverRoot, relativePath);
+
+        public void Write(string serverRoot, string relativePath, Stream content)
+        {
+            if (FailWrite(relativePath))
+            {
+                throw Windows ? new GameProcessException("files.write_failed", "The disk is full.") : new IOException("The disk is full.");
+            }
+
+            _files.Write(serverRoot, relativePath, content);
+        }
+
+        public void Delete(string serverRoot, string relativePath) => _files.Delete(serverRoot, relativePath);
+
+        public void CreateDirectory(string serverRoot, string relativePath) => _files.CreateDirectory(serverRoot, relativePath);
+
+        public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _files.DeleteEmptyDirectory(serverRoot, relativePath);
+
+        public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit) =>
+            _files.ListFiles(serverRoot, relativeDirectory, limit);
+    }
 
     private sealed class Files : HttpMessageHandler
     {

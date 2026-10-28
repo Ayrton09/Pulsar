@@ -800,8 +800,9 @@ public sealed partial class ServerManagement(
     }
 
     /// <summary>Starts the update operation; the scheduler follows the operation it returns (failed already when the node refused it).</summary>
+    /// <param name="recorded">Called with the operation's id just before it is first saved: what follows it is saved with it.</param>
     public async Task<Result<(Server Server, Operation Operation)>> RequestUpdateAsync(ServerId id, bool validate, OperationRequester via,
-        CancellationToken cancellationToken, string? steamGuardCode = null)
+        CancellationToken cancellationToken, string? steamGuardCode = null, Action<OperationId>? recorded = null)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -843,7 +844,8 @@ public sealed partial class ServerManagement(
 
         var operation = Operation.Create(OperationType.ServerUpdate, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
             via, clock.GetUtcNow());
-        var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate, login.Value), beforeSave: null, cancellationToken);
+        var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate, login.Value),
+            beforeSave: recorded is null ? null : () => recorded(operation.Id), cancellationToken);
         if (!run.IsSuccess)
         {
             return run.Error!;

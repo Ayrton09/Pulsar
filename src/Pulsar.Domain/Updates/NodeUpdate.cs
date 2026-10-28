@@ -42,6 +42,12 @@ public sealed class NodeUpdate
     /// <summary>This request's id, sent with the command; null for a row this panel did not ask for (<see cref="FromReport"/>).</summary>
     public Guid? AttemptId { get; private set; }
 
+    /// <summary>
+    /// Whether a report naming <see cref="AttemptId"/> arrived: the agent knows request ids, so a report without one is an
+    /// earlier result (an installer's from before ids, sent again after a Hello), never this request's.
+    /// </summary>
+    public bool AttemptReported { get; private set; }
+
     public UserId? RequestedBy { get; private set; }
 
     public DateTimeOffset RequestedAt { get; private set; }
@@ -73,6 +79,7 @@ public sealed class NodeUpdate
         ToVersion = Bounded(to, MaxVersionLength);
         Error = null;
         AttemptId = Guid.NewGuid();
+        AttemptReported = false;
         RequestedBy = requestedBy;
         RequestedAt = now;
         UpdatedAt = now;
@@ -101,9 +108,12 @@ public sealed class NodeUpdate
             return false;
         }
 
+        var named = attempt is not null && attempt == AttemptId && !AttemptReported;
+        AttemptReported |= named;
+
         if (Status == status && ToVersion == (to ?? ToVersion) && Error == Bounded(error, MaxErrorLength))
         {
-            return false;
+            return named;
         }
 
         Status = Bounded(status, MaxStatusLength)!;
@@ -121,6 +131,8 @@ public sealed class NodeUpdate
     /// and an end only once the agent took it up (a failure from downloading on, the installer's result once the
     /// installer was started), since an earlier result sent again after a Hello can come at any moment before; once it
     /// ended, only a result of another version (the setups'), as one of its own version is the one kept or an earlier one.
+    /// Once a report named the request, one without an id is never its own: only the setups' result of another version,
+    /// after it ended or stopped being waited for.
     /// A row this panel did not ask for takes what comes, as long as an update under way keeps its version. No clock of
     /// the node's is compared with the panel's.
     /// </summary>
@@ -134,6 +146,11 @@ public sealed class NodeUpdate
         if (attempt is { } reported)
         {
             return reported == current && !IsFinal(Status) && Rank(status) >= Rank(Status);
+        }
+
+        if (AttemptReported)
+        {
+            return !IsUnderWay(now) && to is not null && to != ToVersion;
         }
 
         if (IsUnderWay(now))
