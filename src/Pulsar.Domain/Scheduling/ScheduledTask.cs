@@ -329,7 +329,7 @@ public sealed class ScheduledTask
     {
         // A move to another template is the panel's own step (its template updates), never a scheduled task's.
         if (steps is null || steps.Count is 0 or > ServerSequence.MaxSteps
-            || steps.Any(s => s is null || s.Kind is SequenceStepKind.UpgradeTemplate or SequenceStepKind.CopyFrom || !ServerSequence.IsValid(s)))
+            || steps.Any(s => s is null || s.Kind is SequenceStepKind.UpgradeTemplate or SequenceStepKind.CopyFrom or SequenceStepKind.MoveTo || !ServerSequence.IsValid(s)))
         {
             return null;
         }

@@ -354,6 +354,7 @@
         "install_requested": "Pidió reinstalar un servidor",
         "template_changed": "Pasó un servidor a otra versión de su plantilla",
         "game_changed": "Cambió el juego de un servidor",
+        "transfer_requested": "Pidió mover un servidor a otro nodo",
         "update_requested": "Pidió actualizar un juego",
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "El nodo del servidor tiene un agente demasiado viejo para cambiar su juego: actualizalo.",
       "clone_forbidden": "Clonar un servidor copia sus archivos: hacen falta los permisos para hacerle backups y para ver sus archivos.",
       "clone_running": "Un clon de este servidor, o hacia ese nodo, todavía está copiando sus archivos: esperá a que termine.",
+      "transfer_forbidden": "Mover un servidor a otro nodo requiere los permisos para hacerle backups, instalarlo y borrarlo, y para crear servidores en ese nodo.",
+      "transferring": "El servidor se está moviendo a otro nodo: esperá a que termine.",
+      "same_node": "El servidor ya está en ese nodo.",
+      "old_copy_left": "El servidor se movió al nodo nuevo, pero no se pudo borrar su copia del nodo viejo: borrá su carpeta allá a mano.",
       "copy_unsupported": "Un nodo tiene un agente demasiado viejo para copiar los archivos de un servidor a otro nodo: actualizalo.",
       "backup_corrupt": "El nodo mandó un archivo de otro tamaño que el backup que hizo."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Copiando los archivos de {{source}} a este servidor: primero se instala y después se restaura acá un backup de {{source}}.",
       "failed": "No se pudieron copiar los archivos de {{source}} a este servidor.",
       "sourceGone": "un servidor que ya no existe"
+    },
+    "transfer": {
+      "title": "Transferir",
+      "hint": "{{name}} se muda al nodo que elijas y sigue siendo el mismo servidor: se conservan su link, accesos, tareas programadas e historial; cambian sus puertos. Se hace un backup acá, se instala allá y se restauran sus archivos allá; después se borra su copia de acá, con los backups que solo están en este nodo (los copiados al almacenamiento remoto se conservan). Si algo falla antes, queda acá como está.",
+      "action": "Transferir",
+      "noNodes": "No hay otro nodo conectado en el que puedas crear servidores.",
+      "moving": "Moviendo este servidor a {{node}}: se hace un backup, se instala allá y se restauran sus archivos allá. No se puede iniciar hasta que termine.",
+      "failed": "No se pudo mover el servidor a {{node}}: queda en su nodo como estaba.",
+      "leftCopy": "El servidor se movió a {{node}}, pero no se pudo borrar su copia del nodo viejo.",
+      "nodeGone": "un nodo que ya no existe"
     },
     "changeGame": {
       "title": "Cambiar juego",
@@ -7588,7 +7603,8 @@
       "backup": "haciendo un backup",
       "update": "actualizando el juego",
       "upgradeTemplate": "pasando a la plantilla más nueva",
-      "copyFrom": "copiando los archivos de otro servidor"
+      "copyFrom": "copiando los archivos de otro servidor",
+      "moveTo": "moviendo a otro nodo"
     },
     "waitingForPlayers": "La actualización espera a que no juegue nadie (conectados ahora: {{players}}).",
     "waiting": "La actualización empieza apenas el servidor quede libre.",

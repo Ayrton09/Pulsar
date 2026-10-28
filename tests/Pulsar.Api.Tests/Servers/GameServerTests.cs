@@ -268,6 +268,26 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         await ServerApi.CommandAsync(admin, server, "stop");
     }
 
+    [DatabaseFact]
+    public async Task AGameWithOtherPortsGetsThemAllWhenTheServerBecomesIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "change-game-ports");
+        await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await InstalledAsync(admin, agent, "css");
+        var rust = await TemplateAsync(admin, "rust");
+
+        using (var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(rust.Template.Id)))
+        {
+            await AccessScenario.EnsureSuccessAsync(changed);
+        }
+
+        // Its spec was built before the change was saved: the port the new game adds is in it all the same.
+        var after = await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null
+            && s.Server.TemplateKey == "rust", "installed as Rust");
+        Assert.Equal(["game", "query"], after.Ports.Where(p => p.Port is not null).Select(p => p.Name).Order());
+    }
+
     /// <summary>A version newer than <paramref name="version"/> ("1.1.0" gives "1.2.0"), for a test's own newer template.</summary>
     internal static string NextVersion(string version)
     {

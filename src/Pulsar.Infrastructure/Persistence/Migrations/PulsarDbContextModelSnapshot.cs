@@ -1117,13 +1117,13 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_node_allocations");
 
-                    b.HasIndex("ServerId", "PortName")
-                        .IsUnique()
-                        .HasDatabaseName("ix_node_allocations_server_id_port_name");
-
                     b.HasIndex("NodeId", "IpAddress", "Port")
                         .IsUnique()
                         .HasDatabaseName("ix_node_allocations_node_id_ip_address_port");
+
+                    b.HasIndex("ServerId", "NodeId", "PortName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_allocations_server_id_node_id_port_name");
 
                     b.ToTable("node_allocations", null, t =>
                         {
@@ -1914,7 +1914,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("server_sequences", null, t =>
                         {
-                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('clone', 'game_update', 'schedule', 'steam_branch', 'template_update')");
+                            t.HasCheckConstraint("ck_server_sequences_origin", "origin IN ('clone', 'game_update', 'schedule', 'steam_branch', 'template_update', 'transfer')");
 
                             t.HasCheckConstraint("ck_server_sequences_status", "status IN ('cancelled', 'failed', 'running', 'succeeded')");
                         });

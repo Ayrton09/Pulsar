@@ -354,6 +354,7 @@
         "install_requested": "Demande de réinstallation d'un serveur",
         "template_changed": "Passage d'un serveur à une autre version de son modèle",
         "game_changed": "Jeu d'un serveur changé",
+        "transfer_requested": "Déplacement d'un serveur vers un autre nœud demandé",
         "update_requested": "Demande de mise à jour d'un jeu",
         "settings_changed": "Modification des paramètres d'un serveur",
         "ports_changed": "Modification des ports d'un serveur",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "L'agent du nœud du serveur est trop ancien pour changer son jeu : mettez-le à jour.",
       "clone_forbidden": "Cloner un serveur copie ses fichiers : il faut les permissions de le sauvegarder et de voir ses fichiers.",
       "clone_running": "Un clone de ce serveur, ou vers ce nœud, copie encore ses fichiers : attendez qu'il se termine.",
+      "transfer_forbidden": "Déplacer un serveur vers un autre nœud nécessite les permissions de le sauvegarder, de l'installer et de le supprimer, et de créer des serveurs sur ce nœud.",
+      "transferring": "Le serveur est en cours de déplacement vers un autre nœud : attendez la fin.",
+      "same_node": "Le serveur est déjà sur ce nœud.",
+      "old_copy_left": "Le serveur a été déplacé vers le nouveau nœud, mais sa copie sur l'ancien nœud n'a pas pu être supprimée : supprimez son dossier à la main.",
       "copy_unsupported": "Un nœud a un agent trop ancien pour copier les fichiers d'un serveur vers un autre nœud : mettez-le à jour.",
       "backup_corrupt": "Le nœud a envoyé une archive d'une autre taille que la sauvegarde qu'il a faite."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Copie des fichiers de {{source}} sur ce serveur : il s'installe d'abord, puis une sauvegarde de {{source}} est restaurée ici.",
       "failed": "Les fichiers de {{source}} n'ont pas pu être copiés sur ce serveur.",
       "sourceGone": "un serveur qui n'existe plus"
+    },
+    "transfer": {
+      "title": "Transférer",
+      "hint": "{{name}} part sur le nœud choisi et reste le même serveur : son lien, ses accès, ses tâches et son historique restent ; ses ports changent. Il est sauvegardé ici, installé là-bas et ses fichiers y sont restaurés ; puis sa copie ici est supprimée, avec les sauvegardes qui ne sont que sur ce nœud (les copies en stockage distant restent). Si quelque chose échoue avant, il reste ici tel quel.",
+      "action": "Transférer",
+      "noNodes": "Aucun autre nœud connecté sur lequel vous pouvez créer des serveurs.",
+      "moving": "Déplacement de ce serveur vers {{node}} : il est sauvegardé, installé là-bas et ses fichiers y sont restaurés. Il ne peut pas démarrer avant la fin.",
+      "failed": "Le serveur n'a pas pu être déplacé vers {{node}} : il reste sur son nœud tel qu'il était.",
+      "leftCopy": "Le serveur a été déplacé vers {{node}}, mais sa copie sur l'ancien nœud n'a pas pu être supprimée.",
+      "nodeGone": "un nœud qui n'existe plus"
     },
     "changeGame": {
       "title": "Changer de jeu",
@@ -7588,7 +7603,8 @@
       "backup": "sauvegarde",
       "update": "mise à jour du jeu",
       "upgradeTemplate": "passage au modèle plus récent",
-      "copyFrom": "copie des fichiers d'un autre serveur"
+      "copyFrom": "copie des fichiers d'un autre serveur",
+      "moveTo": "déplacement vers un autre nœud"
     },
     "waitingForPlayers": "La mise à jour attend que personne ne joue (en ligne : {{players}}).",
     "waiting": "La mise à jour commence dès que le serveur est libre.",

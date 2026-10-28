@@ -7,6 +7,7 @@ using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 using Pulsar.Manifests;
@@ -225,6 +226,9 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
                     break;
                 case SequenceStepKind.CopyFrom:
                     await CopyFromAsync(services, db, sequence, server, new ServerId(Guid.Parse(step.Text!)), now, cancellationToken);
+                    break;
+                case SequenceStepKind.MoveTo when ServerSequence.TryParseMove(step.Text, out var from, out var to):
+                    await MoveToAsync(services, db, sequence, server, new NodeId(from), new NodeId(to), now, cancellationToken);
                     break;
                 default:
                     sequence.StepFailed("schedules.step_unknown", $"Unknown step {step.Kind}.", now);

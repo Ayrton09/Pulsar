@@ -108,6 +108,16 @@ export function useCloneServer() {
   });
 }
 
+/** Moves the stopped server to another node, as the same server, with its files (copied after it installs there). */
+export function useTransferServer() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Schemas['TransferServerRequest']) =>
+      unwrap(api.POST('/api/v1/servers/{id}/transfer', { params: { path: { id } }, body })),
+    onSuccess: changed,
+  });
+}
+
 export type ServerCommand = 'start' | 'stop' | 'restart' | 'kill';
 
 export function useServerCommand() {

@@ -31,7 +31,8 @@ public sealed partial class ServerBackups
             return ServerErrors.BackupNotCompleted;
         }
 
-        if (Connection(source.NodeId, AgentCapabilities.SendBackup) is { IsSuccess: false } sending)
+        // From the node that has its archive: the source's, or, for a server being transferred, the node it leaves.
+        if (Connection(backup.NodeId, AgentCapabilities.SendBackup) is { IsSuccess: false } sending)
         {
             return sending.Error!;
         }
@@ -41,7 +42,7 @@ public sealed partial class ServerBackups
             return ServerErrors.CopyUnsupported;
         }
 
-        if (transfers.BeginDownload(source.NodeId, null) is not { } download)
+        if (transfers.BeginDownload(backup.NodeId, null) is not { } download)
         {
             return ServerErrors.FileTransfersBusy;
         }
@@ -50,7 +51,7 @@ public sealed partial class ServerBackups
         try
         {
             var remote = await RemoteOfAsync(backup, cancellationToken);
-            var sent = Ack(await connections.SendAsync(source.NodeId, new SendBackupCommand(source.Id.Value, backup.Id.Value, download.Ticket, remote),
+            var sent = Ack(await connections.SendAsync(backup.NodeId, new SendBackupCommand(source.Id.Value, backup.Id.Value, download.Ticket, remote),
                 null, cancellationToken));
             if (!sent.IsSuccess || sent.Value.Result is not FileEntryResult)
             {

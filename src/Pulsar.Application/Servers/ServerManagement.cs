@@ -79,10 +79,12 @@ public sealed record ServerDetails(
     ServerCopyView? Copy = null);
 
 /// <summary>
-/// The copy of another server's files into this one, for a clone (Pulsar 1.0.16): from which server (null once it is
-/// gone), and how it goes.
+/// The last copy of files into this server (Pulsar 1.0.16): a clone's, from which server (null once it is gone), or a
+/// transfer's, to which node; and how it goes.
 /// </summary>
-public sealed record ServerCopyView(Guid? SourceId, string? SourceName, Domain.Scheduling.SequenceStatus Status, string? ErrorCode, string? Message);
+/// <param name="Transfer">A move of this server to another node, rather than a clone's copy.</param>
+public sealed record ServerCopyView(Guid? SourceId, string? SourceName, Domain.Scheduling.SequenceStatus Status, string? ErrorCode, string? Message,
+    bool Transfer = false, string? TargetNodeName = null);
 
 /// <summary>The Steam account a server's SteamCMD signs in with (Phase 13).</summary>
 /// <param name="Required">Its game's dedicated server can only be downloaded with an account.</param>
@@ -237,7 +239,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -280,6 +282,11 @@ public sealed partial class ServerManagement(
         if (server is null)
         {
             return ServerErrors.NotFound;
+        }
+
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
         }
 
         if (Connection(server.NodeId) is null)
@@ -400,6 +407,11 @@ public sealed partial class ServerManagement(
             return ServerErrors.NotFound;
         }
 
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         if (Connection(server.NodeId) is null)
         {
             return NodeErrors.NotConnected;
@@ -442,7 +454,7 @@ public sealed partial class ServerManagement(
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
         return valid.IsSuccess ? (server, current, next) : valid.Error!;
     }
 
@@ -535,7 +547,7 @@ public sealed partial class ServerManagement(
             return startup.Error!;
         }
 
-        var valid = specs.Check(server, manifest, await specs.AllocationsOf(server.Id, cancellationToken));
+        var valid = specs.Check(server, manifest, await specs.AllocationsOf(server, cancellationToken));
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -659,6 +671,11 @@ public sealed partial class ServerManagement(
             return ServerErrors.NotFound;
         }
 
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         if (server.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;
@@ -678,7 +695,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -686,7 +703,7 @@ public sealed partial class ServerManagement(
 
         audit.Record(AuditActions.Server.PortsChanged, metadata: new
         {
-            ports = db.NodeAllocations.Local.Where(a => a.ServerId == server.Id).ToDictionary(a => a.PortName!, a => $"{a.IpAddress}:{a.Port}"),
+            ports = db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId).ToDictionary(a => a.PortName!, a => $"{a.IpAddress}:{a.Port}"),
         }).WithServer(server.Id, server.NodeId);
         RecordAddedAllocations(server, resolved.Value.Added);
         try
@@ -815,6 +832,11 @@ public sealed partial class ServerManagement(
         if (server is null)
         {
             return ServerErrors.NotFound;
+        }
+
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
         }
 
         var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
@@ -1007,6 +1029,11 @@ public sealed partial class ServerManagement(
             return ServerErrors.NotFound;
         }
 
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         if (Connection(server.NodeId) is null)
         {
             return NodeErrors.NotConnected;
@@ -1031,6 +1058,11 @@ public sealed partial class ServerManagement(
         if (server is null)
         {
             return ServerErrors.NotFound;
+        }
+
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
         }
 
         if (Connection(server.NodeId) is null)
@@ -1113,7 +1145,7 @@ public sealed partial class ServerManagement(
             .ToListAsync(cancellationToken);
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
-        var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
+        var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId).ToListAsync(cancellationToken))
             .ToDictionary(a => a.PortName!);
         var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
             ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port, p.Follows?.Offset, p.Default, p.Protocols, p.Description)
@@ -1130,11 +1162,19 @@ public sealed partial class ServerManagement(
                 : null), manifest.ModList.Count > 0, server.GameVersion, ServerPlayers.View(manifest), await CopyViewAsync(server.Id, cancellationToken));
     }
 
-    /// <summary>The last copy of another server's files into this one (a clone's), if any.</summary>
+    /// <summary>The last copy of files into this server (a clone's, or a transfer's), if any.</summary>
     private async Task<ServerCopyView?> CopyViewAsync(ServerId id, CancellationToken cancellationToken)
     {
-        var copy = await db.ServerSequences.AsNoTracking().Where(s => s.ServerId == id && s.Origin == Domain.Scheduling.SequenceOrigin.Clone)
+        var copy = await db.ServerSequences.AsNoTracking()
+            .Where(s => s.ServerId == id && (s.Origin == Domain.Scheduling.SequenceOrigin.Clone || s.Origin == Domain.Scheduling.SequenceOrigin.Transfer))
             .OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (copy is { Origin: Domain.Scheduling.SequenceOrigin.Transfer, Steps: [{ Text: var move }, ..] }
+            && Domain.Scheduling.ServerSequence.TryParseMove(move, out _, out var to))
+        {
+            var node = await db.Nodes.AsNoTracking().Where(n => n.Id == new NodeId(to)).Select(n => n.Name).SingleOrDefaultAsync(cancellationToken);
+            return new ServerCopyView(null, null, copy.Status, copy.ErrorCode, copy.Message, Transfer: true, node);
+        }
+
         if (copy is not { Steps: [{ Text: { } text }, ..] } || !Guid.TryParse(text, out var sourceId))
         {
             return null;
@@ -1153,9 +1193,13 @@ public sealed partial class ServerManagement(
         var templates = await db.GameTemplates.AsNoTracking().Where(t => templateIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => new { t.Name, t.Key }, cancellationToken);
         var serverIds = servers.Select(s => s.Id).ToList();
-        var gamePorts = await db.NodeAllocations.AsNoTracking()
-            .Where(a => a.ServerId != null && serverIds.Contains(a.ServerId.Value) && a.PortName == GamePortName)
-            .ToDictionaryAsync(a => a.ServerId!.Value, a => new ServerAddressView(a.IpAddress, a.Port), cancellationToken);
+        // On its own node only: a server being transferred holds the ports of the node it leaves until it is done.
+        var nodeOf = servers.ToDictionary(s => s.Id, s => s.NodeId);
+        var gamePorts = (await db.NodeAllocations.AsNoTracking()
+                .Where(a => a.ServerId != null && serverIds.Contains(a.ServerId.Value) && a.PortName == GamePortName)
+                .ToListAsync(cancellationToken))
+            .Where(a => nodeOf[a.ServerId!.Value] == a.NodeId)
+            .ToDictionary(a => a.ServerId!.Value, a => new ServerAddressView(a.IpAddress, a.Port));
         var operations = await db.Operations.AsNoTracking().Where(o => operationIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id, cancellationToken);
         // The last check found an update (a server whose updates are off shows none).
         var updatable = (await db.GameUpdateWatches.AsNoTracking()

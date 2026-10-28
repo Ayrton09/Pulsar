@@ -39,6 +39,14 @@ public enum SequenceStepKind
     /// from the other server's node. The panel's own: scheduled tasks cannot have it.
     /// </summary>
     CopyFrom,
+
+    /// <summary>
+    /// Moves the server to another node (a transfer, Pulsar 1.0.16; <see cref="SequenceStep.Text"/>: its node's id and the
+    /// other node's, as <c>from:to</c>): a backup on its node, the server switched to the other node and installed there,
+    /// the backup restored there, relayed by the panel, then its old copy deleted. Should it fail before the old copy is
+    /// deleted, the server goes back to its old node as it was. The panel's own: scheduled tasks cannot have it.
+    /// </summary>
+    MoveTo,
 }
 
 /// <param name="Text">The console command, or the message to broadcast.</param>
@@ -82,6 +90,9 @@ public enum SequenceOrigin
 
     /// <summary>A new server's copy of another one's files (a clone, Pulsar 1.0.16).</summary>
     Clone,
+
+    /// <summary>A server's move to another node (Pulsar 1.0.16).</summary>
+    Transfer,
 }
 
 /// <summary>
@@ -182,7 +193,8 @@ public sealed class ServerSequence
         // A move to another template is the template updates' own step, a copy of another server's files a clone's.
         if (steps.Count is 0 or > MaxSteps || steps.Any(s => !IsValid(s))
             || (origin != SequenceOrigin.TemplateUpdate && steps.Any(s => s.Kind == SequenceStepKind.UpgradeTemplate))
-            || (origin != SequenceOrigin.Clone && steps.Any(s => s.Kind == SequenceStepKind.CopyFrom)))
+            || (origin != SequenceOrigin.Clone && steps.Any(s => s.Kind == SequenceStepKind.CopyFrom))
+            || (origin != SequenceOrigin.Transfer && steps.Any(s => s.Kind == SequenceStepKind.MoveTo)))
         {
             return ScheduleErrors.StepsInvalid;
         }
@@ -201,8 +213,17 @@ public sealed class ServerSequence
             SequenceStepKind.Wait => step.Seconds is > 0 and <= SequenceStep.MaxWaitSeconds,
             SequenceStepKind.UpgradeTemplate => Guid.TryParse(text, out var template) && template != Guid.Empty,
             SequenceStepKind.CopyFrom => Guid.TryParse(text, out var source) && source != Guid.Empty,
+            SequenceStepKind.MoveTo => TryParseMove(text, out _, out _),
             _ => Enum.IsDefined(step.Kind),
         };
+    }
+
+    /// <summary>A <see cref="SequenceStepKind.MoveTo"/> step's nodes: <c>from:to</c>, two different node ids.</summary>
+    public static bool TryParseMove(string? text, out Guid from, out Guid to)
+    {
+        var parts = text?.Split(':');
+        from = to = Guid.Empty;
+        return parts is [var a, var b] && Guid.TryParse(a, out from) && Guid.TryParse(b, out to) && from != Guid.Empty && to != Guid.Empty && from != to;
     }
 
     /// <summary>The current step did what it does; <paramref name="operation"/> is the one it started.</summary>

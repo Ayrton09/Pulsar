@@ -251,6 +251,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                     }
 
                     break;
+                case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded && operation.NodeId != server.NodeId:
+                    // 1.0.16: the copy a transfer left on another node (the one it left, or the one it failed to move to)
+                    // is gone: only that node's allocations become free; the server goes on on its own node.
+                    foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id && a.NodeId == operation.NodeId)
+                                 .ToListAsync(cancellationToken))
+                    {
+                        allocation.Release();
+                    }
+
+                    break;
                 case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
                     // Its allocations become free for other servers.
                     foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
@@ -333,7 +343,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         {
             operation.Complete(OperationStatus.Interrupted, "operation.interrupted", "The agent restarted or lost the operation.", now);
             progressCache.Remove(operation.Id.Value);
-            var server = servers.FirstOrDefault(s => s.Id == operation.ServerId);
+            // By the operation's server, wherever it is now: a transfer's operations run on a node that is not its own (1.0.16).
+            var server = servers.FirstOrDefault(s => s.Id == operation.ServerId)
+                ?? (operation.ServerId is { } other ? await db.Servers.SingleOrDefaultAsync(s => s.Id == other, cancellationToken) : null);
             server?.OperationCompleted(operation, now);
             if (operation.Type == OperationType.BackupCreate)
             {

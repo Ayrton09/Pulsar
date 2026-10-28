@@ -683,6 +683,56 @@ describe('server page', () => {
     expect(await screen.findByText(/The files of Retakes could not be copied into this server/)).toBeInTheDocument();
   });
 
+  it('moves the server to another node and says it is moving', async () => {
+    let body: unknown;
+    let moving = false;
+    const mover = {
+      ...operator,
+      permissions: [...operator.permissions, 'server.backups.create', 'server.files.view'],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(mover),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () =>
+        json({
+          ...details(installedOffline),
+          copy: moving
+            ? {
+                sourceId: null,
+                sourceName: null,
+                status: 'running',
+                errorCode: null,
+                message: null,
+                transfer: true,
+                targetNodeName: 'Córdoba 1',
+              }
+            : null,
+        }),
+      'GET /api/v1/nodes': () =>
+        json([
+          { id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
+          { id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Córdoba 1', connected: true, status: 'active' },
+        ]),
+      [`POST /api/v1/servers/${installedOffline.id}/transfer`]: async (request) => {
+        body = await request.json();
+        moving = true;
+        return json(details(installedOffline));
+      },
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Transfer' }));
+    const dialog = screen.getByRole('dialog', { name: 'Transfer' });
+    // Only the other nodes.
+    const node = await within(dialog).findByLabelText('Node');
+    expect(within(node).queryByRole('option', { name: 'Buenos Aires 1' })).not.toBeInTheDocument();
+    await user.selectOptions(node, 'Córdoba 1');
+    await user.click(within(dialog).getByRole('button', { name: 'Transfer' }));
+
+    await waitFor(() => expect(body).toEqual({ nodeId: '0192f1a0-0000-7000-8000-0000000000a2' }));
+    expect(await screen.findByText(/Moving this server to Córdoba 1/)).toBeInTheDocument();
+  });
+
   it('starts a stopped server', async () => {
     const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
     fakeApi({

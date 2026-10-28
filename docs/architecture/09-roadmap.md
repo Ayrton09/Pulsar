@@ -518,6 +518,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Change a server's game (doc 02, "Changing a server's game"): files deleted without a backup (the user's choice), name, access, limits, backups and ports kept where they fit; checked on a real node (Terraria to Minecraft: Java Edition, then started).
 - Clone a server (doc 02, "Cloning a server") onto its node or another, with a copy of its files relayed by the panel from a backup; checked on a real node (Minecraft: Java Edition cloned with its world, then started).
+- Transfer a server to another node as the same server (doc 02, "Transferring a server to another node"), its files relayed by the panel, its old copy deleted once it moved, moved back as it was if it fails; checked on two real nodes (a Minecraft server moved with its world, then started; a node without free allocations refused at once).
 - The six findings of the 2026-10-28 audit fixed (mods' writes undone, settling before loading, requirements' versions, sequence steps saved with their operation, agent update attempts, modpack zips).
 
 ## Before the first public release

@@ -7292,6 +7292,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TransferServerRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerDetails"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/servers/{id}/limits": {
         parameters: {
             query?: never;
@@ -16022,7 +16108,7 @@ export interface components {
             always: boolean;
         };
         /** @enum {unknown} */
-        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | "upgradeTemplate" | "copyFrom";
+        SequenceStepKind: "command" | "broadcast" | "wait" | "stop" | "start" | "restart" | "backup" | "update" | "upgradeTemplate" | "copyFrom" | "moveTo";
         SequenceStepRequest: {
             kind: components["schemas"]["SequenceStepKind"];
             text?: null | string;
@@ -16050,6 +16136,9 @@ export interface components {
             status: components["schemas"]["SequenceStatus"];
             errorCode: null | string;
             message: null | string;
+            /** @default false */
+            transfer: boolean;
+            targetNodeName?: null | string;
         };
         ServerDatabaseCredentials: {
             database: components["schemas"]["ServerDatabaseView"];
@@ -16423,6 +16512,10 @@ export interface components {
             /** Format: int64 */
             appId: number;
             separator: string;
+        };
+        TransferServerRequest: {
+            /** Format: uuid */
+            nodeId: string;
         };
         TwoFactorLoginRequest: {
             code: null | string;

@@ -354,6 +354,7 @@
         "install_requested": "Neuinstallation eines Servers angefordert",
         "template_changed": "Server auf eine andere Version seiner Vorlage umgestellt",
         "game_changed": "Spiel eines Servers gewechselt",
+        "transfer_requested": "Verschieben eines Servers auf einen anderen Node angefordert",
         "update_requested": "Aktualisierung eines Spiels angefordert",
         "settings_changed": "Einstellungen eines Servers geändert",
         "ports_changed": "Ports eines Servers geändert",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "Der Agent auf dem Node des Servers ist zu alt, um das Spiel zu wechseln: Aktualisiere ihn.",
       "clone_forbidden": "Das Klonen eines Servers kopiert seine Dateien: Dafür sind die Berechtigungen für Backups und zum Ansehen seiner Dateien nötig.",
       "clone_running": "Ein Klon dieses Servers oder auf diesen Node kopiert noch seine Dateien: Warte, bis er fertig ist.",
+      "transfer_forbidden": "Das Verschieben eines Servers auf einen anderen Node erfordert die Berechtigungen, ihn zu sichern, zu installieren und zu löschen, sowie Server auf diesem Node zu erstellen.",
+      "transferring": "Der Server wird auf einen anderen Node verschoben: Warte, bis das fertig ist.",
+      "same_node": "Der Server ist bereits auf diesem Node.",
+      "old_copy_left": "Der Server wurde auf den neuen Node verschoben, aber seine Kopie auf dem alten Node konnte nicht gelöscht werden: Lösche seinen Ordner dort von Hand.",
       "copy_unsupported": "Ein Node hat einen zu alten Agent, um die Dateien eines Servers auf einen anderen Node zu kopieren: Aktualisiere ihn.",
       "backup_corrupt": "Der Node hat ein Archiv anderer Größe als das von ihm erstellte Backup gesendet."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Die Dateien von {{source}} werden auf diesen Server kopiert: Er wird zuerst installiert, dann wird hier ein Backup von {{source}} wiederhergestellt.",
       "failed": "Die Dateien von {{source}} konnten nicht auf diesen Server kopiert werden.",
       "sourceGone": "einem Server, den es nicht mehr gibt"
+    },
+    "transfer": {
+      "title": "Übertragen",
+      "hint": "{{name}} zieht auf den gewählten Node um und bleibt derselbe Server: Link, Zugriffe, Aufgaben und Verlauf bleiben; seine Ports ändern sich. Er wird hier gesichert, dort installiert und seine Dateien dort wiederhergestellt; danach wird seine Kopie hier gelöscht, mit den Backups, die nur auf diesem Node liegen (Kopien im Remote-Speicher bleiben). Schlägt vorher etwas fehl, bleibt er hier, wie er ist.",
+      "action": "Übertragen",
+      "noNodes": "Kein anderer verbundener Node, auf dem du Server erstellen darfst.",
+      "moving": "Dieser Server wird nach {{node}} verschoben: Er wird gesichert, dort installiert und seine Dateien dort wiederhergestellt. Er kann bis dahin nicht gestartet werden.",
+      "failed": "Der Server konnte nicht nach {{node}} verschoben werden: Er bleibt auf seinem Node, wie er war.",
+      "leftCopy": "Der Server wurde nach {{node}} verschoben, aber seine Kopie auf dem alten Node konnte nicht gelöscht werden.",
+      "nodeGone": "einen Node, den es nicht mehr gibt"
     },
     "changeGame": {
       "title": "Spiel wechseln",
@@ -7588,7 +7603,8 @@
       "backup": "erstellt ein Backup",
       "update": "aktualisiert das Spiel",
       "upgradeTemplate": "Umstellung auf die neuere Vorlage",
-      "copyFrom": "Kopieren der Dateien eines anderen Servers"
+      "copyFrom": "Kopieren der Dateien eines anderen Servers",
+      "moveTo": "Verschieben auf einen anderen Node"
     },
     "waitingForPlayers": "Das Update wartet, bis niemand spielt (jetzt online: {{players}}).",
     "waiting": "Das Update beginnt, sobald der Server frei ist.",

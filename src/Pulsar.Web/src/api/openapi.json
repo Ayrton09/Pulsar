@@ -7386,6 +7386,96 @@
         }
       }
     },
+    "/api/v1/servers/{id}/transfer": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servers/{id}/limits": {
       "put": {
         "tags": [
@@ -20198,7 +20288,8 @@
           "backup",
           "update",
           "upgradeTemplate",
-          "copyFrom"
+          "copyFrom",
+          "moveTo"
         ]
       },
       "SequenceStepRequest": {
@@ -20288,6 +20379,16 @@
             ]
           },
           "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "transfer": {
+            "type": "boolean",
+            "default": false
+          },
+          "targetNodeName": {
             "type": [
               "null",
               "string"
@@ -21847,6 +21948,18 @@
           },
           "separator": {
             "type": "string"
+          }
+        }
+      },
+      "TransferServerRequest": {
+        "required": [
+          "nodeId"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

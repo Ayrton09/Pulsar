@@ -68,6 +68,17 @@ public static class ServerErrors
     public static DomainError CloneRunning { get; } = new("server.clone_running",
         "A clone of this server, or onto that node, is still copying its files: wait until it ends.");
 
+    public static DomainError OldCopyLeft { get; } = new("server.old_copy_left",
+        "The server moved to the new node, but its copy on the old node could not be deleted: delete its folder and its Windows account (named after its short id) there by hand.");
+
+    public static DomainError SameNode { get; } = new("server.same_node", "The server is already on that node.");
+
+    public static DomainError Transferring { get; } = new("server.transferring",
+        "The server is being moved to another node: wait until it ends.");
+
+    public static DomainError TransferForbidden { get; } = new("server.transfer_forbidden",
+        "Moving a server to another node needs the permissions to back it up, install it and delete it, and to create servers on that node.");
+
     public static DomainError CopyUnsupported { get; } = new("server.copy_unsupported",
         "A node has an agent too old to copy a server's files to another node: update it.");
 

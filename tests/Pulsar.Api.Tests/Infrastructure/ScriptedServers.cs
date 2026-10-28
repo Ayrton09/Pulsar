@@ -68,6 +68,7 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     {
         ["232330"] = "srcds.exe",
         ["232370"] = "srcds.exe",
+        ["258550"] = "RustDedicated.exe",
         ["730"] = "game/bin/win64/cs2.exe",
     };
 

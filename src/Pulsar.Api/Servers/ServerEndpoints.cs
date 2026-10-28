@@ -62,6 +62,9 @@ public sealed record SteamAccountRequest(
 /// <param name="TemplateId">A newer version of the server's game template.</param>
 public sealed record UpgradeTemplateRequest(Guid TemplateId);
 
+/// <param name="NodeId">The node the server moves to.</param>
+public sealed record TransferServerRequest(Guid NodeId);
+
 /// <param name="NodeId">The node the clone goes to: the server's own, or another.</param>
 /// <param name="Name">The clone's name.</param>
 public sealed record CloneServerRequest(Guid NodeId, [property: Required, StringLength(Server.MaxNameLength)] string Name);
@@ -134,6 +137,11 @@ public static class ServerEndpoints
         servers.MapPost("/{id:guid}/clone", (Guid id, CloneServerRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CloneAsync(new ServerId(id), new NodeId(request.NodeId), request.Name, ct)))
             .RequirePermission(Permissions.Server.BackupsCreate);
+        // Its old copy is deleted once it moved: server.backups.create, server.install and server.create on the node are
+        // needed too (checked by the transfer).
+        servers.MapPost("/{id:guid}/transfer", (Guid id, TransferServerRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.TransferAsync(new ServerId(id), new NodeId(request.NodeId), ct)))
+            .RequirePermission(Permissions.Server.Delete);
         servers.MapPut("/{id:guid}/limits", (Guid id, ServerLimitsRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, request.Databases, ct)))
             .RequirePermission(Permissions.Server.LimitsEdit);

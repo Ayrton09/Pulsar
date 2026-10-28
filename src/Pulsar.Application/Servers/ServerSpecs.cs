@@ -40,7 +40,7 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(template);
-        var allocations = await AllocationsOf(server.Id, cancellationToken);
+        var allocations = await AllocationsOf(server, cancellationToken);
         var addons = await ServerAddons.InstalledKeysAsync(db, server.Id, cancellationToken);
         return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart, server.RestartOnCrash,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
@@ -63,8 +63,16 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         return server.Variables.ToDictionary(v => v.Key, v => v.ProtectedValue is { } secret ? protector.Unprotect(secret) : v.Value);
     }
 
-    public Task<List<NodeAllocation>> AllocationsOf(ServerId serverId, CancellationToken cancellationToken) =>
-        db.NodeAllocations.Where(a => a.ServerId == serverId).ToListAsync(cancellationToken);
+    /// <summary>
+    /// The server's allocations on its node (one being transferred keeps those of the node it leaves until it is done), as
+    /// this context has them: those assigned or released and not saved yet too (a game change builds its spec before it saves).
+    /// </summary>
+    public async Task<List<NodeAllocation>> AllocationsOf(Server server, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        await db.NodeAllocations.Where(a => a.ServerId == server.Id).LoadAsync(cancellationToken);
+        return [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId && db.Entry(a).State != EntityState.Deleted)];
+    }
 
     /// <summary>
     /// Applies <paramref name="changes"/> to the server's variables (null or empty: back to the manifest default). Every

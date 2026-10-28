@@ -32,6 +32,11 @@ public sealed partial class ServerManagement
             return ServerErrors.NotFound;
         }
 
+        if (await TransferringAsync(source.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
             return NodeErrors.NotFound;
@@ -142,7 +147,7 @@ public sealed partial class ServerManagement
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
         if (!valid.IsSuccess)
         {
             return valid.Error!;

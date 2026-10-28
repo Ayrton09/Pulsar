@@ -354,6 +354,7 @@
         "install_requested": "Pediu para reinstalar um servidor",
         "template_changed": "Mudou um servidor para outra versão do seu modelo",
         "game_changed": "Trocou o jogo de um servidor",
+        "transfer_requested": "Pediu para mover um servidor para outro nó",
         "update_requested": "Pediu para atualizar um jogo",
         "settings_changed": "Alterou as configurações de um servidor",
         "ports_changed": "Alterou as portas de um servidor",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "O agente do nó do servidor é antigo demais para trocar o jogo: atualize-o.",
       "clone_forbidden": "Clonar um servidor copia seus arquivos: são precisas as permissões para fazer backups dele e ver seus arquivos.",
       "clone_running": "Um clone deste servidor, ou para esse nó, ainda está copiando os arquivos: espere terminar.",
+      "transfer_forbidden": "Mover um servidor para outro nó exige as permissões para fazer backup dele, instalá-lo e apagá-lo, e para criar servidores nesse nó.",
+      "transferring": "O servidor está sendo movido para outro nó: espere terminar.",
+      "same_node": "O servidor já está nesse nó.",
+      "old_copy_left": "O servidor foi movido para o novo nó, mas não foi possível apagar sua cópia no nó antigo: apague a pasta dele lá manualmente.",
       "copy_unsupported": "Um nó tem um agente antigo demais para copiar os arquivos de um servidor para outro nó: atualize-o.",
       "backup_corrupt": "O nó enviou um arquivo de tamanho diferente do backup que fez."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Copiando os arquivos de {{source}} para este servidor: primeiro ele é instalado, depois um backup de {{source}} é restaurado aqui.",
       "failed": "Não foi possível copiar os arquivos de {{source}} para este servidor.",
       "sourceGone": "um servidor que não existe mais"
+    },
+    "transfer": {
+      "title": "Transferir",
+      "hint": "{{name}} muda para o nó escolhido e continua sendo o mesmo servidor: link, acessos, tarefas e histórico ficam; suas portas mudam. É feito um backup aqui, ele é instalado lá e seus arquivos restaurados lá; depois sua cópia daqui é apagada, com os backups que só estão neste nó (as cópias no armazenamento remoto ficam). Se algo falhar antes, ele fica aqui como está.",
+      "action": "Transferir",
+      "noNodes": "Nenhum outro nó conectado em que você possa criar servidores.",
+      "moving": "Movendo este servidor para {{node}}: é feito um backup, ele é instalado lá e seus arquivos restaurados lá. Não pode ser iniciado até terminar.",
+      "failed": "Não foi possível mover o servidor para {{node}}: ele fica no seu nó como estava.",
+      "leftCopy": "O servidor foi movido para {{node}}, mas não foi possível apagar sua cópia no nó antigo.",
+      "nodeGone": "um nó que não existe mais"
     },
     "changeGame": {
       "title": "Trocar de jogo",
@@ -7588,7 +7603,8 @@
       "backup": "fazendo um backup",
       "update": "atualizando o jogo",
       "upgradeTemplate": "passando para o modelo mais novo",
-      "copyFrom": "copiando os arquivos de outro servidor"
+      "copyFrom": "copiando os arquivos de outro servidor",
+      "moveTo": "movendo para outro nó"
     },
     "waitingForPlayers": "A atualização espera até ninguém estar jogando (online agora: {{players}}).",
     "waiting": "A atualização começa assim que o servidor ficar livre.",

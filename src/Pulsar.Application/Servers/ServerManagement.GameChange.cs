@@ -28,6 +28,11 @@ public sealed partial class ServerManagement
             return ServerErrors.NotFound;
         }
 
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         if (request.UserId is { } user
             && !await permissions.HasAsync(user, Permissions.Server.Delete, AccessTarget.ForServer(server.Id, server.NodeId), cancellationToken))
         {
@@ -79,7 +84,7 @@ public sealed partial class ServerManagement
         }
 
         // Its allocations are free for the new game's ports, and taken first.
-        var mine = await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken);
+        var mine = await db.NodeAllocations.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId).ToListAsync(cancellationToken);
         foreach (var allocation in mine)
         {
             allocation.Release();
@@ -91,7 +96,7 @@ public sealed partial class ServerManagement
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
         if (!valid.IsSuccess)
         {
             return valid.Error!;

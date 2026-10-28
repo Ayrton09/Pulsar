@@ -39,7 +39,8 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         CommandAck? ack;
         try
         {
-            ack = await connections.SendAsync(server.NodeId, command, operation.RequestedBy, CancellationToken.None, operation.Id.Value);
+            // To the operation's node: the server's own, or (a transfer's, 1.0.16) the node its old or new copy is on.
+            ack = await connections.SendAsync(operation.NodeId, command, operation.RequestedBy, CancellationToken.None, operation.Id.Value);
         }
         catch (Exception ex)
         {

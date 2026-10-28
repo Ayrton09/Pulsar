@@ -354,6 +354,7 @@
         "install_requested": "Ha chiesto di reinstallare un server",
         "template_changed": "Ha spostato un server a un'altra versione del suo modello",
         "game_changed": "Cambiato il gioco di un server",
+        "transfer_requested": "Richiesto lo spostamento di un server su un altro nodo",
         "update_requested": "Ha chiesto di aggiornare un gioco",
         "settings_changed": "Ha modificato le impostazioni di un server",
         "ports_changed": "Ha modificato le porte di un server",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "L'agent del nodo del server è troppo vecchio per cambiarne il gioco: aggiornalo.",
       "clone_forbidden": "Clonare un server ne copia i file: servono i permessi di farne backup e di vederne i file.",
       "clone_running": "Un clone di questo server, o verso quel nodo, sta ancora copiando i file: aspetta che finisca.",
+      "transfer_forbidden": "Spostare un server su un altro nodo richiede i permessi di farne backup, installarlo ed eliminarlo, e di creare server su quel nodo.",
+      "transferring": "Il server è in fase di spostamento su un altro nodo: aspetta che finisca.",
+      "same_node": "Il server è già su quel nodo.",
+      "old_copy_left": "Il server è stato spostato sul nuovo nodo, ma non è stato possibile eliminarne la copia sul vecchio nodo: elimina la sua cartella a mano.",
       "copy_unsupported": "Un nodo ha un agent troppo vecchio per copiare i file di un server su un altro nodo: aggiornalo.",
       "backup_corrupt": "Il nodo ha inviato un archivio di dimensione diversa dal backup che ha fatto."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Copia dei file di {{source}} su questo server: prima si installa, poi qui viene ripristinato un backup di {{source}}.",
       "failed": "Non è stato possibile copiare i file di {{source}} su questo server.",
       "sourceGone": "un server che non esiste più"
+    },
+    "transfer": {
+      "title": "Trasferisci",
+      "hint": "{{name}} passa al nodo scelto e resta lo stesso server: link, accessi, attività e cronologia restano; le sue porte cambiano. Viene fatto un backup qui, installato là e i suoi file ripristinati là; poi la sua copia qui viene eliminata, con i backup che sono solo su questo nodo (le copie nello storage remoto restano). Se qualcosa fallisce prima, resta qui com'è.",
+      "action": "Trasferisci",
+      "noNodes": "Nessun altro nodo connesso su cui puoi creare server.",
+      "moving": "Spostamento di questo server su {{node}}: viene fatto un backup, installato là e i suoi file ripristinati là. Non si può avviare finché non finisce.",
+      "failed": "Non è stato possibile spostare il server su {{node}}: resta sul suo nodo com'era.",
+      "leftCopy": "Il server è stato spostato su {{node}}, ma non è stato possibile eliminarne la copia sul vecchio nodo.",
+      "nodeGone": "un nodo che non esiste più"
     },
     "changeGame": {
       "title": "Cambia gioco",
@@ -7588,7 +7603,8 @@
       "backup": "backup",
       "update": "aggiornamento del gioco",
       "upgradeTemplate": "passaggio al modello più recente",
-      "copyFrom": "copia dei file di un altro server"
+      "copyFrom": "copia dei file di un altro server",
+      "moveTo": "spostamento su un altro nodo"
     },
     "waitingForPlayers": "L'aggiornamento aspetta che non giochi nessuno (online ora: {{players}}).",
     "waiting": "L'aggiornamento parte appena il server è libero.",

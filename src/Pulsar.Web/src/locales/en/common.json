@@ -354,6 +354,7 @@
         "install_requested": "Asked to reinstall a server",
         "template_changed": "Moved a server to another version of its template",
         "game_changed": "Changed a server's game",
+        "transfer_requested": "Asked to move a server to another node",
         "update_requested": "Asked to update a game",
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
@@ -671,6 +672,10 @@
       "change_game_unsupported": "The server's node has an agent too old to change its game: update it.",
       "clone_forbidden": "Cloning a server copies its files: it needs the permissions to back the server up and to see its files.",
       "clone_running": "A clone of this server, or onto that node, is still copying its files: wait until it ends.",
+      "transfer_forbidden": "Moving a server to another node needs the permissions to back it up, install it and delete it, and to create servers on that node.",
+      "transferring": "The server is being moved to another node: wait until it ends.",
+      "same_node": "The server is already on that node.",
+      "old_copy_left": "The server moved to the new node, but its copy on the old node could not be deleted: delete its folder there by hand.",
       "copy_unsupported": "A node has an agent too old to copy a server's files to another node: update it.",
       "backup_corrupt": "The node sent an archive of another size than the backup it made."
     },
@@ -1225,6 +1230,16 @@
       "copying": "Copying the files of {{source}} into this server: it installs first, then a backup of {{source}} is restored here.",
       "failed": "The files of {{source}} could not be copied into this server.",
       "sourceGone": "a server that no longer exists"
+    },
+    "transfer": {
+      "title": "Transfer",
+      "hint": "{{name}} moves to the node you choose and stays the same server: its link, access, schedules and history stay; its ports change. It is backed up here, installed there and its files restored there; then its copy here is deleted, with the backups kept only on this node (copies in remote storage stay). If anything fails before that, it stays here as it is.",
+      "action": "Transfer",
+      "noNodes": "No other connected node you may create servers on.",
+      "moving": "Moving this server to {{node}}: it is backed up, installed there and its files restored there. It cannot be started until that ends.",
+      "failed": "The server could not be moved to {{node}}: it stays on its node as it was.",
+      "leftCopy": "The server moved to {{node}}, but its copy on the old node could not be deleted.",
+      "nodeGone": "a node that no longer exists"
     },
     "changeGame": {
       "title": "Change game",
@@ -2495,7 +2510,8 @@
       "backup": "taking a backup",
       "update": "updating the game",
       "upgradeTemplate": "moving to the newer template",
-      "copyFrom": "copying another server's files"
+      "copyFrom": "copying another server's files",
+      "moveTo": "moving to another node"
     },
     "waitingForPlayers": "The update waits until nobody plays (online now: {{players}}).",
     "waiting": "The update starts as soon as the server is free.",

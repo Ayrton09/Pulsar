@@ -18,6 +18,7 @@ import {
   Shuffle,
   Terminal,
   Trash2,
+  Truck,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -57,6 +58,7 @@ import {
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { ChangeGameDialog } from './ChangeGameDialog';
 import { CloneServerDialog } from './CloneServerDialog';
+import { TransferServerDialog } from './TransferServerDialog';
 import { ConsoleTab } from './ConsoleTab';
 import { useGameText } from './gameText';
 import { PowerButtons } from './PowerButtons';
@@ -444,10 +446,11 @@ function Facts({ items }: { items: [string, ReactNode][] }) {
 function CopyNotice({ copy }: { copy: NonNullable<ServerDetails['copy']> }) {
   const { t } = useTranslation();
   const source = copy.sourceName ?? t('servers.clone.sourceGone');
+  const node = copy.targetNodeName ?? t('servers.transfer.nodeGone');
   if (copy.status === 'running') {
     return (
       <p role="status" className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm xl:col-span-2">
-        {t('servers.clone.copying', { source })}
+        {copy.transfer ? t('servers.transfer.moving', { node }) : t('servers.clone.copying', { source })}
       </p>
     );
   }
@@ -457,7 +460,11 @@ function CopyNotice({ copy }: { copy: NonNullable<ServerDetails['copy']> }) {
   return (
     <div className="xl:col-span-2">
       <Alert>
-        {t('servers.clone.failed', { source })}
+        {copy.transfer
+          ? t(copy.errorCode === 'server.old_copy_left' ? 'servers.transfer.leftCopy' : 'servers.transfer.failed', {
+              node,
+            })
+          : t('servers.clone.failed', { source })}
         {reason && <> {reason}</>}
       </Alert>
     </div>
@@ -577,6 +584,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const [validate, setValidate] = useState(false);
   const [changingGame, setChangingGame] = useState(false);
   const [cloning, setCloning] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const { server } = details;
   const available = serverActions(server);
   const canInstall = canOnServer(me, details.server, Permission.ServerInstall);
@@ -656,6 +664,16 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
             {t('servers.clone.title')}
           </Button>
         )}
+        {canClone && canInstall && canDelete && (
+          <Button
+            variant="secondary"
+            icon={Truck}
+            disabled={!available.reinstall || server.installState !== 'installed'}
+            onClick={() => setTransferring(true)}
+          >
+            {t('servers.transfer.title')}
+          </Button>
+        )}
         {canInstall && canDelete && (
           <Button
             variant="secondary"
@@ -691,6 +709,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
       <p className="text-xs text-muted">{t('servers.administrationHint')}</p>
       {changingGame && <ChangeGameDialog details={details} onClose={() => setChangingGame(false)} />}
       {cloning && <CloneServerDialog details={details} onClose={() => setCloning(false)} />}
+      {transferring && <TransferServerDialog details={details} onClose={() => setTransferring(false)} />}
     </section>
   );
 }

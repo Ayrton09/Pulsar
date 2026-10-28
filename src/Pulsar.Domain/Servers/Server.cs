@@ -403,6 +403,53 @@ public sealed class Server
         return Result.Success();
     }
 
+    /// <summary>
+    /// Moves the stopped, installed server to <paramref name="node"/> (a transfer, Pulsar 1.0.16): it is that node's from
+    /// now on, provisioned and installed there next, its files copied from its old node; that node's agent counts its
+    /// states afresh. <see cref="MoveBack"/> undoes it.
+    /// </summary>
+    public Result MoveTo(NodeId node, DateTimeOffset now)
+    {
+        if (node == NodeId)
+        {
+            return ServerErrors.SameNode;
+        }
+
+        if (ActiveOperationId is not null)
+        {
+            return ServerErrors.Busy;
+        }
+
+        if (RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        if (InstallState != InstallState.Installed)
+        {
+            return ServerErrors.NotInstalled;
+        }
+
+        NodeId = node;
+        DesiredState = DesiredState.Stopped;
+        StateSequence = 0;
+        StateObservedAt = null;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>A transfer that failed: the server is <paramref name="node"/>'s again, installed and stopped as it was there.</summary>
+    public void MoveBack(NodeId node, DateTimeOffset now)
+    {
+        NodeId = node;
+        InstallState = InstallState.Installed;
+        RuntimeState = ServerRuntimeState.Offline;
+        DesiredState = DesiredState.Stopped;
+        StateSequence = 0;
+        StateObservedAt = null;
+        UpdatedAt = now;
+    }
+
     /// <summary>Sets a plain variable value (null removes it, so the manifest default applies).</summary>
     public void SetVariable(string key, string? value, UserId? by, DateTimeOffset now)
     {

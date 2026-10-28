@@ -102,7 +102,8 @@ internal sealed class NodeAllocationConfiguration : IEntityTypeConfiguration<Nod
         builder.Property(a => a.PortName).HasMaxLength(NodeAllocation.MaxPortNameLength);
         builder.Property(a => a.Notes).HasMaxLength(NodeAllocation.MaxNotesLength);
         builder.HasIndex(a => new { a.NodeId, a.IpAddress, a.Port }).IsUnique();
-        builder.HasIndex(a => new { a.ServerId, a.PortName }).IsUnique();
+        // A port name once per server and node: a server being transferred holds the ports of both nodes until it is done.
+        builder.HasIndex(a => new { a.ServerId, a.NodeId, a.PortName }).IsUnique();
         builder.Property<uint>("Version").IsRowVersion();
 
         builder.HasOne<Node>().WithMany().HasForeignKey(a => a.NodeId).OnDelete(DeleteBehavior.Cascade);
