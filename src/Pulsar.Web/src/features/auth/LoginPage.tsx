@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -7,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
+import { ssoName, useSsoOptions, useStartSsoLogin } from '../sso/api';
 import { useLogin, useLoginTwoFactor } from './api';
 import { AuthCard } from './AuthCard';
 
@@ -20,8 +22,12 @@ type Values = z.infer<typeof schema>;
 
 export function LoginPage() {
   const login = useLogin();
-  // The second step asks for the code only: whether to remember the device was chosen with the password.
-  const [secondStep, setSecondStep] = useState<{ rememberMe: boolean } | null>(null);
+  const [search] = useSearchParams();
+  // The second step asks for the code only: whether to remember the device was chosen with the password. A sign-in
+  // with a provider comes back here for it, not remembered.
+  const [secondStep, setSecondStep] = useState<{ rememberMe: boolean } | null>(
+    search.get('sso') === 'two_factor' ? { rememberMe: false } : null,
+  );
   if (secondStep) {
     return <SecondFactor rememberMe={secondStep.rememberMe} onBack={() => setSecondStep(null)} />;
   }
@@ -64,6 +70,7 @@ function PasswordStep({
   return (
     <AuthCard title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
       <form onSubmit={(e) => void onSubmit(e)} className="space-y-4" noValidate>
+        <SsoFailure />
         {login.isError && <Alert>{errorMessage(t, login.error)}</Alert>}
         <Field
           label={t('auth.userName')}
@@ -82,7 +89,48 @@ function PasswordStep({
           {t('auth.login.submit')}
         </Button>
       </form>
+      <SsoButtons />
     </AuthCard>
+  );
+}
+
+/** Why a sign-in with a provider did not end in the panel (a code, never what the provider said). */
+function SsoFailure() {
+  const { t } = useTranslation();
+  const [search] = useSearchParams();
+  const failed = search.get('sso_error');
+  return failed ? <Alert>{t(`sso.errors.${failed}`, { defaultValue: t('sso.errors.unknown') })}</Alert> : null;
+}
+
+/** The providers the administrator turned on: each signs in an account its owner linked to it. */
+function SsoButtons() {
+  const { t } = useTranslation();
+  const options = useSsoOptions();
+  const start = useStartSsoLogin();
+  if (!options.data?.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-6 space-y-3">
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-border" />
+        {t('sso.or')}
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      {start.isError && <Alert>{errorMessage(t, start.error)}</Alert>}
+      {options.data.map((option) => (
+        <Button
+          key={option.kind}
+          variant="secondary"
+          className="w-full"
+          busy={(start.isPending || start.isSuccess) && start.variables === option.kind}
+          onClick={() => start.mutate(option.kind)}
+        >
+          {t('sso.signInWith', { name: ssoName(option.kind, option.name) })}
+        </Button>
+      ))}
+    </div>
   );
 }
 

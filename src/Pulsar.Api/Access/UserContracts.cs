@@ -23,7 +23,8 @@ public sealed record UserResponse(
     IReadOnlyList<RoleReference> Roles,
     IReadOnlyList<AccessReference> Access,
     int ApiKeys = 0,
-    int SshKeys = 0);
+    int SshKeys = 0,
+    IReadOnlyList<SsoKind>? SsoLinks = null);
 
 public sealed record CreateUserRequest(
     [property: Required, StringLength(PulsarUser.MaxUserNameLength, MinimumLength = 1)] string UserName,

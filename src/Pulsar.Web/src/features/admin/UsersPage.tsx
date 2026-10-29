@@ -18,6 +18,7 @@ import {
   useCreateUser,
   useDeleteUser,
   useDeleteUserSshKeys,
+  useRemoveUserSsoLinks,
   useResetPassword,
   useResetTwoFactor,
   useRevokeUserApiKeys,
@@ -30,6 +31,7 @@ import {
   type Role,
   type User,
 } from './api';
+import { ssoName } from '../sso/api';
 import { roleDescription } from './roleText';
 
 export function UsersPage() {
@@ -247,8 +249,10 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
   const resetTwoFactor = useResetTwoFactor();
   const revokeKeys = useRevokeUserApiKeys();
   const deleteSshKeys = useDeleteUserSshKeys();
+  const removeSsoLinks = useRemoveUserSsoLinks();
   const [apiKeys, setApiKeys] = useState(user.apiKeys);
   const [sshKeys, setSshKeys] = useState(user.sshKeys);
+  const [ssoLinks, setSsoLinks] = useState(user.ssoLinks ?? []);
   const [roleIds, setRoleIds] = useState<Set<string>>(new Set(user.roles.map((r) => r.id)));
   const [newPassword, setNewPassword] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -263,7 +267,8 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
     remove.error ??
     resetTwoFactor.error ??
     revokeKeys.error ??
-    deleteSshKeys.error;
+    deleteSshKeys.error ??
+    removeSsoLinks.error;
 
   const onSaveProfile = handleSubmit(({ displayName, email, isDisabled }) =>
     update.mutate(
@@ -416,6 +421,29 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
               }
             >
               {t('users.deleteSshKeys')}
+            </Button>
+          </div>
+        )}
+
+        {!isSelf && ssoLinks.length > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <p className="text-sm text-muted">
+              {t('users.ssoLinks', { providers: ssoLinks.map((kind) => ssoName(kind)).join(', ') })}
+            </p>
+            <Button
+              variant="secondary"
+              busy={removeSsoLinks.isPending}
+              onClick={() =>
+                window.confirm(t('users.removeSsoLinksConfirm', { name: user.userName })) &&
+                removeSsoLinks.mutate(user.id, {
+                  onSuccess: (updated) => {
+                    setSsoLinks(updated.ssoLinks ?? []);
+                    setNotice(t('users.ssoLinksRemoved'));
+                  },
+                })
+              }
+            >
+              {t('users.removeSsoLinks')}
             </Button>
           </div>
         )}

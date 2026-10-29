@@ -35,7 +35,8 @@
     "steamAccounts": "Steam accounts",
     "menu": "Menu",
     "openMenu": "Open menu",
-    "updates": "Updates"
+    "updates": "Updates",
+    "signIn": "Sign-in providers"
   },
   "auth": {
     "userName": "User name",
@@ -157,7 +158,11 @@
       "add": "Give access",
       "remove": "Remove",
       "noRoles": "There are no roles of this scope yet: create one in Roles."
-    }
+    },
+    "ssoLinks": "Linked sign-in accounts: {{providers}}",
+    "removeSsoLinks": "Remove linked accounts",
+    "removeSsoLinksConfirm": "Remove every sign-in account linked to {{name}}? Their sessions end; they can link them again with their password.",
+    "ssoLinksRemoved": "Linked accounts removed."
   },
   "roles": {
     "title": "Roles",
@@ -956,6 +961,16 @@
       "invalid": "A player is 1 to 64 letters, digits and _ - . (and spaces, if the game takes them), as the game names them.",
       "admin_forbidden": "Making a player the game's admin, or taking it away, also needs the permission to send console commands.",
       "list_unreadable": "The game's file for this list could not be read."
+    },
+    "sso": {
+      "not_found": "That sign-in provider is not set up.",
+      "client_id_invalid": "A provider turned on needs its client id: one line of up to 256 characters.",
+      "client_secret_required": "Turning a provider on needs its client secret (and a new client id needs its own).",
+      "client_secret_invalid": "The client secret is one line of up to 512 characters.",
+      "authority_invalid": "The issuer is an https address without a query, of up to 255 characters.",
+      "name_invalid": "The button's name is one line of up to 32 characters.",
+      "link_not_found": "Your account is not linked to that provider.",
+      "provider_unavailable": "The provider could not be reached: {{detail}}"
     }
   },
   "account": {
@@ -2659,6 +2674,56 @@
       "whitelist": "Whitelist",
       "admins": "Admins",
       "empty": "Nobody."
+    }
+  },
+  "sso": {
+    "or": "or",
+    "signInWith": "Sign in with {{name}}",
+    "errors": {
+      "not_linked": "No account of the panel is linked to that account. Sign in with your password and link it from your account page.",
+      "expired": "The sign-in took too long or was started in another browser. Try again.",
+      "denied": "The provider did not confirm the sign-in. Try again.",
+      "token_invalid": "The provider's answer could not be verified, so nobody was signed in.",
+      "provider_unavailable": "The provider could not be reached. Try again later.",
+      "not_allowed": "This account cannot sign in now (disabled, or locked after failed attempts).",
+      "not_found": "That sign-in provider is no longer set up.",
+      "linked_elsewhere": "That account is linked to another user of the panel.",
+      "provider_linked": "Your account is already linked to another account of that provider: unlink it first.",
+      "unknown": "The sign-in with the provider did not work."
+    },
+    "linked": {
+      "title": "Linked sign-in accounts",
+      "hint": "Link an account of a provider to sign in with it instead of your password. The panel's two-step verification is still asked.",
+      "done": "Account linked: you can now sign in with it.",
+      "as": "Linked as {{name}}",
+      "none": "Not linked",
+      "link": "Link",
+      "linkTitle": "Link {{name}}",
+      "confirmHint": "A linked account signs in to yours, so confirm it is you. Then {{name}} asks you to sign in there.",
+      "continue": "Continue to {{name}}",
+      "unlink": "Unlink",
+      "unlinkConfirm": "Unlink {{name}}? Your other sessions end; this one stays."
+    },
+    "admin": {
+      "title": "Sign-in providers",
+      "description": "Let users sign in with Discord, Google or an OpenID Connect provider instead of their password. Only accounts that exist can: each user links their provider account from their account page, with their password. The panel's two-step verification is still asked.",
+      "oidc": "OpenID Connect",
+      "enabled": "On",
+      "hints": {
+        "discord": "Create an application in Discord's developer portal (OAuth2), add the redirect below, and copy its client id and secret.",
+        "google": "Create an OAuth client (web application) in Google Cloud's credentials, add the redirect below, and copy its client id and secret.",
+        "oidc": "Any OpenID Connect provider (Microsoft Entra, Keycloak, Authentik…): register a confidential client with the redirect below."
+      },
+      "redirect": "Redirect address to register with the provider",
+      "copy": "Copy the redirect address",
+      "authority": "Issuer",
+      "authorityHint": "Its https address; the panel reads its discovery document below it.",
+      "buttonName": "Button name",
+      "buttonNameHint": "What the sign-in button says (\"Company account\").",
+      "clientId": "Client id",
+      "clientSecret": "Client secret",
+      "secretKeep": "Leave it empty to keep the saved secret.",
+      "saved": "Saved."
     }
   }
 }

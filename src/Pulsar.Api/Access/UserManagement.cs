@@ -41,7 +41,8 @@ public sealed class UserManagement(
         var access = await AccessReferencesAsync(null, ct);
         var keys = await apiKeys.CountAsync([.. all.Select(u => u.Id)], ct);
         var ssh = await sshKeys.CountAsync([.. all.Select(u => u.Id)], ct);
-        return [.. all.Select(u => Describe(u, roles, access, keys.GetValueOrDefault(u.Id), ssh.GetValueOrDefault(u.Id)))];
+        var links = await SsoLinksAsync(null, ct);
+        return [.. all.Select(u => Describe(u, roles, access, keys.GetValueOrDefault(u.Id), ssh.GetValueOrDefault(u.Id), links))];
     }
 
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> GetAsync(UserId id, CancellationToken ct)
@@ -104,7 +105,8 @@ public sealed class UserManagement(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), [], apiKeys: 0, sshKeys: 0);
+        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), [], apiKeys: 0, sshKeys: 0,
+            Array.Empty<(UserId, SsoKind)>().ToLookup(l => l.Item1, l => l.Item2));
         return TypedResults.Created($"/api/v1/users/{user.Id}", response);
     }
 
@@ -204,6 +206,31 @@ public sealed class UserManagement(
         }
 
         await apiKeys.RevokeAllAsync(user!.Id, ct);
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Removes every account of a sign-in provider linked to the user's (1.0.18; a provider account taken over, say): the
+    /// user's sessions end with the security stamp. The user can link them again, with their password.
+    /// </summary>
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> RemoveSsoLinksAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        var logins = await users.GetLoginsAsync(user!);
+        audit.Record(AuditActions.User.SsoLinksRemoved, metadata: new { userName = user!.UserName, providers = logins.Select(l => l.LoginProvider).ToList() })
+            .WithTarget("user", user.Id.ToString());
+        foreach (var login in logins)
+        {
+            await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey); // renews the security stamp; saves the entry
+        }
+
+        await db.SaveChangesAsync(ct);
+        connections.EndUser(user.Id);
         return TypedResults.Ok(await DescribeAsync(user, ct));
     }
 
@@ -539,10 +566,18 @@ public sealed class UserManagement(
 
     private async Task<UserResponse> DescribeAsync(PulsarUser user, CancellationToken ct) =>
         Describe(user, await RoleReferencesAsync(user.Id, ct), await AccessReferencesAsync(user.Id, ct),
-            (await apiKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id), (await sshKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id));
+            (await apiKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id), (await sshKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id),
+            await SsoLinksAsync(user.Id, ct));
+
+    /// <summary>The providers each user (or <paramref name="user"/>) has linked an account of.</summary>
+    private async Task<ILookup<UserId, SsoKind>> SsoLinksAsync(UserId? user, CancellationToken ct) =>
+        (await db.UserLogins.AsNoTracking().Where(l => user == null || l.UserId == user).Select(l => new { l.UserId, l.LoginProvider }).ToListAsync(ct))
+        .Select(l => (l.UserId, Kind: SsoProviders.Parse(l.LoginProvider)))
+        .Where(l => l.Kind is not null)
+        .ToLookup(l => l.UserId, l => l.Kind!.Value);
 
     private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles,
-        List<(UserId UserId, AccessReference Access)> access, int apiKeys, int sshKeys) => new(
+        List<(UserId UserId, AccessReference Access)> access, int apiKeys, int sshKeys, ILookup<UserId, SsoKind> links) => new(
         user.Id.Value,
         user.UserName!,
         user.DisplayName,
@@ -554,7 +589,8 @@ public sealed class UserManagement(
         [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)],
         [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)],
         apiKeys,
-        sshKeys);
+        sshKeys,
+        [.. links[user.Id].Order()]);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

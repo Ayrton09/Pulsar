@@ -35,7 +35,8 @@
     "steamAccounts": "Steam 账户",
     "menu": "菜单",
     "openMenu": "打开菜单",
-    "updates": "更新"
+    "updates": "更新",
+    "signIn": "外部登录"
   },
   "auth": {
     "userName": "用户名",
@@ -157,7 +158,11 @@
       "add": "授予访问权限",
       "remove": "移除",
       "noRoles": "此范围内还没有角色：请先在“角色”中创建。"
-    }
+    },
+    "ssoLinks": "已关联的登录账号：{{providers}}",
+    "removeSsoLinks": "移除已关联账号",
+    "removeSsoLinksConfirm": "移除关联到 {{name}} 的所有登录账号？其会话将结束；之后可用密码重新关联。",
+    "ssoLinksRemoved": "已移除关联账号。"
   },
   "roles": {
     "title": "角色",
@@ -956,6 +961,16 @@
       "invalid": "玩家是游戏中名称的 1 到 64 个字母、数字和 _ - .（游戏接受时也可含空格）。",
       "admin_forbidden": "让玩家成为游戏管理员或取消管理员，还需要向控制台发送命令的权限。",
       "list_unreadable": "无法读取此名单的游戏文件。"
+    },
+    "sso": {
+      "not_found": "该登录提供方未设置。",
+      "client_id_invalid": "已启用的提供方需要其客户端 ID：一行，最多 256 个字符。",
+      "client_secret_required": "启用提供方需要其客户端密钥（新的客户端 ID 需要它自己的密钥）。",
+      "client_secret_invalid": "客户端密钥为一行，最多 512 个字符。",
+      "authority_invalid": "颁发者是不带查询参数的 https 地址，最多 255 个字符。",
+      "name_invalid": "按钮名称为一行，最多 32 个字符。",
+      "link_not_found": "你的账号未关联该提供方。",
+      "provider_unavailable": "无法连接提供方：{{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "白名单",
       "admins": "管理员",
       "empty": "无人。"
+    }
+  },
+  "sso": {
+    "or": "或",
+    "signInWith": "使用 {{name}} 登录",
+    "errors": {
+      "not_linked": "没有面板账号关联到该账号。请用密码登录，并在账号页面中关联。",
+      "expired": "登录耗时过长，或是在其他浏览器中开始的。请重试。",
+      "denied": "提供方没有确认登录。请重试。",
+      "token_invalid": "无法验证提供方的响应，因此没有人登录。",
+      "provider_unavailable": "无法连接提供方。请稍后再试。",
+      "not_allowed": "此账号现在无法登录（已停用，或因多次失败被锁定）。",
+      "not_found": "该登录提供方已不再设置。",
+      "linked_elsewhere": "该账号已关联到面板的其他用户。",
+      "provider_linked": "你的账号已关联该提供方的另一个账号：请先取消关联。",
+      "unknown": "使用提供方登录未成功。"
+    },
+    "linked": {
+      "title": "已关联的登录账号",
+      "hint": "关联提供方的账号后，可以用它代替密码登录。面板的两步验证仍会要求。",
+      "done": "账号已关联：现在可以用它登录了。",
+      "as": "已关联为 {{name}}",
+      "none": "未关联",
+      "link": "关联",
+      "linkTitle": "关联 {{name}}",
+      "confirmHint": "关联的账号可以登录你的账号，请确认是你本人。随后 {{name}} 会请你在那里登录。",
+      "continue": "继续前往 {{name}}",
+      "unlink": "取消关联",
+      "unlinkConfirm": "取消关联 {{name}}？你的其他会话将结束，此会话保留。"
+    },
+    "admin": {
+      "title": "外部登录",
+      "description": "让用户使用 Discord、Google 或 OpenID Connect 提供方代替密码登录。只有已存在的账号可以：每个用户在自己的账号页面用密码关联提供方账号。面板的两步验证仍会要求。",
+      "oidc": "OpenID Connect",
+      "enabled": "已启用",
+      "hints": {
+        "discord": "在 Discord 开发者门户中创建应用（OAuth2），添加下面的重定向地址，并复制其客户端 ID 和密钥。",
+        "google": "在 Google Cloud 凭据中创建 OAuth 客户端（Web 应用），添加下面的重定向地址，并复制其客户端 ID 和密钥。",
+        "oidc": "任何 OpenID Connect 提供方（Microsoft Entra、Keycloak、Authentik…）：用下面的重定向地址注册机密客户端。"
+      },
+      "redirect": "要在提供方注册的重定向地址",
+      "copy": "复制重定向地址",
+      "authority": "颁发者",
+      "authorityHint": "其 https 地址；面板会读取其下的发现文档。",
+      "buttonName": "按钮名称",
+      "buttonNameHint": "登录按钮上显示的文字（“公司账号”）。",
+      "clientId": "客户端 ID",
+      "clientSecret": "客户端密钥",
+      "secretKeep": "留空则保留已保存的密钥。",
+      "saved": "已保存。"
     }
   }
 }

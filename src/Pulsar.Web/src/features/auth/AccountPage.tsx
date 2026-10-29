@@ -20,6 +20,7 @@ import { ApiKeysSection } from './ApiKeys';
 import { TwoFactorSection } from './TwoFactor';
 import { SftpAccessSection } from '../sftp/SftpAccessSection';
 import { SshKeysSection } from '../sftp/SshKeysSection';
+import { LinkedAccountsSection } from '../sso/LinkedAccountsSection';
 import { PanelCertificateSection } from '../certificate/PanelCertificateSection';
 
 const profileSchema = z.object({
@@ -49,6 +50,7 @@ export function AccountPage() {
         <LanguageSection />
         <PasswordForm />
         <TwoFactorSection />
+        <LinkedAccountsSection />
         <SftpAccessSection />
         <SshKeysSection />
         <PanelCertificateSection />

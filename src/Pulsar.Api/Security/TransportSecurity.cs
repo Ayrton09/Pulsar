@@ -33,6 +33,9 @@ public sealed class PanelCookies(bool secure)
 
     public string AntiforgeryCookieToken { get; } = secure ? "__Host-pulsar-af" : "pulsar-af";
 
+    /// <summary>A sign-in at a provider under way (1.0.18): its state, PKCE verifier and nonce, encrypted, for 10 minutes.</summary>
+    public string Sso { get; } = secure ? "__Host-pulsar-sso" : "pulsar-sso";
+
     /// <summary>Readable by JavaScript on purpose (it only holds the antiforgery request token).</summary>
     public string AntiforgeryRequestToken { get; } = secure ? "__Host-pulsar-xsrf" : "pulsar-xsrf";
 

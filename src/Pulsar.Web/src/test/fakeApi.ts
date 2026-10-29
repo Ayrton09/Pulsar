@@ -108,7 +108,8 @@ export function fakeApi(routes: Record<string, Handler>) {
     const key = `${request.method} ${url.pathname}`;
     // Server and node pages show a usage history, and the nodes page the reusable enrollment tokens; tests about
     // something else get empty ones (and the account page no panel certificate, as over plain HTTP, and no SSH keys,
-    // and the game artwork on, the panel's default, and no newer release of Pulsar, and games whose updates are not checked).
+    // and the game artwork on, the panel's default, and no newer release of Pulsar, and games whose updates are not checked,
+    // and no sign-in provider turned on nor linked).
     const handler =
       routes[key] ??
       (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
@@ -131,7 +132,9 @@ export function fakeApi(routes: Record<string, Handler>) {
                         ? () => json([])
                         : key === 'GET /api/v1/updates'
                           ? () => json(noUpdates)
-                          : undefined);
+                          : key === 'GET /api/v1/auth/sso' || key === 'GET /api/v1/account/sso'
+                            ? () => json([])
+                            : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

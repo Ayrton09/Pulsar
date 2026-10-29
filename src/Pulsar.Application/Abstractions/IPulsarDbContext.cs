@@ -94,6 +94,8 @@ public interface IPulsarDbContext
 
     DbSet<NotificationSettings> NotificationSettings { get; }
 
+    DbSet<SsoProvider> SsoProviders { get; }
+
     DbSet<NotificationDelivery> NotificationDeliveries { get; }
 
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>

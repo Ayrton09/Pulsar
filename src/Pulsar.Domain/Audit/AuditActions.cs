@@ -20,6 +20,13 @@ public static class AuditActions
         public const string ApiKeyRevoked = "auth.api_key_revoked";
         public const string SshKeyAdded = "auth.ssh_key_added";
         public const string SshKeyDeleted = "auth.ssh_key_deleted";
+
+        /// <summary>A user linked an account of a sign-in provider to their own (1.0.18).</summary>
+        public const string SsoLinked = "auth.sso_linked";
+        public const string SsoUnlinked = "auth.sso_unlinked";
+
+        /// <summary>A provider vouched for an account that still has to give the panel's second factor.</summary>
+        public const string SsoSecondFactorAsked = "auth.sso_second_factor_asked";
     }
 
     public static class User
@@ -31,6 +38,13 @@ public static class AuditActions
         public const string TwoFactorReset = "user.two_factor_reset";
         public const string ApiKeysRevoked = "user.api_keys_revoked";
         public const string SshKeysDeleted = "user.ssh_keys_deleted";
+        public const string SsoLinksRemoved = "user.sso_links_removed";
+    }
+
+    /// <summary>Sign-in providers (1.0.18).</summary>
+    public static class Sso
+    {
+        public const string ProviderUpdated = "sso.provider_updated";
     }
 
     public static class Node

@@ -35,7 +35,8 @@
     "steamAccounts": "Account Steam",
     "menu": "Menu",
     "openMenu": "Apri il menu",
-    "updates": "Aggiornamenti"
+    "updates": "Aggiornamenti",
+    "signIn": "Accesso esterno"
   },
   "auth": {
     "userName": "Nome utente",
@@ -157,7 +158,11 @@
       "add": "Concedi accesso",
       "remove": "Rimuovi",
       "noRoles": "Non esistono ancora ruoli di questo ambito: crearne uno in Ruoli."
-    }
+    },
+    "ssoLinks": "Account di accesso collegati: {{providers}}",
+    "removeSsoLinks": "Rimuovi account collegati",
+    "removeSsoLinksConfirm": "Rimuovere tutti gli account di accesso collegati a {{name}}? Le sue sessioni terminano; può ricollegarli con la password.",
+    "ssoLinksRemoved": "Account collegati rimossi."
   },
   "roles": {
     "title": "Ruoli",
@@ -956,6 +961,16 @@
       "invalid": "Un giocatore è da 1 a 64 lettere, cifre e _ - . (e spazi, se il gioco li accetta), come lo chiama il gioco.",
       "admin_forbidden": "Rendere un giocatore admin del gioco, o toglierglielo, richiede anche il permesso di inviare comandi alla console.",
       "list_unreadable": "Non è stato possibile leggere il file del gioco con questa lista."
+    },
+    "sso": {
+      "not_found": "Quel provider di accesso non è configurato.",
+      "client_id_invalid": "Un provider attivo ha bisogno del suo client id: una riga di massimo 256 caratteri.",
+      "client_secret_required": "Per attivare un provider serve il suo client secret (e un nuovo client id richiede il suo).",
+      "client_secret_invalid": "Il client secret è una riga di massimo 512 caratteri.",
+      "authority_invalid": "L'emittente è un indirizzo https senza query, di massimo 255 caratteri.",
+      "name_invalid": "Il nome del pulsante è una riga di massimo 32 caratteri.",
+      "link_not_found": "Il tuo account non è collegato a quel provider.",
+      "provider_unavailable": "Impossibile contattare il provider: {{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "Whitelist",
       "admins": "Admin",
       "empty": "Nessuno."
+    }
+  },
+  "sso": {
+    "or": "oppure",
+    "signInWith": "Accedi con {{name}}",
+    "errors": {
+      "not_linked": "Nessun account del pannello è collegato a quell'account. Accedi con la password e collegalo dalla pagina del tuo account.",
+      "expired": "L'accesso ha richiesto troppo tempo o è iniziato in un altro browser. Riprova.",
+      "denied": "Il provider non ha confermato l'accesso. Riprova.",
+      "token_invalid": "Non è stato possibile verificare la risposta del provider, quindi nessuno è entrato.",
+      "provider_unavailable": "Impossibile contattare il provider. Riprova più tardi.",
+      "not_allowed": "Questo account non può accedere ora (disattivato o bloccato dopo tentativi falliti).",
+      "not_found": "Quel provider di accesso non è più configurato.",
+      "linked_elsewhere": "Quell'account è collegato a un altro utente del pannello.",
+      "provider_linked": "Il tuo account è già collegato a un altro account di quel provider: scollegalo prima.",
+      "unknown": "L'accesso con il provider non è riuscito."
+    },
+    "linked": {
+      "title": "Account di accesso collegati",
+      "hint": "Collega un account di un provider per accedere con quello invece della password. La verifica in due passaggi del pannello viene comunque chiesta.",
+      "done": "Account collegato: ora puoi accedere con quello.",
+      "as": "Collegato come {{name}}",
+      "none": "Non collegato",
+      "link": "Collega",
+      "linkTitle": "Collega {{name}}",
+      "confirmHint": "Un account collegato entra nel tuo, quindi conferma che sei tu. Poi {{name}} ti chiede di accedere lì.",
+      "continue": "Continua su {{name}}",
+      "unlink": "Scollega",
+      "unlinkConfirm": "Scollegare {{name}}? Le tue altre sessioni terminano; questa resta."
+    },
+    "admin": {
+      "title": "Accesso esterno",
+      "description": "Lascia che gli utenti accedano con Discord, Google o un provider OpenID Connect invece della password. Solo gli account esistenti possono: ognuno collega l'account del provider dalla pagina del proprio account, con la password. La verifica in due passaggi del pannello viene comunque chiesta.",
+      "oidc": "OpenID Connect",
+      "enabled": "Attivo",
+      "hints": {
+        "discord": "Crea un'applicazione nel portale sviluppatori di Discord (OAuth2), aggiungi il redirect qui sotto e copia client id e secret.",
+        "google": "Crea un client OAuth (applicazione web) nelle credenziali di Google Cloud, aggiungi il redirect qui sotto e copia client id e secret.",
+        "oidc": "Qualsiasi provider OpenID Connect (Microsoft Entra, Keycloak, Authentik…): registra un client riservato con il redirect qui sotto."
+      },
+      "redirect": "Indirizzo di redirect da registrare presso il provider",
+      "copy": "Copia l'indirizzo di redirect",
+      "authority": "Emittente",
+      "authorityHint": "Il suo indirizzo https; il pannello legge il documento di discovery sotto di esso.",
+      "buttonName": "Nome del pulsante",
+      "buttonNameHint": "Cosa dice il pulsante di accesso (\"Account aziendale\").",
+      "clientId": "Client id",
+      "clientSecret": "Client secret",
+      "secretKeep": "Lascia vuoto per mantenere il secret salvato.",
+      "saved": "Salvato."
     }
   }
 }

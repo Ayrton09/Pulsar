@@ -35,7 +35,8 @@
     "steamAccounts": "Steam-Konten",
     "menu": "Menü",
     "openMenu": "Menü öffnen",
-    "updates": "Updates"
+    "updates": "Updates",
+    "signIn": "Externe Anmeldung"
   },
   "auth": {
     "userName": "Benutzername",
@@ -157,7 +158,11 @@
       "add": "Zugriff gewähren",
       "remove": "Entfernen",
       "noRoles": "Für diesen Geltungsbereich gibt es noch keine Rollen: Erstellen Sie eine unter „Rollen“."
-    }
+    },
+    "ssoLinks": "Verknüpfte Anmeldekonten: {{providers}}",
+    "removeSsoLinks": "Verknüpfte Konten entfernen",
+    "removeSsoLinksConfirm": "Alle mit {{name}} verknüpften Anmeldekonten entfernen? Die Sitzungen enden; mit dem Passwort lassen sie sich wieder verknüpfen.",
+    "ssoLinksRemoved": "Verknüpfte Konten entfernt."
   },
   "roles": {
     "title": "Rollen",
@@ -956,6 +961,16 @@
       "invalid": "Ein Spieler besteht aus 1 bis 64 Buchstaben, Ziffern und _ - . (und Leerzeichen, wenn das Spiel sie annimmt), so wie das Spiel ihn nennt.",
       "admin_forbidden": "Einen Spieler zum Admin des Spiels zu machen oder ihm das zu nehmen, erfordert auch die Berechtigung, Konsolenbefehle zu senden.",
       "list_unreadable": "Die Datei des Spiels mit dieser Liste konnte nicht gelesen werden."
+    },
+    "sso": {
+      "not_found": "Dieser Anmeldeanbieter ist nicht eingerichtet.",
+      "client_id_invalid": "Ein eingeschalteter Anbieter braucht seine Client-ID: eine Zeile mit höchstens 256 Zeichen.",
+      "client_secret_required": "Zum Einschalten braucht ein Anbieter sein Client-Secret (eine neue Client-ID braucht ihr eigenes).",
+      "client_secret_invalid": "Das Client-Secret ist eine Zeile mit höchstens 512 Zeichen.",
+      "authority_invalid": "Der Aussteller ist eine https-Adresse ohne Query mit höchstens 255 Zeichen.",
+      "name_invalid": "Der Name der Schaltfläche ist eine Zeile mit höchstens 32 Zeichen.",
+      "link_not_found": "Dein Konto ist nicht mit diesem Anbieter verknüpft.",
+      "provider_unavailable": "Der Anbieter war nicht erreichbar: {{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "Whitelist",
       "admins": "Admins",
       "empty": "Niemand."
+    }
+  },
+  "sso": {
+    "or": "oder",
+    "signInWith": "Mit {{name}} anmelden",
+    "errors": {
+      "not_linked": "Mit diesem Konto ist kein Konto des Panels verknüpft. Melde dich mit deinem Passwort an und verknüpfe es auf deiner Kontoseite.",
+      "expired": "Die Anmeldung hat zu lange gedauert oder wurde in einem anderen Browser begonnen. Versuche es erneut.",
+      "denied": "Der Anbieter hat die Anmeldung nicht bestätigt. Versuche es erneut.",
+      "token_invalid": "Die Antwort des Anbieters ließ sich nicht prüfen, daher wurde niemand angemeldet.",
+      "provider_unavailable": "Der Anbieter war nicht erreichbar. Versuche es später erneut.",
+      "not_allowed": "Dieses Konto kann sich gerade nicht anmelden (deaktiviert oder nach Fehlversuchen gesperrt).",
+      "not_found": "Dieser Anmeldeanbieter ist nicht mehr eingerichtet.",
+      "linked_elsewhere": "Dieses Konto ist mit einem anderen Benutzer des Panels verknüpft.",
+      "provider_linked": "Dein Konto ist schon mit einem anderen Konto dieses Anbieters verknüpft: Löse zuerst diese Verknüpfung.",
+      "unknown": "Die Anmeldung mit dem Anbieter hat nicht geklappt."
+    },
+    "linked": {
+      "title": "Verknüpfte Anmeldekonten",
+      "hint": "Verknüpfe ein Konto eines Anbieters, um dich damit statt mit deinem Passwort anzumelden. Die Zwei-Schritt-Bestätigung des Panels wird trotzdem verlangt.",
+      "done": "Konto verknüpft: Du kannst dich jetzt damit anmelden.",
+      "as": "Verknüpft als {{name}}",
+      "none": "Nicht verknüpft",
+      "link": "Verknüpfen",
+      "linkTitle": "{{name}} verknüpfen",
+      "confirmHint": "Ein verknüpftes Konto meldet dich an, bestätige also, dass du es bist. Danach bittet dich {{name}}, dich dort anzumelden.",
+      "continue": "Weiter zu {{name}}",
+      "unlink": "Verknüpfung lösen",
+      "unlinkConfirm": "Verknüpfung mit {{name}} lösen? Deine anderen Sitzungen enden; diese bleibt."
+    },
+    "admin": {
+      "title": "Externe Anmeldung",
+      "description": "Lass Benutzer sich mit Discord, Google oder einem OpenID-Connect-Anbieter statt mit ihrem Passwort anmelden. Nur bestehende Konten können das: Jeder verknüpft sein Anbieterkonto auf seiner Kontoseite, mit seinem Passwort. Die Zwei-Schritt-Bestätigung des Panels wird trotzdem verlangt.",
+      "oidc": "OpenID Connect",
+      "enabled": "Eingeschaltet",
+      "hints": {
+        "discord": "Erstelle im Entwicklerportal von Discord eine Anwendung (OAuth2), trage die Weiterleitung unten ein und kopiere Client-ID und Secret.",
+        "google": "Erstelle in den Anmeldedaten von Google Cloud einen OAuth-Client (Webanwendung), trage die Weiterleitung unten ein und kopiere Client-ID und Secret.",
+        "oidc": "Jeder OpenID-Connect-Anbieter (Microsoft Entra, Keycloak, Authentik…): Registriere einen vertraulichen Client mit der Weiterleitung unten."
+      },
+      "redirect": "Weiterleitungsadresse, die beim Anbieter einzutragen ist",
+      "copy": "Weiterleitungsadresse kopieren",
+      "authority": "Aussteller",
+      "authorityHint": "Seine https-Adresse; das Panel liest das Discovery-Dokument darunter.",
+      "buttonName": "Name der Schaltfläche",
+      "buttonNameHint": "Was auf der Anmeldeschaltfläche steht („Firmenkonto“).",
+      "clientId": "Client-ID",
+      "clientSecret": "Client-Secret",
+      "secretKeep": "Leer lassen, um das gespeicherte Secret zu behalten.",
+      "saved": "Gespeichert."
     }
   }
 }

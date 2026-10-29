@@ -173,6 +173,14 @@ The server page has a fixed header (name, status, power actions, live CPU/RAM) a
 - `/nodes/:id` shows each drive the agent uses (game servers, backups) with its free space, next to CPU and memory.
 - API: `GET|POST /api/v1/notifications/channels`, `PUT|DELETE …/channels/{id}`, `POST …/channels/{id}/test`, `GET /api/v1/notifications/deliveries`, `GET|PUT /api/v1/notifications/settings`. Changes and tests are audited.
 
+## Sign-in providers (1.0.18)
+
+- `/admin/sign-in` (`settings.manage`): Discord, Google and one OpenID Connect provider, each on or off with the client id and secret of the administrator's application there (the secret is never shown again; left empty it is kept, but not for another client id), the redirect address to register with it (to copy), and for OpenID Connect its issuer (https; its discovery document must name that same issuer) and its button's name. Changing the OpenID Connect issuer or client id removes the accounts linked to it (their subjects were the old issuer's), and a new issuer needs its secret again.
+- `/login`: a button per provider turned on, under the password form; the browser goes to the provider and comes back to `/` signed in, to the second step when the account has two-factor authentication (`/login?sso=two_factor`), or to `/login?sso_error=…` with why not (not linked, expired, denied, an answer that does not hold up, the provider unreachable, a disabled or locked account).
+- `/account`, *Linked sign-in accounts*: each provider turned on, linked (as which name) or not. Linking asks for the password (and the code with two-factor authentication on: a linked account signs in alone), then goes to the provider and back to `/account?sso=linked` or `?sso_error=…` (another user has that account, or this one has another of that provider). Unlinking asks first; the user's other sessions end.
+- `/admin/users`: which providers a user linked, and removing them all (asked first; their sessions end).
+- API: `GET /api/v1/auth/sso` (anyone: the providers turned on), `POST …/auth/sso/{provider}/login` (`{ url }`), `GET …/auth/sso/{provider}/callback` (the provider's redirect), `GET /api/v1/account/sso`, `POST …/account/sso/{provider}/link` (`{ password, code }` → `{ url }`), `DELETE …/account/sso/{provider}`, `GET /api/v1/sso-providers`, `PUT …/sso-providers/{provider}`, `DELETE /api/v1/users/{id}/sso-links`. Links, unlinks, sign-ins and provider changes are audited.
+
 ## Two-factor authentication
 
 - Sign-in: after a correct password, a user with two-factor authentication gives a code from their authenticator app or one of their recovery codes (`POST /api/v1/auth/login` answers `twoFactorRequired`; `POST /api/v1/auth/login/two-factor` signs in). "Remember me on this device" (1.0.9, off by default) keeps the session after the browser closes, until the user signs out (doc 08, "Users and web"); the second step sends the choice made with the password.

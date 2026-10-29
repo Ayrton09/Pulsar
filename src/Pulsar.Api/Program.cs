@@ -136,6 +136,7 @@ try
     api.MapGroup("/auth").WithTags("Auth").MapAuthEndpoints();
     api.MapApiKeyEndpoints();
     api.MapSshKeyEndpoints();
+    api.MapSsoEndpoints();
     api.MapUserEndpoints();
     api.MapRoleEndpoints();
     api.MapAuditEndpoints();

@@ -96,6 +96,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
 
+    public DbSet<SsoProvider> SsoProviders => Set<SsoProvider>();
+
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
 
     internal DbSet<ServerMetricBucket> ServerMetrics => Set<ServerMetricBucket>();

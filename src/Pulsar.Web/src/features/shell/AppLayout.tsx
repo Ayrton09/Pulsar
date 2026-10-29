@@ -12,6 +12,7 @@ import {
   Menu,
   ScrollText,
   Server,
+  LogIn,
   ShieldCheck,
   Users,
   X,
@@ -168,6 +169,7 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
       icon: KeyRound,
       anyOf: [Permission.SettingsManage],
     },
+    { to: '/admin/sign-in', label: t('nav.signIn'), icon: LogIn, anyOf: [Permission.SettingsManage] },
     { to: '/admin/updates', label: t('nav.updates'), icon: Download, anyOf: [Permission.SettingsManage] },
   ]);
 

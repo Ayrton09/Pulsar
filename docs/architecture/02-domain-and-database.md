@@ -209,10 +209,23 @@ CREATE TABLE users (
     created_at            timestamptz  NOT NULL,
     last_login_at         timestamptz
 );
--- + user_tokens, user_logins, user_claims: standard IdentityUserContext tables
---   (external logins unused in v1). Two-factor rows in user_tokens (login_provider '[Pulsar]'): the authenticator key
+-- + user_tokens, user_logins, user_claims: standard IdentityUserContext tables. user_logins (1.0.18): one row per
+--   linked account of a sign-in provider (login_provider 'discord' | 'google' | 'oidc', provider_key the provider's
+--   own id for the account: Discord's account id, an ID token's sub; provider_display_name a name to show). Two-factor rows in user_tokens (login_provider '[Pulsar]'): the authenticator key
 --   encrypted with Data Protection, the recovery codes as SHA-256 hashes, and the last accepted TOTP step (a code
 --   works once).
+
+-- Sign-in providers (1.0.18): one row per kind, the administrator's application at the provider.
+CREATE TABLE sso_providers (
+    kind                    text PRIMARY KEY CHECK (kind IN ('discord','google','oidc')),
+    is_enabled              boolean NOT NULL,
+    client_id               varchar(256) NOT NULL,
+    client_secret_protected bytea,                -- Data Protection; never shown again
+    authority               varchar(255),         -- oidc only: the issuer's https address (discovery below it)
+    display_name            varchar(32),          -- oidc only: what its sign-in button says
+    updated_at              timestamptz NOT NULL,
+    CHECK (NOT is_enabled OR (client_id <> '' AND client_secret_protected IS NOT NULL))
+);
 
 CREATE TABLE roles (
     id               uuid PRIMARY KEY,

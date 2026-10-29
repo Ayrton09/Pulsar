@@ -377,6 +377,57 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("ssh_keys", (string)null);
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.SsoProvider", b =>
+                {
+                    b.Property<string>("Kind")
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Authority")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("authority");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("client_id");
+
+                    b.Property<byte[]>("ClientSecretProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("client_secret_protected");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("display_name");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Kind")
+                        .HasName("pk_sso_providers");
+
+                    b.ToTable("sso_providers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_sso_providers_enabled", "NOT is_enabled OR (client_id <> '' AND client_secret_protected IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_sso_providers_kind", "kind IN ('discord', 'google', 'oidc')");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>
                 {
                     b.Property<Guid>("UserId")

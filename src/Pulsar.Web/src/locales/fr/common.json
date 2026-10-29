@@ -35,7 +35,8 @@
     "steamAccounts": "Comptes Steam",
     "menu": "Menu",
     "openMenu": "Ouvrir le menu",
-    "updates": "Mises à jour"
+    "updates": "Mises à jour",
+    "signIn": "Connexion externe"
   },
   "auth": {
     "userName": "Nom d'utilisateur",
@@ -157,7 +158,11 @@
       "add": "Donner l'accès",
       "remove": "Retirer",
       "noRoles": "Il n'existe pas encore de rôle de ce type : créez-en un dans Rôles."
-    }
+    },
+    "ssoLinks": "Comptes de connexion liés : {{providers}}",
+    "removeSsoLinks": "Retirer les comptes liés",
+    "removeSsoLinksConfirm": "Retirer tous les comptes de connexion liés à {{name}} ? Ses sessions se terminent ; il peut les lier de nouveau avec son mot de passe.",
+    "ssoLinksRemoved": "Comptes liés retirés."
   },
   "roles": {
     "title": "Rôles",
@@ -956,6 +961,16 @@
       "invalid": "Un joueur, ce sont 1 à 64 lettres, chiffres et _ - . (et espaces, si le jeu les accepte), comme le jeu le nomme.",
       "admin_forbidden": "Faire d'un joueur un admin du jeu, ou le lui retirer, demande aussi la permission d'envoyer des commandes à la console.",
       "list_unreadable": "Le fichier du jeu de cette liste n'a pas pu être lu."
+    },
+    "sso": {
+      "not_found": "Ce fournisseur de connexion n'est pas configuré.",
+      "client_id_invalid": "Un fournisseur activé a besoin de son client id : une ligne de 256 caractères au plus.",
+      "client_secret_required": "Activer un fournisseur demande son client secret (et un nouveau client id demande le sien).",
+      "client_secret_invalid": "Le client secret est une ligne de 512 caractères au plus.",
+      "authority_invalid": "L'émetteur est une adresse https sans requête, de 255 caractères au plus.",
+      "name_invalid": "Le nom du bouton est une ligne de 32 caractères au plus.",
+      "link_not_found": "Votre compte n'est pas lié à ce fournisseur.",
+      "provider_unavailable": "Le fournisseur n'a pas pu être joint : {{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "Whitelist",
       "admins": "Admins",
       "empty": "Personne."
+    }
+  },
+  "sso": {
+    "or": "ou",
+    "signInWith": "Se connecter avec {{name}}",
+    "errors": {
+      "not_linked": "Aucun compte du panneau n'est lié à ce compte. Connectez-vous avec votre mot de passe et liez-le depuis la page de votre compte.",
+      "expired": "La connexion a pris trop de temps ou a commencé dans un autre navigateur. Réessayez.",
+      "denied": "Le fournisseur n'a pas confirmé la connexion. Réessayez.",
+      "token_invalid": "La réponse du fournisseur n'a pas pu être vérifiée : personne n'a été connecté.",
+      "provider_unavailable": "Le fournisseur n'a pas pu être joint. Réessayez plus tard.",
+      "not_allowed": "Ce compte ne peut pas se connecter maintenant (désactivé, ou verrouillé après des échecs).",
+      "not_found": "Ce fournisseur de connexion n'est plus configuré.",
+      "linked_elsewhere": "Ce compte est lié à un autre utilisateur du panneau.",
+      "provider_linked": "Votre compte est déjà lié à un autre compte de ce fournisseur : déliez-le d'abord.",
+      "unknown": "La connexion avec le fournisseur n'a pas abouti."
+    },
+    "linked": {
+      "title": "Comptes de connexion liés",
+      "hint": "Liez le compte d'un fournisseur pour vous connecter avec lui au lieu de votre mot de passe. La vérification en deux étapes du panneau est toujours demandée.",
+      "done": "Compte lié : vous pouvez maintenant vous connecter avec.",
+      "as": "Lié en tant que {{name}}",
+      "none": "Non lié",
+      "link": "Lier",
+      "linkTitle": "Lier {{name}}",
+      "confirmHint": "Un compte lié se connecte au vôtre : confirmez que c'est vous. Ensuite {{name}} vous demande de vous y connecter.",
+      "continue": "Continuer vers {{name}}",
+      "unlink": "Délier",
+      "unlinkConfirm": "Délier {{name}} ? Vos autres sessions se terminent ; celle-ci reste."
+    },
+    "admin": {
+      "title": "Connexion externe",
+      "description": "Laissez les utilisateurs se connecter avec Discord, Google ou un fournisseur OpenID Connect au lieu de leur mot de passe. Seuls les comptes existants le peuvent : chacun lie le compte du fournisseur depuis la page de son compte, avec son mot de passe. La vérification en deux étapes du panneau est toujours demandée.",
+      "oidc": "OpenID Connect",
+      "enabled": "Activé",
+      "hints": {
+        "discord": "Créez une application dans le portail des développeurs de Discord (OAuth2), ajoutez la redirection ci-dessous et copiez son client id et son secret.",
+        "google": "Créez un client OAuth (application web) dans les identifiants de Google Cloud, ajoutez la redirection ci-dessous et copiez son client id et son secret.",
+        "oidc": "N'importe quel fournisseur OpenID Connect (Microsoft Entra, Keycloak, Authentik…) : enregistrez un client confidentiel avec la redirection ci-dessous."
+      },
+      "redirect": "Adresse de redirection à enregistrer chez le fournisseur",
+      "copy": "Copier l'adresse de redirection",
+      "authority": "Émetteur",
+      "authorityHint": "Son adresse https ; le panneau lit son document de découverte en dessous.",
+      "buttonName": "Nom du bouton",
+      "buttonNameHint": "Ce que dit le bouton de connexion (« Compte de l'entreprise »).",
+      "clientId": "Client id",
+      "clientSecret": "Client secret",
+      "secretKeep": "Laissez vide pour garder le secret enregistré.",
+      "saved": "Enregistré."
     }
   }
 }

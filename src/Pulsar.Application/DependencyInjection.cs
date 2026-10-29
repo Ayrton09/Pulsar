@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<RoleManagement>();
         services.AddScoped<ApiKeys>();
         services.AddScoped<SshKeys>();
+        services.AddScoped<SsoProviders>();
         services.AddScoped<PanelUpdates>();
         // The update keys this build trusts (Phase 19); tests give their own.
         services.TryAddSingleton(UpdateVerifier.Default);

@@ -35,7 +35,8 @@
     "steamAccounts": "Cuentas de Steam",
     "menu": "Menú",
     "openMenu": "Abrir menú",
-    "updates": "Actualizaciones"
+    "updates": "Actualizaciones",
+    "signIn": "Inicio de sesión externo"
   },
   "auth": {
     "userName": "Usuario",
@@ -157,7 +158,11 @@
       "add": "Dar acceso",
       "remove": "Quitar",
       "noRoles": "Todavía no hay roles de este alcance: creá uno en Roles."
-    }
+    },
+    "ssoLinks": "Cuentas de inicio de sesión vinculadas: {{providers}}",
+    "removeSsoLinks": "Quitar cuentas vinculadas",
+    "removeSsoLinksConfirm": "¿Quitar todas las cuentas de inicio de sesión vinculadas a {{name}}? Se cierran sus sesiones; puede volver a vincularlas con su contraseña.",
+    "ssoLinksRemoved": "Cuentas vinculadas quitadas."
   },
   "roles": {
     "title": "Roles",
@@ -956,6 +961,16 @@
       "invalid": "Un jugador es de 1 a 64 letras, dígitos y _ - . (y espacios, si el juego los acepta), como lo nombra el juego.",
       "admin_forbidden": "Hacer admin del juego a un jugador, o sacárselo, también necesita el permiso de enviar comandos a la consola.",
       "list_unreadable": "No se pudo leer el archivo del juego con esta lista."
+    },
+    "sso": {
+      "not_found": "Ese proveedor de inicio de sesión no está configurado.",
+      "client_id_invalid": "Un proveedor activado necesita su client id: una línea de hasta 256 caracteres.",
+      "client_secret_required": "Para activar un proveedor hace falta su client secret (y un client id nuevo necesita el suyo).",
+      "client_secret_invalid": "El client secret es una línea de hasta 512 caracteres.",
+      "authority_invalid": "El emisor es una dirección https sin query, de hasta 255 caracteres.",
+      "name_invalid": "El nombre del botón es una línea de hasta 32 caracteres.",
+      "link_not_found": "Tu cuenta no está vinculada a ese proveedor.",
+      "provider_unavailable": "No se pudo contactar al proveedor: {{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "Whitelist",
       "admins": "Admins",
       "empty": "Nadie."
+    }
+  },
+  "sso": {
+    "or": "o",
+    "signInWith": "Entrar con {{name}}",
+    "errors": {
+      "not_linked": "Ninguna cuenta del panel está vinculada a esa cuenta. Entrá con tu contraseña y vinculala desde tu cuenta.",
+      "expired": "El inicio de sesión tardó demasiado o se empezó en otro navegador. Probá de nuevo.",
+      "denied": "El proveedor no confirmó el inicio de sesión. Probá de nuevo.",
+      "token_invalid": "No se pudo verificar la respuesta del proveedor, así que no entró nadie.",
+      "provider_unavailable": "No se pudo contactar al proveedor. Probá más tarde.",
+      "not_allowed": "Esta cuenta no puede entrar ahora (está deshabilitada o bloqueada por intentos fallidos).",
+      "not_found": "Ese proveedor de inicio de sesión ya no está configurado.",
+      "linked_elsewhere": "Esa cuenta está vinculada a otro usuario del panel.",
+      "provider_linked": "Tu cuenta ya está vinculada a otra cuenta de ese proveedor: desvinculala primero.",
+      "unknown": "El inicio de sesión con el proveedor no funcionó."
+    },
+    "linked": {
+      "title": "Cuentas de inicio de sesión vinculadas",
+      "hint": "Vinculá una cuenta de un proveedor para entrar con ella en vez de tu contraseña. La verificación en dos pasos del panel se pide igual.",
+      "done": "Cuenta vinculada: ya podés entrar con ella.",
+      "as": "Vinculada como {{name}}",
+      "none": "Sin vincular",
+      "link": "Vincular",
+      "linkTitle": "Vincular {{name}}",
+      "confirmHint": "Una cuenta vinculada entra a la tuya, así que confirmá que sos vos. Después {{name}} te pide que inicies sesión ahí.",
+      "continue": "Seguir a {{name}}",
+      "unlink": "Desvincular",
+      "unlinkConfirm": "¿Desvincular {{name}}? Se cierran tus otras sesiones; esta sigue abierta."
+    },
+    "admin": {
+      "title": "Inicio de sesión externo",
+      "description": "Permití que los usuarios entren con Discord, Google o un proveedor OpenID Connect en vez de su contraseña. Solo pueden las cuentas que ya existen: cada usuario vincula su cuenta del proveedor desde su página de cuenta, con su contraseña. La verificación en dos pasos del panel se pide igual.",
+      "oidc": "OpenID Connect",
+      "enabled": "Activado",
+      "hints": {
+        "discord": "Creá una aplicación en el portal de desarrolladores de Discord (OAuth2), agregá la dirección de redirección de abajo y copiá su client id y su secret.",
+        "google": "Creá un cliente OAuth (aplicación web) en las credenciales de Google Cloud, agregá la dirección de redirección de abajo y copiá su client id y su secret.",
+        "oidc": "Cualquier proveedor OpenID Connect (Microsoft Entra, Keycloak, Authentik…): registrá un cliente confidencial con la dirección de redirección de abajo."
+      },
+      "redirect": "Dirección de redirección para registrar en el proveedor",
+      "copy": "Copiar la dirección de redirección",
+      "authority": "Emisor",
+      "authorityHint": "Su dirección https; el panel lee su documento de descubrimiento debajo de ella.",
+      "buttonName": "Nombre del botón",
+      "buttonNameHint": "Lo que dice el botón de inicio de sesión (\"Cuenta de la empresa\").",
+      "clientId": "Client id",
+      "clientSecret": "Client secret",
+      "secretKeep": "Dejalo vacío para conservar el secret guardado.",
+      "saved": "Guardado."
     }
   }
 }

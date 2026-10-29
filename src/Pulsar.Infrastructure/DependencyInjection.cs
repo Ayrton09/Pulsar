@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Databases;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
@@ -11,6 +12,7 @@ using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
 using Pulsar.Application.Updates;
 using Pulsar.Contracts;
+using Pulsar.Infrastructure.Access;
 using Pulsar.Infrastructure.Databases;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Metrics;
@@ -70,6 +72,13 @@ public static class DependencyInjection
         services.AddHostedService<SequenceService>();
 
         services.AddSingleton<INotificationSecretProtector, DataProtectionNotificationSecretProtector>();
+        // Sign-in providers (1.0.18): their secrets encrypted; their addresses https, no redirects, no request logging
+        // (the token request carries the client secret and the code).
+        services.AddSingleton<ISsoSecretProtector, DataProtectionSsoSecretProtector>();
+        services.AddSingleton<ISsoClient, SsoClient>();
+        services.AddHttpClient(SsoClient.ClientName, client => client.Timeout = TimeSpan.FromSeconds(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
         services.AddScoped<INotificationClaims, NotificationClaims>();
         services.AddScoped<INotificationTransport, DiscordTransport>();
         services.AddScoped<INotificationTransport, EmailTransport>();

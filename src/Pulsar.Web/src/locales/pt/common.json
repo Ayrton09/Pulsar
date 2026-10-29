@@ -35,7 +35,8 @@
     "steamAccounts": "Contas Steam",
     "menu": "Menu",
     "openMenu": "Abrir menu",
-    "updates": "Atualizações"
+    "updates": "Atualizações",
+    "signIn": "Login externo"
   },
   "auth": {
     "userName": "Nome de usuário",
@@ -157,7 +158,11 @@
       "add": "Dar acesso",
       "remove": "Remover",
       "noRoles": "Ainda não há funções deste escopo: crie uma em Funções."
-    }
+    },
+    "ssoLinks": "Contas de login vinculadas: {{providers}}",
+    "removeSsoLinks": "Remover contas vinculadas",
+    "removeSsoLinksConfirm": "Remover todas as contas de login vinculadas a {{name}}? As sessões dele terminam; ele pode vinculá-las de novo com a senha.",
+    "ssoLinksRemoved": "Contas vinculadas removidas."
   },
   "roles": {
     "title": "Funções",
@@ -956,6 +961,16 @@
       "invalid": "Um jogador tem de 1 a 64 letras, dígitos e _ - . (e espaços, se o jogo aceitar), como o jogo o chama.",
       "admin_forbidden": "Tornar um jogador admin do jogo, ou tirar isso, também exige a permissão de enviar comandos ao console.",
       "list_unreadable": "Não foi possível ler o arquivo do jogo com esta lista."
+    },
+    "sso": {
+      "not_found": "Esse provedor de login não está configurado.",
+      "client_id_invalid": "Um provedor ativado precisa do client id: uma linha de até 256 caracteres.",
+      "client_secret_required": "Ativar um provedor precisa do client secret (e um client id novo precisa do seu).",
+      "client_secret_invalid": "O client secret é uma linha de até 512 caracteres.",
+      "authority_invalid": "O emissor é um endereço https sem query, de até 255 caracteres.",
+      "name_invalid": "O nome do botão é uma linha de até 32 caracteres.",
+      "link_not_found": "Sua conta não está vinculada a esse provedor.",
+      "provider_unavailable": "Não foi possível contatar o provedor: {{detail}}"
     }
   },
   "account": {
@@ -7752,6 +7767,56 @@
       "whitelist": "Whitelist",
       "admins": "Admins",
       "empty": "Ninguém."
+    }
+  },
+  "sso": {
+    "or": "ou",
+    "signInWith": "Entrar com {{name}}",
+    "errors": {
+      "not_linked": "Nenhuma conta do painel está vinculada a essa conta. Entre com sua senha e vincule-a na página da sua conta.",
+      "expired": "O login demorou demais ou foi iniciado em outro navegador. Tente de novo.",
+      "denied": "O provedor não confirmou o login. Tente de novo.",
+      "token_invalid": "Não foi possível verificar a resposta do provedor, então ninguém entrou.",
+      "provider_unavailable": "Não foi possível contatar o provedor. Tente mais tarde.",
+      "not_allowed": "Esta conta não pode entrar agora (desativada ou bloqueada por tentativas falhas).",
+      "not_found": "Esse provedor de login não está mais configurado.",
+      "linked_elsewhere": "Essa conta está vinculada a outro usuário do painel.",
+      "provider_linked": "Sua conta já está vinculada a outra conta desse provedor: desvincule-a primeiro.",
+      "unknown": "O login com o provedor não funcionou."
+    },
+    "linked": {
+      "title": "Contas de login vinculadas",
+      "hint": "Vincule uma conta de um provedor para entrar com ela em vez da senha. A verificação em duas etapas do painel continua sendo pedida.",
+      "done": "Conta vinculada: agora você pode entrar com ela.",
+      "as": "Vinculada como {{name}}",
+      "none": "Não vinculada",
+      "link": "Vincular",
+      "linkTitle": "Vincular {{name}}",
+      "confirmHint": "Uma conta vinculada entra na sua, então confirme que é você. Depois {{name}} pede que você entre lá.",
+      "continue": "Continuar para {{name}}",
+      "unlink": "Desvincular",
+      "unlinkConfirm": "Desvincular {{name}}? Suas outras sessões terminam; esta continua."
+    },
+    "admin": {
+      "title": "Login externo",
+      "description": "Deixe os usuários entrarem com Discord, Google ou um provedor OpenID Connect em vez da senha. Só contas que já existem podem: cada usuário vincula a conta do provedor na página da conta, com a senha. A verificação em duas etapas do painel continua sendo pedida.",
+      "oidc": "OpenID Connect",
+      "enabled": "Ativado",
+      "hints": {
+        "discord": "Crie um aplicativo no portal de desenvolvedores do Discord (OAuth2), adicione o redirecionamento abaixo e copie o client id e o secret.",
+        "google": "Crie um cliente OAuth (aplicativo web) nas credenciais do Google Cloud, adicione o redirecionamento abaixo e copie o client id e o secret.",
+        "oidc": "Qualquer provedor OpenID Connect (Microsoft Entra, Keycloak, Authentik…): registre um cliente confidencial com o redirecionamento abaixo."
+      },
+      "redirect": "Endereço de redirecionamento para registrar no provedor",
+      "copy": "Copiar o endereço de redirecionamento",
+      "authority": "Emissor",
+      "authorityHint": "O endereço https dele; o painel lê o documento de descoberta abaixo dele.",
+      "buttonName": "Nome do botão",
+      "buttonNameHint": "O que o botão de login diz (\"Conta da empresa\").",
+      "clientId": "Client id",
+      "clientSecret": "Client secret",
+      "secretKeep": "Deixe vazio para manter o secret salvo.",
+      "saved": "Salvo."
     }
   }
 }

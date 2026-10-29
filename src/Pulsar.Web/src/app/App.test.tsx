@@ -173,7 +173,10 @@ describe('login', () => {
     await user.click(await screen.findByRole('button', { name: 'Sign in' }));
 
     expect(await screen.findAllByText('Required.')).toHaveLength(2);
-    expect(api).toHaveBeenCalledTimes(1); // only the session
+    // Only the session and the sign-in providers: no sign-in was asked.
+    expect(api.mock.calls.map(([input]) => new Request(input as RequestInfo).url)).not.toContainEqual(
+      expect.stringContaining('/auth/login'),
+    );
   });
 
   it('goes back to the requested page after signing in', async () => {

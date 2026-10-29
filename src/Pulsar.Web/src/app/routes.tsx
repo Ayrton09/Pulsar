@@ -186,6 +186,19 @@ const pages: RouteObject[] = [
             },
           },
           {
+            path: 'admin/sign-in',
+            lazy: async () => {
+              const { SsoProvidersPage } = await import('../features/sso/SsoProvidersPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <SsoProvidersPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
             path: 'admin/updates',
             lazy: async () => {
               const { UpdatesPage } = await import('../features/updates/UpdatesPage');

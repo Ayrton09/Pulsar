@@ -137,3 +137,23 @@ internal sealed class SshKeyConfiguration : IEntityTypeConfiguration<SshKey>
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+internal sealed class SsoProviderConfiguration : IEntityTypeConfiguration<SsoProvider>
+{
+    public void Configure(EntityTypeBuilder<SsoProvider> builder)
+    {
+        builder.ToTable("sso_providers", t =>
+        {
+            t.HasCheckConstraint("ck_sso_providers_kind", SnakeCaseEnum<SsoKind>.CheckConstraint("kind"));
+            // Turned on only with what signing in needs.
+            t.HasCheckConstraint("ck_sso_providers_enabled", "NOT is_enabled OR (client_id <> '' AND client_secret_protected IS NOT NULL)");
+        });
+
+        builder.HasKey(p => p.Kind);
+        builder.Property(p => p.Kind).HasConversion<SnakeCaseEnumConverter<SsoKind>>().ValueGeneratedNever();
+        builder.Property(p => p.ClientId).HasMaxLength(SsoProvider.MaxClientIdLength);
+        builder.Property(p => p.Authority).HasMaxLength(SsoProvider.MaxAuthorityLength);
+        builder.Property(p => p.DisplayName).HasMaxLength(SsoProvider.MaxNameLength);
+        builder.Property<uint>("Version").IsRowVersion();
+    }
+}

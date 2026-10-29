@@ -201,6 +201,15 @@ export function useDeleteUserSshKeys() {
   });
 }
 
+/** Removes every account of a sign-in provider linked to a user's (1.0.18): their sessions end; answers the user as they are now. */
+export function useRemoveUserSsoLinks() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.DELETE('/api/v1/users/{id}/sso-links', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
 export function useRequireTwoFactor() {
   const queryClient = useQueryClient();
   const changed = useAccessChanged();
