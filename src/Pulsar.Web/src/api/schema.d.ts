@@ -15956,7 +15956,7 @@ export interface components {
             nextAttemptAt: null | string;
         };
         /** @enum {unknown} */
-        NotificationEvent: "serverCrashed" | "serverStartFailed" | "backupFailed" | "scheduledTaskFailed" | "nodeOffline" | "nodeDiskLow" | "gameUpdateAvailable" | "gameUpdateFailed" | "publicIpCertificate";
+        NotificationEvent: "serverCrashed" | "serverStartFailed" | "backupFailed" | "scheduledTaskFailed" | "nodeOffline" | "nodeDiskLow" | "gameUpdateAvailable" | "gameUpdateFailed" | "publicIpCertificate" | "resourceHigh";
         /** @enum {unknown} */
         NotificationKind: "discord" | "email";
         NotificationSettingsRequest: {
@@ -15974,6 +15974,12 @@ export interface components {
             clearSmtpPassword: boolean;
             fromAddress: null | string;
             fromName: null | string;
+            /** Format: int32 */
+            cpuHighPercent?: null | number;
+            /** Format: int32 */
+            memoryHighPercent?: null | number;
+            /** Format: int32 */
+            resourceHighMinutes?: null | number;
         };
         NotificationSettingsView: {
             panelUrl: null | string;
@@ -15982,6 +15988,12 @@ export interface components {
             /** Format: int32 */
             nodeOfflineMinutes: number;
             smtp: null | components["schemas"]["SmtpSettingsView"];
+            /** Format: int32 */
+            cpuHighPercent: number;
+            /** Format: int32 */
+            memoryHighPercent: number;
+            /** Format: int32 */
+            resourceHighMinutes: number;
         };
         NotificationTestResult: {
             sent: boolean;

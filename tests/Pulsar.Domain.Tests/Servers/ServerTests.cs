@@ -80,6 +80,33 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public void AServerIsDownAfterACrashUntilItRunsOrIsLeftStopped()
+    {
+        var server = NewServer();
+        server.Observe(ServerRuntimeState.Running, ServerStateReason.Ready, null, 1, s_now, snapshot: false);
+        Assert.False(server.DownAfterCrash);
+
+        server.Observe(ServerRuntimeState.Crashed, ServerStateReason.Crashed, 1, 2, s_now, snapshot: false);
+        Assert.True(server.DownAfterCrash);
+        server.Observe(ServerRuntimeState.Starting, ServerStateReason.AutoRestart, null, 3, s_now, snapshot: false);
+        Assert.True(server.DownAfterCrash);
+        server.Observe(ServerRuntimeState.Running, ServerStateReason.Ready, null, 4, s_now, snapshot: false);
+        Assert.False(server.DownAfterCrash);
+
+        server.Observe(ServerRuntimeState.Crashed, ServerStateReason.CrashLoop, 1, 5, s_now, snapshot: false);
+        Assert.True(server.DownAfterCrash);
+        server.Observe(ServerRuntimeState.Offline, ServerStateReason.Requested, null, 6, s_now, snapshot: false);
+        Assert.False(server.DownAfterCrash);
+
+        // An agent's Hello never arms it (no crash was told from it), but may end it.
+        server.Observe(ServerRuntimeState.Crashed, ServerStateReason.Reconciled, 1, 7, s_now, snapshot: true);
+        Assert.False(server.DownAfterCrash);
+        server.Observe(ServerRuntimeState.Crashed, ServerStateReason.Crashed, 1, 8, s_now, snapshot: false);
+        server.Observe(ServerRuntimeState.Running, ServerStateReason.Reconciled, null, 9, s_now, snapshot: true);
+        Assert.False(server.DownAfterCrash);
+    }
+
+    [Fact]
     public void ProvisioningNeedsAStoppedServer()
     {
         // Provisioning rewrites the server's folder, account and spec: never under a running game.

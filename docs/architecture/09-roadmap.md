@@ -529,9 +529,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Clones take the source's mods, addons, pack and Steam branch along.
 - A template move is saved with its provisioning and the step following it; changing a game ends the server's sequences under way.
 
-## 1.0.18 — Restoring some files from a backup (gap point 10)
+## 1.0.18 — Restoring some files from a backup, more notifications (gap points 10 and 11)
 
 - A backup's folders are listed from its archive, and a restore can take only some of its files and folders, cleanly inside them if asked (doc 03, "Backups"; doc 07).
+- More notifications (gap point 11): a server or node using much CPU or memory for a while (thresholds in the notification settings), and a server running again after a crash (doc 02, "Notifications"; doc 07).
 
 ## Before the first public release
 

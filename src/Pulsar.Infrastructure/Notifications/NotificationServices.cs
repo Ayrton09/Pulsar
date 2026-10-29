@@ -63,8 +63,9 @@ internal sealed partial class NotificationSenderService(NotificationDispatcher d
     private partial void LogPassFailed(Exception exception, TimeSpan delay);
 }
 
-/// <summary>Runs <see cref="NodeWatch"/> every <see cref="NodeWatch.Interval"/>.</summary>
-internal sealed partial class NodeWatchService(NodeWatch watch, TimeProvider clock, ILogger<NodeWatchService> logger) : BackgroundService
+/// <summary>Runs <see cref="NodeWatch"/>, then <see cref="ResourceWatch"/>, every <see cref="NodeWatch.Interval"/>.</summary>
+internal sealed partial class NodeWatchService(NodeWatch watch, ResourceWatch resources, TimeProvider clock, ILogger<NodeWatchService> logger)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -82,6 +83,19 @@ internal sealed partial class NodeWatchService(NodeWatch watch, TimeProvider clo
             catch (Exception ex)
             {
                 LogSweepFailed(ex);
+            }
+
+            try
+            {
+                await resources.SweepAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogResourceSweepFailed(ex);
             }
         }
         while (await WaitAsync(timer, stoppingToken));
@@ -101,4 +115,7 @@ internal sealed partial class NodeWatchService(NodeWatch watch, TimeProvider clo
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Checking the nodes for notifications failed; trying again at the next sweep")]
     private partial void LogSweepFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Checking servers and nodes for high CPU or memory failed; trying again at the next sweep")]
+    private partial void LogResourceSweepFailed(Exception exception);
 }

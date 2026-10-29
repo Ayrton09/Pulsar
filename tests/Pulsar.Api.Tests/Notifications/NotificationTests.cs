@@ -206,12 +206,126 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         Assert.Contains(message.Fields, f => f.Name == "Node" && f.Value == "notifications-crash");
         Assert.DoesNotContain(factory.Email.Sent, m => m.Channel == "only the other server");
 
-        // It restarts and crashes again within the window: still one message.
+        // It restarts by itself: told back online (1.0.18), to the same channel.
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "restarted");
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(factory.Discord.Sent.Count(m => m.Channel == "crashes") == 2), "back online sent");
+        var (_, online) = factory.Discord.Sent.Last(m => m.Channel == "crashes");
+        Assert.Equal("Crashy notified is running again", online.Title);
+        Assert.Equal(NotificationSeverity.Recovered, online.Severity);
+
+        // It crashes and comes back again within the window: no more messages.
         agent.Processes.Started[^1].Exit(4);
         await ServerApi.WaitForAsync(admin, server, s => s.Server.LastExitCode == 4, "crashed again");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "restarted again");
         await Task.Delay(TimeSpan.FromSeconds(1), Ct);
-        Assert.Single(factory.Discord.Sent, m => m.Channel == "crashes");
+        Assert.Equal(2, factory.Discord.Sent.Count(m => m.Channel == "crashes"));
+    }
+
+    [DatabaseFact]
+    public async Task HighCpuOrMemoryIsToldAfterItsMinutesAndOnceUntilWellBelow()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "resources");
+        var server = await InstalledServerAsync(admin, agent, "Busy server");
+        var capped = await InstalledServerAsync(admin, agent, "Capped server");
+        var channel = await CreateAsync(admin, Channel("resources", NotificationKind.Email) with
+        {
+            Recipients = ["ops@example.com"],
+            Events = [NotificationEvent.ResourceHigh],
+        });
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            // A quarter of the machine and 1 GiB for the second one: its shares are of those.
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(capped), Ct);
+            Assert.True(row.SetLimits(25, 1024, DateTimeOffset.UtcNow).IsSuccess);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var connections = factory.Services.GetRequiredService<IAgentConnections>();
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(connections.Find(new NodeId(agent.Config!.NodeId))?.LastMetrics is not null),
+            "node metrics");
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var watch = new ResourceWatch(factory.Services.GetRequiredService<IServiceScopeFactory>(), clock);
+        var minutes = (await GetJsonAsync<NotificationSettingsView>(admin, "/api/v1/notifications/settings")).ResourceHighMinutes;
+        Assert.Equal(10, minutes);
+        async Task SweepAsync(double busyCpu, double cappedCpu, long cappedMemory, TimeSpan after)
+        {
+            clock.Advance(after);
+            watch.RecordServer(new ServerId(server), busyCpu, 100 * 1024 * 1024);
+            watch.RecordServer(new ServerId(capped), cappedCpu, cappedMemory);
+            await watch.SweepAsync(Ct);
+        }
+
+        async Task<List<NotificationDelivery>> ToldAsync()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().NotificationDeliveries.AsNoTracking()
+                .Where(d => d.ChannelId == new NotificationChannelId(channel.Id)).OrderBy(d => d.CreatedAt).ToListAsync(Ct);
+        }
+
+        // 95 % of the machine, and 24 % of it for one capped at 25 %; not long enough yet.
+        await SweepAsync(95, 24, 100 * 1024 * 1024, TimeSpan.Zero);
+        await SweepAsync(95, 24, 100 * 1024 * 1024, TimeSpan.FromMinutes(minutes - 1));
+        Assert.Empty(await ToldAsync());
+
+        // Long enough: each server told once, with its numbers; the node itself (12.5 % CPU) is fine.
+        await SweepAsync(95, 24, 100 * 1024 * 1024, TimeSpan.FromMinutes(2));
+        await SweepAsync(95, 24, 100 * 1024 * 1024, TimeSpan.FromMinutes(1));
+        var told = await ToldAsync();
+        string[] expected = [$"server:{server}:resources", $"server:{capped}:resources"];
+        Assert.Equal(expected.Order(StringComparer.Ordinal), told.Select(d => d.Subject).Order(StringComparer.Ordinal));
+        var busy = told.Single(d => d.Subject == $"server:{server}:resources").Message;
+        Assert.Equal("Busy server is using a lot of CPU or memory", busy.Title);
+        Assert.Contains(busy.Fields, f => f.Name == "CPU" && f.Value == "95 % of the machine");
+        var cappedMessage = told.Single(d => d.Subject == $"server:{capped}:resources").Message;
+        Assert.Contains(cappedMessage.Fields, f => f.Name == "CPU" && f.Value == "96 % of its limit");
+        Assert.Contains(cappedMessage.Fields, f => f.Name == "Memory" && f.Value == "100 MB of its 1 GB limit (10 %)");
+
+        // A dip that is not well below does not tell it again; the capped one's memory alone is high too.
+        await SweepAsync(85, 5, 1000L * 1024 * 1024, TimeSpan.FromMinutes(1));
+        await SweepAsync(95, 5, 1000L * 1024 * 1024, TimeSpan.FromMinutes(minutes + 1));
+        Assert.Equal(2, (await ToldAsync()).Count);
+
+        // Stopped (no samples any more): forgotten, so a run later starts counting from nothing.
+        clock.Advance(ResourceWatch.SampleMaximumAge + TimeSpan.FromSeconds(1));
+        await watch.SweepAsync(Ct);
+        await SweepAsync(95, 24, 100 * 1024 * 1024, TimeSpan.FromMinutes(minutes - 1));
+        Assert.Equal(2, (await ToldAsync()).Count);
+    }
+
+    [DatabaseFact]
+    public async Task ANodeUsingMuchOfItsCpuIsToldOnce()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var channel = await CreateAsync(admin, Channel("node resources", NotificationKind.Email) with
+        {
+            Recipients = ["ops@example.com"],
+            Events = [NotificationEvent.ResourceHigh],
+        });
+        var node = await NodeApi.CreateAsync(admin, "notifications-busy");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var watch = new ResourceWatch(factory.Services.GetRequiredService<IServiceScopeFactory>(), clock);
+        async Task SweepAsync(double cpu, TimeSpan after)
+        {
+            clock.Advance(after);
+            await agent.Connection!.InvokeAsync(nameof(IAgentHub.NodeMetrics),
+                new NodeMetrics(DateTimeOffset.UtcNow, cpu, 1L << 30, 8L << 30, TimeSpan.FromHours(1)), Ct);
+            await watch.SweepAsync(Ct);
+        }
+
+        await SweepAsync(99, TimeSpan.Zero);
+        await SweepAsync(99, TimeSpan.FromMinutes(11));
+        await SweepAsync(99, TimeSpan.FromMinutes(1));
+
+        var told = await DeliveriesForAsync(channel.Id, node.Node.Id);
+        var message = Assert.Single(told).Message;
+        Assert.Equal("Node notifications-busy is using a lot of CPU or memory", message.Title);
+        Assert.Contains(message.Fields, f => f.Name == "CPU" && f.Value == "99 %");
+        Assert.Contains(message.Fields, f => f.Name == "Memory" && f.Value == "13 %");
     }
 
     [DatabaseFact]

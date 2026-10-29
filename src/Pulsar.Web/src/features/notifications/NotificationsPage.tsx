@@ -213,6 +213,9 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
   const [panelUrl, setPanelUrl] = useState(settings.panelUrl ?? '');
   const [diskLow, setDiskLow] = useState(String(settings.diskLowPercent));
   const [offline, setOffline] = useState(String(settings.nodeOfflineMinutes));
+  const [cpuHigh, setCpuHigh] = useState(String(settings.cpuHighPercent));
+  const [memoryHigh, setMemoryHigh] = useState(String(settings.memoryHighPercent));
+  const [resourceMinutes, setResourceMinutes] = useState(String(settings.resourceHighMinutes));
   const [host, setHost] = useState(settings.smtp?.host ?? '');
   const [port, setPort] = useState(String(settings.smtp?.port ?? 587));
   const [security, setSecurity] = useState<SmtpSecurity>(settings.smtp?.security ?? 'startTls');
@@ -231,6 +234,9 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
         panelUrl: panelUrl.trim() || null,
         diskLowPercent: Number(diskLow),
         nodeOfflineMinutes: Number(offline),
+        cpuHighPercent: Number(cpuHigh),
+        memoryHighPercent: Number(memoryHigh),
+        resourceHighMinutes: Number(resourceMinutes),
         smtpHost: host.trim() || null,
         smtpPort: Number(port),
         smtpSecurity: security,
@@ -285,6 +291,47 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
               />
             )}
           </Field>
+        </div>
+        <div className="space-y-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label={t('notifications.cpuHigh')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={50}
+                  max={100}
+                  value={cpuHigh}
+                  onChange={(e) => setCpuHigh(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('notifications.memoryHigh')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={50}
+                  max={100}
+                  value={memoryHigh}
+                  onChange={(e) => setMemoryHigh(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t('notifications.resourceMinutes')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={resourceMinutes}
+                  onChange={(e) => setResourceMinutes(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+          <p className="text-xs text-muted">{t('notifications.resourceHint')}</p>
         </div>
         <fieldset className="space-y-4">
           <legend className="text-sm font-semibold">{t('notifications.email')}</legend>

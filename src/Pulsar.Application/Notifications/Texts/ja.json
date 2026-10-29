@@ -14,7 +14,9 @@
     "installed": "インストール済み",
     "latest": "最新",
     "template": "テンプレート",
-    "newTemplate": "新しいテンプレート"
+    "newTemplate": "新しいテンプレート",
+    "cpu": "CPU",
+    "memory": "メモリ"
   },
   "serverOutOfMemory": {
     "title": "{server} のメモリが不足しました",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} を起動できませんでした",
     "text": "Windows がサーバーを起動できませんでした。"
+  },
+  "serverBackOnline": {
+    "title": "{server} が再び稼働しています",
+    "text": "先に通知したクラッシュの後、再び動いています。"
+  },
+  "serverResourceHigh": {
+    "title": "{server} が CPU またはメモリを多く使っています",
+    "text": "{minutes} 分以上、通知設定で決めた割合以上を使いました。負荷の高いゲームには、より高い上限か大きなマシンが必要かもしれません。"
   },
   "backupCopyFailed": {
     "title": "{server} のバックアップのリモートコピーに失敗しました",
@@ -60,6 +70,16 @@
     "title": "ノード {node} のディスク容量が不足しています",
     "text": "ディスクがいっぱいになると、アップデート、バックアップ、ゲームサーバー自体が失敗します。空き容量を確保するか、古いバックアップを削除してください。",
     "drive": "{total} 中 {free} 空き（{percent} %）"
+  },
+  "nodeResourceHigh": {
+    "title": "ノード {node} が CPU またはメモリを多く使っています",
+    "text": "{minutes} 分以上、マシンが通知設定で決めた割合以上を使いました。ゲームサーバーが重くなることがあります。"
+  },
+  "resourceHigh": {
+    "ofLimit": "上限の {percent} %",
+    "ofMachine": "マシン全体の {percent} %",
+    "memoryOfLimit": "上限 {total} のうち {used} ({percent} %)",
+    "memoryOfNode": "ノードの {total} のうち {used} ({percent} %)"
   },
   "gameUpdateAvailable": {
     "title": "{server} にゲームのアップデートがあります",

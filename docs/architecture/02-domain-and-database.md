@@ -745,7 +745,7 @@ CREATE TABLE notification_channels (
     name                  varchar(64) NOT NULL,
     kind                  text NOT NULL CHECK (kind IN ('discord','email')),
     is_enabled            boolean NOT NULL,
-    events                text[] NOT NULL,          -- server_crashed, server_start_failed, backup_failed, scheduled_task_failed, node_offline, node_disk_low
+    events                text[] NOT NULL,          -- server_crashed, server_start_failed, backup_failed, scheduled_task_failed, node_offline, node_disk_low, resource_high (1.0.18)
     server_ids            uuid[],                   -- server events only for these; NULL = every server
     language              varchar(8) NOT NULL,      -- en | es | pt | fr | it | de | ja | ko | zh
     webhook_url_protected bytea,                    -- Discord: the webhook URL, Data Protection
@@ -767,8 +767,15 @@ CREATE TABLE notification_settings (            -- one row (id = 1)
     from_name               varchar(64),
     disk_low_percent        integer NOT NULL,     -- 1..50, default 10
     node_offline_minutes    integer NOT NULL,     -- 1..1440, default 3
+    cpu_high_percent        integer NOT NULL,     -- 50..100, default 90 (1.0.18): of a server's CPU limit, else of the machine
+    memory_high_percent     integer NOT NULL,     -- 50..100, default 90: of a server's memory limit, else of its node's memory
+    resource_high_minutes   integer NOT NULL,     -- 1..1440, default 10: that long at every 30 s sweep before it is told
     updated_at              timestamptz NOT NULL
 );
+-- resource_high (1.0.18): the panel keeps each running server's latest sample (and each node's) in memory and looks every
+-- 30 s; at or above either threshold at every look for the minutes set, it is told once, then not until both are 10
+-- points below. A panel restart starts counting again. servers.down_after_crash marks a server that crashed and has not
+-- run since: its next run is told as back online, on the server_crashed event, to whoever was told of the crash.
 
 CREATE TABLE notification_deliveries (           -- the outbox: written in the same transaction as what raised it
     id              uuid PRIMARY KEY,

@@ -27,6 +27,8 @@ public sealed class NotificationSettings
     public const int MaxFromNameLength = 64;
     public const int DefaultDiskLowPercent = 10;
     public const int DefaultNodeOfflineMinutes = 3;
+    public const int DefaultResourceHighPercent = 90;
+    public const int DefaultResourceHighMinutes = 10;
 
     private NotificationSettings()
     {
@@ -60,7 +62,20 @@ public sealed class NotificationSettings
     /// <summary>A node is offline (and notified) after this long without a connection.</summary>
     public int NodeOfflineMinutes { get; private set; }
 
+    /// <summary>
+    /// A server (of its CPU limit, or of the whole machine) or a node using at least this share of its CPU for
+    /// <see cref="ResourceHighMinutes"/> is told (1.0.18).
+    /// </summary>
+    public int CpuHighPercent { get; private set; }
+
+    /// <summary>The same for memory: of a server's memory limit, or of its node's memory.</summary>
+    public int MemoryHighPercent { get; private set; }
+
+    public int ResourceHighMinutes { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public TimeSpan ResourceHighAfter => TimeSpan.FromMinutes(ResourceHighMinutes);
 
     public bool EmailConfigured => SmtpHost is not null && FromAddress is not null;
 
@@ -73,8 +88,26 @@ public sealed class NotificationSettings
         SmtpSecurity = SmtpSecurity.StartTls,
         DiskLowPercent = DefaultDiskLowPercent,
         NodeOfflineMinutes = DefaultNodeOfflineMinutes,
+        CpuHighPercent = DefaultResourceHighPercent,
+        MemoryHighPercent = DefaultResourceHighPercent,
+        ResourceHighMinutes = DefaultResourceHighMinutes,
         UpdatedAt = now,
     };
+
+    /// <summary>When a server or a node using much of its CPU or memory is told (1.0.18).</summary>
+    public Result ChangeResourceThresholds(int cpuHighPercent, int memoryHighPercent, int resourceHighMinutes, DateTimeOffset now)
+    {
+        if (cpuHighPercent is < 50 or > 100 || memoryHighPercent is < 50 or > 100 || resourceHighMinutes is < 1 or > 1440)
+        {
+            return NotificationErrors.ThresholdsInvalid;
+        }
+
+        CpuHighPercent = cpuHighPercent;
+        MemoryHighPercent = memoryHighPercent;
+        ResourceHighMinutes = resourceHighMinutes;
+        UpdatedAt = now;
+        return Result.Success();
+    }
 
     public Result ChangeGeneral(string? panelUrl, int diskLowPercent, int nodeOfflineMinutes, DateTimeOffset now)
     {

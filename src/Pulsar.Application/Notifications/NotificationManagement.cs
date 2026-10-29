@@ -39,7 +39,9 @@ public sealed record NotificationChannelList(IReadOnlyList<NotificationChannelVi
 
 public sealed record SmtpSettingsView(string Host, int Port, SmtpSecurity Security, string? UserName, bool HasPassword, string FromAddress, string? FromName);
 
-public sealed record NotificationSettingsView(string? PanelUrl, int DiskLowPercent, int NodeOfflineMinutes, SmtpSettingsView? Smtp);
+/// <param name="CpuHighPercent">A server or node using this share of its CPU (or more) for <paramref name="ResourceHighMinutes"/> is told (1.0.18).</param>
+public sealed record NotificationSettingsView(string? PanelUrl, int DiskLowPercent, int NodeOfflineMinutes, SmtpSettingsView? Smtp, int CpuHighPercent,
+    int MemoryHighPercent, int ResourceHighMinutes);
 
 /// <param name="SmtpHost">Null turns email off.</param>
 /// <param name="SmtpPassword">Null keeps the current password (unless <paramref name="ClearSmtpPassword"/>).</param>
@@ -54,7 +56,10 @@ public sealed record NotificationSettingsDefinition(
     string? SmtpPassword,
     bool ClearSmtpPassword,
     string? FromAddress,
-    string? FromName);
+    string? FromName,
+    int? CpuHighPercent = null,
+    int? MemoryHighPercent = null,
+    int? ResourceHighMinutes = null);
 
 public sealed record NotificationDeliveryView(
     Guid Id,
@@ -224,6 +229,14 @@ public sealed class NotificationManagement(
             return general.Error!;
         }
 
+        // Each left out keeps what is set (a client from before 1.0.18 sends none).
+        var resources = settings.ChangeResourceThresholds(definition.CpuHighPercent ?? settings.CpuHighPercent,
+            definition.MemoryHighPercent ?? settings.MemoryHighPercent, definition.ResourceHighMinutes ?? settings.ResourceHighMinutes, now);
+        if (!resources.IsSuccess)
+        {
+            return resources.Error!;
+        }
+
         var password = string.IsNullOrEmpty(definition.SmtpPassword) ? null : secrets.Protect(definition.SmtpPassword);
         var smtp = settings.ChangeSmtp(definition.SmtpHost, definition.SmtpPort, definition.SmtpSecurity, definition.SmtpUserName, password,
             definition.ClearSmtpPassword, definition.FromAddress, definition.FromName, now);
@@ -237,6 +250,9 @@ public sealed class NotificationManagement(
             settings.PanelUrl,
             settings.DiskLowPercent,
             settings.NodeOfflineMinutes,
+            settings.CpuHighPercent,
+            settings.MemoryHighPercent,
+            settings.ResourceHighMinutes,
             settings.SmtpHost,
             settings.SmtpPort,
             security = settings.SmtpSecurity.ToString(),
@@ -309,5 +325,5 @@ public sealed class NotificationManagement(
         settings.EmailConfigured
             ? new SmtpSettingsView(settings.SmtpHost!, settings.SmtpPort, settings.SmtpSecurity, settings.SmtpUserName, settings.SmtpPasswordProtected is not null,
                 settings.FromAddress!, settings.FromName)
-            : null);
+            : null, settings.CpuHighPercent, settings.MemoryHighPercent, settings.ResourceHighMinutes);
 }

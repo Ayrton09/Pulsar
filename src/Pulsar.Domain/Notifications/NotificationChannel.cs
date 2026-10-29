@@ -42,6 +42,12 @@ public enum NotificationEvent
     /// after failing.
     /// </summary>
     PublicIpCertificate,
+
+    /// <summary>
+    /// A running server, or a node, used at least the settings' share of its CPU or memory for their number of minutes
+    /// (Pulsar 1.0.18); told once until it is well below again.
+    /// </summary>
+    ResourceHigh,
 }
 
 /// <summary>

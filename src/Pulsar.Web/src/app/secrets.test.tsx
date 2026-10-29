@@ -130,6 +130,9 @@ describe('one-time secrets', () => {
       panelUrl: null,
       diskLowPercent: 10,
       nodeOfflineMinutes: 3,
+      cpuHighPercent: 90,
+      memoryHighPercent: 90,
+      resourceHighMinutes: 10,
       smtp: null,
     };
     fakeApi({

@@ -51,9 +51,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
             // Stamped with the panel's clock: an agent whose clock is off would write times in the future. The order of events
             // is the agent's sequence, not its time.
+            var downAfterCrash = server.DownAfterCrash;
             if (!server.Observe(Map(change.State), Map(change.Reason), change.ExitCode, change.StateSequence, clock.GetUtcNow(), snapshot: false))
             {
                 return true;
+            }
+
+            // Running again after a crash (restarted by itself or by someone): told to whoever was told it crashed.
+            if (downAfterCrash && server.RuntimeState == ServerRuntimeState.Running)
+            {
+                await notifications.ServerBackOnlineAsync(server, cancellationToken);
             }
 
             switch (change.Reason)

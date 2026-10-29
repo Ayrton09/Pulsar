@@ -1548,7 +1548,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notification_deliveries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'game_update_available', 'game_update_failed', 'node_disk_low', 'node_offline', 'public_ip_certificate', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
+                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'game_update_available', 'game_update_failed', 'node_disk_low', 'node_offline', 'public_ip_certificate', 'resource_high', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
 
                             t.HasCheckConstraint("ck_notification_deliveries_status", "status IN ('failed', 'pending', 'sent')");
                         });
@@ -1559,6 +1559,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("integer")
                         .HasColumnName("id");
+
+                    b.Property<int>("CpuHighPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cpu_high_percent");
 
                     b.Property<int>("DiskLowPercent")
                         .HasColumnType("integer")
@@ -1574,6 +1578,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("from_name");
 
+                    b.Property<int>("MemoryHighPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("memory_high_percent");
+
                     b.Property<int>("NodeOfflineMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("node_offline_minutes");
@@ -1582,6 +1590,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("panel_url");
+
+                    b.Property<int>("ResourceHighMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("resource_high_minutes");
 
                     b.Property<string>("SmtpHost")
                         .HasMaxLength(255)
@@ -2521,6 +2533,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("desired_state");
+
+                    b.Property<bool>("DownAfterCrash")
+                        .HasColumnType("boolean")
+                        .HasColumnName("down_after_crash");
 
                     b.PrimitiveCollection<string[]>("ExtraArguments")
                         .IsRequired()

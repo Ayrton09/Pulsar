@@ -14,7 +14,9 @@
     "installed": "Installiert",
     "latest": "Neueste",
     "template": "Vorlage",
-    "newTemplate": "Neuere Vorlage"
+    "newTemplate": "Neuere Vorlage",
+    "cpu": "CPU",
+    "memory": "Arbeitsspeicher"
   },
   "serverOutOfMemory": {
     "title": "{server} hat keinen Speicher mehr",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} wurde nicht gestartet",
     "text": "Windows konnte ihn nicht starten."
+  },
+  "serverBackOnline": {
+    "title": "{server} läuft wieder",
+    "text": "Er läuft nach dem gemeldeten Absturz wieder."
+  },
+  "serverResourceHigh": {
+    "title": "{server} nutzt viel CPU oder Arbeitsspeicher",
+    "text": "Seit {minutes} Minuten oder länger nutzt er mindestens den in den Benachrichtigungseinstellungen festgelegten Anteil. Ein anspruchsvolles Spiel braucht vielleicht höhere Grenzen oder eine größere Maschine."
   },
   "backupCopyFailed": {
     "title": "Remote-Kopie eines Backups von {server} fehlgeschlagen",
@@ -60,6 +70,16 @@
     "title": "Auf Node {node} wird der Speicherplatz knapp",
     "text": "Ein volles Laufwerk lässt Updates, Backups und die Spielserver selbst scheitern. Geben Sie Speicher frei oder löschen Sie alte Backups.",
     "drive": "{free} von {total} frei ({percent} %)"
+  },
+  "nodeResourceHigh": {
+    "title": "Knoten {node} nutzt viel CPU oder Arbeitsspeicher",
+    "text": "Seit {minutes} Minuten oder länger nutzt die Maschine mindestens den in den Benachrichtigungseinstellungen festgelegten Anteil. Ihre Spielserver können ruckeln."
+  },
+  "resourceHigh": {
+    "ofLimit": "{percent} % seiner Grenze",
+    "ofMachine": "{percent} % der Maschine",
+    "memoryOfLimit": "{used} von seiner Grenze von {total} ({percent} %)",
+    "memoryOfNode": "{used} von {total} des Knotens ({percent} %)"
   },
   "gameUpdateAvailable": {
     "title": "{server} hat ein Spiel-Update",

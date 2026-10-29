@@ -19150,7 +19150,8 @@
           "nodeDiskLow",
           "gameUpdateAvailable",
           "gameUpdateFailed",
-          "publicIpCertificate"
+          "publicIpCertificate",
+          "resourceHigh"
         ]
       },
       "NotificationKind": {
@@ -19240,6 +19241,27 @@
               "null",
               "string"
             ]
+          },
+          "cpuHighPercent": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "memoryHighPercent": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "resourceHighMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -19248,7 +19270,10 @@
           "panelUrl",
           "diskLowPercent",
           "nodeOfflineMinutes",
-          "smtp"
+          "smtp",
+          "cpuHighPercent",
+          "memoryHighPercent",
+          "resourceHighMinutes"
         ],
         "type": "object",
         "properties": {
@@ -19275,6 +19300,18 @@
                 "$ref": "#/components/schemas/SmtpSettingsView"
               }
             ]
+          },
+          "cpuHighPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "memoryHighPercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "resourceHighMinutes": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

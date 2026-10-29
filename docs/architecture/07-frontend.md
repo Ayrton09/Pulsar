@@ -165,9 +165,9 @@ The server page has a fixed header (name, status, power actions, live CPU/RAM) a
 *Phase 10.*
 
 - `/admin/notifications` (`settings.manage`):
-  - Channels: a Discord webhook or 1 to 10 email addresses; the events each wants (server crashed, did not start, backup failed, scheduled task failed, node offline and back, node low on disk); every server or some; one of the panel's languages (a new channel starts in its author's); on or off.
+  - Channels: a Discord webhook or 1 to 10 email addresses; the events each wants (server crashed and back online, did not start, backup failed, scheduled task failed, node offline and back, node low on disk, high CPU or memory on a server or node (1.0.18)); every server or some; one of the panel's languages (a new channel starts in its author's); on or off.
   - A Discord webhook is shown by its id only: its address is a secret and never comes back. "Send test" sends a message at once and says whether it went, or why not.
-  - Settings: the panel's address (for links in messages), the low-disk threshold (% free) and how long a node may be away before it counts as offline. The SMTP server: host, port, STARTTLS, TLS or none, user, a password that is never shown (left empty it is kept, but only for the same server and user), sender.
+  - Settings: the panel's address (for links in messages), the low-disk threshold (% free), how long a node may be away before it counts as offline, and when CPU or memory counts as high (% and minutes; 1.0.18). The SMTP server: host, port, STARTTLS, TLS or none, user, a password that is never shown (left empty it is kept, but only for the same server and user), sender.
   - Recent messages: the last 100, with their status, attempts and last error; refreshed while some are pending.
 - `/nodes/:id` shows each drive the agent uses (game servers, backups) with its free space, next to CPU and memory.
 - API: `GET|POST /api/v1/notifications/channels`, `PUT|DELETE …/channels/{id}`, `POST …/channels/{id}/test`, `GET /api/v1/notifications/deliveries`, `GET|PUT /api/v1/notifications/settings`. Changes and tests are audited.

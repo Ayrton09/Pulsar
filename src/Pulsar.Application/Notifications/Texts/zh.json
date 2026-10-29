@@ -14,7 +14,9 @@
     "installed": "已安装",
     "latest": "最新",
     "template": "模板",
-    "newTemplate": "较新的模板"
+    "newTemplate": "较新的模板",
+    "cpu": "CPU",
+    "memory": "内存"
   },
   "serverOutOfMemory": {
     "title": "{server} 内存不足",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} 未能启动",
     "text": "Windows 无法启动它。"
+  },
+  "serverBackOnline": {
+    "title": "{server} 已恢复运行",
+    "text": "在之前通知的崩溃之后，它已再次运行。"
+  },
+  "serverResourceHigh": {
+    "title": "{server} 正在占用大量 CPU 或内存",
+    "text": "已有 {minutes} 分钟或更久，用量至少达到通知设置中设定的比例。负载高的游戏可能需要更高的限制或更大的机器。"
   },
   "backupCopyFailed": {
     "title": "{server} 的备份远程复制失败",
@@ -60,6 +70,16 @@
     "title": "节点 {node} 磁盘空间不足",
     "text": "磁盘已满会导致更新、备份以及游戏服务器本身失败。请释放空间或删除旧备份。",
     "drive": "共 {total}，可用 {free}（{percent} %）"
+  },
+  "nodeResourceHigh": {
+    "title": "节点 {node} 正在占用大量 CPU 或内存",
+    "text": "已有 {minutes} 分钟或更久，这台机器的用量至少达到通知设置中设定的比例。其游戏服务器可能会卡顿。"
+  },
+  "resourceHigh": {
+    "ofLimit": "其限制的 {percent} %",
+    "ofMachine": "整台机器的 {percent} %",
+    "memoryOfLimit": "{used} / 其限制 {total}（{percent} %）",
+    "memoryOfNode": "{used} / 节点的 {total}（{percent} %）"
   },
   "gameUpdateAvailable": {
     "title": "{server} 有游戏更新",

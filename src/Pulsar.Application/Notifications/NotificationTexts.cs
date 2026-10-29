@@ -25,6 +25,33 @@ public static partial class NotificationTexts
             NotificationSeverity.Error, ServerFields(language, server, (Text(language, "fields.exitCode"), code)), link);
     }
 
+    public static NotificationMessage ServerBackOnline(string language, ServerFacts server, string? link) =>
+        new(Text(language, "serverBackOnline.title", ("server", server.Name)), Text(language, "serverBackOnline.text"), NotificationSeverity.Recovered,
+            ServerFields(language, server), link);
+
+    public static NotificationMessage ServerResourceHigh(string language, ServerFacts server, double cpuPercent, bool cpuOfLimit, long memoryBytes,
+        long memoryTotal, bool memoryOfLimit, int minutes, string? link)
+    {
+        var memoryPercent = memoryTotal > 0 ? memoryBytes * 100.0 / memoryTotal : 0;
+        return new NotificationMessage(Text(language, "serverResourceHigh.title", ("server", server.Name)),
+            Text(language, "serverResourceHigh.text", ("minutes", minutes.ToString(CultureInfo.InvariantCulture))), NotificationSeverity.Warning,
+            ServerFields(language, server,
+                (Text(language, "fields.cpu"), Text(language, cpuOfLimit ? "resourceHigh.ofLimit" : "resourceHigh.ofMachine",
+                    ("percent", Percent(cpuPercent, language)))),
+                (Text(language, "fields.memory"), Text(language, memoryOfLimit ? "resourceHigh.memoryOfLimit" : "resourceHigh.memoryOfNode",
+                    ("used", Size(memoryBytes, language)), ("total", Size(memoryTotal, language)), ("percent", Percent(memoryPercent, language))))),
+            link);
+    }
+
+    public static NotificationMessage NodeResourceHigh(string language, string nodeName, double cpuPercent, double memoryPercent, int minutes, string? link) =>
+        new(Text(language, "nodeResourceHigh.title", ("node", nodeName)),
+            Text(language, "nodeResourceHigh.text", ("minutes", minutes.ToString(CultureInfo.InvariantCulture))), NotificationSeverity.Warning,
+            [
+                new(Text(language, "fields.node"), nodeName),
+                new(Text(language, "fields.cpu"), $"{Percent(cpuPercent, language)} %"),
+                new(Text(language, "fields.memory"), $"{Percent(memoryPercent, language)} %"),
+            ], link);
+
     public static NotificationMessage ServerStartFailed(string language, ServerFacts server, bool notReady, string? detail, string? link) =>
         notReady
             ? new NotificationMessage(Text(language, "serverNotReady.title", ("server", server.Name)), Text(language, "serverNotReady.text"),
@@ -185,6 +212,8 @@ public static partial class NotificationTexts
 
         return languages.ToFrozenDictionary(StringComparer.Ordinal);
     }
+
+    private static string Percent(double value, string language) => Math.Clamp(value, 0, 100).ToString("0", Culture(language));
 
     private static string Moment(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
 

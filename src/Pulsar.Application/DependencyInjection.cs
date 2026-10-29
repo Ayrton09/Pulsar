@@ -81,6 +81,7 @@ public static class DependencyInjection
         services.AddSingleton<NotificationSignal>();
         services.AddSingleton<NotificationDispatcher>();
         services.AddSingleton<NodeWatch>();
+        services.AddSingleton<ResourceWatch>();
         services.AddSingleton<MetricHistory>();
         services.TryAddSingleton<IRealtimeNotifier, NoRealtimeNotifier>();
         return services;

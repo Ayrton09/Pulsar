@@ -30,7 +30,8 @@ public static class NotificationErrors
         new("notifications.panel_url_invalid", "The panel address is an http or https address (e.g. https://panel.example.com:8443).");
 
     public static DomainError ThresholdsInvalid { get; } =
-        new("notifications.thresholds_invalid", "Low disk is 1 to 50 % free; a node is offline after 1 to 1440 minutes.");
+        new("notifications.thresholds_invalid",
+            "Low disk is 1 to 50 % free; a node is offline after 1 to 1440 minutes; high CPU or memory is 50 to 100 % for 1 to 1440 minutes.");
 
     public static DomainError SmtpHostInvalid { get; } = new("notifications.smtp_host_invalid", "The SMTP server is not a host name or address.");
 

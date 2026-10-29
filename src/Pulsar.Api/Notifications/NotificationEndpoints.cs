@@ -27,6 +27,7 @@ public sealed record NotificationChannelRequest(
 /// <param name="PanelUrl">How users reach the panel, for links in messages.</param>
 /// <param name="SmtpHost">Leave it out to turn email off.</param>
 /// <param name="SmtpPassword">Leave it out to keep the current password.</param>
+/// <param name="CpuHighPercent">50–100; leave it out to keep the current one (also <paramref name="MemoryHighPercent"/>, <paramref name="ResourceHighMinutes"/>).</param>
 public sealed record NotificationSettingsRequest(
     [property: StringLength(NotificationSettings.MaxUrlLength)] string? PanelUrl,
     int DiskLowPercent,
@@ -38,10 +39,13 @@ public sealed record NotificationSettingsRequest(
     [property: StringLength(256)] string? SmtpPassword,
     bool ClearSmtpPassword,
     [property: StringLength(NotificationChannel.MaxEmailLength)] string? FromAddress,
-    [property: StringLength(NotificationSettings.MaxFromNameLength)] string? FromName)
+    [property: StringLength(NotificationSettings.MaxFromNameLength)] string? FromName,
+    int? CpuHighPercent = null,
+    int? MemoryHighPercent = null,
+    int? ResourceHighMinutes = null)
 {
     internal NotificationSettingsDefinition ToDefinition() => new(PanelUrl, DiskLowPercent, NodeOfflineMinutes, SmtpHost, SmtpPort, SmtpSecurity,
-        SmtpUserName, SmtpPassword, ClearSmtpPassword, FromAddress, FromName);
+        SmtpUserName, SmtpPassword, ClearSmtpPassword, FromAddress, FromName, CpuHighPercent, MemoryHighPercent, ResourceHighMinutes);
 }
 
 /// <summary>

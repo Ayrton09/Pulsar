@@ -14,7 +14,9 @@
     "installed": "Installed",
     "latest": "Latest",
     "template": "Template",
-    "newTemplate": "Newer template"
+    "newTemplate": "Newer template",
+    "cpu": "CPU",
+    "memory": "Memory"
   },
   "serverOutOfMemory": {
     "title": "{server} ran out of memory",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} did not start",
     "text": "Windows could not start it."
+  },
+  "serverBackOnline": {
+    "title": "{server} is running again",
+    "text": "It runs again after the crash told before."
+  },
+  "serverResourceHigh": {
+    "title": "{server} is using a lot of CPU or memory",
+    "text": "For {minutes} minutes or more it used at least the share set in the notification settings. A busy game may need higher limits or a bigger machine."
   },
   "backupCopyFailed": {
     "title": "Remote copy of a backup of {server} failed",
@@ -60,6 +70,16 @@
     "title": "Node {node} is running out of disk space",
     "text": "A full drive breaks updates, backups and the game servers themselves. Free some space or delete old backups.",
     "drive": "{free} free of {total} ({percent} %)"
+  },
+  "nodeResourceHigh": {
+    "title": "Node {node} is using a lot of CPU or memory",
+    "text": "For {minutes} minutes or more the machine used at least the share set in the notification settings. Its game servers may lag."
+  },
+  "resourceHigh": {
+    "ofLimit": "{percent} % of its limit",
+    "ofMachine": "{percent} % of the machine",
+    "memoryOfLimit": "{used} of its {total} limit ({percent} %)",
+    "memoryOfNode": "{used} of the node's {total} ({percent} %)"
   },
   "gameUpdateAvailable": {
     "title": "{server} has a game update",

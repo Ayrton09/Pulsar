@@ -14,7 +14,9 @@
     "installed": "Installée",
     "latest": "Dernière",
     "template": "Modèle",
-    "newTemplate": "Modèle plus récent"
+    "newTemplate": "Modèle plus récent",
+    "cpu": "CPU",
+    "memory": "Mémoire"
   },
   "serverOutOfMemory": {
     "title": "{server} n'a plus de mémoire",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} n'a pas démarré",
     "text": "Windows n'a pas pu le démarrer."
+  },
+  "serverBackOnline": {
+    "title": "{server} fonctionne à nouveau",
+    "text": "Il tourne de nouveau après le plantage signalé plus tôt."
+  },
+  "serverResourceHigh": {
+    "title": "{server} utilise beaucoup de CPU ou de mémoire",
+    "text": "Pendant {minutes} minutes ou plus, il a utilisé au moins la part fixée dans les paramètres de notification. Un jeu exigeant peut demander des limites plus hautes ou une machine plus grosse."
   },
   "backupCopyFailed": {
     "title": "La copie distante d'une sauvegarde de {server} a échoué",
@@ -60,6 +70,16 @@
     "title": "Le nœud {node} manque d'espace disque",
     "text": "Un disque plein fait échouer les mises à jour, les sauvegardes et les serveurs de jeu eux-mêmes. Libérez de l'espace ou supprimez d'anciennes sauvegardes.",
     "drive": "{free} libres sur {total} ({percent} %)"
+  },
+  "nodeResourceHigh": {
+    "title": "Le nœud {node} utilise beaucoup de CPU ou de mémoire",
+    "text": "Pendant {minutes} minutes ou plus, la machine a utilisé au moins la part fixée dans les paramètres de notification. Ses serveurs de jeu peuvent ralentir."
+  },
+  "resourceHigh": {
+    "ofLimit": "{percent} % de sa limite",
+    "ofMachine": "{percent} % de la machine",
+    "memoryOfLimit": "{used} sur sa limite de {total} ({percent} %)",
+    "memoryOfNode": "{used} sur les {total} du nœud ({percent} %)"
   },
   "gameUpdateAvailable": {
     "title": "{server} a une mise à jour du jeu",

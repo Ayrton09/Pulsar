@@ -5,6 +5,7 @@ using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Application.Updates;
@@ -25,6 +26,7 @@ internal sealed partial class AgentHub(
     ConsoleMirrors consoles,
     LiveMetrics liveMetrics,
     MetricHistory history,
+    ResourceWatch resources,
     FileTransfers transfers,
     IRealtimeNotifier notifier,
     IHubContext<PanelHub, IPanelClient> browsers,
@@ -343,6 +345,7 @@ internal sealed partial class AgentHub(
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
             liveMetrics.Update(view);
             history.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, view.Query?.Players);
+            resources.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes);
             await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
         }
     }

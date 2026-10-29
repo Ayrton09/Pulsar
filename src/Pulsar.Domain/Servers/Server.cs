@@ -177,6 +177,13 @@ public sealed class Server
 
     public DateTimeOffset? LastStoppedAt { get; private set; }
 
+    /// <summary>
+    /// It crashed (or gave up restarting) and has not run since (1.0.18): its next run is told as back online to whoever
+    /// was told of the crash. A stop that leaves it offline ends it too. Only changes the agent reported set it (they are
+    /// what crashes are told from); an agent's Hello can only end it.
+    /// </summary>
+    public bool DownAfterCrash { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -629,6 +636,15 @@ public sealed class Server
         if (StopsIntent(reason))
         {
             DesiredState = DesiredState.Stopped;
+        }
+
+        if (!snapshot && (state == ServerRuntimeState.Crashed || reason is ServerStateReason.Crashed or ServerStateReason.CrashLoop or ServerStateReason.MemoryLimit))
+        {
+            DownAfterCrash = true;
+        }
+        else if (state is ServerRuntimeState.Running or ServerRuntimeState.Offline)
+        {
+            DownAfterCrash = false;
         }
 
         RuntimeState = state;

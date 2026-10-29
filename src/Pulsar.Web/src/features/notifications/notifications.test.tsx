@@ -30,6 +30,9 @@ const settings: Schemas['NotificationSettingsView'] = {
   panelUrl: null,
   diskLowPercent: 10,
   nodeOfflineMinutes: 3,
+  cpuHighPercent: 90,
+  memoryHighPercent: 90,
+  resourceHighMinutes: 10,
   smtp: null,
 };
 
@@ -191,6 +194,10 @@ describe('notifications page', () => {
     await user.type(screen.getByLabelText('User name'), 'pulsar');
     await user.type(screen.getByLabelText('Password'), 'app password');
     await user.type(screen.getByLabelText('From address'), 'pulsar@example.com');
+    await user.clear(screen.getByLabelText('High CPU at (%)'));
+    await user.type(screen.getByLabelText('High CPU at (%)'), '80');
+    await user.clear(screen.getByLabelText('For at least (minutes)'));
+    await user.type(screen.getByLabelText('For at least (minutes)'), '15');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
 
     expect(await screen.findByText('Settings saved.')).toBeInTheDocument();
@@ -203,6 +210,9 @@ describe('notifications page', () => {
       clearSmtpPassword: false,
       fromAddress: 'pulsar@example.com',
       panelUrl: null,
+      cpuHighPercent: 80,
+      memoryHighPercent: 90,
+      resourceHighMinutes: 15,
     });
     // The password field is emptied, with a hint that the saved one is kept.
     expect(screen.getByLabelText('Password')).toHaveValue('');

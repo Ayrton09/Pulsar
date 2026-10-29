@@ -14,7 +14,9 @@
     "installed": "Installata",
     "latest": "Più recente",
     "template": "Modello",
-    "newTemplate": "Modello più recente"
+    "newTemplate": "Modello più recente",
+    "cpu": "CPU",
+    "memory": "Memoria"
   },
   "serverOutOfMemory": {
     "title": "{server} ha esaurito la memoria",
@@ -35,6 +37,14 @@
   "serverStartFailed": {
     "title": "{server} non è partito",
     "text": "Windows non è riuscito ad avviarlo."
+  },
+  "serverBackOnline": {
+    "title": "{server} è di nuovo in funzione",
+    "text": "Gira di nuovo dopo il crash segnalato prima."
+  },
+  "serverResourceHigh": {
+    "title": "{server} sta usando molta CPU o memoria",
+    "text": "Per {minutes} minuti o più ha usato almeno la quota impostata nelle impostazioni delle notifiche. Un gioco impegnativo può richiedere limiti più alti o una macchina più grande."
   },
   "backupCopyFailed": {
     "title": "Copia remota di un backup di {server} non riuscita",
@@ -60,6 +70,16 @@
     "title": "Il nodo {node} sta esaurendo lo spazio su disco",
     "text": "Un disco pieno fa fallire aggiornamenti, backup e gli stessi server di gioco. Libera spazio o elimina i backup vecchi.",
     "drive": "{free} liberi su {total} ({percent} %)"
+  },
+  "nodeResourceHigh": {
+    "title": "Il nodo {node} sta usando molta CPU o memoria",
+    "text": "Per {minutes} minuti o più la macchina ha usato almeno la quota impostata nelle impostazioni delle notifiche. I suoi server di gioco possono rallentare."
+  },
+  "resourceHigh": {
+    "ofLimit": "{percent} % del suo limite",
+    "ofMachine": "{percent} % della macchina",
+    "memoryOfLimit": "{used} del suo limite di {total} ({percent} %)",
+    "memoryOfNode": "{used} dei {total} del nodo ({percent} %)"
   },
   "gameUpdateAvailable": {
     "title": "{server} ha un aggiornamento del gioco",

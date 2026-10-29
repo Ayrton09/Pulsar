@@ -191,6 +191,14 @@ public sealed class NotificationTests
         Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeGeneral(null, 0, 3, s_now).Error);
         Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeGeneral(null, 10, 0, s_now).Error);
 
+        Assert.Equal((90, 90, TimeSpan.FromMinutes(10)), (settings.CpuHighPercent, settings.MemoryHighPercent, settings.ResourceHighAfter));
+        Assert.True(settings.ChangeResourceThresholds(80, 95, 30, s_now).IsSuccess);
+        Assert.Equal((80, 95, 30), (settings.CpuHighPercent, settings.MemoryHighPercent, settings.ResourceHighMinutes));
+        Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeResourceThresholds(49, 90, 10, s_now).Error);
+        Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeResourceThresholds(90, 101, 10, s_now).Error);
+        Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeResourceThresholds(90, 90, 0, s_now).Error);
+        Assert.Equal(80, settings.CpuHighPercent);
+
         Assert.True(settings.ChangeSmtp("smtp.example.com", 587, SmtpSecurity.StartTls, "pulsar", [7], false, "pulsar@example.com", "Pulsar", s_now)
             .IsSuccess);
         Assert.True(settings.EmailConfigured);

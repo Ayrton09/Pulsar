@@ -18,6 +18,19 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
         ForServerAsync(server, NotificationEvent.ServerCrashed, crashLoop ? "crash_loop" : memoryLimit ? "memory_limit" : null,
             (language, facts, link) => NotificationTexts.ServerCrashed(language, facts, exitCode, crashLoop, link, memoryLimit), cancellationToken);
 
+    /// <summary>Told to the channels that are told of crashes (the same event): the server runs again after one (1.0.18).</summary>
+    public Task ServerBackOnlineAsync(Server server, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.ServerCrashed, "online",
+            (language, facts, link) => NotificationTexts.ServerBackOnline(language, facts, link), cancellationToken);
+
+    /// <param name="cpuOfLimit">Whether <paramref name="cpuPercent"/> is of the server's CPU limit (else of the whole machine).</param>
+    /// <param name="memoryOfLimit">Whether <paramref name="memoryTotal"/> is the server's memory limit (else its node's memory).</param>
+    public Task ServerResourceHighAsync(Server server, double cpuPercent, bool cpuOfLimit, long memoryBytes, long memoryTotal, bool memoryOfLimit,
+        int minutes, CancellationToken cancellationToken) =>
+        ForServerAsync(server, NotificationEvent.ResourceHigh, "resources",
+            (language, facts, link) => NotificationTexts.ServerResourceHigh(language, facts, cpuPercent, cpuOfLimit, memoryBytes, memoryTotal, memoryOfLimit,
+                minutes, link), cancellationToken);
+
     public Task ServerStartFailedAsync(Server server, bool notReady, string? detail, CancellationToken cancellationToken) =>
         ForServerAsync(server, NotificationEvent.ServerStartFailed, null,
             (language, facts, link) => NotificationTexts.ServerStartFailed(language, facts, notReady, detail, link), cancellationToken);
@@ -75,6 +88,14 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
         ArgumentNullException.ThrowIfNull(node);
         return QueueAsync(NotificationEvent.NodeOffline, $"node:{node.Id}:online", null, $"/nodes/{node.Id}",
             (language, link) => Task.FromResult(NotificationTexts.NodeOnline(language, node.Name, link)), cancellationToken);
+    }
+
+    public Task NodeResourceHighAsync(Node node, double cpuPercent, double memoryPercent, int minutes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return QueueAsync(NotificationEvent.ResourceHigh, $"node:{node.Id}:resources", null, $"/nodes/{node.Id}",
+            (language, link) => Task.FromResult(NotificationTexts.NodeResourceHigh(language, node.Name, cpuPercent, memoryPercent, minutes, link)),
+            cancellationToken);
     }
 
     public Task NodeDiskLowAsync(Node node, IReadOnlyList<(string Root, long Free, long Total)> drives, CancellationToken cancellationToken)
