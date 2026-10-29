@@ -7698,6 +7698,12 @@
       "change": "브랜치 변경",
       "confirm": "{{name}}을(를) 백업하고 Steam 브랜치 \"{{branch}}\"을(를) 설치할까요? 이전 버전은 더 새로운 월드를 열지 못할 수 있습니다. 되돌리기 위해 백업이 남습니다.",
       "stopFirst": "브랜치를 바꾸려면 서버를 중지하세요."
+    },
+    "banner": {
+      "label": "업데이트",
+      "game": "게임 업데이트가 있습니다: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "게임 업데이트가 있습니다.",
+      "stopForTemplate": "옮기려면 먼저 중지하세요."
     }
   },
   "players": {

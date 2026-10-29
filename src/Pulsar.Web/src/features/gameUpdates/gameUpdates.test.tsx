@@ -118,6 +118,42 @@ describe('game updates', () => {
     await waitFor(() => expect(installs).toEqual(['install']));
   });
 
+  it("offers the update in the server's header, next to its actions", async () => {
+    const installs: string[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(updater),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json(found),
+      [`POST /api/v1/servers/${serverId}/game-updates/install`]: () => {
+        installs.push('install');
+        return json(found);
+      },
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderAt(`/servers/${serverId}?tab=files`);
+
+    // On every tab, in the header.
+    const banner = await screen.findByRole('region', { name: 'Updates' });
+    expect(banner.closest('header')).toHaveTextContent(details.server.name);
+    expect(banner).toHaveTextContent('A game update is available: 20476133 → 20500001.');
+    await userEvent.click(within(banner).getByRole('button', { name: 'Update and restart' }));
+    await waitFor(() => expect(installs).toEqual(['install']));
+  });
+
+  it('offers no update in the header to who may not install it, nor when there is none', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(updater),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/game-updates`]: () => json({ ...found, available: false }),
+    });
+
+    renderAt(`/servers/${serverId}`);
+
+    await screen.findByRole('region', { name: 'Game updates' });
+    expect(screen.queryByRole('region', { name: 'Updates' })).not.toBeInTheDocument();
+  });
+
   it('changes the Steam branch of a stopped server after a backup, among the branches Steam listed', async () => {
     const changes: unknown[] = [];
     const branchy: Schemas['GameUpdateView'] = {

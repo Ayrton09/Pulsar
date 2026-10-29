@@ -7698,6 +7698,12 @@
       "change": "Cambia ramo",
       "confirm": "Fare un backup di {{name}} e installare il ramo di Steam \"{{branch}}\"? Una versione precedente potrebbe non aprire mondi più recenti: il backup serve per tornare indietro.",
       "stopFirst": "Ferma il server per cambiarne il ramo."
+    },
+    "banner": {
+      "label": "Aggiornamenti",
+      "game": "È disponibile un aggiornamento del gioco: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "È disponibile un aggiornamento del gioco.",
+      "stopForTemplate": "Fermalo per passarlo."
     }
   },
   "players": {

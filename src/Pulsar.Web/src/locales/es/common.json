@@ -7698,6 +7698,12 @@
       "change": "Cambiar rama",
       "confirm": "¿Hacer un backup de {{name}} e instalar la rama de Steam \"{{branch}}\"? Una versión anterior puede no abrir mundos más nuevos: el backup queda para volver atrás.",
       "stopFirst": "Detené el servidor para cambiar su rama."
+    },
+    "banner": {
+      "label": "Actualizaciones",
+      "game": "Hay una actualización del juego: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "Hay una actualización del juego.",
+      "stopForTemplate": "Detenelo para pasarlo."
     }
   },
   "players": {

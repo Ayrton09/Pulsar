@@ -7698,6 +7698,12 @@
       "change": "更换分支",
       "confirm": "要备份 {{name}} 并安装 Steam 分支“{{branch}}”吗？旧版本可能无法打开较新的世界：备份可用于回退。",
       "stopFirst": "请先停止服务器再更换分支。"
+    },
+    "banner": {
+      "label": "更新",
+      "game": "有可用的游戏更新：{{installed}} → {{latest}}。",
+      "gameNoBuilds": "有可用的游戏更新。",
+      "stopForTemplate": "请先停止服务器再切换。"
     }
   },
   "players": {

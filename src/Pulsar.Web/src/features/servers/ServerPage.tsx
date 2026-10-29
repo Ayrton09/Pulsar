@@ -51,7 +51,6 @@ import {
   useReinstallServer,
   useServer,
   useUpdateGame,
-  useUpgradeTemplate,
   type OperationView,
   type ServerDetails,
 } from './api';
@@ -65,8 +64,7 @@ import { PowerButtons } from './PowerButtons';
 import { AddressChip } from './ServerCard';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { failureReason, serverActions } from './serverStatus';
-import { GameUpdatesCard } from '../gameUpdates/GameUpdates';
-import { useGameUpdates } from '../gameUpdates/api';
+import { GameUpdatesCard, UpdateBanner } from '../gameUpdates/GameUpdates';
 
 const allTabs = [
   'overview',
@@ -344,6 +342,9 @@ function ServerHero({ details }: { details: ServerDetails }) {
         </div>
         <PowerButtons server={server} />
       </div>
+      <div className="relative px-5 pb-5 empty:hidden sm:px-7 sm:pb-7">
+        <UpdateBanner details={details} />
+      </div>
     </header>
   );
 }
@@ -579,8 +580,6 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const reinstall = useReinstallServer();
   const remove = useDeleteServer();
   const update = useUpdateGame();
-  const upgrade = useUpgradeTemplate();
-  const templateUpdates = useGameUpdates(details.server.id);
   const [validate, setValidate] = useState(false);
   const [changingGame, setChangingGame] = useState(false);
   const [cloning, setCloning] = useState(false);
@@ -597,38 +596,11 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
     return null;
   }
 
-  const error = reinstall.error ?? remove.error ?? update.error ?? upgrade.error;
-  const next = details.templateUpgrade;
+  const error = reinstall.error ?? remove.error ?? update.error;
   return (
     <section className="mt-8 space-y-4">
       <h2 className="text-lg font-semibold">{t('servers.administration')}</h2>
       {error && <Alert>{errorMessage(t, error)}</Alert>}
-      {canInstall && next && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
-          <p className="text-sm">
-            {t('servers.templateUpgrade', { current: details.templateVersion, next: next.version })}
-            {templateUpdates.data?.templatePolicy === 'install' && (
-              <>
-                {' '}
-                {templateUpdates.data.autoTemplate === next.version
-                  ? t('servers.templateUpgradeAuto')
-                  : t('servers.templateUpgradeImported')}
-              </>
-            )}
-          </p>
-          <Button
-            variant="secondary"
-            disabled={!available.reinstall}
-            busy={upgrade.isPending}
-            onClick={() =>
-              window.confirm(t('servers.templateUpgradeConfirm', { name: server.name, version: next.version })) &&
-              upgrade.mutate({ id: server.id, templateId: next.templateId })
-            }
-          >
-            {t('servers.templateUpgradeAction', { version: next.version })}
-          </Button>
-        </div>
-      )}
       <div className="flex flex-wrap gap-2">
         {canInstall && details.canUpdate && (
           <Button

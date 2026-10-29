@@ -8,7 +8,8 @@ import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
-import type { ServerDetails } from '../servers/api';
+import { useUpgradeTemplate, type ServerDetails } from '../servers/api';
+import { serverActions } from '../servers/serverStatus';
 import {
   gameUpdatePolicies,
   useCancelGameUpdate,
@@ -445,5 +446,97 @@ function GameUpdateSettingsForm({
         )}
       </div>
     </Card>
+  );
+}
+
+/**
+ * What can be updated, where the server's actions are (its page's header): an update of its game the last check
+ * found, and a newer version of its game's template. Each with its action for whoever may take it; the cards below
+ * still say how updates are followed.
+ */
+export function UpdateBanner({ details }: { details: ServerDetails }) {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const { server } = details;
+  const updates = useGameUpdates(server.id);
+  const install = useInstallGameUpdate(server.id);
+  const upgrade = useUpgradeTemplate();
+  const view = updates.data;
+  const canInstall = canOnServer(me, server, Permission.ServerInstall);
+  const running = view?.running?.status === 'running';
+  const game =
+    view?.supported === true &&
+    server.installState === 'installed' &&
+    view.available === true &&
+    !running &&
+    !view.pending;
+  const next = canInstall && !running ? details.templateUpgrade : null;
+  if (!game && !next) {
+    return null;
+  }
+
+  // Updating the way an automatic update does stops and starts the server.
+  const canRestart =
+    canInstall && canOnServer(me, server, Permission.ServerStop) && canOnServer(me, server, Permission.ServerStart);
+  const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
+  const idle = server.activeOperation === null && server.nodeConnected;
+  // Moving to a newer template installs the server again: only when it could be reinstalled.
+  const canMove = serverActions(server).reinstall;
+  const error = install.error ?? upgrade.error;
+  return (
+    <div role="region" aria-label={t('gameUpdates.banner.label')} className="space-y-2">
+      {game && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3">
+          <p className="inline-flex min-w-0 items-center gap-2 text-sm">
+            <Download aria-hidden="true" className="size-4 shrink-0 text-accent" />
+            <span className="break-words">
+              {view.installed && view.latest
+                ? t('gameUpdates.banner.game', { installed: view.installed, latest: view.latest })
+                : t('gameUpdates.banner.gameNoBuilds')}
+            </span>
+          </p>
+          {canRestart && (
+            <Button
+              size="sm"
+              icon={Download}
+              disabled={!idle}
+              busy={install.isPending}
+              onClick={() => window.confirm(t('gameUpdates.installConfirm', { name: server.name })) && install.mutate()}
+            >
+              {t('gameUpdates.installNow')}
+            </Button>
+          )}
+        </div>
+      )}
+      {next && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3">
+          <p className="min-w-0 text-sm break-words">
+            {t('servers.templateUpgrade', { current: details.templateVersion, next: next.version })}
+            {view?.templatePolicy === 'install' && (
+              <>
+                {' '}
+                {view.autoTemplate === next.version
+                  ? t('servers.templateUpgradeAuto')
+                  : t('servers.templateUpgradeImported')}
+              </>
+            )}
+            {!stopped && <span className="text-muted"> {t('gameUpdates.banner.stopForTemplate')}</span>}
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!canMove}
+            busy={upgrade.isPending}
+            onClick={() =>
+              window.confirm(t('servers.templateUpgradeConfirm', { name: server.name, version: next.version })) &&
+              upgrade.mutate({ id: server.id, templateId: next.templateId })
+            }
+          >
+            {t('servers.templateUpgradeAction', { version: next.version })}
+          </Button>
+        </div>
+      )}
+      {error && <Alert>{errorMessage(t, error)}</Alert>}
+    </div>
   );
 }

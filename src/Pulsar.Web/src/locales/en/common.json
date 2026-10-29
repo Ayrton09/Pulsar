@@ -2605,6 +2605,12 @@
       "change": "Change branch",
       "confirm": "Back up {{name}} and install the Steam branch \"{{branch}}\"? An older version may not open newer worlds: the backup is there to go back.",
       "stopFirst": "Stop the server to change its branch."
+    },
+    "banner": {
+      "label": "Updates",
+      "game": "A game update is available: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "A game update is available.",
+      "stopForTemplate": "Stop it to move it."
     }
   },
   "players": {

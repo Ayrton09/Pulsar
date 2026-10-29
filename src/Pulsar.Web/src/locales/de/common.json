@@ -7698,6 +7698,12 @@
       "change": "Branch wechseln",
       "confirm": "{{name}} sichern und den Steam-Branch \"{{branch}}\" installieren? Eine ältere Version öffnet neuere Welten womöglich nicht: das Backup erlaubt den Weg zurück.",
       "stopFirst": "Halte den Server an, um seinen Branch zu wechseln."
+    },
+    "banner": {
+      "label": "Updates",
+      "game": "Ein Spielupdate ist verfügbar: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "Ein Spielupdate ist verfügbar.",
+      "stopForTemplate": "Halte ihn an, um ihn umzustellen."
     }
   },
   "players": {

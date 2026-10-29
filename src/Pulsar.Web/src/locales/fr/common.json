@@ -7698,6 +7698,12 @@
       "change": "Changer de branche",
       "confirm": "Sauvegarder {{name}} et installer la branche Steam « {{branch}} » ? Une version antérieure peut ne pas ouvrir des mondes plus récents : la sauvegarde permet de revenir en arrière.",
       "stopFirst": "Arrêtez le serveur pour changer sa branche."
+    },
+    "banner": {
+      "label": "Mises à jour",
+      "game": "Une mise à jour du jeu est disponible : {{installed}} → {{latest}}.",
+      "gameNoBuilds": "Une mise à jour du jeu est disponible.",
+      "stopForTemplate": "Arrêtez-le pour le passer."
     }
   },
   "players": {

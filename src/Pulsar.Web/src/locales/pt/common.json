@@ -7698,6 +7698,12 @@
       "change": "Mudar branch",
       "confirm": "Fazer backup de {{name}} e instalar a branch da Steam \"{{branch}}\"? Uma versão anterior pode não abrir mundos mais novos: o backup fica para voltar.",
       "stopFirst": "Pare o servidor para mudar a branch."
+    },
+    "banner": {
+      "label": "Atualizações",
+      "game": "Há uma atualização do jogo: {{installed}} → {{latest}}.",
+      "gameNoBuilds": "Há uma atualização do jogo.",
+      "stopForTemplate": "Pare-o para mudar."
     }
   },
   "players": {
