@@ -39,6 +39,9 @@ public sealed class FakeIdentityProviders : HttpMessageHandler
 
     public bool WrongSignature { get; set; }
 
+    /// <summary>Runs once, while the panel waits for the next code to be redeemed.</summary>
+    public Func<Task>? WhileRedeeming { get; set; }
+
     /// <summary>The user signs in at the provider: a code for the panel's callback, bound to what the panel asked.</summary>
     public string Approve(Uri authorize, string subject)
     {
@@ -77,6 +80,12 @@ public sealed class FakeIdentityProviders : HttpMessageHandler
 
         if (url is $"{Issuer}/token" or "https://discord.com/api/oauth2/token")
         {
+            if (WhileRedeeming is { } meanwhile)
+            {
+                WhileRedeeming = null;
+                await meanwhile();
+            }
+
             var form = QueryHelpers.ParseQuery(await request.Content!.ReadAsStringAsync(cancellationToken));
             // Discord takes the secret in the form; this OpenID Connect provider (no auth methods listed) as HTTP Basic.
             var secret = url.StartsWith("https://discord.com", StringComparison.Ordinal)
@@ -401,6 +410,29 @@ public sealed class SsoTests(SsoApiFactory factory) : IClassFixture<SsoApiFactor
         Assert.Equal("/login?sso_error=not_linked", await SignInAsync(browser, "oidc", "subject-issuer"));
         // The owner's sessions end with the links (at their next check of the security stamp, within a minute).
         Assert.NotEqual(stamp, await StampAsync(created.Id));
+    }
+
+    [DatabaseFact]
+    public async Task ALinkRedeemedWhileTheIssuerChangesIsNotSaved()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await ConfigureOidcAsync(scenario.Admin);
+        var created = await scenario.CreateUserAsync("sso-race");
+        using var owner = await scenario.SignInAsync("sso-race");
+
+        // The code is the old issuer's: by the time it is redeemed, the provider is another issuer, whose subjects these are not.
+        factory.Providers.WhileRedeeming = async () =>
+        {
+            using var moved = await scenario.Admin.PutAsync("/api/v1/sso-providers/oidc",
+                new SsoProviderRequest(true, FakeIdentityProviders.ClientId, "other-secret", "https://other.test", "Company"));
+            await AccessScenario.EnsureSuccessAsync(moved);
+        };
+        Assert.Equal("/account?sso_error=expired", await LinkAsync(owner, "oidc", "subject-race"));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().UserLogins
+            .AnyAsync(l => l.UserId == new Pulsar.Domain.Common.UserId(created.Id), Ct));
+        await ConfigureOidcAsync(scenario.Admin);
     }
 
     private async Task<string?> StampAsync(Guid userId)

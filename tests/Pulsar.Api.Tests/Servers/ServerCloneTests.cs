@@ -45,6 +45,8 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
             var now = DateTimeOffset.UtcNow;
             var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(source), Ct);
             row.RestoreSteamBranch("beta", now);
+            // Its game's version too: the clone's own install may get another, but it holds the source's files.
+            row.GameInstalled("source-build-1", now);
             var mod = ServerMod.Installing(row.Id, ModSource.Modrinth, "lithium", "lithium1", "Lithium", "1.0", "mods/lithium.jar", "ab", 2, false, [],
                 new OperationId(Guid.NewGuid()), now);
             mod.Installed(now);
@@ -104,7 +106,8 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
         {
             var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
             var cloneId = new ServerId(clone.Server.Id);
-            Assert.Equal("beta", (await db.Servers.AsNoTracking().SingleAsync(s => s.Id == cloneId, Ct)).SteamBranch);
+            var row = await db.Servers.AsNoTracking().SingleAsync(s => s.Id == cloneId, Ct);
+            Assert.Equal(("beta", "source-build-1"), (row.SteamBranch, row.GameVersion));
             var mod = await db.ServerMods.AsNoTracking().SingleAsync(m => m.ServerId == cloneId, Ct);
             Assert.Equal(("lithium1", "mods/lithium.jar", ServerModState.Installed), (mod.VersionId, mod.Path, mod.State));
             Assert.Equal("2.0.1", (await db.ServerAddons.AsNoTracking().SingleAsync(a => a.ServerId == cloneId, Ct)).Release);

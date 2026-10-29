@@ -1,3 +1,4 @@
+using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Application.Abstractions;
@@ -25,6 +26,12 @@ public interface IRowLocks
 
     /// <summary>A server's database's row: changes of its password, and its deletion, take turns.</summary>
     Task LockServerDatabaseAsync(ServerDatabaseId database, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A sign-in provider's settings and the accounts linked to it take turns: a link is saved only under the settings it
+    /// was made with, and a change of issuer removes the links of the old one after any link in progress is saved.
+    /// </summary>
+    Task LockSsoProviderAsync(SsoKind kind, CancellationToken cancellationToken);
 
     /// <summary>
     /// Creations of <typeparamref name="TEntity"/> rows that take this lock take turns until the transaction ends (nothing

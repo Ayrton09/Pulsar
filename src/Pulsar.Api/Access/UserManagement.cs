@@ -221,15 +221,21 @@ public sealed class UserManagement(
             return problem;
         }
 
+        // All or none: a link Identity could not remove would still sign in.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var logins = await users.GetLoginsAsync(user!);
         audit.Record(AuditActions.User.SsoLinksRemoved, metadata: new { userName = user!.UserName, providers = logins.Select(l => l.LoginProvider).ToList() })
             .WithTarget("user", user.Id.ToString());
         foreach (var login in logins)
         {
-            await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey); // renews the security stamp; saves the entry
+            if (!(await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey)).Succeeded) // renews the security stamp; saves the entry
+            {
+                return SsoEndpoints.UnlinkFailed();
+            }
         }
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         connections.EndUser(user.Id);
         return TypedResults.Ok(await DescribeAsync(user, ct));
     }

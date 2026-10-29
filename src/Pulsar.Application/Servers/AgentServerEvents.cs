@@ -255,6 +255,12 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                                  .ToListAsync(cancellationToken))
                     {
                         received.Received(operation.Status == OperationStatus.Succeeded, operation.ErrorMessage ?? operation.ErrorCode, now);
+                        // 1.0.18: a clone's or a transfer's copy holds every file of the source as it was: its game's version is
+                        // the source's then, not the one this server's install got (the mods' catalog goes by it).
+                        if (operation.Status == OperationStatus.Succeeded)
+                        {
+                            server.GameInstalled(received.GameVersion, now);
+                        }
                     }
 
                     break;

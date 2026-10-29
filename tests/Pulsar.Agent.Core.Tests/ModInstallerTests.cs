@@ -335,6 +335,24 @@ public sealed class ModInstallerTests : IDisposable
             ChangeAsync([Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium)], []))).Code);
     }
 
+    [Fact]
+    public async Task AModPutBackByAWriteLeftPartialIsReplacedByTheNextInstall()
+    {
+        // Two mods go: one is put back, the other cannot be. The panel lists neither afterwards.
+        Directory.CreateDirectory(Path.Combine(_root, "mods"));
+        File.WriteAllText(Path.Combine(_root, "mods", "fabric-api-0.130.0.jar"), "old api");
+        File.WriteAllText(Path.Combine(_root, "mods", "lithium-fabric-0.17.0.jar"), "old");
+        var files = new FailingFiles { FailWrite = path => path.StartsWith("mods/lithium", StringComparison.Ordinal) };
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync([Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium)],
+            ["mods/fabric-api-0.130.0.jar", "mods/lithium-fabric-0.17.0.jar"], files));
+        Assert.Equal(ModInstaller.LeftPartial, error.Code);
+        Assert.Equal("old api", File.ReadAllText(Path.Combine(_root, "mods", "fabric-api-0.130.0.jar")));
+
+        // The one put back is installed again over its file, not refused as someone else's.
+        await ChangeAsync([Download("mods/fabric-api-0.130.0.jar", FabricApi, _fabricApi)], []);
+        Assert.Equal("fabric api", File.ReadAllText(Path.Combine(_root, "mods", "fabric-api-0.130.0.jar")));
+    }
+
     private Task ChangeAsync(IReadOnlyList<ModDownload> add, IReadOnlyList<string> remove, IServerFiles? files = null) =>
         new ModInstaller(files ?? new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }
             .ChangeAsync(_root, s_folders, add, remove, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken,

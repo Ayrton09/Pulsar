@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
+using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Infrastructure.Persistence;
@@ -20,6 +21,13 @@ internal sealed class RowLocks(PulsarDbContext db) : IRowLocks
 
     public Task LockServerDatabaseAsync(ServerDatabaseId database, CancellationToken cancellationToken) =>
         LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT 1 FROM server_databases WHERE id = {database.Value} FOR UPDATE", cancellationToken));
+
+    public Task LockSsoProviderAsync(SsoKind kind, CancellationToken cancellationToken)
+    {
+        // Advisory: the provider's row may not exist yet.
+        var key = "pulsar.sso_provider." + kind.ToString().ToLowerInvariant();
+        return LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken));
+    }
 
     public Task LockCreationsAsync<TEntity>(CancellationToken cancellationToken)
         where TEntity : class

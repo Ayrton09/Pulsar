@@ -970,6 +970,7 @@
       "authority_invalid": "The issuer is an https address without a query, of up to 255 characters.",
       "name_invalid": "The button's name is one line of up to 32 characters.",
       "link_not_found": "Your account is not linked to that provider.",
+      "unlink_failed": "The account could not be unlinked. Try again.",
       "provider_unavailable": "The provider could not be reached: {{detail}}"
     }
   },

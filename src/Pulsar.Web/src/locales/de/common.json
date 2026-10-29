@@ -970,6 +970,7 @@
       "authority_invalid": "Der Aussteller ist eine https-Adresse ohne Query mit höchstens 255 Zeichen.",
       "name_invalid": "Der Name der Schaltfläche ist eine Zeile mit höchstens 32 Zeichen.",
       "link_not_found": "Dein Konto ist nicht mit diesem Anbieter verknüpft.",
+      "unlink_failed": "Das Konto konnte nicht getrennt werden. Versuche es erneut.",
       "provider_unavailable": "Der Anbieter war nicht erreichbar: {{detail}}"
     }
   },

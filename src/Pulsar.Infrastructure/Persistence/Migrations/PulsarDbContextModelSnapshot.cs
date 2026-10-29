@@ -2023,6 +2023,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("game_save");
 
+                    b.Property<string>("GameVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("game_version");
+
                     b.Property<bool>("IsLocked")
                         .HasColumnType("boolean")
                         .HasColumnName("is_locked");

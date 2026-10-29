@@ -881,7 +881,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     private static IEnumerable<TreeEntry> Records(IReadOnlyList<TreeEntry> tree) => tree.Where(e => e.Kind == FileEntryKind.File && IsCarriedRecord(e.Path));
 
     /// <summary>
-    /// What the agent recorded of the server's mods, addons, pack and lists, which a whole copy of it (a clone's, a
+    /// What the agent recorded of the server's mods, addons, pack, lists and Minecraft version, which a whole copy of it (a clone's, a
     /// transfer's, 1.0.17) takes along so the panel's records of them hold on its new copy: nothing else of Pulsar's folder
     /// (never its SteamCMD, whose login it keeps). The server's account can write them, so the agent trusts none of them
     /// anyway. By exact path (<c>.pulsar</c> in lowercase, as the agent writes it).
@@ -891,7 +891,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         var segments = path.Split('/');
         return segments switch
         {
-            [PulsarDirectory, "modpack.json"] => true,
+            // 1.0.18: and which Minecraft server it installed, so the copy's updates are checked against its own files.
+            [PulsarDirectory, "modpack.json" or "minecraft-version.txt" or "bedrock-version.txt"] => true,
             [PulsarDirectory, "packages" or "addons" or "lists", var name] => name.Length > ".json".Length
                 && name.EndsWith(".json", StringComparison.Ordinal) && !name.StartsWith(ServerFileRules.TemporaryPrefix, StringComparison.Ordinal),
             _ => false,

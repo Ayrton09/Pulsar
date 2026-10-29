@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Domain.Access;
@@ -79,7 +80,7 @@ public static partial class SsoEndpoints
     /// users' sessions end.
     /// </summary>
     private static async Task<Results<Ok<SsoProviderView>, ProblemHttpResult>> UpdateProviderAsync(string provider, SsoProviderRequest request,
-        PulsarDbContext db, UserManager<PulsarUser> users, SsoProviders providers, BrowserConnections connections, CancellationToken ct)
+        PulsarDbContext db, UserManager<PulsarUser> users, SsoProviders providers, IRowLocks locks, BrowserConnections connections, CancellationToken ct)
     {
         if (SsoProviders.Parse(provider) is not { } kind)
         {
@@ -87,6 +88,8 @@ public static partial class SsoEndpoints
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // After any link in progress is saved (it is then removed below), before the next one checks the settings.
+        await locks.LockSsoProviderAsync(kind, ct);
         var updated = await providers.UpdateAsync(kind, new SsoProviderDefinition(request.Enabled, request.ClientId, request.ClientSecret, request.Authority,
             request.DisplayName), ct);
         if (!updated.IsSuccess)
@@ -103,7 +106,13 @@ public static partial class SsoEndpoints
             {
                 if (await users.FindByIdAsync(owner.UserId.ToString()) is { } user)
                 {
-                    await users.RemoveLoginAsync(user, slug, owner.ProviderKey); // renews the security stamp
+                    // Renews the security stamp. A link that stays would be the old issuer's subject under the new one:
+                    // nothing is saved (the transaction is not committed).
+                    if (!(await users.RemoveLoginAsync(user, slug, owner.ProviderKey)).Succeeded)
+                    {
+                        return UnlinkFailed();
+                    }
+
                     ended.Add(user);
                 }
             }
@@ -201,7 +210,8 @@ public static partial class SsoEndpoints
     /// </summary>
     private static async Task<RedirectHttpResult> CallbackAsync(string provider, string? code, string? state, string? error, HttpContext http,
         PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn, SsoProviders providers, ISsoClient client,
-        IDataProtectionProvider protection, PanelCookies cookies, IAuditLog audit, TimeProvider clock, ILoggerFactory loggers, CancellationToken ct)
+        IDataProtectionProvider protection, PanelCookies cookies, IAuditLog audit, IRowLocks locks, TimeProvider clock, ILoggerFactory loggers,
+        CancellationToken ct)
     {
         var pending = Read(http, protection, cookies);
         // One use: whatever happens next, the flow is over.
@@ -235,10 +245,23 @@ public static partial class SsoEndpoints
             return Go(failurePage, ex.Code["sso.".Length..]);
         }
 
+        // The identity is the issuer's the code was redeemed with: it is used only if the settings are still those, and they
+        // stay so until it is (a change of issuer waits, then removes what was linked under the old one).
+        await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
+        await locks.LockSsoProviderAsync(kind.Value, CancellationToken.None);
+        if (await providers.SettingsAsync(kind.Value, CancellationToken.None) is not { } now
+            || !string.Equals(now.ClientId, settings.ClientId, StringComparison.Ordinal)
+            || !string.Equals(now.Authority, settings.Authority, StringComparison.Ordinal))
+        {
+            return Go(failurePage, "expired");
+        }
+
         var slug = SsoProviders.Slug(kind.Value);
-        return pending.Flow == Flow.Link
+        var done = pending.Flow == Flow.Link
             ? await CompleteLinkAsync(pending, slug, identity, db, users, audit)
             : await CompleteLoginAsync(slug, identity, http, db, users, signIn, audit, clock);
+        await transaction.CommitAsync(CancellationToken.None);
+        return done;
     }
 
     private static async Task<RedirectHttpResult> CompleteLoginAsync(string slug, SsoIdentity identity, HttpContext http, PulsarDbContext db,
@@ -339,13 +362,21 @@ public static partial class SsoEndpoints
 
         audit.Record(AuditActions.Auth.SsoUnlinked, AuditOutcome.Success, AuditActor.ForUser(user.Id, user.UserName), new { provider = slug, name = login.ProviderDisplayName })
             .WithTarget("user", user.Id.ToString());
-        await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey); // renews the security stamp, saving the entry
+        if (!(await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey)).Succeeded) // renews the security stamp, saving the entry
+        {
+            return UnlinkFailed();
+        }
+
         // The live channel checks the session only when it opens: whoever signed in with the link loses theirs now. This
         // browser reconnects with the session signed in again below.
         connections.EndUser(user.Id);
         await signIn.RefreshSignInAsync(user);
         return TypedResults.NoContent();
     }
+
+    /// <summary>A link Identity could not remove (another change to the account at the same time): nothing changed.</summary>
+    internal static ProblemHttpResult UnlinkFailed() =>
+        ApiProblems.Create(StatusCodes.Status409Conflict, "sso.unlink_failed", "The account could not be unlinked. Try again.");
 
     private static PendingSignIn? Read(HttpContext http, IDataProtectionProvider protection, PanelCookies cookies)
     {

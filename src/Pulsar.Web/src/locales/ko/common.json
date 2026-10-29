@@ -970,6 +970,7 @@
       "authority_invalid": "발급자는 쿼리 없는 https 주소(255자 이내)입니다.",
       "name_invalid": "버튼 이름은 32자 이내의 한 줄입니다.",
       "link_not_found": "계정이 그 제공자와 연결되어 있지 않습니다.",
+      "unlink_failed": "계정 연결을 해제하지 못했습니다. 다시 시도하세요.",
       "provider_unavailable": "제공자에 연결할 수 없습니다: {{detail}}"
     }
   },

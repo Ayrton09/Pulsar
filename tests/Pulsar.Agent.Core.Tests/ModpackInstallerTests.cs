@@ -73,6 +73,23 @@ public sealed class ModpackInstallerTests : IDisposable
         Assert.Contains("mods/ferrite.jar", Read(ModpackInstaller.RecordPath), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AWriteTheNodeRefusesMidwayIsAPartialPack()
+    {
+        await InstallAsync(Pack(Index(File("mods/lithium.jar", Lithium, _lithium))));
+        var ferrite = Encoding.UTF8.GetBytes("ferrite");
+        _http.Routes["https://cdn.modrinth.com/data/uXXizFIs/versions/z/ferrite.jar"] = ferrite;
+
+        // The old pack's files are gone when the node's own files refuse a write (a files.* code): the panel must hear
+        // modpack.write_failed, which tells it the old pack is not the server's either.
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(
+            Pack(Index(File("mods/ferrite.jar", "https://cdn.modrinth.com/data/uXXizFIs/versions/z/ferrite.jar", ferrite))),
+            files: new RefusingFiles("mods/ferrite.jar")));
+
+        Assert.Equal("modpack.write_failed", error.Code);
+        Assert.False(System.IO.File.Exists(Path.Combine(_root, "mods", "lithium.jar")));
+    }
+
     [Theory]
     [InlineData("1.21.7", "fabric-loader", "0.17.2", null)]
     [InlineData("1.21.8", "forge", "58.1.0", null)]
@@ -285,10 +302,10 @@ public sealed class ModpackInstallerTests : IDisposable
     }
 
     /// <summary>Prepares and applies the pack as the agent does (the install steps in between are not this class's).</summary>
-    private async Task<int> InstallAsync(byte[] pack, byte[]? hashedAs = null)
+    private async Task<int> InstallAsync(byte[] pack, byte[]? hashedAs = null, IServerFiles? files = null)
     {
         _http.Routes[PackUrl] = pack;
-        var installer = new ModpackInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) };
+        var installer = new ModpackInstaller(files ?? new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) };
         using var prepared = await installer.PrepareAsync(
             new ModDownload("pack.mrpack", PackUrl, Convert.ToHexStringLower(SHA512.HashData(hashedAs ?? pack)), pack.Length), null, "fabric", "1.21.8",
             version => version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+') ? null : "not a version",
@@ -355,5 +372,32 @@ public sealed class ModpackInstallerTests : IDisposable
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
         }
+    }
+
+    /// <summary>The server's files as the node's own refuse a write: with a files.* code, not an IOException.</summary>
+    private sealed class RefusingFiles(string refused) : IServerFiles
+    {
+        private readonly DirectServerFiles _files = new();
+
+        public Stream? OpenRead(string serverRoot, string relativePath) => _files.OpenRead(serverRoot, relativePath);
+
+        public void Write(string serverRoot, string relativePath, Stream content)
+        {
+            if (relativePath == refused)
+            {
+                throw new GameProcessException("files.write_failed", "The disk is full.");
+            }
+
+            _files.Write(serverRoot, relativePath, content);
+        }
+
+        public void Delete(string serverRoot, string relativePath) => _files.Delete(serverRoot, relativePath);
+
+        public void CreateDirectory(string serverRoot, string relativePath) => _files.CreateDirectory(serverRoot, relativePath);
+
+        public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _files.DeleteEmptyDirectory(serverRoot, relativePath);
+
+        public IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit) =>
+            _files.ListFiles(serverRoot, relativeDirectory, limit);
     }
 }

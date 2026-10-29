@@ -165,13 +165,16 @@ public sealed class BackupStoreTests : IDisposable
         Write(".pulsar/steamcmd/config/config.vdf", "a Steam login");
         Write(".pulsar/steamcmd/steamcmd.exe", "SteamCMD");
         Write(".pulsar/minecraft-version.txt", "1.21.8");
+        Write(".pulsar/minecraft-version.txt.bak", "not a record");
         var location = Location();
 
         var result = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken, whole: true);
 
         string[] carried = [".pulsar/addons/oxide.json", ".pulsar/lists/0123456789abcdef.json", ".pulsar/modpack.json", ".pulsar/packages/ValheimModding-Jotunn.json"];
-        Assert.Equal([.. carried, "BepInEx/plugins/Valheim+.dll", "cfg/server.cfg", "server.log"], Entries(location.Archive));
-        Assert.Equal((7, 0), (result.FileCount, result.SkippedFiles));
+        // The Minecraft server it installed too (1.0.18): the copy's updates are checked against its own files.
+        Assert.Equal([.. carried[..2], ".pulsar/minecraft-version.txt", .. carried[2..], "BepInEx/plugins/Valheim+.dll", "cfg/server.cfg", "server.log"],
+            Entries(location.Archive));
+        Assert.Equal((8, 0), (result.FileCount, result.SkippedFiles));
 
         // Restored on another copy of the server, records too.
         foreach (var file in Directory.EnumerateFiles(_serverDirectory, "*", SearchOption.AllDirectories))
@@ -182,6 +185,7 @@ public sealed class BackupStoreTests : IDisposable
         await _store.RestoreAsync(location, _server, result.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken);
         Assert.Equal("a plugin no rule names", ReadServer("BepInEx/plugins/Valheim+.dll"));
         Assert.All(carried, path => Assert.Equal("{}", ReadServer(path)));
+        Assert.Equal("1.21.8", ReadServer(".pulsar/minecraft-version.txt"));
         Assert.False(File.Exists(Path.Combine(_serverDirectory, ".pulsar", "steamcmd", "config", "config.vdf")));
     }
 

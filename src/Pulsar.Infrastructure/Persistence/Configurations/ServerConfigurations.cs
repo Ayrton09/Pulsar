@@ -168,6 +168,7 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
         builder.Property(b => b.RemoteError).HasMaxLength(Backup.MaxErrorMessageLength);
         builder.Property(b => b.CopyMode).HasConversion<SnakeCaseEnumConverter<BackupCopyMode>>();
         builder.Property(b => b.SnapshotError).HasMaxLength(Backup.MaxSnapshotErrorLength);
+        builder.Property(b => b.GameVersion).HasMaxLength(Server.MaxGameVersionLength);
         builder.Property(b => b.GameSave).HasConversion<SnakeCaseEnumConverter<GameSaveResult>>();
         builder.Ignore(b => b.Duration);
         // The agent's result, retention and users (locking, deleting) can race: the loser retries or gives way.

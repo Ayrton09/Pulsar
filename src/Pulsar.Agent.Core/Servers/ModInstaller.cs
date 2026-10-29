@@ -220,7 +220,11 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                 var stuck = undo.PutBack();
                 if (stuck.Count > 0)
                 {
+                    // The panel forgets every mod this change removed or replaced, not only those whose files are stuck: the
+                    // files of the others, back as they were (or never touched), are taken as left behind too, so installing
+                    // them again writes over them. A new file deleted again is nobody's and not listed.
                     left.UnionWith(stuck);
+                    left.UnionWith(Forgotten(serverDirectory, remove, packageFolders));
                     RecordLeftBehind(serverDirectory, left);
                     throw Failed(LeftPartial, $"The mods could not all be written, nor the files they replaced all put back (install again those the server lists no more): {ex.Message}", ex);
                 }
@@ -377,6 +381,32 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                 yield return path[..slash];
             }
         }
+    }
+
+    /// <summary>The files of what a change removed or replaced: the panel lists none of them after <see cref="LeftPartial"/>.</summary>
+    private List<string> Forgotten(string serverDirectory, IReadOnlyList<string> remove, IReadOnlySet<string> packageFolders)
+    {
+        var forgotten = new List<string>();
+        foreach (var path in remove)
+        {
+            if (!ModFiles.IsPackagePath(path, packageFolders))
+            {
+                forgotten.Add(path);
+                continue;
+            }
+
+            try
+            {
+                var (folder, package) = ModFiles.SplitPackagePath(path);
+                forgotten.AddRange(Record(serverDirectory, folder, package)?.Files ?? Loose(serverDirectory, folder, package));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GameProcessException)
+            {
+                // Its record cannot be read now: only its files that are stuck are listed.
+            }
+        }
+
+        return forgotten;
     }
 
     /// <summary>The files right in a package's own folders, for a package whose record is lost.</summary>

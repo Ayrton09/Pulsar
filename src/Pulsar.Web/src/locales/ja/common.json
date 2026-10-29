@@ -970,6 +970,7 @@
       "authority_invalid": "発行者はクエリのない https アドレス (255 文字以内) です。",
       "name_invalid": "ボタン名は 32 文字以内の 1 行です。",
       "link_not_found": "アカウントはそのプロバイダーと連携していません。",
+      "unlink_failed": "アカウントの連携を解除できませんでした。もう一度お試しください。",
       "provider_unavailable": "プロバイダーに接続できませんでした: {{detail}}"
     }
   },

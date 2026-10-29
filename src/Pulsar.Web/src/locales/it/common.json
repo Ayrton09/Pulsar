@@ -970,6 +970,7 @@
       "authority_invalid": "L'emittente è un indirizzo https senza query, di massimo 255 caratteri.",
       "name_invalid": "Il nome del pulsante è una riga di massimo 32 caratteri.",
       "link_not_found": "Il tuo account non è collegato a quel provider.",
+      "unlink_failed": "Non è stato possibile scollegare l'account. Riprova.",
       "provider_unavailable": "Impossibile contattare il provider: {{detail}}"
     }
   },

@@ -970,6 +970,7 @@
       "authority_invalid": "L'émetteur est une adresse https sans requête, de 255 caractères au plus.",
       "name_invalid": "Le nom du bouton est une ligne de 32 caractères au plus.",
       "link_not_found": "Votre compte n'est pas lié à ce fournisseur.",
+      "unlink_failed": "Le compte n'a pas pu être dissocié. Réessayez.",
       "provider_unavailable": "Le fournisseur n'a pas pu être joint : {{detail}}"
     }
   },

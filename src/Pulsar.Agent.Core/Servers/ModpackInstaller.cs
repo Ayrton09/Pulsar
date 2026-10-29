@@ -291,7 +291,9 @@ public sealed class ModpackInstaller(IServerFiles files, HttpMessageHandler hand
             WriteRecord(serverDirectory, new ModpackRecord(prepared.Name, current));
             return prepared.Files.Count + prepared.Overrides.Count;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        // The node's own files report theirs as files.* (GameProcessException), a test's or another's as IOException: either
+        // way the old pack may be partly gone, which only modpack.write_failed tells the panel.
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or GameProcessException)
         {
             throw Failed("modpack.write_failed", $"The modpack could not all be written: {ex.Message}", ex);
         }

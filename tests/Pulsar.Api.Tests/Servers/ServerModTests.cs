@@ -506,6 +506,8 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         // Its files were partly written over the previous pack's: neither is the server's.
         Assert.Empty(await EndAsync("modpack.write_failed"));
         Assert.Empty(await EndAsync("operation.interrupted"));
+        // A write the node refused, as an agent before 1.0.18 reports it.
+        Assert.Empty(await EndAsync("files.write_failed"));
         // Refused before anything changed: the previous pack stays.
         Assert.Equal("pold", Assert.Single(await EndAsync("modpack.download_failed")).ProjectId);
     }

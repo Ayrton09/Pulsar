@@ -283,7 +283,9 @@ public sealed partial class ServerMods
             db.ServerModpacks.Remove(pack);
             // Its files were being written (or may have been, by a node that stopped meanwhile): the previous pack's are
             // partly gone, so it is not the server's either. The node's record still lists both, for the next pack to replace.
-            if (operation.ErrorCode is PartialModpackCode or "operation.interrupted")
+            // A files.* code is a write the node refused, as agents before 1.0.18 reported it.
+            if (operation.ErrorCode is PartialModpackCode or "operation.interrupted"
+                || (operation.ErrorCode?.StartsWith("files.", StringComparison.Ordinal) ?? false))
             {
                 db.ServerModpacks.RemoveRange(packs.Where(p => p != pack && p.State == ServerModpackState.Installed));
             }

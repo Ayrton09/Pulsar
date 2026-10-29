@@ -137,6 +137,12 @@ public sealed class Backup
     /// <summary>How the game answered when asked to save first; null when it was not asked.</summary>
     public GameSaveResult? GameSave { get; private set; }
 
+    /// <summary>
+    /// The game's version the server had when it was asked for (Pulsar 1.0.18; no update runs during a backup): a copy
+    /// restored whole, a clone's or a transfer's, gives its server this version with the files.
+    /// </summary>
+    public string? GameVersion { get; private set; }
+
     /// <summary>How long the node took (from the request to its result).</summary>
     public TimeSpan? Duration => Status == BackupStatus.Completed && CompletedAt is { } end ? end - (StartedAt ?? CreatedAt) : null;
 
@@ -151,7 +157,10 @@ public sealed class Backup
             return ServerErrors.BackupNameInvalid;
         }
 
-        return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now);
+        return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now)
+        {
+            GameVersion = server.GameVersion,
+        };
     }
 
     /// <summary>
@@ -177,6 +186,7 @@ public sealed class Backup
             Sha256 = source.Sha256,
             CopyMode = source.CopyMode,
             GameSave = source.GameSave,
+            GameVersion = source.GameVersion,
         };
     }
 

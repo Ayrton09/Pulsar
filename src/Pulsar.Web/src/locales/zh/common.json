@@ -970,6 +970,7 @@
       "authority_invalid": "颁发者是不带查询参数的 https 地址，最多 255 个字符。",
       "name_invalid": "按钮名称为一行，最多 32 个字符。",
       "link_not_found": "你的账号未关联该提供方。",
+      "unlink_failed": "无法解除账号关联，请重试。",
       "provider_unavailable": "无法连接提供方：{{detail}}"
     }
   },

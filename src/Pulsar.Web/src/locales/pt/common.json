@@ -970,6 +970,7 @@
       "authority_invalid": "O emissor é um endereço https sem query, de até 255 caracteres.",
       "name_invalid": "O nome do botão é uma linha de até 32 caracteres.",
       "link_not_found": "Sua conta não está vinculada a esse provedor.",
+      "unlink_failed": "Não foi possível desvincular a conta. Tente novamente.",
       "provider_unavailable": "Não foi possível contatar o provedor: {{detail}}"
     }
   },
