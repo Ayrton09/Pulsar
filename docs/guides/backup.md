@@ -121,6 +121,17 @@ restore reports which file stayed: close what holds it and restore again.
 
 Through the API: `POST /api/v1/servers/{id}/backups/{backupId}/restore?clean=true`.
 
+### Restoring some files
+
+To put back only some files or folders (one world, a configuration file), choose **Some files and folders** in the
+restore dialog, open the backup's folders and tick what to restore; a folder brings everything it holds. Nothing else of
+the server changes. With **Delete the files made after this backup in what you pick**, newer files are deleted only
+inside the folders picked. The backup must still be on the node (one kept only in remote storage is brought back by
+restoring all of it), and the node's agent must be this version or newer.
+
+Through the API: `GET /api/v1/servers/{id}/backups/{backupId}/files?path=world` lists a folder, and
+`POST /api/v1/servers/{id}/backups/{backupId}/restore-files` with `{ "paths": ["world"], "clean": false }` restores.
+
 ### Remote copies
 
 To keep backups safe from the loss of the node, copy them to S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2,

@@ -51,6 +51,40 @@ export function useRestoreBackup(serverId: string) {
   });
 }
 
+/**
+ * One folder of a backup ('' is its top), as its node reads it from the archive: what a restore of some of it can pick.
+ * A backup does not change, so a folder read once stays (outside the server's keys, which the live channel refreshes).
+ */
+export function useBackupFiles(serverId: string, backupId: string, path: string, enabled = true) {
+  return useQuery({
+    queryKey: ['backupFiles', serverId, backupId, path] as const,
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/servers/{id}/backups/{backupId}/files', {
+          params: { path: { id: serverId, backupId }, query: { path } },
+        }),
+      ),
+    enabled,
+    retry: false,
+    staleTime: Infinity,
+  });
+}
+
+/** Some of the backup's files and folders; a clean restore deletes newer files only under them. */
+export function useRestoreBackupFiles(serverId: string) {
+  const changed = useBackupsChanged(serverId);
+  return useMutation({
+    mutationFn: ({ backupId, paths, clean }: { backupId: string; paths: string[]; clean: boolean }) =>
+      unwrap(
+        api.POST('/api/v1/servers/{id}/backups/{backupId}/restore-files', {
+          params: { path: { id: serverId, backupId } },
+          body: { paths, clean },
+        }),
+      ),
+    onSettled: changed,
+  });
+}
+
 export function useLockBackup(serverId: string) {
   const changed = useBackupsChanged(serverId);
   return useMutation({

@@ -729,6 +729,7 @@
       "locked": "O backup está bloqueado: desbloqueie-o antes de excluí-lo.",
       "unsupported": "O agente do nó não pode fazer backups. Atualize o agente.",
       "clean_unsupported": "O agente do nó não pode restaurar um backup com limpeza. Atualize o agente.",
+      "partial_unsupported": "O agente do nó não consegue mostrar os arquivos de um backup nem restaurar só alguns. Atualize o agente.",
       "clean_incomplete": "Este backup deixou de fora arquivos que o jogo mantinha abertos: restaurar com limpeza os excluiria. Restaure sem limpar.",
       "in_use": "O backup está sendo baixado ou restaurado. Tente novamente quando isso terminar.",
       "corrupt": "Não é possível restaurar o backup: {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Excluir os arquivos criados depois deste backup",
     "restoreCleanHint": "Os arquivos que o backup incluiria mas não tem são excluídos antes, como as regiões do mapa exploradas desde então. O jogo instalado e os arquivos fora do backup permanecem.",
     "restoreCleanSkipped": "Indisponível: este backup deixou de fora arquivos que o jogo mantinha abertos, e restaurar com limpeza os excluiria.",
+    "restoreWhat": "O que restaurar",
+    "restoreAll": "O backup inteiro",
+    "restoreSome": "Alguns arquivos e pastas",
+    "restoreSomeClean": "Apagar os arquivos criados depois deste backup no que você escolher",
+    "restoreSomeCleanHint": "Nas pastas que você escolher, os arquivos que o backup incluiria mas não tem são apagados primeiro. Nada fora delas muda.",
+    "restorePicked_one": "Restaurar {{count}} item",
+    "restorePicked_other": "Restaurar {{count}} itens",
+    "files": {
+      "top": "Backup",
+      "empty": "Esta pasta está vazia.",
+      "pick": "Escolher {{name}}",
+      "truncated": "Esta pasta tem mais do que cabe aqui: escolha a própria pasta para restaurá-la inteira.",
+      "full": "Você escolheu o máximo que uma restauração aceita ({{max}}).",
+      "picked_one": "{{count}} escolhido",
+      "picked_other": "{{count}} escolhidos",
+      "clear": "Limpar"
+    },
     "copy": {
       "snapshot": "Copiado de um instantâneo do disco",
       "live": "Copiado enquanto o jogo executava, sem instantâneo ({{reason}})"

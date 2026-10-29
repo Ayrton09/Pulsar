@@ -729,6 +729,7 @@
       "locked": "Il backup è bloccato: sbloccarlo prima di eliminarlo.",
       "unsupported": "L'agent del nodo non può creare backup. Aggiornare l'agent.",
       "clean_unsupported": "L'agent del nodo non può ripristinare un backup in modalità pulita. Aggiornare l'agent.",
+      "partial_unsupported": "L'agente del nodo non può mostrare i file di un backup né ripristinarne solo una parte. Aggiorna l'agente.",
       "clean_incomplete": "Questo backup ha escluso file che il gioco teneva aperti: un ripristino pulito li eliminerebbe. Ripristinarlo senza pulizia.",
       "in_use": "Il backup è in fase di download o ripristino. Riprovare quando termina.",
       "corrupt": "Il backup non può essere ripristinato: {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Elimina i file creati dopo questo backup",
     "restoreCleanHint": "I file che il backup includerebbe ma non ha vengono prima eliminati, come le regioni della mappa esplorate da allora. Il gioco installato e i file esterni al backup restano.",
     "restoreCleanSkipped": "Non disponibile: questo backup ha escluso file che il gioco teneva aperti, e un ripristino pulito li eliminerebbe.",
+    "restoreWhat": "Cosa ripristinare",
+    "restoreAll": "L'intero backup",
+    "restoreSome": "Alcuni file e cartelle",
+    "restoreSomeClean": "Elimina i file creati dopo questo backup in ciò che scegli",
+    "restoreSomeCleanHint": "Nelle cartelle scelte vengono prima eliminati i file che il backup includerebbe ma non ha. Fuori da esse non cambia nulla.",
+    "restorePicked_one": "Ripristina {{count}} elemento",
+    "restorePicked_other": "Ripristina {{count}} elementi",
+    "files": {
+      "top": "Backup",
+      "empty": "Questa cartella è vuota.",
+      "pick": "Scegli {{name}}",
+      "truncated": "Questa cartella contiene più di quanto si possa mostrare qui: scegli la cartella stessa per ripristinarla tutta.",
+      "full": "Hai scelto il massimo che un ripristino accetta ({{max}}).",
+      "picked_one": "{{count}} scelto",
+      "picked_other": "{{count}} scelti",
+      "clear": "Togli tutto"
+    },
     "copy": {
       "snapshot": "Copiato da uno snapshot del disco",
       "live": "Copiato mentre il gioco era in esecuzione, senza snapshot ({{reason}})"

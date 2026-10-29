@@ -261,8 +261,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// The archive came from another node (a clone, Pulsar 1.0.16): a clean restore deletes by this server's manifest's
     /// rules only, never by those the archive records, and what it holds must fit on the drive before anything is written.
     /// </param>
+    /// <param name="paths">
+    /// Only these files and folders (Pulsar 1.0.18), each one the backup has, never Pulsar's own: a clean restore then
+    /// deletes newer files only under them. Null: all of the backup.
+    /// </param>
     public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
-        CancellationToken cancellationToken, bool received = false)
+        CancellationToken cancellationToken, bool received = false, IReadOnlyList<string>? paths = null)
     {
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
@@ -282,6 +286,11 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             await FileArchives.CheckDirectoryAsync(input, cancellationToken);
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
             var entries = Check(archive);
+            if (paths is not null)
+            {
+                entries = Pick(entries, paths);
+            }
+
             if (received)
             {
                 long total = 0;
@@ -311,7 +320,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             {
                 await progress(BackupStages.Cleaning, null);
                 var rules = (received ? null : RecordedRules(archive.Comment)) ?? clean.Rules;
-                undeleted = DeleteNewer(location, server, rules, entries.Where(e => !e.Directory).Select(e => e.Path), cancellationToken);
+                undeleted = DeleteNewer(location, server, rules, entries.Where(e => !e.Directory).Select(e => e.Path), paths, cancellationToken);
             }
 
             var meter = new ProgressMeter(BackupStages.Restoring, entries.Sum(e => e.Entry.Length), progress);
@@ -612,8 +621,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// What the rules leave out (the installed game, logs, Pulsar's own files) and links are never touched. A file that
     /// cannot be deleted does not stop the others; those are returned.
     /// </summary>
+    /// <param name="under">Only files at or under these paths (a restore of some of the backup); null: all the rules select.</param>
     private List<(string Path, FileManagerException Error)> DeleteNewer(BackupLocation location, ProvisionedServer server, BackupDefinition? rules,
-        IEnumerable<string> kept, CancellationToken cancellationToken)
+        IEnumerable<string> kept, IReadOnlyList<string>? under, CancellationToken cancellationToken)
     {
         var keep = kept.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var deleted = 0;
@@ -622,7 +632,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         foreach (var file in Select(walk, rules))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (keep.Contains(file.Path))
+            if (keep.Contains(file.Path) || (under is not null && !IsPicked(file.Path, under)))
             {
                 continue;
             }
@@ -650,7 +660,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
         // What the walk left out (deeper than it goes, past its size, a name no path can say) under what the rules select
         // was never looked at: the restore says so rather than call itself clean.
-        foreach (var refused in Select([.. walk.RefusedSample.Select(p => new TreeEntry(p, FileEntryKind.File, 0, DateTimeOffset.MinValue))], rules))
+        foreach (var refused in Select([.. walk.RefusedSample.Select(p => new TreeEntry(p, FileEntryKind.File, 0, DateTimeOffset.MinValue))], rules)
+            .Where(e => under is null || IsPicked(e.Path, under)))
         {
             failed.Add((refused.Path, new FileManagerException(FileErrors.Failed,
                 "not looked at: it is deeper than 256 folders, past a million entries, or named so no path can say it")));
@@ -741,6 +752,131 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     }
 
     private static string FirstSegment(string path) => path.Split('/')[0];
+
+    private static bool IsPulsars(string path) => FirstSegment(path).Equals(PulsarDirectory, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The entries a restore of some of the backup writes: those at or under <paramref name="paths"/>. Each path must be a
+    /// plain one below the server's root, outside Pulsar's own files, that the backup has: anything else refuses it all.
+    /// </summary>
+    private static List<(ZipArchiveEntry Entry, string Path, bool Directory)> Pick(List<(ZipArchiveEntry Entry, string Path, bool Directory)> entries,
+        IReadOnlyList<string> paths)
+    {
+        if (paths.Count is 0 or > RestoreBackupCommand.MaxPaths)
+        {
+            throw new BackupException(FileErrors.InvalidPath, $"Pick from 1 to {RestoreBackupCommand.MaxPaths} files and folders to restore.");
+        }
+
+        foreach (var path in paths)
+        {
+            if (ServerFilePath.Error(path) is { } error)
+            {
+                throw new BackupException(FileErrors.InvalidPath, $"'{Printable(path ?? "")}' cannot be restored: {error}");
+            }
+
+            if (IsPulsars(path))
+            {
+                throw new BackupException(FileErrors.InvalidPath, "Pulsar's own files are never restored on their own.");
+            }
+        }
+
+        var picked = entries.Where(e => IsPicked(e.Path, paths)).ToList();
+        if (paths.FirstOrDefault(p => !picked.Any(e => IsPicked(e.Path, [p]))) is { } missing)
+        {
+            throw new BackupException(FileErrors.NotFound, $"The backup has no '{Printable(missing)}': nothing was restored.");
+        }
+
+        return picked;
+    }
+
+    private static bool IsPicked(string path, IReadOnlyList<string> paths) =>
+        paths.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase) || ServerFilePath.IsInside(path, p));
+
+    /// <summary>
+    /// One folder of a backup's archive (<see cref="ServerFilePath.Root"/>: its top), read from its index without checking
+    /// its hash (a restore does): folders first, then files, each by name, cut at <see cref="FileLimits.MaxListEntries"/>.
+    /// A folder's time is its newest entry's. Pulsar's own files are left out; a folder the backup does not have is not
+    /// found. The entries are checked as a restore checks them.
+    /// </summary>
+    public static async Task<FileListResult> ListAsync(BackupLocation location, string path, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        ArgumentNullException.ThrowIfNull(path);
+        if (ServerFilePath.Error(path, allowRoot: true) is { } invalid)
+        {
+            throw new BackupException(FileErrors.InvalidPath, invalid);
+        }
+
+        if (path.Length > 0 && IsPulsars(path))
+        {
+            throw new BackupException(FileErrors.NotFound, "Pulsar's own files are not shown.");
+        }
+
+        await using var input = OpenArchive(location, FileOptions.Asynchronous);
+        try
+        {
+            await FileArchives.CheckDirectoryAsync(input, cancellationToken);
+            await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
+            var folders = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
+            var found = new List<FileEntry>();
+            var exists = path.Length == 0;
+            foreach (var (entry, entryPath, directory) in Check(archive))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsPulsars(entryPath))
+                {
+                    continue;
+                }
+
+                if (entryPath.Equals(path, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!directory)
+                    {
+                        throw new BackupException(FileErrors.NotADirectory, $"'{Printable(path)}' is a file of the backup.");
+                    }
+
+                    exists = true;
+                    continue;
+                }
+
+                if (!ServerFilePath.IsInside(entryPath, path))
+                {
+                    continue;
+                }
+
+                exists = true;
+                var rest = path.Length == 0 ? entryPath : entryPath[(path.Length + 1)..];
+                var slash = rest.IndexOf('/', StringComparison.Ordinal);
+                var modified = entry.LastWriteTime;
+                if (slash < 0 && !directory)
+                {
+                    found.Add(new FileEntry(rest, FileEntryKind.File, entry.Length, modified));
+                    continue;
+                }
+
+                var name = slash < 0 ? rest : rest[..slash];
+                if (!folders.TryGetValue(name, out var folder) || folder.ModifiedAt < modified)
+                {
+                    folders[name] = new FileEntry(folder?.Name ?? name, FileEntryKind.Directory, 0, modified);
+                }
+            }
+
+            if (!exists)
+            {
+                throw new BackupException(FileErrors.NotFound, $"The backup has no folder '{Printable(path)}'.");
+            }
+
+            var listed = folders.Values.OrderBy(e => e.Name, FileNameOrder.Comparer)
+                .Concat(found.OrderBy(e => e.Name, FileNameOrder.Comparer)).ToList();
+            return listed.Count > FileLimits.MaxListEntries
+                ? new FileListResult(listed[..FileLimits.MaxListEntries], Truncated: true)
+                : new FileListResult(listed, Truncated: false);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new BackupException(BackupErrors.Corrupt, $"The backup's archive is damaged: {ex.Message}", ex);
+        }
+    }
 
     private static IEnumerable<TreeEntry> Records(IReadOnlyList<TreeEntry> tree) => tree.Where(e => e.Kind == FileEntryKind.File && IsCarriedRecord(e.Path));
 

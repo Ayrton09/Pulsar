@@ -73,6 +73,9 @@ public sealed partial class ServerBackups(
     TimeProvider clock,
     ILogger<ServerBackups> logger)
 {
+    /// <summary>How many of a restore's picked paths its audit entry names (it counts them all).</summary>
+    private const int MaxAuditedPaths = 20;
+
     public async Task<Result<BackupList>> ListAsync(ServerId id, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
@@ -158,8 +161,24 @@ public sealed partial class ServerBackups(
     /// Puts the backup's files back (the server must be stopped); the server cannot start until it ends. A
     /// <paramref name="clean"/> restore first deletes the files the backup's rules select that it does not have.
     /// </summary>
-    public async Task<Result> RestoreAsync(ServerId id, BackupId backupId, bool clean, CancellationToken cancellationToken)
+    /// <param name="paths">
+    /// Only these files and folders of the backup (Pulsar 1.0.18; a clean restore then deletes newer files only under
+    /// them); null: all of it.
+    /// </param>
+    public async Task<Result> RestoreAsync(ServerId id, BackupId backupId, bool clean, CancellationToken cancellationToken,
+        IReadOnlyList<string>? paths = null)
     {
+        if (paths is not null)
+        {
+            var picked = Picked(paths);
+            if (!picked.IsSuccess)
+            {
+                return picked.Error!;
+            }
+
+            paths = picked.Value;
+        }
+
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         var backup = server is null ? null : await db.Backups.AsNoTracking().SingleOrDefaultAsync(b => b.Id == backupId && b.ServerId == id, cancellationToken);
         if (server is null || backup is null)
@@ -188,14 +207,98 @@ public sealed partial class ServerBackups(
             return ServerErrors.CleanRestoreUnsupported;
         }
 
+        // And one asked for some of its files would restore all of them.
+        if (paths is not null && Connection(server.NodeId, AgentCapabilities.PartialRestore) is { IsSuccess: false })
+        {
+            return ServerErrors.PartialRestoreUnsupported;
+        }
+
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
         var remote = await RemoteOfAsync(backup, cancellationToken);
         var run = await operations.RunAsync(server, operation,
-            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes),
-            () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: new { backup = backup.Id.Value, backup.Name, clean })
+            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes, Paths: paths),
+            () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: paths is null
+                    ? new { backup = backup.Id.Value, backup.Name, clean }
+                    : new { backup = backup.Id.Value, backup.Name, clean, paths = paths.Take(MaxAuditedPaths).ToList(), pathCount = paths.Count })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);
         return run.IsSuccess ? Result.Success() : run.Error!;
+    }
+
+    /// <summary>
+    /// One folder of the backup (<see cref="ServerFilePath.Root"/>: its top), as its node reads it from the archive's index
+    /// (Pulsar 1.0.18): what a restore of some of it can pick. The archive must be on the node. Whoever may download the
+    /// backup may see what it holds.
+    /// </summary>
+    public async Task<Result<FileListing>> ListFilesAsync(ServerId id, BackupId backupId, string? path, CancellationToken cancellationToken)
+    {
+        path ??= ServerFilePath.Root;
+        if (ServerFilePath.Error(path, allowRoot: true) is { } error)
+        {
+            return ServerErrors.FilePathInvalid(error);
+        }
+
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        var backup = server is null ? null : await db.Backups.AsNoTracking().SingleOrDefaultAsync(b => b.Id == backupId && b.ServerId == id, cancellationToken);
+        if (server is null || backup is null)
+        {
+            return server is null ? ServerErrors.NotFound : ServerErrors.BackupNotFound;
+        }
+
+        if (backup.Status != BackupStatus.Completed)
+        {
+            return ServerErrors.BackupNotCompleted;
+        }
+
+        if (Connection(server.NodeId, AgentCapabilities.RestoreBackup) is { IsSuccess: false } connection)
+        {
+            return connection.Error!;
+        }
+
+        if (Connection(server.NodeId, AgentCapabilities.PartialRestore) is { IsSuccess: false }
+            || Connection(server.NodeId, AgentCapabilities.ListBackupFiles) is { IsSuccess: false })
+        {
+            return ServerErrors.PartialRestoreUnsupported;
+        }
+
+        var ack = Ack(await connections.SendAsync(server.NodeId, new ListBackupFilesCommand(server.Id.Value, backup.Id.Value, path), request.UserId,
+            cancellationToken));
+        if (!ack.IsSuccess)
+        {
+            return ack.Error!;
+        }
+
+        return ack.Value.Result is FileListResult listing
+            ? new FileListing(path, listing.Entries, listing.Truncated, listing.Skipped)
+            : ServerErrors.CommandRejected;
+    }
+
+    /// <summary>
+    /// The files and folders a restore of some of a backup picks: 1 to <see cref="RestoreBackupCommand.MaxPaths"/> plain
+    /// paths below the server's root, never in Pulsar's own folder; one inside another picked is dropped (the folder has it).
+    /// </summary>
+    private static Result<IReadOnlyList<string>> Picked(IReadOnlyList<string> paths)
+    {
+        if (paths.Count is 0 or > RestoreBackupCommand.MaxPaths)
+        {
+            return ServerErrors.FilePathInvalid($"Pick from 1 to {RestoreBackupCommand.MaxPaths} files and folders to restore.");
+        }
+
+        foreach (var path in paths)
+        {
+            if (ServerFilePath.Error(path) is { } error)
+            {
+                return ServerErrors.FilePathInvalid(error);
+            }
+
+            if (path.Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase))
+            {
+                return ServerErrors.FilePathInvalid("Pulsar's own files are never restored on their own.");
+            }
+        }
+
+        var distinct = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return distinct.Where(p => !distinct.Any(other => ServerFilePath.IsInside(p, other))).ToList();
     }
 
     /// <summary>Deletes the backup from its node, then forgets it. Locked backups and backups being made are kept.</summary>
@@ -522,6 +625,8 @@ public sealed partial class ServerBackups(
         { Status: AckStatus.Busy } => ServerErrors.Busy,
         { Status: AckStatus.Rejected, ErrorCode: { } code } when code.StartsWith("backups.", StringComparison.Ordinal) =>
             ServerErrors.BackupRejected(code, ack.Message ?? code),
+        { Status: AckStatus.Rejected, ErrorCode: { } code } when code.StartsWith("files.", StringComparison.Ordinal) =>
+            ServerErrors.FileRejected(code, ack.Message ?? code),
         _ => ServerErrors.CommandRejected,
     };
 

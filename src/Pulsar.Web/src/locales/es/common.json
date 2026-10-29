@@ -729,6 +729,7 @@
       "locked": "El backup está bloqueado: desbloquealo antes de eliminarlo.",
       "unsupported": "El agente del nodo no puede hacer backups. Actualizá el agente.",
       "clean_unsupported": "El agente del nodo no puede hacer una restauración limpia. Actualizá el agente.",
+      "partial_unsupported": "El agente del nodo no puede mostrar los archivos de un backup ni restaurar solo algunos. Actualizá el agente.",
       "clean_incomplete": "Este backup dejó afuera archivos que el juego tenía abiertos: una restauración limpia los borraría. Restauralo sin limpiar.",
       "in_use": "El backup se está descargando o restaurando. Probá de nuevo cuando termine.",
       "corrupt": "El backup no se puede restaurar: {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Borrar los archivos creados después de este backup",
     "restoreCleanHint": "Primero se borran los archivos que el backup incluiría pero no tiene, como las regiones del mapa exploradas desde entonces. El juego instalado y los archivos fuera del backup no se tocan.",
     "restoreCleanSkipped": "No disponible: este backup dejó afuera archivos que el juego tenía abiertos, y una restauración limpia los borraría.",
+    "restoreWhat": "Qué restaurar",
+    "restoreAll": "El backup completo",
+    "restoreSome": "Algunos archivos y carpetas",
+    "restoreSomeClean": "Borrar los archivos creados después de este backup en lo que elijas",
+    "restoreSomeCleanHint": "En las carpetas que elijas, primero se borran los archivos que el backup incluiría pero no tiene. Fuera de ellas no cambia nada.",
+    "restorePicked_one": "Restaurar {{count}} elemento",
+    "restorePicked_other": "Restaurar {{count}} elementos",
+    "files": {
+      "top": "Backup",
+      "empty": "Esta carpeta está vacía.",
+      "pick": "Elegir {{name}}",
+      "truncated": "Esta carpeta tiene más de lo que se puede mostrar aquí: elegí la carpeta entera para restaurarla completa.",
+      "full": "Elegiste el máximo que admite una restauración ({{max}}).",
+      "picked_one": "{{count}} elegido",
+      "picked_other": "{{count}} elegidos",
+      "clear": "Quitar todo"
+    },
     "copy": {
       "snapshot": "Copiado desde una instantánea del disco",
       "live": "Copiado con el juego encendido, sin instantánea ({{reason}})"

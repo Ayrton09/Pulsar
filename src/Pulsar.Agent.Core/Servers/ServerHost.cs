@@ -94,6 +94,9 @@ public sealed partial class ServerHost(
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
 
+    /// <summary>How long reading a backup's index may take: the panel waits for the answer.</summary>
+    private static readonly TimeSpan s_backupListTimeout = TimeSpan.FromSeconds(20);
+
     private static readonly IVolumeSnapshots s_noSnapshots = new NoVolumeSnapshots();
 
     private const string Platform = ManifestValidator.WindowsX64;
@@ -180,6 +183,8 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.ChangeGame;
             yield return AgentCapabilities.ReceiveBackup;
             yield return AgentCapabilities.WholeBackup;
+            yield return AgentCapabilities.PartialRestore;
+            yield return AgentCapabilities.ListBackupFiles;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -665,6 +670,7 @@ public sealed partial class ServerHost(
             RestoreBackupCommand restore => RestoreBackup(envelope, restore),
             DeleteBackupCommand delete => await DeleteBackupAsync(envelope, delete),
             SendBackupCommand send => await SendBackupAsync(envelope, send),
+            ListBackupFilesCommand list => await ListBackupFilesAsync(envelope, list),
             StartServerCommand start => await Control(envelope, start.ServerId, s => s.StartAsync(), allowedDuringOperation: false),
             StopServerCommand stop => await Control(envelope, stop.ServerId, s => s.StopAsync(), allowedDuringOperation: true),
             RestartServerCommand restart => await Control(envelope, restart.ServerId, s => s.RestartAsync(), allowedDuringOperation: false),
@@ -1547,7 +1553,7 @@ public sealed partial class ServerHost(
             }
 
             await backups.RestoreAsync(location, provisioned, command.Sha256, command.Clean ? new CleanRestore(server.Manifest.Backup) : null,
-                progress, cancellationToken, received: command.Ticket is not null);
+                progress, cancellationToken, received: command.Ticket is not null, paths: command.Paths);
         });
     }
 
@@ -1609,6 +1615,30 @@ public sealed partial class ServerHost(
         catch (BackupException ex)
         {
             return Rejected(envelope, ex.Code, ex.Message);
+        }
+    }
+
+    /// <summary>One folder of a backup, read from its archive's index (whatever the server is doing).</summary>
+    private async Task<CommandAck> ListBackupFilesAsync(CommandEnvelope envelope, ListBackupFilesCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(s_backupListTimeout);
+            var listing = await Task.Run(() => BackupStore.ListAsync(Backup(server, command.BackupId), command.Path, timeout.Token));
+            return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null, listing);
+        }
+        catch (BackupException ex)
+        {
+            return Rejected(envelope, ex.Code, ex.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            return Rejected(envelope, FileErrors.Failed, "Reading the backup's list of files took too long.");
         }
     }
 

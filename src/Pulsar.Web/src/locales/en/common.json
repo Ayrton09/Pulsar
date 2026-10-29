@@ -729,6 +729,7 @@
       "locked": "The backup is locked: unlock it before deleting it.",
       "unsupported": "The node's agent cannot make backups. Update the agent.",
       "clean_unsupported": "The node's agent cannot restore a backup clean. Update the agent.",
+      "partial_unsupported": "The node's agent cannot show a backup's files or restore some of them. Update the agent.",
       "clean_incomplete": "This backup left out files the game held open: restoring clean would delete them. Restore it without cleaning.",
       "in_use": "The backup is being downloaded or restored. Try again when that ends.",
       "corrupt": "The backup cannot be restored: {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Delete the files made after this backup",
     "restoreCleanHint": "Files the backup would include but does not have are deleted first, such as map regions explored since. The installed game and files outside the backup stay.",
     "restoreCleanSkipped": "Not available: this backup left out files the game held open, and restoring clean would delete them.",
+    "restoreWhat": "What to restore",
+    "restoreAll": "The whole backup",
+    "restoreSome": "Some files and folders",
+    "restoreSomeClean": "Delete the files made after this backup in what you pick",
+    "restoreSomeCleanHint": "In the folders you pick, files the backup would include but does not have are deleted first. Nothing outside them changes.",
+    "restorePicked_one": "Restore {{count}} item",
+    "restorePicked_other": "Restore {{count}} items",
+    "files": {
+      "top": "Backup",
+      "empty": "This folder is empty.",
+      "pick": "Pick {{name}}",
+      "truncated": "This folder holds more than can be shown here: pick the folder itself to restore all of it.",
+      "full": "You picked the most one restore takes ({{max}}).",
+      "picked_one": "{{count}} picked",
+      "picked_other": "{{count}} picked",
+      "clear": "Clear"
+    },
     "copy": {
       "snapshot": "Copied from a snapshot of the disk",
       "live": "Copied while the game ran, without a snapshot ({{reason}})"

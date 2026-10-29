@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
@@ -13,6 +14,12 @@ namespace Pulsar.Api.Servers;
 public sealed record CreateBackupRequest([property: StringLength(Backup.MaxNameLength)] string? Name);
 
 public sealed record LockBackupRequest(bool Locked);
+
+/// <param name="Paths">The backup's files and folders to put back (paths of the server, forward slashes).</param>
+/// <param name="Clean">First delete the newer files under them that the backup's rules select and it does not have.</param>
+public sealed record RestoreBackupFilesRequest(
+    [property: Required, MinLength(1), MaxLength(RestoreBackupCommand.MaxPaths)] IReadOnlyList<string> Paths,
+    bool Clean);
 
 /// <param name="Limit">How many backups to keep (locked ones besides); null keeps them all.</param>
 public sealed record BackupSettingsRequest([property: Range(1, Server.MaxBackupLimit)] int? Limit);
@@ -59,6 +66,13 @@ public static class ServerBackupEndpoints
         // they stay, as for restores asked before clean ones existed (scripts with API keys).
         backups.MapPost("/{backupId:guid}/restore", async (Guid id, Guid backupId, ServerBackups b, CancellationToken ct, bool clean = false) =>
                 (await b.RestoreAsync(new ServerId(id), new BackupId(backupId), clean, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.BackupsRestore);
+        // Some of its files and folders (Pulsar 1.0.18), picked from its listing: whoever may download it may see them.
+        backups.MapGet("/{backupId:guid}/files", async (Guid id, Guid backupId, ServerBackups b, CancellationToken ct, string? path = null) =>
+                (await b.ListFilesAsync(new ServerId(id), new BackupId(backupId), path, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.BackupsView);
+        backups.MapPost("/{backupId:guid}/restore-files", async (Guid id, Guid backupId, RestoreBackupFilesRequest request, ServerBackups b,
+                CancellationToken ct) => (await b.RestoreAsync(new ServerId(id), new BackupId(backupId), request.Clean, ct, request.Paths)).ToHttp())
             .RequirePermission(Permissions.Server.BackupsRestore);
         backups.MapPut("/{backupId:guid}/lock", async (Guid id, Guid backupId, LockBackupRequest request, ServerBackups b, CancellationToken ct) =>
                 (await b.SetLockedAsync(new ServerId(id), new BackupId(backupId), request.Locked, ct)).ToHttp())

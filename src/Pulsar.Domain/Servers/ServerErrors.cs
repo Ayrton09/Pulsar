@@ -195,6 +195,9 @@ public static class ServerErrors
     public static DomainError CleanRestoreUnsupported { get; } =
         new("backups.clean_unsupported", "The node's agent cannot restore a backup clean (update the agent).");
 
+    public static DomainError PartialRestoreUnsupported { get; } =
+        new("backups.partial_unsupported", "The node's agent cannot show a backup's files or restore some of them (update the agent).");
+
     public static DomainError CleanRestoreIncomplete { get; } =
         new("backups.clean_incomplete", "This backup left out files the game held open: a clean restore would delete them. Restore it without cleaning.");
 

@@ -53,6 +53,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(RestoreBackupCommand), RestoreBackupCommand.Type)]
 [JsonDerivedType(typeof(DeleteBackupCommand), DeleteBackupCommand.Type)]
 [JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
+[JsonDerivedType(typeof(ListBackupFilesCommand), ListBackupFilesCommand.Type)]
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
 [JsonDerivedType(typeof(ChangeModsCommand), ChangeModsCommand.Type)]
 [JsonDerivedType(typeof(InstallModpackCommand), InstallModpackCommand.Type)]
@@ -536,18 +537,36 @@ public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 /// single-use ticket when it does not have it, exactly <paramref name="SizeBytes"/> bytes hashing to
 /// <paramref name="Sha256"/>, and keeps it as this backup. Only for agents that announce <see cref="AgentCapabilities.ReceiveBackup"/>.
 /// </param>
+/// <param name="Paths">
+/// Only these files and folders of the backup (Pulsar 1.0.18): each a path of the server below its root, outside
+/// Pulsar's own files, that the backup has; a clean restore then deletes newer files only under them. Null: all of it.
+/// Only for agents that announce <see cref="AgentCapabilities.PartialRestore"/>: older ones would restore everything.
+/// </param>
 public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false,
-    long? SizeBytes = null, string? Ticket = null) : AgentCommand
+    long? SizeBytes = null, string? Ticket = null, IReadOnlyList<string>? Paths = null) : AgentCommand
 {
     public const string Type = "server.backup_restore";
+
+    /// <summary>Most files and folders one restore picks.</summary>
+    public const int MaxPaths = 100;
 
     protected override bool PrintMembers(System.Text.StringBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
         builder.Append(System.Globalization.CultureInfo.InvariantCulture,
-            $"ServerId = {ServerId}, BackupId = {BackupId}, Sha256 = {Sha256}, Remote = {Remote}, Clean = {Clean}, SizeBytes = {SizeBytes}, Ticket = {(Ticket is null ? "null" : "***")}");
+            $"ServerId = {ServerId}, BackupId = {BackupId}, Sha256 = {Sha256}, Remote = {Remote}, Clean = {Clean}, SizeBytes = {SizeBytes}, Ticket = {(Ticket is null ? "null" : "***")}, Paths = {(Paths is null ? "null" : Paths.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
         return true;
     }
+}
+
+/// <summary>
+/// Lists one folder of a backup's archive (<see cref="ServerFilePath.Root"/>: its top) as the file manager lists the
+/// server's, from the archive's index: the ack carries a <see cref="FileListResult"/>. The archive must be on the node.
+/// Pulsar's own files are left out. Only for agents that announce <see cref="AgentCapabilities.PartialRestore"/>.
+/// </summary>
+public sealed record ListBackupFilesCommand(Guid ServerId, Guid BackupId, string Path) : AgentCommand
+{
+    public const string Type = "server.backup_files_list";
 }
 
 /// <summary>
@@ -875,6 +894,15 @@ public static class AgentCapabilities
     /// <summary>A backup takes every file of the server when asked to (<see cref="CreateBackupCommand.Whole"/>, Pulsar 1.0.17).</summary>
     public const string WholeBackup = "backups.whole";
 
+    /// <summary>
+    /// The agent lists a backup's files (<see cref="ListBackupFilesCommand"/>) and restores some of them
+    /// (<see cref="RestoreBackupCommand.Paths"/>, Pulsar 1.0.18).
+    /// </summary>
+    public const string PartialRestore = "backups.partial_restore";
+
+    /// <summary>Lists a backup's files (<see cref="ListBackupFilesCommand"/>, Pulsar 1.0.18); announced with <see cref="PartialRestore"/>.</summary>
+    public const string ListBackupFiles = ListBackupFilesCommand.Type;
+
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;
 
@@ -957,6 +985,7 @@ public static class AgentCapabilities
         RestoreBackupCommand => RestoreBackup,
         DeleteBackupCommand => DeleteBackup,
         SendBackupCommand => SendBackup,
+        ListBackupFilesCommand => ListBackupFiles,
         InstallAddonCommand => InstallAddon,
         RemoveAddonCommand => RemoveAddon,
         ChangeModsCommand => ChangeMods,

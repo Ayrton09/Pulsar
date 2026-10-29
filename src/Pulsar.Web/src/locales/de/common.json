@@ -729,6 +729,7 @@
       "locked": "Das Backup ist gesperrt: Entsperren Sie es, bevor Sie es löschen.",
       "unsupported": "Der Agent des Nodes kann keine Backups erstellen. Aktualisieren Sie den Agent.",
       "clean_unsupported": "Der Agent des Nodes kann ein Backup nicht bereinigt wiederherstellen. Aktualisieren Sie den Agent.",
+      "partial_unsupported": "Der Agent des Knotens kann die Dateien einer Sicherung nicht anzeigen oder nur einen Teil wiederherstellen. Aktualisiere den Agenten.",
       "clean_incomplete": "Dieses Backup enthält Dateien nicht, die das Spiel geöffnet hielt: Eine bereinigte Wiederherstellung würde sie löschen. Stellen Sie es ohne Bereinigung wieder her.",
       "in_use": "Das Backup wird gerade heruntergeladen oder wiederhergestellt. Versuchen Sie es erneut, wenn das beendet ist.",
       "corrupt": "Das Backup kann nicht wiederhergestellt werden: {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Dateien löschen, die nach diesem Backup entstanden sind",
     "restoreCleanHint": "Dateien, die das Backup enthalten würde, aber nicht hat, werden zuerst gelöscht, etwa seither erkundete Kartenbereiche. Das installierte Spiel und Dateien außerhalb des Backups bleiben erhalten.",
     "restoreCleanSkipped": "Nicht verfügbar: Dieses Backup enthält Dateien nicht, die das Spiel geöffnet hielt, und eine bereinigte Wiederherstellung würde sie löschen.",
+    "restoreWhat": "Was wiederherstellen",
+    "restoreAll": "Die ganze Sicherung",
+    "restoreSome": "Einzelne Dateien und Ordner",
+    "restoreSomeClean": "Nach dieser Sicherung erstellte Dateien in der Auswahl löschen",
+    "restoreSomeCleanHint": "In den gewählten Ordnern werden zuerst die Dateien gelöscht, die die Sicherung enthalten würde, aber nicht hat. Außerhalb ändert sich nichts.",
+    "restorePicked_one": "{{count}} Element wiederherstellen",
+    "restorePicked_other": "{{count}} Elemente wiederherstellen",
+    "files": {
+      "top": "Sicherung",
+      "empty": "Dieser Ordner ist leer.",
+      "pick": "{{name}} auswählen",
+      "truncated": "Dieser Ordner enthält mehr, als hier angezeigt werden kann: Wähle den Ordner selbst, um ihn ganz wiederherzustellen.",
+      "full": "Du hast das Maximum einer Wiederherstellung gewählt ({{max}}).",
+      "picked_one": "{{count}} ausgewählt",
+      "picked_other": "{{count}} ausgewählt",
+      "clear": "Auswahl leeren"
+    },
     "copy": {
       "snapshot": "Aus einem Snapshot des Datenträgers kopiert",
       "live": "Kopiert, während das Spiel lief, ohne Snapshot ({{reason}})"

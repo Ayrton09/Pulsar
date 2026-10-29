@@ -729,6 +729,7 @@
       "locked": "La sauvegarde est verrouillée : déverrouillez-la avant de la supprimer.",
       "unsupported": "L'agent du nœud ne peut pas faire de sauvegardes. Mettez l'agent à jour.",
       "clean_unsupported": "L'agent du nœud ne peut pas restaurer une sauvegarde à l'état propre. Mettez l'agent à jour.",
+      "partial_unsupported": "L'agent du nœud ne peut pas afficher les fichiers d'une sauvegarde ni en restaurer une partie. Mettez l'agent à jour.",
       "clean_incomplete": "Cette sauvegarde a omis des fichiers que le jeu gardait ouverts : une restauration à l'état propre les supprimerait. Restaurez-la sans nettoyer.",
       "in_use": "La sauvegarde est en cours de téléchargement ou de restauration. Réessayez quand ce sera terminé.",
       "corrupt": "La sauvegarde ne peut pas être restaurée : {{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "Supprimer les fichiers créés après cette sauvegarde",
     "restoreCleanHint": "Les fichiers que la sauvegarde aurait dû inclure mais qu'elle ne contient pas sont d'abord supprimés, comme les régions de carte explorées depuis. Le jeu installé et les fichiers hors de la sauvegarde sont conservés.",
     "restoreCleanSkipped": "Indisponible : cette sauvegarde a omis des fichiers que le jeu gardait ouverts, et une restauration à l'état propre les supprimerait.",
+    "restoreWhat": "Quoi restaurer",
+    "restoreAll": "Toute la sauvegarde",
+    "restoreSome": "Certains fichiers et dossiers",
+    "restoreSomeClean": "Supprimer les fichiers créés après cette sauvegarde dans ce que vous choisissez",
+    "restoreSomeCleanHint": "Dans les dossiers choisis, les fichiers que la sauvegarde inclurait mais qu'elle n'a pas sont d'abord supprimés. Rien ne change ailleurs.",
+    "restorePicked_one": "Restaurer {{count}} élément",
+    "restorePicked_other": "Restaurer {{count}} éléments",
+    "files": {
+      "top": "Sauvegarde",
+      "empty": "Ce dossier est vide.",
+      "pick": "Choisir {{name}}",
+      "truncated": "Ce dossier contient plus que ce qui peut être affiché ici : choisissez le dossier lui-même pour le restaurer en entier.",
+      "full": "Vous avez choisi le maximum qu'une restauration accepte ({{max}}).",
+      "picked_one": "{{count}} choisi",
+      "picked_other": "{{count}} choisis",
+      "clear": "Tout retirer"
+    },
     "copy": {
       "snapshot": "Copiée depuis un instantané du disque",
       "live": "Copiée pendant que le jeu tournait, sans instantané ({{reason}})"

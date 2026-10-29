@@ -12,6 +12,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
+using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Notifications;
@@ -122,6 +123,69 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         Assert.False(File.Exists(Path.Combine(data, "region.dat")));
         var audited = (await AuditAsync(server)).Single(a => a.Action == AuditActions.Server.BackupRestoreRequested).Metadata;
         Assert.True(JsonDocument.Parse(audited).RootElement.GetProperty("clean").GetBoolean(), audited);
+    }
+
+    [DatabaseFact]
+    public async Task ABackupsFilesAreListedAndSomeOfThemRestored()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await using var agent = await ConnectedAgentAsync(admin, "some");
+        var server = await InstalledServerAsync(admin, agent, "Some files");
+        var data = Path.Combine(ServerDirectory(agent, server), "data");
+        Directory.CreateDirectory(Path.Combine(data, "world"));
+        await File.WriteAllTextAsync(Path.Combine(data, "server.cfg"), "hostname one", Ct);
+        await File.WriteAllTextAsync(Path.Combine(data, "world", "region.dat"), "region one", Ct);
+        var backup = await MadeAsync(admin, server, "Before the change");
+        await File.WriteAllTextAsync(Path.Combine(data, "server.cfg"), "hostname two", Ct);
+        await File.WriteAllTextAsync(Path.Combine(data, "world", "region.dat"), "region two", Ct);
+        await File.WriteAllTextAsync(Path.Combine(data, "world", "later.dat"), "explored after the backup", Ct);
+
+        var top = await FilesAsync(admin, server, backup.Id, null);
+        Assert.Equal([("bin", FileEntryKind.Directory), ("data", FileEntryKind.Directory)], top.Entries.Select(e => (e.Name, e.Kind)));
+        var folder = await FilesAsync(admin, server, backup.Id, "data");
+        Assert.Equal(("data", false), (folder.Path, folder.Truncated));
+        Assert.Equal([("world", FileEntryKind.Directory), ("server.cfg", FileEntryKind.File)], folder.Entries.Select(e => (e.Name, e.Kind)));
+        await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/files?path=missing"), HttpStatusCode.NotFound,
+            FileErrors.NotFound);
+        await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/files?path=..%2Fx"), HttpStatusCode.BadRequest,
+            FileErrors.InvalidPath);
+
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore-files",
+            new RestoreBackupFilesRequest([".pulsar/addons/oxide.json"], false)), HttpStatusCode.BadRequest, FileErrors.InvalidPath);
+        await EnsureAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore-files",
+            new RestoreBackupFilesRequest(["data/world", "data/WORLD/region.dat"], true)));
+        var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restored");
+        Assert.Equal(OperationStatus.Succeeded, details.RecentOperations.First(o => o.Type == OperationType.BackupRestore).Status);
+        Assert.Equal("region one", await File.ReadAllTextAsync(Path.Combine(data, "world", "region.dat"), Ct));
+        Assert.False(File.Exists(Path.Combine(data, "world", "later.dat"))); // newer, in the folder picked: cleaned
+        Assert.Equal("hostname two", await File.ReadAllTextAsync(Path.Combine(data, "server.cfg"), Ct)); // not picked
+        var audited = JsonDocument.Parse((await AuditAsync(server)).Single(a => a.Action == AuditActions.Server.BackupRestoreRequested).Metadata).RootElement;
+        Assert.Equal(["data/world"], audited.GetProperty("paths").EnumerateArray().Select(p => p.GetString()));
+        Assert.Equal(1, audited.GetProperty("pathCount").GetInt32());
+
+        // A path the backup does not have fails the restore before anything is written.
+        await EnsureAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore-files",
+            new RestoreBackupFilesRequest(["data/server.cfg", "data/missing.cfg"], false)));
+        details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restore failed");
+        var failed = details.RecentOperations.First(o => o.Type == OperationType.BackupRestore);
+        Assert.Equal((OperationStatus.Failed, FileErrors.NotFound), (failed.Status, failed.ErrorCode));
+        Assert.Equal("hostname two", await File.ReadAllTextAsync(Path.Combine(data, "server.cfg"), Ct));
+
+        // Whoever may download a backup may see what it holds; restoring some of it is restoring it.
+        using var viewer = await scenario.SignedInWithAsync("backup-viewer", Permissions.Server.BackupsView);
+        Assert.Equal(2, (await FilesAsync(viewer, server, backup.Id, "data")).Entries.Count);
+        using (var refused = await viewer.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore-files",
+            new RestoreBackupFilesRequest(["data/server.cfg"], false)))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+
+        using var stranger = await scenario.SignedInWithAsync("no-backups", Permissions.Server.View);
+        using (var hidden = await stranger.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/files"))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, hidden.StatusCode);
+        }
     }
 
     [DatabaseFact]
@@ -465,6 +529,14 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         return (await response.Content.ReadFromJsonAsync<BackupView>(AccessScenario.Json, Ct))!;
     }
 
+    private static async Task<FileListing> FilesAsync(PanelClient client, Guid server, Guid backup, string? path)
+    {
+        using var response = await client.GetAsync(
+            $"/api/v1/servers/{server}/backups/{backup}/files{(path is null ? "" : $"?path={Uri.EscapeDataString(path)}")}");
+        await EnsureAsync(response);
+        return (await response.Content.ReadFromJsonAsync<FileListing>(AccessScenario.Json, Ct))!;
+    }
+
     private static async Task<BackupList> ListAsync(PanelClient client, Guid server)
     {
         using var response = await client.GetAsync($"/api/v1/servers/{server}/backups");
@@ -566,5 +638,29 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
 
         /// <summary>The panel, seeing its agents without clean restores.</summary>
         public sealed class Factory() : WithoutCapabilityFactory(AgentCapabilities.CleanRestore);
+    }
+
+    /// <summary>An agent older than restores of some files would restore all of them: the panel never asks it.</summary>
+    public sealed class OnAnAgentWithoutPartialRestore(OnAnAgentWithoutPartialRestore.Factory factory)
+        : IClassFixture<OnAnAgentWithoutPartialRestore.Factory>
+    {
+        [DatabaseFact]
+        public async Task ItsBackupsFilesAreNeitherListedNorRestoredOnTheirOwn()
+        {
+            var tests = new ServerBackupTests(factory);
+            using var admin = await factory.CreateAdminClientAsync();
+            await using var agent = await tests.ConnectedAgentAsync(admin, "older-partial");
+            var server = await tests.InstalledServerAsync(admin, agent, "Older");
+            var backup = await MadeAsync(admin, server, "Before");
+
+            await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/files"), HttpStatusCode.Conflict,
+                ServerErrors.PartialRestoreUnsupported.Code);
+            await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore-files",
+                new RestoreBackupFilesRequest(["data/server.cfg"], false)), HttpStatusCode.Conflict, ServerErrors.PartialRestoreUnsupported.Code);
+            Assert.DoesNotContain((await ServerApi.GetAsync(admin, server))!.RecentOperations, o => o.Type == OperationType.BackupRestore);
+        }
+
+        /// <summary>The panel, seeing its agents without restores of some files.</summary>
+        public sealed class Factory() : WithoutCapabilityFactory(AgentCapabilities.PartialRestore);
     }
 }

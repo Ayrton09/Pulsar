@@ -2,7 +2,7 @@
 # Uses the PostgreSQL Windows binaries zip (https://www.enterprisedb.com/download-postgresql-binaries) extracted
 # anywhere; this script never downloads anything.
 #
-#   .\scripts\dev\postgres.ps1 -Action Init  -PgHome D:\PulsarDev\pg18\pgsql -Root D:\PulsarDev\postgres
+#   .\scripts\dev\postgres.ps1 -Action Init  -PgHome C:\PulsarDev\pg18\pgsql -Root C:\PulsarDev\postgres
 #   .\scripts\dev\postgres.ps1 -Action Start -PgHome ... -Root ...
 #   .\scripts\dev\postgres.ps1 -Action Stop  -PgHome ... -Root ...
 #

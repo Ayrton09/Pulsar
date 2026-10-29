@@ -729,6 +729,7 @@
       "locked": "备份已锁定：请先解锁再删除。",
       "unsupported": "该节点的代理无法创建备份。请更新代理。",
       "clean_unsupported": "该节点的代理无法进行清理式还原。请更新代理。",
+      "partial_unsupported": "节点的代理无法显示备份的文件或只还原其中一部分。请更新代理。",
       "clean_incomplete": "此备份未包含游戏打开着的文件：清理式还原会删除它们。请选择不清理的还原方式。",
       "in_use": "该备份正在被下载或还原。请在完成后重试。",
       "corrupt": "无法还原该备份：{{detail}}",
@@ -1798,6 +1799,23 @@
     "restoreClean": "删除此备份之后产生的文件",
     "restoreCleanHint": "备份本应包含但其中没有的文件会先被删除，例如之后探索出的地图区域。已安装的游戏和备份范围之外的文件会保留。",
     "restoreCleanSkipped": "不可用：此备份未包含游戏打开着的文件，清理式还原会删除它们。",
+    "restoreWhat": "要还原的内容",
+    "restoreAll": "整个备份",
+    "restoreSome": "部分文件和文件夹",
+    "restoreSomeClean": "删除所选范围内在此备份之后创建的文件",
+    "restoreSomeCleanHint": "在所选文件夹中，先删除备份本应包含但没有的文件。其他位置不变。",
+    "restorePicked_one": "还原 {{count}} 项",
+    "restorePicked_other": "还原 {{count}} 项",
+    "files": {
+      "top": "备份",
+      "empty": "此文件夹为空。",
+      "pick": "选择 {{name}}",
+      "truncated": "此文件夹的内容超出此处可显示的数量：选择该文件夹本身即可整体还原。",
+      "full": "已达到一次还原可选的上限（{{max}}）。",
+      "picked_one": "已选 {{count}} 项",
+      "picked_other": "已选 {{count}} 项",
+      "clear": "清除选择"
+    },
     "copy": {
       "snapshot": "从磁盘快照复制",
       "live": "在游戏运行时复制，未使用快照（{{reason}}）"

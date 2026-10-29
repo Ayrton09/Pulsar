@@ -224,6 +224,167 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ARestoreOfSomeFilesWritesOnlyThoseAndWhatIsInTheFoldersPicked()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        Write("cfg/maps/de_dust2.cfg", "dust old");
+        Write("addons/plugin.smx", "plugin old");
+        Write("MOTD.txt", "motd old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", "hostname new");
+        Write("cfg/maps/de_dust2.cfg", "dust new");
+        Write("addons/plugin.smx", "plugin new");
+        Write("MOTD.txt", "motd new");
+
+        await _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken,
+            paths: ["CFG/maps", "MOTD.txt"]);
+
+        Assert.Equal("dust old", ReadServer("cfg/maps/de_dust2.cfg"));
+        Assert.Equal("motd old", ReadServer("MOTD.txt"));
+        Assert.Equal("hostname new", ReadServer("cfg/server.cfg"));
+        Assert.Equal("plugin new", ReadServer("addons/plugin.smx"));
+    }
+
+    [Fact]
+    public async Task ACleanRestoreOfSomeFilesDeletesNewerFilesOnlyUnderThem()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        Write("cfg/maps/de_dust2.cfg", "dust old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/maps/later.cfg", "made later in the folder picked");
+        Write("cfg/later.cfg", "made later elsewhere");
+        Write("addons/later.smx", "made later elsewhere");
+
+        await _store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken,
+            paths: ["cfg/maps"]);
+
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "maps", "later.cfg")));
+        Assert.Equal("dust old", ReadServer("cfg/maps/de_dust2.cfg"));
+        Assert.Equal("made later elsewhere", ReadServer("cfg/later.cfg"));
+        Assert.Equal("made later elsewhere", ReadServer("addons/later.smx"));
+    }
+
+    [Fact]
+    public async Task APathPickedInAnotherCaseRestoresAndCleansTheSameFolder()
+    {
+        Write("cfg/maps/de_dust2.cfg", "dust old");
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/maps/de_dust2.cfg", "dust new");
+        Write("cfg/maps/later.cfg", "made later");
+        Write("cfg/server.cfg", "hostname new");
+
+        await _store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken,
+            paths: ["Cfg/MAPS"]);
+
+        Assert.Equal("dust old", ReadServer("cfg/maps/de_dust2.cfg"));
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "maps", "later.cfg")));
+        Assert.Equal("hostname new", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
+    public async Task SomeFilesOfAnotherNodesArchiveAreRestoredAlone()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        Write("MOTD.txt", "motd old");
+        var made = Location();
+        var result = await _store.CreateAsync(made, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        var archive = await File.ReadAllBytesAsync(made.Archive, TestContext.Current.CancellationToken);
+        var received = new BackupLocation(BackupsRoot, "abcd1234", Guid.NewGuid());
+        await _store.ReceiveAsync(received, (output, token) => output.WriteAsync(archive, token).AsTask(), result.Sha256, result.Size, Progress,
+            TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", "hostname new");
+        Write("MOTD.txt", "motd new");
+
+        await _store.RestoreAsync(received, _server, result.Sha256, null, Progress, TestContext.Current.CancellationToken, paths: ["MOTD.txt"]);
+
+        Assert.Equal("motd old", ReadServer("MOTD.txt"));
+        Assert.Equal("hostname new", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
+    public async Task AFolderOfMoreEntriesThanAListingHoldsIsCutAfterItsOrder()
+    {
+        var location = Location();
+        Directory.CreateDirectory(location.Directory);
+        await using (var zip = new ZipArchive(File.Create(location.Archive), ZipArchiveMode.Create))
+        {
+            for (var i = FileLimits.MaxListEntries; i >= 0; i--)
+            {
+                zip.CreateEntry($"world/region-{i:D5}.dat");
+            }
+        }
+
+        var listing = await BackupStore.ListAsync(location, "world", TestContext.Current.CancellationToken);
+
+        Assert.True(listing.Truncated);
+        Assert.Equal(FileLimits.MaxListEntries, listing.Entries.Count);
+        Assert.Equal("region-00000.dat", listing.Entries[0].Name);
+    }
+
+    [Theory]
+    [InlineData("cfg/missing.cfg")]
+    [InlineData("../outside.txt")]
+    [InlineData(".pulsar/addons/oxide.json")]
+    [InlineData("")]
+    public async Task ARestoreOfSomeFilesRefusesAPathItCannotRestoreBeforeWritingAnything(string bad)
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", "hostname new");
+
+        await Assert.ThrowsAsync<BackupException>(() => _store.RestoreAsync(location, _server, backup.Sha256, null, Progress,
+            TestContext.Current.CancellationToken, paths: ["cfg/server.cfg", bad]));
+
+        Assert.Equal("hostname new", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
+    public async Task ARestoreOfSomeFilesTakesAtMostItsLimitOfPaths()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<BackupException>(() => _store.RestoreAsync(location, _server, backup.Sha256, null, Progress,
+            TestContext.Current.CancellationToken, paths: [.. Enumerable.Repeat("cfg/server.cfg", RestoreBackupCommand.MaxPaths + 1)]));
+        Assert.Equal(FileErrors.InvalidPath, error.Code);
+        await Assert.ThrowsAsync<BackupException>(() => _store.RestoreAsync(location, _server, backup.Sha256, null, Progress,
+            TestContext.Current.CancellationToken, paths: []));
+    }
+
+    [Fact]
+    public async Task ABackupsFoldersAreListedFromItsArchiveFoldersFirstWithoutPulsarsOwnFiles()
+    {
+        Write("cfg/server.cfg", "hostname");
+        Write("cfg/maps/de_dust2.cfg", "dust");
+        Write("MOTD.txt", "motd");
+        Write(".pulsar/addons/oxide.json", """{"key":"oxide"}""");
+        var location = Location();
+        await _store.CreateAsync(location, _server, null, Progress, TestContext.Current.CancellationToken, whole: true);
+
+        var top = await BackupStore.ListAsync(location, ServerFilePath.Root, TestContext.Current.CancellationToken);
+        var cfg = await BackupStore.ListAsync(location, "CFG", TestContext.Current.CancellationToken);
+
+        Assert.Equal([("cfg", FileEntryKind.Directory), ("MOTD.txt", FileEntryKind.File)], top.Entries.Select(e => (e.Name, e.Kind)));
+        Assert.Equal([("maps", FileEntryKind.Directory), ("server.cfg", FileEntryKind.File)], cfg.Entries.Select(e => (e.Name, e.Kind)));
+        Assert.Equal("hostname".Length, cfg.Entries[1].Size);
+        Assert.False(top.Truncated);
+        Assert.Equal(FileErrors.NotFound,
+            (await Assert.ThrowsAsync<BackupException>(() => BackupStore.ListAsync(location, "missing", TestContext.Current.CancellationToken))).Code);
+        Assert.Equal(FileErrors.NotFound,
+            (await Assert.ThrowsAsync<BackupException>(() => BackupStore.ListAsync(location, ".pulsar", TestContext.Current.CancellationToken))).Code);
+        Assert.Equal(FileErrors.NotADirectory,
+            (await Assert.ThrowsAsync<BackupException>(() => BackupStore.ListAsync(location, "MOTD.txt", TestContext.Current.CancellationToken))).Code);
+        Assert.Equal(BackupErrors.NotFound,
+            (await Assert.ThrowsAsync<BackupException>(() => BackupStore.ListAsync(Location(), "", TestContext.Current.CancellationToken))).Code);
+    }
+
+    [Fact]
     public async Task ACleanRestoreDeletesWhatTheBackupWouldHaveTakenButDoesNotHave()
     {
         Write("cfg/server.cfg", "hostname old");

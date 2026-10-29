@@ -266,6 +266,138 @@ describe('backups tab', () => {
     await waitFor(() => expect(calls).toEqual(['restore ?clean=true', 'lock {"locked":true}', 'delete']));
   });
 
+  it('restores some files and folders picked from the backup', async () => {
+    const calls: string[] = [];
+    const entry = (name: string, kind: 'file' | 'directory', size = 0): Schemas['FileEntry'] => ({
+      name,
+      kind,
+      size,
+      modifiedAt: '2026-10-29T10:00:00Z',
+    });
+    const folders: Record<string, Schemas['FileEntry'][]> = {
+      '': [entry('data', 'directory'), entry('MOTD.txt', 'file', 12)],
+      data: [entry('world', 'directory'), entry('server.cfg', 'file', 2048)],
+      'data/world': [entry('region.dat', 'file', 4096)],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
+      [`GET /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/files`]: (request) => {
+        const path = new URL(request.url).searchParams.get('path') ?? '';
+        calls.push(`list ${path}`);
+        return json({ path, entries: folders[path] ?? [], truncated: false, skipped: 0 });
+      },
+      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/restore-files`]: async (
+        request,
+      ) => {
+        calls.push(`restore ${JSON.stringify(await request.json())}`);
+        return new Response(null, { status: 204 });
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    await screen.findByRole('table', { name: 'Backups' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    expect(calls).toEqual([]); // the whole backup by default: nothing to list
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Some files and folders' }));
+    expect(within(dialog).getByRole('button', { name: 'Restore 0 items' })).toBeDisabled();
+
+    // Into data: its world folder picked, then a file inside it is picked with it.
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'data/' }));
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Pick server.cfg' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Pick world' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'world/' }));
+    const inside = await within(dialog).findByRole('checkbox', { name: 'Pick region.dat' });
+    expect(inside).toBeChecked();
+    expect(inside).toBeDisabled();
+
+    // Back to the top for a file there.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Backup' }));
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Pick MOTD.txt' }));
+    expect(dialog).toHaveTextContent('3 picked');
+    const clean = within(dialog).getByRole('checkbox', {
+      name: 'Delete the files made after this backup in what you pick',
+    });
+    expect(clean).toHaveAccessibleDescription(/^In the folders you pick/);
+    await userEvent.click(clean);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Restore 3 items' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(calls).toEqual([
+      'list ',
+      'list data',
+      'list data/world',
+      'restore {"paths":["data/server.cfg","data/world","MOTD.txt"],"clean":true}',
+    ]);
+  });
+
+  it('picking a folder drops what was picked inside it', async () => {
+    const entry = (name: string, kind: 'file' | 'directory'): Schemas['FileEntry'] => ({
+      name,
+      kind,
+      size: 1,
+      modifiedAt: '2026-10-29T10:00:00Z',
+    });
+    let body = '';
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
+      [`GET /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/files`]: (request) => {
+        const path = new URL(request.url).searchParams.get('path') ?? '';
+        return json({
+          path,
+          entries: path === '' ? [entry('cfg', 'directory')] : [entry('server.cfg', 'file')],
+          truncated: false,
+          skipped: 0,
+        });
+      },
+      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/restore-files`]: async (
+        request,
+      ) => {
+        body = JSON.stringify(await request.json());
+        return new Response(null, { status: 204 });
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    await screen.findByRole('table', { name: 'Backups' });
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Some files and folders' }));
+
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'cfg/' }));
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Pick server.cfg' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Backup' }));
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Pick cfg' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Restore 1 item' }));
+
+    await waitFor(() => expect(body).toBe('{"paths":["cfg"],"clean":false}'));
+  });
+
+  it('says when the agent is too old to show the files of a backup', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
+      [`GET /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/files`]: () =>
+        problem(409, 'backups.partial_unsupported', 'The agent is too old.'),
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    await screen.findByRole('table', { name: 'Backups' });
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Some files and folders' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "The node's agent cannot show a backup's files or restore some of them. Update the agent.",
+    );
+    // The whole backup still can be.
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'The whole backup' }));
+    expect(within(dialog).getByRole('button', { name: 'Restore' })).toBeEnabled();
+  });
+
   it('does not restore clean a backup that left files out', async () => {
     const calls: string[] = [];
     fakeApi({

@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
@@ -11,20 +11,25 @@ import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import { failureReason } from '../servers/serverStatus';
+import { breadcrumbs, joinPath, visibleName } from '../files/paths';
 import {
   backupDownloadUrl,
   useBackupLimit,
   useBackupStorageChoice,
+  useBackupFiles,
   useBackups,
   useCreateBackup,
   useDeleteBackup,
   useLockBackup,
   useRestoreBackup,
+  useRestoreBackupFiles,
   type BackupView,
 } from './api';
 
 const MAX_NAME_LENGTH = 128;
 const MAX_LIMIT = 1000;
+/** Most files and folders one restore picks (the panel's limit). */
+const MAX_PICKED = 100;
 
 const statusTones = {
   creating: 'accent',
@@ -139,6 +144,7 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
       {creating && <CreateBackupDialog serverId={server.id} running={!stopped} onDone={() => setCreating(false)} />}
       {restoring && (
         <RestoreBackupDialog
+          serverId={server.id}
           backup={restoring}
           serverName={server.name}
           restore={restore}
@@ -177,55 +183,205 @@ function CopyNote({ backup }: { backup: BackupView }) {
 }
 
 function RestoreBackupDialog({
+  serverId,
   backup,
   serverName,
   restore,
   onDone,
 }: {
+  serverId: string;
   backup: BackupView;
   serverName: string;
   restore: ReturnType<typeof useRestoreBackup>;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
+  const restoreFiles = useRestoreBackupFiles(serverId);
   const [clean, setClean] = useState(false);
+  const [some, setSome] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
   const hintId = useId();
   // A clean restore would also delete the files this backup left out because the game held them open.
   const incomplete = (backup.skippedFiles ?? 0) > 0;
+  const pending = restore.isPending || restoreFiles.isPending;
+  const failed = some ? restoreFiles.error : restore.error;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    restore.mutate({ backupId: backup.id, clean: clean && !incomplete }, { onSuccess: onDone });
+    if (!some) {
+      restore.mutate({ backupId: backup.id, clean: clean && !incomplete }, { onSuccess: onDone });
+    } else if (picked.length > 0) {
+      restoreFiles.mutate({ backupId: backup.id, paths: picked, clean: clean && !incomplete }, { onSuccess: onDone });
+    }
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onDone()} title={t('backups.restoreTitle', { name: backup.name })}>
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onDone()}
+      title={t('backups.restoreTitle', { name: backup.name })}
+      size={some ? 'lg' : 'md'}
+    >
       <form onSubmit={submit} className="space-y-4" noValidate>
-        <p className="text-sm">{t('backups.restoreText', { server: serverName })}</p>
+        <fieldset className="space-y-2">
+          <legend className="sr-only">{t('backups.restoreWhat')}</legend>
+          <Choice name="restore-what" checked={!some} onChange={() => setSome(false)} label={t('backups.restoreAll')} />
+          <Choice name="restore-what" checked={some} onChange={() => setSome(true)} label={t('backups.restoreSome')} />
+        </fieldset>
+        {some ? (
+          <BackupFilesPicker serverId={serverId} backupId={backup.id} picked={picked} onChange={setPicked} />
+        ) : (
+          <p className="text-sm">{t('backups.restoreText', { server: serverName })}</p>
+        )}
         <div>
           <Checkbox
-            label={t('backups.restoreClean')}
+            label={t(some ? 'backups.restoreSomeClean' : 'backups.restoreClean')}
             checked={clean && !incomplete}
             disabled={incomplete}
             aria-describedby={hintId}
             onChange={(e) => setClean(e.target.checked)}
           />
           <p id={hintId} className="mt-1 ml-6 text-xs text-muted">
-            {incomplete ? t('backups.restoreCleanSkipped') : t('backups.restoreCleanHint')}
+            {incomplete
+              ? t('backups.restoreCleanSkipped')
+              : t(some ? 'backups.restoreSomeCleanHint' : 'backups.restoreCleanHint')}
           </p>
         </div>
         {!clean && <p className="text-sm text-muted">{t('backups.restoreKeep')}</p>}
-        {restore.isError && <Alert>{errorMessage(t, restore.error)}</Alert>}
+        {failed && <Alert>{errorMessage(t, failed)}</Alert>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onDone}>
             {t('actions.cancel')}
           </Button>
-          <Button type="submit" busy={restore.isPending}>
-            {t('backups.restore')}
+          <Button type="submit" busy={pending} disabled={some && picked.length === 0}>
+            {some ? t('backups.restorePicked', { count: picked.length }) : t('backups.restore')}
           </Button>
         </div>
       </form>
     </Dialog>
+  );
+}
+
+function Choice({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-sm">
+      <input type="radio" {...props} className="size-4 accent-[var(--pulsar-accent)]" />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+/**
+ * The backup's folders, one at a time, to pick files and folders from (a folder picked brings all it holds). Picking
+ * a folder drops what was picked inside it; at most MAX_PICKED paths.
+ */
+function BackupFilesPicker({
+  serverId,
+  backupId,
+  picked,
+  onChange,
+}: {
+  serverId: string;
+  backupId: string;
+  picked: string[];
+  onChange: (picked: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const formatSize = useFormatFileSize();
+  const [path, setPath] = useState('');
+  const listing = useBackupFiles(serverId, backupId, path);
+  const lower = (p: string) => p.toLowerCase();
+  const inside = (p: string, folder: string) => lower(p).startsWith(`${lower(folder)}/`);
+  const covered = (p: string) => picked.some((q) => lower(q) === lower(p) || inside(p, q));
+  const full = picked.length >= MAX_PICKED;
+
+  const toggle = (p: string, on: boolean) =>
+    onChange(on ? [...picked.filter((q) => !inside(q, p)), p] : picked.filter((q) => lower(q) !== lower(p)));
+
+  return (
+    <div className="space-y-2">
+      <nav aria-label={t('files.location')} className="flex min-w-0 flex-wrap items-center gap-1 font-mono text-sm">
+        <button type="button" onClick={() => setPath('')} className="rounded px-1 text-accent hover:underline">
+          {t('backups.files.top')}
+        </button>
+        {breadcrumbs(path).map((crumb, i, all) => (
+          <span key={crumb.path} className="flex items-center gap-1">
+            <span className="text-muted">/</span>
+            {i === all.length - 1 ? (
+              <span aria-current="location">{visibleName(crumb.name)}</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPath(crumb.path)}
+                className="rounded px-1 text-accent hover:underline"
+              >
+                {visibleName(crumb.name)}
+              </button>
+            )}
+          </span>
+        ))}
+      </nav>
+      <div className="max-h-72 overflow-y-auto rounded-md border border-border">
+        {listing.isPending ? (
+          <div className="p-3">
+            <Spinner label={t('common.loading')} />
+          </div>
+        ) : listing.isError ? (
+          <div className="p-3">
+            <Alert>{errorMessage(t, listing.error)}</Alert>
+          </div>
+        ) : listing.data.entries.length === 0 ? (
+          <p className="p-3 text-sm text-muted">{t('backups.files.empty')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {listing.data.entries.map((entry) => {
+              const entryPath = joinPath(path, entry.name);
+              const folder = entry.kind === 'directory';
+              const own = picked.some((q) => lower(q) === lower(entryPath));
+              const parentPicked = !own && covered(entryPath);
+              return (
+                <li key={entry.name} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-[var(--pulsar-accent)]"
+                    aria-label={t('backups.files.pick', { name: visibleName(entry.name) })}
+                    checked={own || parentPicked}
+                    disabled={parentPicked || (!own && full)}
+                    onChange={(e) => toggle(entryPath, e.target.checked)}
+                  />
+                  {folder ? (
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left font-medium text-accent hover:underline"
+                      onClick={() => setPath(entryPath)}
+                    >
+                      {visibleName(entry.name)}/
+                    </button>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate">{visibleName(entry.name)}</span>
+                  )}
+                  {!folder && (
+                    <span className="shrink-0 text-xs text-muted tabular-nums">{formatSize(entry.size)}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      {listing.data?.truncated && <p className="text-xs text-muted">{t('backups.files.truncated')}</p>}
+      <p className="text-xs text-muted" role="status">
+        {full ? t('backups.files.full', { max: MAX_PICKED }) : t('backups.files.picked', { count: picked.length })}
+        {picked.length > 0 && (
+          <>
+            {' · '}
+            <button type="button" className="text-accent hover:underline" onClick={() => onChange([])}>
+              {t('backups.files.clear')}
+            </button>
+          </>
+        )}
+      </p>
+    </div>
   );
 }
 
