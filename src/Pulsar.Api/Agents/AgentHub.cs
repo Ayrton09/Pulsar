@@ -345,7 +345,7 @@ internal sealed partial class AgentHub(
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
             liveMetrics.Update(view);
             history.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, view.Query?.Players);
-            resources.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes);
+            resources.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, sample.CommittedBytes);
             await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
         }
     }

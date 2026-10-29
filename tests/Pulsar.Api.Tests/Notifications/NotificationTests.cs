@@ -253,7 +253,8 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         {
             clock.Advance(after);
             watch.RecordServer(new ServerId(server), busyCpu, 100 * 1024 * 1024);
-            watch.RecordServer(new ServerId(capped), cappedCpu, cappedMemory);
+            // Against its limit, what the limit counts (committed memory), not the working set.
+            watch.RecordServer(new ServerId(capped), cappedCpu, 1024 * 1024, committedBytes: cappedMemory);
             await watch.SweepAsync(Ct);
         }
 

@@ -28,8 +28,9 @@ public sealed class ResourceWatch(IServiceScopeFactory scopes, TimeProvider cloc
     private readonly ConcurrentDictionary<string, Watched> _watched = new(StringComparer.Ordinal);
 
     /// <summary>A running server's usage, as its node reported it (<paramref name="cpuPercent"/>: of the whole machine).</summary>
-    public void RecordServer(ServerId server, double cpuPercent, long memoryBytes) =>
-        _samples[server] = new ServerSample(cpuPercent, memoryBytes, clock.GetUtcNow());
+    /// <param name="committedBytes">What a memory limit counts (the page shows it against one); null: not reported.</param>
+    public void RecordServer(ServerId server, double cpuPercent, long memoryBytes, long? committedBytes = null) =>
+        _samples[server] = new ServerSample(cpuPercent, memoryBytes, committedBytes, clock.GetUtcNow());
 
     public async Task SweepAsync(CancellationToken cancellationToken)
     {
@@ -83,13 +84,16 @@ public sealed class ResourceWatch(IServiceScopeFactory scopes, TimeProvider cloc
 
             // Of its own limits when it has them: a server capped at 25 % of the machine is busy at 25 %.
             var cpu = Clamp(server.CpuLimitPercent is { } cap and > 0 ? sample.CpuPercent * 100 / cap : sample.CpuPercent);
-            var memoryLimit = server.MemoryLimitMb is { } mb and > 0 ? mb * 1024L * 1024 : machineMemory;
-            var memory = Share(sample.MemoryBytes, memoryLimit);
+            // Against a limit, what the limit counts (committed memory), as the page shows it; otherwise the working set.
+            var limited = server.MemoryLimitMb is > 0;
+            var memoryLimit = limited ? server.MemoryLimitMb!.Value * 1024L * 1024 : machineMemory;
+            var memoryUsed = limited ? sample.CommittedBytes ?? sample.MemoryBytes : sample.MemoryBytes;
+            var memory = Share(memoryUsed, memoryLimit);
             var key = $"server:{server.Id}";
             seen.Add(key);
             if (Due(key, cpu, memory, settings, now) is { } due)
             {
-                await notifier.ServerResourceHighAsync(server, cpu, server.CpuLimitPercent is > 0, sample.MemoryBytes, memoryLimit, server.MemoryLimitMb is > 0,
+                await notifier.ServerResourceHighAsync(server, cpu, server.CpuLimitPercent is > 0, memoryUsed, memoryLimit, limited,
                     settings.ResourceHighMinutes, cancellationToken);
                 told.Add(due);
             }
@@ -137,7 +141,7 @@ public sealed class ResourceWatch(IServiceScopeFactory scopes, TimeProvider cloc
     // An agent's numbers are not trusted: not a number counts as nothing, the rest within 0–100.
     private static double Clamp(double percent) => double.IsFinite(percent) ? Math.Clamp(percent, 0, 100) : 0;
 
-    private sealed record ServerSample(double CpuPercent, long MemoryBytes, DateTimeOffset At);
+    private sealed record ServerSample(double CpuPercent, long MemoryBytes, long? CommittedBytes, DateTimeOffset At);
 
     private sealed class Watched
     {
