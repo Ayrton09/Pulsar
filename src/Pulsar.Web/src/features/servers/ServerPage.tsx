@@ -658,7 +658,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
           <Button
             variant="secondary"
             icon={Copy}
-            disabled={server.installState !== 'installed' || !server.nodeConnected}
+            disabled={!available.reinstall || server.installState !== 'installed'}
             onClick={() => setCloning(true)}
           >
             {t('servers.clone.title')}

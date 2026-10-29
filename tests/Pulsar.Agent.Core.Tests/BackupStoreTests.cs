@@ -153,6 +153,39 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AWholeCopyTakesEveryFileAndPulsarsRecordsOfModsButNothingElseOfItsFolder()
+    {
+        Write("cfg/server.cfg", "in the rules");
+        Write("BepInEx/plugins/Valheim+.dll", "a plugin no rule names");
+        Write("server.log", "excluded by the rules");
+        Write(".pulsar/packages/ValheimModding-Jotunn.json", "{}");
+        Write(".pulsar/addons/oxide.json", "{}");
+        Write(".pulsar/lists/0123456789abcdef.json", "{}");
+        Write(".pulsar/modpack.json", "{}");
+        Write(".pulsar/steamcmd/config/config.vdf", "a Steam login");
+        Write(".pulsar/steamcmd/steamcmd.exe", "SteamCMD");
+        Write(".pulsar/minecraft-version.txt", "1.21.8");
+        var location = Location();
+
+        var result = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken, whole: true);
+
+        string[] carried = [".pulsar/addons/oxide.json", ".pulsar/lists/0123456789abcdef.json", ".pulsar/modpack.json", ".pulsar/packages/ValheimModding-Jotunn.json"];
+        Assert.Equal([.. carried, "BepInEx/plugins/Valheim+.dll", "cfg/server.cfg", "server.log"], Entries(location.Archive));
+        Assert.Equal((7, 0), (result.FileCount, result.SkippedFiles));
+
+        // Restored on another copy of the server, records too.
+        foreach (var file in Directory.EnumerateFiles(_serverDirectory, "*", SearchOption.AllDirectories))
+        {
+            File.Delete(file);
+        }
+
+        await _store.RestoreAsync(location, _server, result.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken);
+        Assert.Equal("a plugin no rule names", ReadServer("BepInEx/plugins/Valheim+.dll"));
+        Assert.All(carried, path => Assert.Equal("{}", ReadServer(path)));
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, ".pulsar", "steamcmd", "config", "config.vdf")));
+    }
+
+    [Fact]
     public async Task APrivateFileNeverGoesInEvenWithoutBackupRules()
     {
         // GoldSrc's console log holds its RCON password: a manifest without include rules still leaves it out.
@@ -364,6 +397,10 @@ public sealed class BackupStoreTests : IDisposable
     [InlineData("cfg/con.txt")]
     [InlineData(".pulsar/steamcmd/steamcmd.exe")]
     [InlineData(".PULSAR/x")]
+    [InlineData(".PULSAR/modpack.json")]
+    [InlineData(".pulsar/packages/deeper/x.json")]
+    [InlineData(".pulsar/steamcmd/config/config.vdf")]
+    [InlineData(".pulsar/addons/x.dll")]
     [InlineData("cfg/server.cfg|CFG/SERVER.CFG")]
     public async Task AnArchiveWithAnEntryARestoreMayNotWriteIsRefusedBeforeWritingAnything(string names)
     {

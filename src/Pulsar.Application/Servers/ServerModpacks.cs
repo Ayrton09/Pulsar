@@ -49,6 +49,9 @@ public sealed record ModpackVersionList(IReadOnlyList<ModpackVersionView> Versio
 /// </summary>
 public sealed partial class ServerMods
 {
+    /// <summary>The node's code for a pack whose files could not all be written (the server may hold part of it).</summary>
+    private const string PartialModpackCode = "modpack.write_failed";
+
     /// <summary>The catalog loaders a pack's index can name (<c>modrinth.index.json</c>'s dependencies).</summary>
     private static readonly HashSet<string> s_modpackLoaders = new(StringComparer.Ordinal) { "fabric", "forge", "neoforge", "quilt" };
 
@@ -278,6 +281,13 @@ public sealed partial class ServerMods
         if (operation.Status != OperationStatus.Succeeded)
         {
             db.ServerModpacks.Remove(pack);
+            // Its files were being written (or may have been, by a node that stopped meanwhile): the previous pack's are
+            // partly gone, so it is not the server's either. The node's record still lists both, for the next pack to replace.
+            if (operation.ErrorCode is PartialModpackCode or "operation.interrupted")
+            {
+                db.ServerModpacks.RemoveRange(packs.Where(p => p != pack && p.State == ServerModpackState.Installed));
+            }
+
             return;
         }
 

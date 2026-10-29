@@ -310,6 +310,31 @@ public sealed class ModInstallerTests : IDisposable
         Assert.Equal(ModInstaller.LeftPartial, error.Code);
     }
 
+    [Fact]
+    public async Task AFileAWriteLeftBehindIsReplacedByTheNextInstall()
+    {
+        // The new file is written, the next is not, and the first cannot be deleted again: the panel lists neither.
+        var files = new FailingFiles
+        {
+            FailWrite = path => path.StartsWith("mods/lithium", StringComparison.Ordinal),
+            FailDelete = path => path == "mods/fabric-api-0.130.0.jar",
+        };
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => ChangeAsync(
+            [Download("mods/fabric-api-0.130.0.jar", FabricApi, _fabricApi), Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium)], [], files));
+        Assert.Equal(ModInstaller.LeftPartial, error.Code);
+        Assert.True(File.Exists(Path.Combine(_root, "mods", "fabric-api-0.130.0.jar")));
+
+        // Installing it again, as the error says, writes over it, and it is no longer taken as left behind.
+        await ChangeAsync([Download("mods/fabric-api-0.130.0.jar", FabricApi, _fabricApi)], []);
+        Assert.Equal("fabric api", File.ReadAllText(Path.Combine(_root, "mods", "fabric-api-0.130.0.jar")));
+        Assert.False(File.Exists(Path.Combine(_root, ".pulsar", "mods-left.json")));
+
+        // Anyone else's file there is still theirs.
+        File.WriteAllText(Path.Combine(_root, "mods", "lithium-fabric-0.18.1.jar"), "someone's");
+        Assert.Equal("mods.file_exists", (await Assert.ThrowsAsync<GameProcessException>(() =>
+            ChangeAsync([Download("mods/lithium-fabric-0.18.1.jar", Lithium, _lithium)], []))).Code);
+    }
+
     private Task ChangeAsync(IReadOnlyList<ModDownload> add, IReadOnlyList<string> remove, IServerFiles? files = null) =>
         new ModInstaller(files ?? new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }
             .ChangeAsync(_root, s_folders, add, remove, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken,
@@ -349,6 +374,8 @@ public sealed class ModInstallerTests : IDisposable
 
         public Func<string, bool> FailWrite { get; init; } = _ => false;
 
+        public Func<string, bool> FailDelete { get; init; } = _ => false;
+
         /// <summary>Fails as the node's own files do (a files.* code), not with an IOException.</summary>
         public bool Windows { get; init; }
 
@@ -364,7 +391,15 @@ public sealed class ModInstallerTests : IDisposable
             _files.Write(serverRoot, relativePath, content);
         }
 
-        public void Delete(string serverRoot, string relativePath) => _files.Delete(serverRoot, relativePath);
+        public void Delete(string serverRoot, string relativePath)
+        {
+            if (FailDelete(relativePath))
+            {
+                throw new IOException("The file is in use.");
+            }
+
+            _files.Delete(serverRoot, relativePath);
+        }
 
         public void CreateDirectory(string serverRoot, string relativePath) => _files.CreateDirectory(serverRoot, relativePath);
 

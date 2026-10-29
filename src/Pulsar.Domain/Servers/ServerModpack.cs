@@ -103,6 +103,14 @@ public sealed class ServerModpack
             now);
     }
 
+    /// <summary>The same pack, installed, on a copy of its server (a clone's, 1.0.17) that has its files.</summary>
+    public ServerModpack CopyFor(ServerId serverId, DateTimeOffset now)
+    {
+        var copy = new ServerModpack(serverId, Source, ProjectId, VersionId, Name, VersionNumber, ServerType, Loader, GameVersion, default, now);
+        copy.Installed(LoaderVersion, now);
+        return copy;
+    }
+
     /// <summary>The operation that installed it succeeded, with the loader version the pack names (null: not reported).</summary>
     public void Installed(string? loaderVersion, DateTimeOffset now)
     {

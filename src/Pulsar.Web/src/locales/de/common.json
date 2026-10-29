@@ -677,6 +677,7 @@
       "same_node": "Der Server ist bereits auf diesem Node.",
       "old_copy_left": "Der Server wurde auf den neuen Node verschoben, aber seine Kopie auf dem alten Node konnte nicht gelöscht werden: Lösche seinen Ordner dort von Hand.",
       "copy_unsupported": "Ein Node hat einen zu alten Agent, um die Dateien eines Servers auf einen anderen Node zu kopieren: Aktualisiere ihn.",
+      "copy_incomplete": "Dateien des Servers fehlen in der Kopie (das laufende Spiel hielt sie geöffnet): Stoppe ihn und versuche es erneut.",
       "backup_corrupt": "Der Node hat ein Archiv anderer Größe als das von ihm erstellte Backup gesendet."
     },
     "console": {
@@ -760,6 +761,7 @@
       "step_interfered": "Der Server hat nicht getan, was der Schritt verlangt hat.",
       "start_failed": "Der Server ist nicht gestartet.",
       "cancelled": "Von einem Benutzer abgebrochen.",
+      "game_changed": "Der Server wurde zu einem anderen Spiel: Der Rest wurde nicht ausgeführt.",
       "only_if_empty_unsupported": "Starts und Konsolenbefehle können nicht darauf warten, dass niemand spielt.",
       "only_if_update_unsupported": "Nur Updates und Aufgaben mit mehreren Schritten können auf ein Spielupdate warten.",
       "players_not_reported": "Dieses Spiel meldet nicht, wer spielt (es hat keine Abfrage): Eine Aufgabe kann nicht darauf warten, dass niemand spielt.",

@@ -125,6 +125,14 @@ public sealed class ServerMod
             now);
     }
 
+    /// <summary>The same mod, installed, on a copy of its server (a clone's, 1.0.17) that has its file.</summary>
+    public ServerMod CopyFor(ServerId serverId, DateTimeOffset now)
+    {
+        var copy = new ServerMod(serverId, Source, ProjectId, VersionId, Name, VersionNumber, Path, Hash, Size, Dependency, [.. Requires], default, now);
+        copy.Installed(now);
+        return copy;
+    }
+
     /// <summary>An operation is deleting it, or putting another version in its place.</summary>
     public void Removing(OperationId operation, DateTimeOffset now)
     {

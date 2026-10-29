@@ -66,6 +66,12 @@ public sealed partial class ServerManagement
             return ServerErrors.NotInstalled;
         }
 
+        // Its files are copied whole: a running game holds some open, and a copy without them is never restored (1.0.17).
+        if (source.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
         if (Connection(nodeId) is not { } target || Connection(source.NodeId) is not { } from)
         {
             return NodeErrors.NotConnected;
@@ -79,7 +85,8 @@ public sealed partial class ServerManagement
             return ServerErrors.TemplateUnsupported;
         }
 
-        if (!Announces(target, AgentCapabilities.ReceiveBackup) || !Announces(from, AgentCapabilities.SendBackup))
+        if (!Announces(target, AgentCapabilities.ReceiveBackup) || !Announces(from, AgentCapabilities.SendBackup)
+            || !Announces(from, AgentCapabilities.WholeBackup))
         {
             return ServerErrors.CopyUnsupported;
         }
@@ -132,6 +139,17 @@ public sealed partial class ServerManagement
         if (mayChooseAccount)
         {
             server.SetSteamAccount(source.SteamAccountId, now);
+        }
+
+        // The game's Steam branch too: the files copied are that branch's build.
+        if (source.SteamBranch is not null)
+        {
+            if (!Announces(target, AgentCapabilities.SteamBranches))
+            {
+                return ServerErrors.SteamBranchAgentTooOld;
+            }
+
+            server.RestoreSteamBranch(source.SteamBranch, now);
         }
 
         if (await steamAccounts.LoginForAsync(server, manifest, target, null, cancellationToken) is { IsSuccess: false } login)

@@ -449,9 +449,20 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         var backups = services.GetRequiredService<ServerBackups>();
         if (!sequence.StepBegun)
         {
-            // Begun with the backup's operation in the save that records it, as any operation step.
-            var made = await backups.CreateAsync(source, null, OperationRequester.System, cancellationToken,
-                started => sequence.Began(now, Observed(server), started));
+            // Begun with the backup's operation in the save that records it, as any operation step. The source's mods,
+            // addons and pack are recorded on the copy in that save too: nothing changes them while its backup runs, and the
+            // archive takes their files (and the node's records of them).
+            var mods = await db.ServerMods.AsNoTracking().Where(m => m.ServerId == source && m.State == ServerModState.Installed).ToListAsync(cancellationToken);
+            var addons = await db.ServerAddons.AsNoTracking().Where(a => a.ServerId == source).ToListAsync(cancellationToken);
+            var packs = await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == source && p.State == ServerModpackState.Installed)
+                .ToListAsync(cancellationToken);
+            var made = await backups.CreateAsync(source, null, OperationRequester.System, cancellationToken, started =>
+            {
+                sequence.Began(now, Observed(server), started);
+                db.ServerMods.AddRange(mods.Select(m => m.CopyFor(server.Id, now)));
+                db.ServerAddons.AddRange(addons.Select(a => ServerAddon.Installed(server.Id, a.Key, a.Release, now)));
+                db.ServerModpacks.AddRange(packs.Select(p => p.CopyFor(server.Id, now)));
+            }, whole: true);
             if (!made.IsSuccess || !sequence.StepBegun)
             {
                 var reason = made.Error ?? ServerErrors.CommandRejected;
@@ -468,6 +479,7 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         {
             if (operation is null)
             {
+                await ForgetCopiedAsync(db, server.Id, cancellationToken);
                 sequence.StepFailed("operation.not_found", "The operation did not complete.", now);
             }
             else
@@ -480,6 +492,7 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
 
         if (operation.Status != OperationStatus.Succeeded)
         {
+            await ForgetCopiedAsync(db, server.Id, cancellationToken);
             sequence.StepFailed(operation.ErrorCode ?? "operation.cancelled", operation.ErrorMessage ?? "The operation did not complete.", now);
             return;
         }
@@ -499,6 +512,7 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
 
         if (server.InstallState != InstallState.Installed)
         {
+            await ForgetCopiedAsync(db, server.Id, cancellationToken);
             sequence.StepFailed(ServerErrors.NotInstalled.Code, ServerErrors.NotInstalled.Message, now);
             return;
         }
@@ -506,6 +520,7 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         var backup = await db.Backups.AsNoTracking().SingleOrDefaultAsync(b => b.OperationId == operation.Id && b.ServerId == source, cancellationToken);
         if (backup is null)
         {
+            await ForgetCopiedAsync(db, server.Id, cancellationToken);
             sequence.StepFailed(ServerErrors.BackupNotFound.Code, ServerErrors.BackupNotFound.Message, now);
             return;
         }
@@ -515,11 +530,20 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         if (!restore.IsSuccess || sequence.OperationId != restore.Value.Id)
         {
             var reason = restore.Error ?? ServerErrors.CommandRejected;
+            await ForgetCopiedAsync(db, server.Id, cancellationToken);
             sequence.StepFailed(reason.Code, reason.Message, now);
             return;
         }
 
         sequence.WaitUntil(now + PollInterval);
+    }
+
+    /// <summary>A clone's copy that did not complete: its server has none of the source's mods, addons or pack.</summary>
+    private static async Task ForgetCopiedAsync(IPulsarDbContext db, ServerId server, CancellationToken cancellationToken)
+    {
+        db.ServerMods.RemoveRange(await db.ServerMods.Where(m => m.ServerId == server).ToListAsync(cancellationToken));
+        db.ServerAddons.RemoveRange(await db.ServerAddons.Where(a => a.ServerId == server).ToListAsync(cancellationToken));
+        db.ServerModpacks.RemoveRange(await db.ServerModpacks.Where(p => p.ServerId == server).ToListAsync(cancellationToken));
     }
 
     /// <summary>
@@ -533,14 +557,15 @@ public sealed partial class ServerSequences(IServiceScopeFactory scopes, Sequenc
         {
             var via = sequence.Origin == SequenceOrigin.Schedule ? OperationRequester.Schedule : OperationRequester.System;
             var moved = await services.GetRequiredService<ServerManagement>()
-                .RequestTemplateUpgradeAsync(server.Id, Guid.Parse(step.Text!), via, cancellationToken);
-            if (!moved.IsSuccess)
+                .RequestTemplateUpgradeAsync(server.Id, Guid.Parse(step.Text!), via, cancellationToken,
+                    started => sequence.Began(now, Observed(server), started));
+            if (!moved.IsSuccess || sequence.OperationId != moved.Value.Operation.Id)
             {
-                sequence.StepFailed(moved.Error!.Code, moved.Error.Message, now);
+                var reason = moved.Error ?? ServerErrors.CommandRejected;
+                sequence.StepFailed(reason.Code, reason.Message, now);
                 return;
             }
 
-            sequence.Began(now, Observed(server), moved.Value.Operation.Id);
             sequence.WaitUntil(now + PollInterval);
             return;
         }

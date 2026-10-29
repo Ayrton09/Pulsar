@@ -103,14 +103,18 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// Archives the files the rules select (everything when there are none) into <paramref name="location"/>. Links are
     /// never followed; files the game holds open are skipped and counted. Nothing is left behind on failure.
     /// </summary>
+    /// <param name="whole">
+    /// Every file of the server, whatever its rules, and the records of Pulsar's that go with them (a clone's or a
+    /// transfer's copy, 1.0.17): <paramref name="rules"/> play no part.
+    /// </param>
     public async Task<BackupResult> CreateAsync(BackupLocation location, ProvisionedServer server, BackupDefinition? rules, BackupProgress progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool whole = false)
     {
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
         await progress(BackupStages.Scanning, null);
         var walk = files.Walk(server);
-        var selected = Select(walk, rules);
+        List<TreeEntry> selected = whole ? [.. Select(walk, null).Concat(Records(walk)).OrderBy(e => e.Path, StringComparer.Ordinal)] : Select(walk, rules);
         var collisions = DropCaseCollisions(selected);
         var total = selected.Sum(f => f.Size);
         System.IO.Directory.CreateDirectory(location.Directory);
@@ -719,8 +723,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             }
 
             // By any case. A first segment shaped like its 8.3 short name (PULSAR~1) is checked against the server's folder
-            // before anything is written (see ShortNamesElsewhere).
-            if (FirstSegment(path).Equals(PulsarDirectory, StringComparison.OrdinalIgnoreCase))
+            // before anything is written (see ShortNamesElsewhere). The records a whole copy carries are the exception.
+            if (FirstSegment(path).Equals(PulsarDirectory, StringComparison.OrdinalIgnoreCase) && (directory || !IsCarriedRecord(path)))
             {
                 throw Corrupt(name, "Pulsar's own files are never restored");
             }
@@ -737,6 +741,26 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     }
 
     private static string FirstSegment(string path) => path.Split('/')[0];
+
+    private static IEnumerable<TreeEntry> Records(IReadOnlyList<TreeEntry> tree) => tree.Where(e => e.Kind == FileEntryKind.File && IsCarriedRecord(e.Path));
+
+    /// <summary>
+    /// What the agent recorded of the server's mods, addons, pack and lists, which a whole copy of it (a clone's, a
+    /// transfer's, 1.0.17) takes along so the panel's records of them hold on its new copy: nothing else of Pulsar's folder
+    /// (never its SteamCMD, whose login it keeps). The server's account can write them, so the agent trusts none of them
+    /// anyway. By exact path (<c>.pulsar</c> in lowercase, as the agent writes it).
+    /// </summary>
+    internal static bool IsCarriedRecord(string path)
+    {
+        var segments = path.Split('/');
+        return segments switch
+        {
+            [PulsarDirectory, "modpack.json"] => true,
+            [PulsarDirectory, "packages" or "addons" or "lists", var name] => name.Length > ".json".Length
+                && name.EndsWith(".json", StringComparison.Ordinal) && !name.StartsWith(ServerFileRules.TemporaryPrefix, StringComparison.Ordinal),
+            _ => false,
+        };
+    }
 
     /// <summary>
     /// The archive's first folders named like 8.3 short names (<c>DATA~1</c>) that lead to another folder of the server:

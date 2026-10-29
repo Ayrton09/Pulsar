@@ -521,6 +521,14 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Transfer a server to another node as the same server (doc 02, "Transferring a server to another node"), its files relayed by the panel, its old copy deleted once it moved, moved back as it was if it fails; checked on two real nodes (a Minecraft server moved with its world, then started; a node without free allocations refused at once).
 - The six findings of the 2026-10-28 audit fixed (mods' writes undone, settling before loading, requirements' versions, sequence steps saved with their operation, agent update attempts, modpack zips).
 
+## 1.0.17 — Second audit of 2026-10-28 (on e6a94aa)
+
+- Clones and transfers copy every file (a whole backup, with the agent's records of mods, addons, pack and lists), never one that left a file out.
+- Mods' requirements: a version needed by one project is kept against another's need; mods the server keeps are asked what they need.
+- Files a failed mod change left behind are replaced by installing again; a pack written in part lists no pack.
+- Clones take the source's mods, addons, pack and Steam branch along.
+- A template move is saved with its provisioning and the step following it; changing a game ends the server's sequences under way.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

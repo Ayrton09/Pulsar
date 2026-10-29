@@ -12,6 +12,9 @@ namespace Pulsar.Agent.Core.Servers;
 /// <summary>What the agent wrote of a package (Pulsar 1.0.14), kept in <c>.pulsar/packages/&lt;package&gt;.json</c>: removed with it.</summary>
 public sealed record PackageRecord(string Package, IReadOnlyList<string> Files);
 
+/// <summary>Files a change left behind that it could not put back as they were (<see cref="ModInstaller.LeftPartial"/>): the panel's to replace.</summary>
+public sealed record LeftFiles(IReadOnlyList<string> Files);
+
 /// <summary>
 /// Puts a mod catalog's files into a server and deletes others (<see cref="ChangeModsCommand"/>, Pulsar 1.0.9;
 /// docs/architecture/04, "Mods"). Every file is downloaded first, over HTTPS from the catalog's own hosts, and checked
@@ -25,6 +28,12 @@ public sealed record PackageRecord(string Package, IReadOnlyList<string> Files);
 public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 {
     public const string PackageRecords = ".pulsar/packages";
+
+    /// <summary>
+    /// The files a change left partial (Pulsar 1.0.17): the panel no longer lists them, so installing again may write over
+    /// them; each is forgotten once a change writes or deletes it.
+    /// </summary>
+    public const string LeftFilesRecord = ".pulsar/mods-left.json";
 
     /// <summary>A write failed and the server's files could not all be put back as they were.</summary>
     public const string LeftPartial = "mods.left_partial";
@@ -100,7 +109,8 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
         // The panel replaces only the files it put there (those it removes in the same change): a file someone else put
         // in the folder under the same name stays theirs.
         var removed = new HashSet<string>(remove, StringComparer.OrdinalIgnoreCase);
-        foreach (var path in add.Where(a => a.Layout is null).Select(a => a.Path).Where(p => !removed.Contains(p)))
+        var left = LeftBehind(serverDirectory);
+        foreach (var path in add.Where(a => a.Layout is null).Select(a => a.Path).Where(p => !removed.Contains(p) && !left.Contains(p)))
         {
             if (Exists(serverDirectory, path))
             {
@@ -161,7 +171,7 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                     content.Position = 0;
                     await FileArchives.CheckDirectoryAsync(content, cancellationToken);
                     var zip = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
-                    unpacking.Add((file, zip, Plan(serverDirectory, file.Path, zip, removed)));
+                    unpacking.Add((file, zip, Plan(serverDirectory, file.Path, zip, removed, left)));
                 }
             }
             catch (Exception ex) when (ex is InvalidDataException or FileManagerException)
@@ -197,12 +207,21 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                 {
                     WritePackage(serverDirectory, file.Path, entries, undo);
                 }
+
+                if (left.Count > 0 && left.Overlaps(undo.Touched))
+                {
+                    left.ExceptWith(undo.Touched);
+                    RecordLeftBehind(serverDirectory, left);
+                }
             }
             // The node's own files report theirs as files.* (GameProcessException), a test's or another's as IOException.
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or GameProcessException)
             {
-                if (!undo.PutBack())
+                var stuck = undo.PutBack();
+                if (stuck.Count > 0)
                 {
+                    left.UnionWith(stuck);
+                    RecordLeftBehind(serverDirectory, left);
                     throw Failed(LeftPartial, $"The mods could not all be written, nor the files they replaced all put back (install again those the server lists no more): {ex.Message}", ex);
                 }
 
@@ -261,12 +280,13 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 
     /// <summary>A package's files and where each goes, checked: plain relative paths, outside Pulsar's folder, within limits, nobody else's.</summary>
     private List<(ZipArchiveEntry Entry, string Path, bool Config)> Plan(string serverDirectory, string packagePath, ZipArchive zip,
-        HashSet<string> removed)
+        HashSet<string> removed, HashSet<string> left)
     {
         var (folder, package) = ModFiles.SplitPackagePath(packagePath);
         var replacing = removed.Contains(packagePath);
         var record = replacing ? Record(serverDirectory, folder, package) : null;
         var ownedSet = new HashSet<string>(record?.Files ?? [], StringComparer.OrdinalIgnoreCase);
+        ownedSet.UnionWith(left);
         var entries = new List<(ZipArchiveEntry Entry, string Path, bool Config)>();
         var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long total = 0;
@@ -414,6 +434,47 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
 
     private static string RecordPath(string package) => $"{PackageRecords}/{package}.json";
 
+    /// <summary>The files changes left partial, plain paths outside Pulsar's folder only (the server's account can write <c>.pulsar</c>).</summary>
+    private HashSet<string> LeftBehind(string serverDirectory)
+    {
+        var left = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var stream = files.OpenRead(serverDirectory, LeftFilesRecord);
+            if (stream is not null && stream.Length <= 1024 * 1024
+                && JsonSerializer.Deserialize<LeftFiles>(stream, s_json) is { Files: { } listed })
+            {
+                left.UnionWith(listed.Where(p => p is not null && ManifestValidator.IsValidRelativePath(p) && !FileCommands.IsPulsarFolder(p)).Take(MaximumEntries));
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // Unreadable: nothing is taken as left behind.
+        }
+
+        return left;
+    }
+
+    /// <summary>Records them, as far as it can: a record not written only leaves a file to delete by hand, as before.</summary>
+    private void RecordLeftBehind(string serverDirectory, HashSet<string> left)
+    {
+        try
+        {
+            if (left.Count == 0)
+            {
+                files.Delete(serverDirectory, LeftFilesRecord);
+                return;
+            }
+
+            using var content = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new LeftFiles([.. left.Order(StringComparer.Ordinal)]), s_json));
+            files.Write(serverDirectory, LeftFilesRecord, content);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GameProcessException)
+        {
+            // Left as it was.
+        }
+    }
+
     private bool Exists(string serverDirectory, string path)
     {
         try
@@ -487,10 +548,13 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
             _before[path] = copy;
         }
 
-        /// <summary>Puts every kept path back as it was; false when one could not be.</summary>
-        public bool PutBack()
+        /// <summary>Every path the change deleted or wrote (or was about to).</summary>
+        public IReadOnlyCollection<string> Touched => _before.Keys;
+
+        /// <summary>Puts every kept path back as it was; returns those that could not be.</summary>
+        public List<string> PutBack()
         {
-            var all = true;
+            var stuck = new List<string>();
             foreach (var (path, copy) in _before)
             {
                 try
@@ -511,11 +575,11 @@ public sealed class ModInstaller(IServerFiles files, HttpMessageHandler handler)
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or GameProcessException)
                 {
-                    all = false;
+                    stuck.Add(path);
                 }
             }
 
-            return all;
+            return stuck;
         }
 
         public void Dispose()

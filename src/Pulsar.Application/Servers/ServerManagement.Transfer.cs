@@ -85,7 +85,8 @@ public sealed partial class ServerManagement
             return ServerErrors.TemplateUnsupported;
         }
 
-        if (!Announces(target, AgentCapabilities.ReceiveBackup) || !Announces(from, AgentCapabilities.SendBackup))
+        if (!Announces(target, AgentCapabilities.ReceiveBackup) || !Announces(from, AgentCapabilities.SendBackup)
+            || !Announces(from, AgentCapabilities.WholeBackup))
         {
             return ServerErrors.CopyUnsupported;
         }

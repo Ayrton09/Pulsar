@@ -243,6 +243,32 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
 
         await ServerApi.CommandAsync(admin, server, "stop");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped");
+
+        // A task of the old game's under way, waiting before it starts the server.
+        Pulsar.Application.Scheduling.ScheduledTaskView waiting;
+        using (var steps = await admin.PostAsync($"/api/v1/servers/{server}/schedules", new ScheduledTaskRequest("Old game's start", "0 4 1 1 *", "UTC",
+                   Pulsar.Domain.Scheduling.ScheduledAction.Sequence, null, false, false, true,
+                   [new SequenceStepRequest(Pulsar.Domain.Scheduling.SequenceStepKind.Wait, Seconds: 3600),
+                       new SequenceStepRequest(Pulsar.Domain.Scheduling.SequenceStepKind.Start)], false, false)))
+        {
+            await AccessScenario.EnsureSuccessAsync(steps);
+            waiting = (await steps.Content.ReadFromJsonAsync<Pulsar.Application.Scheduling.ScheduledTaskView>(AccessScenario.Json, Ct))!;
+        }
+
+        using (var run = await admin.PostAsync($"/api/v1/servers/{server}/schedules/{waiting.Id}/run"))
+        {
+            await AccessScenario.EnsureSuccessAsync(run);
+        }
+
+        // Waiting, as the panel's own pass left it (a change saved while a pass holds it would be refused as busy, to be asked again).
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().ServerSequences.AsNoTracking()
+                .AnyAsync(q => q.ServerId == new ServerId(server) && q.Status == Pulsar.Domain.Scheduling.SequenceStatus.Running && q.StepBegun
+                    && q.WakeAt > DateTimeOffset.UtcNow.AddMinutes(30), Ct);
+        }, "the task waiting");
+
         using (var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
         {
             await AccessScenario.EnsureSuccessAsync(changed);
@@ -259,7 +285,17 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         // Its scheduled tasks were the old game's: paused until someone looks at them.
         var tasks = await admin.Http.GetFromJsonAsync<Pulsar.Application.Scheduling.ScheduledTaskList>(new Uri($"/api/v1/servers/{server}/schedules", UriKind.Relative),
             AccessScenario.Json, Ct);
-        Assert.False(Assert.Single(tasks!.Tasks).Enabled);
+        Assert.All(tasks!.Tasks, t => Assert.False(t.Enabled));
+        // And what was left of the one under way is not done on the new game.
+        await SequenceDriver.DriveAsync(factory);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var sequence = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().ServerSequences.AsNoTracking()
+                .SingleAsync(q => q.ServerId == new ServerId(server) && q.Origin == Pulsar.Domain.Scheduling.SequenceOrigin.Schedule, Ct);
+            Assert.Equal((Pulsar.Domain.Scheduling.SequenceStatus.Cancelled, "schedules.game_changed"), (sequence.Status, sequence.ErrorCode));
+        }
+
+        Assert.Equal(ServerRuntimeState.Offline, (await ServerApi.GetAsync(admin, server))!.Server.RuntimeState);
 
         // The new game runs.
         await ServerApi.CommandAsync(admin, server, "start");

@@ -112,6 +112,13 @@ public sealed partial class ServerManagement
             task.Pause(now);
         }
 
+        // So were those of the sequences under way (a task's waiting to go on, an update's): none of their steps is done.
+        foreach (var sequence in await db.ServerSequences.Where(q => q.ServerId == server.Id && q.Status == Domain.Scheduling.SequenceStatus.Running)
+                     .ToListAsync(cancellationToken))
+        {
+            sequence.Abandon(Domain.Scheduling.ScheduleErrors.GameChanged, now);
+        }
+
         audit.Record(AuditActions.Server.GameChanged, metadata: new { from = $"{current.Key}@{current.Version}", to = $"{next.Key}@{next.Version}" })
             .WithServer(server.Id, server.NodeId);
         var operation = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, request.UserId, OperationRequester.User, now);

@@ -31,6 +31,12 @@ public sealed partial class ServerBackups
             return ServerErrors.BackupNotCompleted;
         }
 
+        // A copy restored cleanly must hold every file: one the game held open would be lost on the target.
+        if (!backup.CheckCleanRestore().IsSuccess)
+        {
+            return ServerErrors.CopyIncomplete;
+        }
+
         // From the node that has its archive: the source's, or, for a server being transferred, the node it leaves.
         if (Connection(backup.NodeId, AgentCapabilities.SendBackup) is { IsSuccess: false } sending)
         {

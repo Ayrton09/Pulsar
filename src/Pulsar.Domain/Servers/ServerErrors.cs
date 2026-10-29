@@ -82,6 +82,10 @@ public static class ServerErrors
     public static DomainError CopyUnsupported { get; } = new("server.copy_unsupported",
         "A node has an agent too old to copy a server's files to another node: update it.");
 
+    /// <summary>A clone's or a transfer's copy left out files (1.0.17): it is not restored, and a transfer leaves the server where it was.</summary>
+    public static DomainError CopyIncomplete { get; } = new("server.copy_incomplete",
+        "Files of the server were left out of the copy (held open by the running game): stop it and try again.");
+
     public static DomainError BackupCorrupt { get; } = new("server.backup_corrupt",
         "The node sent an archive of another size than the backup it made.");
 

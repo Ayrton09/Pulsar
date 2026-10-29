@@ -677,6 +677,7 @@
       "same_node": "Le serveur est déjà sur ce nœud.",
       "old_copy_left": "Le serveur a été déplacé vers le nouveau nœud, mais sa copie sur l'ancien nœud n'a pas pu être supprimée : supprimez son dossier à la main.",
       "copy_unsupported": "Un nœud a un agent trop ancien pour copier les fichiers d'un serveur vers un autre nœud : mettez-le à jour.",
+      "copy_incomplete": "Des fichiers du serveur manquent dans la copie (le jeu en cours les tenait ouverts) : arrêtez-le et réessayez.",
       "backup_corrupt": "Le nœud a envoyé une archive d'une autre taille que la sauvegarde qu'il a faite."
     },
     "console": {
@@ -760,6 +761,7 @@
       "step_interfered": "Le serveur n'a pas fait ce que l'étape demandait.",
       "start_failed": "Le serveur n'a pas démarré.",
       "cancelled": "Annulée par un utilisateur.",
+      "game_changed": "Le serveur est devenu un autre jeu : le reste n'a pas été fait.",
       "only_if_empty_unsupported": "Les démarrages et les commandes console ne peuvent pas attendre que personne ne joue.",
       "only_if_update_unsupported": "Seules les mises à jour et les tâches de plusieurs étapes peuvent attendre une mise à jour du jeu.",
       "players_not_reported": "Ce jeu n'indique pas qui joue (il n'a pas de requête) : une tâche ne peut pas attendre que personne ne joue.",

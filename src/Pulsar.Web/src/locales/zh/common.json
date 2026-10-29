@@ -677,6 +677,7 @@
       "same_node": "服务器已在该节点上。",
       "old_copy_left": "服务器已迁移到新节点，但无法删除其在旧节点上的副本：请手动删除那里的文件夹。",
       "copy_unsupported": "某个节点的代理版本过旧，无法将服务器的文件复制到另一个节点：请更新它。",
+      "copy_incomplete": "服务器的部分文件未包含在副本中（运行中的游戏占用了它们）：请停止服务器后重试。",
       "backup_corrupt": "节点发送的归档大小与其创建的备份不同。"
     },
     "console": {
@@ -760,6 +761,7 @@
       "step_interfered": "服务器没有按步骤的要求执行。",
       "start_failed": "服务器没有启动。",
       "cancelled": "已被用户取消。",
+      "game_changed": "服务器已变为另一款游戏：剩余的步骤未执行。",
       "only_if_empty_unsupported": "启动和控制台命令不能以没有人在玩为条件。",
       "only_if_update_unsupported": "只有更新和多步骤任务可以以游戏更新为条件。",
       "players_not_reported": "此游戏不报告谁在玩（没有查询）：任务不能以没有人在玩为条件。",

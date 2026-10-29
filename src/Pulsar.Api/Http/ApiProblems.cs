@@ -32,7 +32,7 @@ public static class ApiProblems
             => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
             or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring" or "panel_key.nodes_outdated"
-            or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.change_game_unsupported" or "server.copy_unsupported" or "server.clone_running" or "server.transferring" or "server.same_node" or "server.command_rejected"
+            or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.change_game_unsupported" or "server.copy_unsupported" or "server.copy_incomplete" or "server.clone_running" or "server.transferring" or "server.same_node" or "server.command_rejected"
             or "server.template_invalid"
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "server.port_taken" or "server.port_not_allocated"

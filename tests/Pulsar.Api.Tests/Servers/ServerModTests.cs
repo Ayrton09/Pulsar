@@ -428,6 +428,42 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("veta", null)), HttpStatusCode.Conflict,
             "mods.version_conflict");
 
+        // A project first taken in any version, then needed in that very one, is needed in it: a third needing another conflicts.
+        factory.Modrinth.Version("vlam", "vlam1", "1.0", Encoding.UTF8.GetBytes("lam 1"));
+        factory.Modrinth.Version("vlam", "vlam2", "2.0", Encoding.UTF8.GetBytes("lam 2"));
+        Requires(factory.Modrinth.Version("vnu", "vnu1", "1.0", Encoding.UTF8.GetBytes("nu")), "vlam", "vlam2");
+        Requires(factory.Modrinth.Version("vxi", "vxi1", "1.0", Encoding.UTF8.GetBytes("xi")), "vlam", "vlam1");
+        var pi = factory.Modrinth.Version("vpi", "vpi1", "1.0", Encoding.UTF8.GetBytes("pi"));
+        Requires(pi, "vlam", null);
+        Requires(pi, "vnu", null);
+        Requires(pi, "vxi", null);
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vpi", null)), HttpStatusCode.Conflict,
+            "mods.version_conflict");
+
+        // A mod the server keeps needing a project in its version: another needing that project in another version conflicts.
+        factory.Modrinth.Version("vmu", "vmu1", "1.0", Encoding.UTF8.GetBytes("mu 1"));
+        factory.Modrinth.Version("vmu", "vmu2", "2.0", Encoding.UTF8.GetBytes("mu 2"));
+        Requires(factory.Modrinth.Version("vrho", "vrho1", "1.0", Encoding.UTF8.GetBytes("rho")), "vmu", "vmu1");
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vrho", null)));
+        await SettledAsync(admin, server, list => list.Count == 6);
+        Requires(factory.Modrinth.Version("vsigma", "vsigma1", "1.0", Encoding.UTF8.GetBytes("sigma")), "vmu", "vmu2");
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vsigma", null)), HttpStatusCode.Conflict,
+            "mods.version_conflict");
+        Assert.Equal("vmu1", (await ModsAsync(admin, server)).Installed.Single(m => m.ProjectId == "vmu").VersionId);
+
+        // A project the server has, first taken in any version, then needed in the catalog's newest: that one is installed.
+        factory.Modrinth.Version("vtau", "vtau1", "1.0", Encoding.UTF8.GetBytes("tau 1"));
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vtau", "vtau1")));
+        await SettledAsync(admin, server, list => list.Count == 7);
+        factory.Modrinth.Version("vtau", "vtau2", "2.0", Encoding.UTF8.GetBytes("tau 2"));
+        Requires(factory.Modrinth.Version("vpsi", "vpsi1", "1.0", Encoding.UTF8.GetBytes("psi")), "vtau", "vtau2");
+        var chi = factory.Modrinth.Version("vchi", "vchi1", "1.0", Encoding.UTF8.GetBytes("chi"));
+        Requires(chi, "vtau", null);
+        Requires(chi, "vpsi", null);
+        await ChangeAsync(admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vchi", null)));
+        view = await SettledAsync(admin, server, list => list.Count == 9);
+        Assert.Equal("vtau2", view.Installed.Single(m => m.ProjectId == "vtau").VersionId);
+
         // A version asked for is that project's and suits the server, or nothing is installed: never another in its place.
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vomega", "vgamma1")), HttpStatusCode.BadRequest,
             "mods.no_version");
@@ -435,7 +471,43 @@ public sealed class ServerModTests(ModrinthApiFactory factory) : IClassFixture<M
         factory.Modrinth.Version("vomega", "vomega2", "2.0", Encoding.UTF8.GetBytes("omega fabric"));
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/mods", new InstallModRequest("vomega", "vomega1")), HttpStatusCode.BadRequest,
             "mods.no_version");
-        Assert.Equal(4, (await ModsAsync(admin, server)).Installed.Count);
+        Assert.Equal(9, (await ModsAsync(admin, server)).Installed.Count);
+    }
+
+    [DatabaseFact]
+    public async Task APackWrittenInPartIsNoPacksAndOneThatChangedNothingKeepsThePrevious()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "partial-pack");
+        var server = new ServerId(await InstalledAsync(admin, agent, "Partial pack"));
+
+        async Task<List<ServerModpack>> EndAsync(string code)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var row = await db.Servers.AsNoTracking().SingleAsync(s => s.Id == server, Ct);
+            db.ServerModpacks.RemoveRange(await db.ServerModpacks.Where(p => p.ServerId == server).ToListAsync(Ct));
+            var now = DateTimeOffset.UtcNow;
+            var earlier = Operation.Create(OperationType.ModpackInstall, row.NodeId, server, null, OperationRequester.System, now);
+            var previous = ServerModpack.Installing(server, ModSource.Modrinth, "pold", "pold1", "Old pack", "1.0", "fabric", "fabric", "1.21.8", earlier.Id, now);
+            previous.Installed(null, now);
+            var operation = Operation.Create(OperationType.ModpackInstall, row.NodeId, server, null, OperationRequester.System, now);
+            db.Operations.Add(operation);
+            db.ServerModpacks.Add(previous);
+            db.ServerModpacks.Add(ServerModpack.Installing(server, ModSource.Modrinth, "pnew", "pnew1", "New pack", "1.0", "fabric", "fabric", "1.21.8",
+                operation.Id, now));
+            await db.SaveChangesAsync(Ct);
+            operation.Complete(OperationStatus.Failed, code, "failed", now);
+            await ServerMods.ModpackCompletedAsync(db, operation, null, now, Ct);
+            await db.SaveChangesAsync(Ct);
+            return await db.ServerModpacks.AsNoTracking().Where(p => p.ServerId == server).ToListAsync(Ct);
+        }
+
+        // Its files were partly written over the previous pack's: neither is the server's.
+        Assert.Empty(await EndAsync("modpack.write_failed"));
+        Assert.Empty(await EndAsync("operation.interrupted"));
+        // Refused before anything changed: the previous pack stays.
+        Assert.Equal("pold", Assert.Single(await EndAsync("modpack.download_failed")).ProjectId);
     }
 
     [DatabaseFact]

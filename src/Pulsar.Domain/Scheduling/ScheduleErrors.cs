@@ -86,6 +86,9 @@ public static class ScheduleErrors
 
     public static DomainError Cancelled { get; } = new("schedules.cancelled", "Cancelled by a user.");
 
+    /// <summary>The server became another game (1.0.17): what was left of a sequence was the old game's, and none of it was done.</summary>
+    public static DomainError GameChanged { get; } = new("schedules.game_changed", "The server became another game: what was left was not done.");
+
     /// <summary>A step waited longer than it may for the server (to stop, to be running).</summary>
     public static DomainError StepTimedOut { get; } = new("schedules.step_timed_out", "The server did not get there in time.");
 

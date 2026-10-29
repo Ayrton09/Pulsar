@@ -292,14 +292,37 @@ public sealed class ServerSequence
     /// </summary>
     public Result Cancel(DateTimeOffset now)
     {
-        if (Status != SequenceStatus.Running || CancelledAt is not null)
+        return CancelAll(now, all: false, ScheduleErrors.Cancelled);
+    }
+
+    /// <summary>
+    /// Ends it at once as cancelled, the steps that always run too (1.0.17: the server became another game, and those were
+    /// the old game's). The operation the current step started, if any, is the caller's to deal with.
+    /// </summary>
+    public Result Abandon(DomainError reason, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return CancelAll(now, all: true, reason);
+    }
+
+    private Result CancelAll(DateTimeOffset now, bool all, DomainError reason)
+    {
+        // A sequence a user cancelled may still run its steps that always run: abandoning it ends those too.
+        if (Status != SequenceStatus.Running || (CancelledAt is not null && !all))
         {
             return ScheduleErrors.SequenceOver;
         }
 
-        CancelledAt = now;
-        ErrorCode ??= ScheduleErrors.Cancelled.Code;
-        Message ??= ScheduleErrors.Cancelled.Message;
+        CancelledAt ??= now;
+        ErrorCode ??= reason.Code;
+        Message ??= reason.Message;
+        if (all)
+        {
+            StepIndex = Steps.Count - 1;
+            StepDone(now);
+            return Result.Success();
+        }
+
         // The current step is not finished, unless it is one of those that always run.
         if (Current is not { Always: true })
         {

@@ -7,6 +7,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Scheduling;
 using Pulsar.Contracts;
 using Pulsar.Domain.Scheduling;
+using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
 
@@ -71,5 +72,62 @@ public sealed class SequenceOperationStepTests(WatchedCommandsApiFactory factory
         var (operation, followed) = Assert.Single(seen);
         Assert.NotNull(operation);
         Assert.Equal(operation, followed);
+    }
+}
+
+/// <summary>
+/// A template move's step (1.0.17) is saved with the move and its provisioning. A panel of its own: the newer version it
+/// ships would be a second bundled version of the game for the other tests.
+/// </summary>
+public sealed class TemplateStepOperationTests(WatchedCommandsApiFactory factory) : IClassFixture<WatchedCommandsApiFactory>
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [DatabaseFact]
+    public async Task ATemplateStepFollowsItsProvisioningSavedWithTheMove()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await TemplateUpdateTests.ConnectedAgentAsync(factory, admin, "step-follows");
+        var server = await TemplateUpdateTests.RunningCssAsync(admin, agent, "27160-27165");
+        var newer = await TemplateUpdateTests.ShipNewerAsync(factory, admin, "css");
+
+        // Whatever the panel saved when the provisioning goes out: the move, its operation and the step following it, together.
+        var seen = new List<(Guid? Operation, Guid? Followed, string Version)>();
+        factory.BeforeSend = async (command, operation) =>
+        {
+            if (command is ProvisionServerCommand)
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+                var sequence = await db.ServerSequences.AsNoTracking()
+                    .SingleAsync(s => s.ServerId == new Pulsar.Domain.Common.ServerId(server) && s.Status == SequenceStatus.Running, Ct);
+                var saved = await db.Servers.AsNoTracking().Where(s => s.Id == new Pulsar.Domain.Common.ServerId(server))
+                    .Join(db.GameTemplates, s => s.TemplateId, t => t.Id, (_, t) => t.Version).SingleAsync(Ct);
+                seen.Add((operation, sequence.StepBegun ? sequence.OperationId?.Value : null, saved));
+            }
+        };
+        try
+        {
+            using (var settings = await admin.PutAsync($"/api/v1/servers/{server}/game-updates",
+                       new GameUpdateSettingsRequest(GameUpdatePolicy.Notify, false, 1, null, GameUpdatePolicy.Install)))
+            {
+                await AccessScenario.EnsureSuccessAsync(settings);
+            }
+
+            await SequenceDriver.GameUpdatesPassAsync(factory);
+            await InProcessAgent.EventuallyAsync(async () =>
+            {
+                await SequenceDriver.DriveAsync(factory);
+                return (await SequenceDriver.GameUpdatesAsync(admin, server)).Running is { Status: not SequenceStatus.Running };
+            }, "the move ended");
+        }
+        finally
+        {
+            factory.BeforeSend = null;
+        }
+
+        var (operation, followed, version) = Assert.Single(seen);
+        Assert.NotNull(operation);
+        Assert.Equal((operation, newer), (followed, version));
     }
 }

@@ -677,6 +677,7 @@
       "same_node": "El servidor ya está en ese nodo.",
       "old_copy_left": "El servidor se movió al nodo nuevo, pero no se pudo borrar su copia del nodo viejo: borrá su carpeta allá a mano.",
       "copy_unsupported": "Un nodo tiene un agente demasiado viejo para copiar los archivos de un servidor a otro nodo: actualizalo.",
+      "copy_incomplete": "Quedaron archivos del servidor fuera de la copia (el juego en marcha los tenía abiertos): detenelo y probá de nuevo.",
       "backup_corrupt": "El nodo mandó un archivo de otro tamaño que el backup que hizo."
     },
     "console": {
@@ -760,6 +761,7 @@
       "step_interfered": "El servidor no hizo lo que pidió el paso.",
       "start_failed": "El servidor no inició.",
       "cancelled": "La canceló un usuario.",
+      "game_changed": "El servidor pasó a ser otro juego: lo que faltaba no se hizo.",
       "only_if_empty_unsupported": "Los inicios y los comandos de consola no pueden esperar a que no haya nadie jugando.",
       "only_if_update_unsupported": "Solo las actualizaciones y las tareas de varios pasos pueden esperar una actualización del juego.",
       "players_not_reported": "Este juego no dice quién juega (no tiene consulta): una tarea no puede esperar a que no haya nadie.",

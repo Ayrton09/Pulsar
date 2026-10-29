@@ -9,6 +9,7 @@ using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 using Pulsar.Manifests;
 
@@ -340,9 +341,10 @@ public sealed partial class ServerManagement(
     /// <see cref="UpgradeTemplateAsync(ServerId, Guid, CancellationToken)"/> for the template updates' sequence (1.0.10):
     /// the provisioning it starts, whose install follows.
     /// </summary>
+    /// <param name="recorded">Called with the operation's id just before the move is saved, with it: what follows it is saved with them.</param>
     public Task<Result<(Server Server, Operation Operation)>> RequestTemplateUpgradeAsync(ServerId id, Guid templateId, OperationRequester via,
-        CancellationToken cancellationToken) =>
-        UpgradeTemplateAsync(id, templateId, via, attempt: 0, cancellationToken);
+        CancellationToken cancellationToken, Action<OperationId>? recorded = null) =>
+        UpgradeTemplateAsync(id, templateId, via, attempt: 0, cancellationToken, recorded);
 
     /// <summary>
     /// Whether the server could move to the template now, but for being stopped: the move's own checks (its node reads the
@@ -363,7 +365,7 @@ public sealed partial class ServerManagement(
     }
 
     private async Task<Result<(Server Server, Operation Operation)>> UpgradeTemplateAsync(ServerId id, Guid templateId, OperationRequester via,
-        int attempt, CancellationToken cancellationToken)
+        int attempt, CancellationToken cancellationToken, Action<OperationId>? recorded = null)
     {
         var prepared = await PrepareTemplateUpgradeAsync(id, templateId, rehearsal: false, cancellationToken);
         if (!prepared.IsSuccess)
@@ -374,26 +376,32 @@ public sealed partial class ServerManagement(
         var (server, current, next) = prepared.Value;
         audit.Record(AuditActions.Server.TemplateChanged, metadata: new { key = next.Key, from = current.Version, to = next.Version })
             .WithServer(server.Id, server.NodeId);
+        // The move is saved with its provisioning (and a sequence's step with both): never one without the other.
+        var operation = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
+            via, clock.GetUtcNow());
+        var command = new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, next, cancellationToken));
+        Result<Operation> run;
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            run = await operations.RunAsync(server, operation, command, () => recorded?.Invoke(operation.Id), cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex) when (attempt < 2 && ex.Entries.Any(e => e.Entity is Server))
         {
-            // The agent reported a state change in between: upgrade the fresh row (its checks run again).
-            db.ChangeTracker.Clear();
-            return await UpgradeTemplateAsync(id, templateId, via, attempt + 1, cancellationToken);
+            // The agent reported a state change in between: upgrade the fresh row (its checks run again). A sequence acting
+            // through this context stays tracked: it is saved after its step.
+            foreach (var entry in db.ChangeTracker.Entries().Where(e => e.Entity is not ServerSequence).ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            return await UpgradeTemplateAsync(id, templateId, via, attempt + 1, cancellationToken, recorded);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ex is not DbUpdateConcurrencyException)
         {
             // An allocation was taken by another server meanwhile (version check or unique index).
             return ServerErrors.AllocationUnavailable;
         }
 
-        var operation = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
-            via, clock.GetUtcNow());
-        var run = await operations.RunAsync(server, operation,
-            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, next, cancellationToken)), beforeSave: null, cancellationToken);
         return run.IsSuccess ? (server, run.Value) : run.Error!;
     }
 

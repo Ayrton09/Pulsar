@@ -85,8 +85,12 @@ public sealed partial class ServerBackups(
     /// <paramref name="name"/> defaults to the time it was asked for.
     /// </summary>
     /// <param name="recorded">Called with the operation's id just before it is first saved: what follows it is saved with it.</param>
+    /// <param name="whole">
+    /// Every file of the server, whatever its game's backup rules (a clone's or a transfer's copy, 1.0.17); kept on its
+    /// node only, never copied to remote storage.
+    /// </param>
     public async Task<Result<BackupView>> CreateAsync(ServerId id, string? name, OperationRequester via, CancellationToken cancellationToken,
-        Action<OperationId>? recorded = null)
+        Action<OperationId>? recorded = null, bool whole = false)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -106,6 +110,11 @@ public sealed partial class ServerBackups(
             return connection.Error!;
         }
 
+        if (whole && Connection(server.NodeId, AgentCapabilities.WholeBackup) is { IsSuccess: false })
+        {
+            return ServerErrors.CopyUnsupported;
+        }
+
         if (connections.Find(server.NodeId)?.BelowFloor(DiskUses.Backups) is not null)
         {
             return NodeErrors.DiskLow;
@@ -121,8 +130,8 @@ public sealed partial class ServerBackups(
         }
 
         var backup = created.Value;
-        var remote = await RemoteForNewAsync(server, backup, cancellationToken);
-        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote), () =>
+        var remote = whole ? null : await RemoteForNewAsync(server, backup, cancellationToken);
+        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote, whole), () =>
         {
             db.Backups.Add(backup);
             recorded?.Invoke(operation.Id);

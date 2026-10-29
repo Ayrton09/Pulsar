@@ -37,6 +37,10 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         var config = Path.Combine("cstrike", "cfg", "server.cfg");
         Directory.CreateDirectory(Path.Combine(oldFolder, "cstrike", "cfg"));
         await File.WriteAllTextAsync(Path.Combine(oldFolder, config), "hostname \"moving along\"", Ct);
+        // A file no backup rule of the game names travels too: the old copy is deleted.
+        var outside = Path.Combine("cstrike", "plugins", "outside.dll");
+        Directory.CreateDirectory(Path.Combine(oldFolder, "cstrike", "plugins"));
+        await File.WriteAllTextAsync(Path.Combine(oldFolder, outside), "not in the rules", Ct);
         var oldPorts = await AllocationsAsync(server, first.Config.NodeId);
         Assert.NotEmpty(oldPorts);
 
@@ -64,6 +68,7 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         var moved = (await ServerApi.GetAsync(admin, server))!;
         Assert.Equal((second.Config.NodeId, created.Server.ShortId, created.Server.Name), (moved.Server.NodeId, moved.Server.ShortId, moved.Server.Name));
         Assert.Contains("moving along", await File.ReadAllTextAsync(Path.Combine(second.ServersRoot, created.Server.ShortId, config), Ct), StringComparison.Ordinal);
+        Assert.Equal("not in the rules", await File.ReadAllTextAsync(Path.Combine(second.ServersRoot, created.Server.ShortId, outside), Ct));
 
         // Its old copy is gone, with that node's allocations and backups; the backup that came along is the new node's.
         await InProcessAgent.EventuallyAsync(() => Task.FromResult(!Directory.Exists(oldFolder)), "the old copy deleted");

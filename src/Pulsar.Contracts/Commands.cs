@@ -508,7 +508,11 @@ public sealed record ForgetSteamLoginCommand(Guid AccountId) : AgentCommand
 /// (docs/architecture/03, "Backups"), then copies it to <paramref name="Remote"/> when there is one. The server may keep
 /// running. The result carries a <see cref="BackupResult"/>.
 /// </summary>
-public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null) : AgentCommand
+/// <param name="Whole">
+/// Every file of the server whatever the manifest's rules, with the records of Pulsar's that go with them (a clone's or a
+/// transfer's copy, Pulsar 1.0.17). Only for agents that announce <see cref="AgentCapabilities.WholeBackup"/>: older ones ignore it.
+/// </param>
+public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null, bool Whole = false) : AgentCommand
 {
     public const string Type = "server.backup_create";
 }
@@ -867,6 +871,9 @@ public static class AgentCapabilities
 
     /// <summary>A restore takes an archive another node made, relayed by the panel (<see cref="RestoreBackupCommand.Ticket"/>, Pulsar 1.0.16).</summary>
     public const string ReceiveBackup = "backups.receive";
+
+    /// <summary>A backup takes every file of the server when asked to (<see cref="CreateBackupCommand.Whole"/>, Pulsar 1.0.17).</summary>
+    public const string WholeBackup = "backups.whole";
 
     /// <summary>The agent zips files and folders of a server (<see cref="CompressFilesCommand"/>, Pulsar 1.0.11).</summary>
     public const string CompressFiles = CompressFilesCommand.Type;

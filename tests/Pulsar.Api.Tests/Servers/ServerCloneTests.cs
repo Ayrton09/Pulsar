@@ -35,6 +35,24 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
         var config = Path.Combine(first.ServersRoot, created.Server.ShortId, "data", "server.cfg");
         await File.WriteAllTextAsync(config, "hostname the original's", Ct);
 
+        // Its mods, addons, pack and Steam branch go along, and what the node recorded of them.
+        var record = Path.Combine(first.ServersRoot, created.Server.ShortId, ".pulsar", "addons", "oxide.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(record)!);
+        await File.WriteAllTextAsync(record, "{}", Ct);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var now = DateTimeOffset.UtcNow;
+            var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(source), Ct);
+            row.RestoreSteamBranch("beta", now);
+            var mod = ServerMod.Installing(row.Id, ModSource.Modrinth, "lithium", "lithium1", "Lithium", "1.0", "mods/lithium.jar", "ab", 2, false, [],
+                new OperationId(Guid.NewGuid()), now);
+            mod.Installed(now);
+            db.ServerMods.Add(mod);
+            db.ServerAddons.Add(ServerAddon.Installed(row.Id, "oxide", "2.0.1", now));
+            await db.SaveChangesAsync(Ct);
+        }
+
         // Making a backup of the source is part of it.
         // Its files become readable on the clone: backing it up is not enough without seeing them.
         using (var creator = await scenario.SignedInWithAsync("creator", Permissions.Server.View, Permissions.Server.Create, Permissions.Server.BackupsCreate))
@@ -42,6 +60,17 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
         {
             Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         }
+
+        // Its files are copied whole: never while it runs (the game holds some open).
+        await ServerApi.CommandAsync(admin, source, "start");
+        await ServerApi.WaitForAsync(admin, source, s => s.Server.RuntimeState == ServerRuntimeState.Running, "the source running");
+        using (var running = await admin.PostAsync($"/api/v1/servers/{source}/clone", new CloneServerRequest(second.Config!.NodeId, "Copy")))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, running.StatusCode);
+        }
+
+        await ServerApi.CommandAsync(admin, source, "stop");
+        await ServerApi.WaitForAsync(admin, source, s => s.Server.RuntimeState == ServerRuntimeState.Offline && s.Server.ActiveOperation is null, "the source stopped");
 
         ServerDetails clone;
         using (var cloned = await admin.PostAsync($"/api/v1/servers/{source}/clone", new CloneServerRequest(second.Config!.NodeId, "Copy")))
@@ -70,6 +99,17 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
         var copied = Path.Combine(second.ServersRoot, clone.Server.ShortId, "data", "server.cfg");
         Assert.Equal("hostname the original's", await File.ReadAllTextAsync(copied, Ct));
         Assert.Equal(new ServerCopyView(source, "Original", SequenceStatus.Succeeded, null, null), (await ServerApi.GetAsync(admin, clone.Server.Id))!.Copy);
+        Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(second.ServersRoot, clone.Server.ShortId, ".pulsar", "addons", "oxide.json"), Ct));
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var cloneId = new ServerId(clone.Server.Id);
+            Assert.Equal("beta", (await db.Servers.AsNoTracking().SingleAsync(s => s.Id == cloneId, Ct)).SteamBranch);
+            var mod = await db.ServerMods.AsNoTracking().SingleAsync(m => m.ServerId == cloneId, Ct);
+            Assert.Equal(("lithium1", "mods/lithium.jar", ServerModState.Installed), (mod.VersionId, mod.Path, mod.State));
+            Assert.Equal("2.0.1", (await db.ServerAddons.AsNoTracking().SingleAsync(a => a.ServerId == cloneId, Ct)).Release);
+        }
+
 
         // The archive is now a backup of the clone too, and the source is as it was.
         var backups = await admin.Http.GetFromJsonAsync<BackupList>(new Uri($"/api/v1/servers/{clone.Server.Id}/backups", UriKind.Relative), AccessScenario.Json, Ct);

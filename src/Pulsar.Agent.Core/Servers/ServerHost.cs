@@ -179,6 +179,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.GoldSrcRcon;
             yield return AgentCapabilities.ChangeGame;
             yield return AgentCapabilities.ReceiveBackup;
+            yield return AgentCapabilities.WholeBackup;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -1456,7 +1457,8 @@ public sealed partial class ServerHost(
             await using (var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
                 options.BackupSnapshots ? snapshots ?? s_noSnapshots : null, store, progress, clock, _logger, cancellationToken))
             {
-                made = await backups.CreateAsync(location, source.Files, server.Manifest.Backup, progress, cancellationToken) with
+                made = await backups.CreateAsync(location, source.Files, command.Whole ? null : server.Manifest.Backup, progress, cancellationToken,
+                    command.Whole) with
                 {
                     Capture = source.CaptureAfterReading(),
                 };

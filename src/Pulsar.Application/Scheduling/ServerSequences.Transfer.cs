@@ -26,7 +26,7 @@ public sealed partial class ServerSequences
         if (!sequence.StepBegun)
         {
             var made = await backups.CreateAsync(snapshot.Id, null, OperationRequester.System, cancellationToken,
-                started => sequence.Began(now, Observed(snapshot), started));
+                started => sequence.Began(now, Observed(snapshot), started), whole: true);
             if (!made.IsSuccess || !sequence.StepBegun)
             {
                 var reason = made.Error ?? ServerErrors.CommandRejected;
@@ -50,6 +50,10 @@ public sealed partial class ServerSequences
         {
             case OperationType.BackupCreate when failed:
                 sequence.StepFailed(operation!.ErrorCode ?? "operation.cancelled", operation.ErrorMessage ?? "The backup did not complete.", now);
+                return;
+            case OperationType.BackupCreate when await db.Backups.AnyAsync(b => b.OperationId == operation.Id && b.SkippedFiles > 0, cancellationToken):
+                // Not all of it: nothing is moved (the copy would not be the server).
+                sequence.StepFailed(ServerErrors.CopyIncomplete.Code, ServerErrors.CopyIncomplete.Message, now);
                 return;
             case OperationType.BackupCreate:
                 await SwitchAsync(services, db, sequence, snapshot.Id, from, to, now, cancellationToken);
@@ -150,7 +154,8 @@ public sealed partial class ServerSequences
         NodeId from, NodeId to, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var backup = await db.Backups.AsNoTracking()
-            .Where(b => b.ServerId == server.Id && b.NodeId == from && b.Status == BackupStatus.Completed && b.CreatedAt >= sequence.CreatedAt)
+            .Where(b => b.ServerId == server.Id && b.NodeId == from && b.Status == BackupStatus.Completed && b.CreatedAt >= sequence.CreatedAt
+                && b.CreatedVia == OperationRequester.System) // its own: users' and schedules' wait while it runs
             .OrderByDescending(b => b.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         var restore = backup is null
             ? ServerErrors.BackupNotFound

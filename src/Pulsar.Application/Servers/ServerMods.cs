@@ -518,17 +518,28 @@ public sealed partial class ServerMods(
             var exact = next.Version is not null || next.NeededBy is null;
             if (chosen.TryGetValue(version.ProjectId, out var earlier))
             {
-                if (!exact || earlier.Version.Id == version.Id)
+                if (earlier.Version.Id == version.Id)
+                {
+                    // Needed in that version now: no later requirement may take another in its place. Taken in any version
+                    // before, it may have been left as the server has it: then that version is planned below.
+                    chosen[version.ProjectId] = (earlier.Version, earlier.Exact || exact);
+                    if (!exact || earlier.Exact || plan.Any(p => p.Version.ProjectId == version.ProjectId))
+                    {
+                        continue;
+                    }
+                }
+                else if (!exact)
                 {
                     continue;
                 }
-
-                if (earlier.Exact)
+                else if (earlier.Exact)
                 {
                     return ModErrors.VersionConflict(version.Name, earlier.Version.VersionNumber, version.VersionNumber);
                 }
-
-                plan.RemoveAll(p => p.Version.ProjectId == version.ProjectId); // any version would do there: this one, then
+                else
+                {
+                    plan.RemoveAll(p => p.Version.ProjectId == version.ProjectId); // any version would do there: this one, then
+                }
             }
 
             chosen[version.ProjectId] = (version, exact);
@@ -586,7 +597,44 @@ public sealed partial class ServerMods(
             }
         }
 
-        return plan;
+        return await KeptRequirementsAsync(target, installed, plan, cancellationToken) is { } conflict ? conflict : plan;
+    }
+
+    /// <summary>
+    /// A mod the plan leaves on the server that needs, in its installed version, a project in a version other than the one
+    /// the plan brings conflicts with it: its needs are asked of the catalog (a version the catalog no longer has says nothing).
+    /// A package's needs are not: Thunderstore names the version a package was made with, and any newer one does (mod
+    /// managers update them on their own).
+    /// </summary>
+    private static async Task<DomainError?> KeptRequirementsAsync(Target target, IReadOnlyList<ServerMod> installed, List<Planned> plan,
+        CancellationToken cancellationToken)
+    {
+        if (target.Kind.Layout is not null)
+        {
+            return null;
+        }
+
+        var bringing = plan.ToDictionary(p => p.Version.ProjectId, p => p.Version, StringComparer.Ordinal);
+        foreach (var kept in installed.Where(m => m.Source == target.Source && !bringing.ContainsKey(m.ProjectId)
+                     && m.Requires.Any(bringing.ContainsKey)))
+        {
+            if (await target.Catalog.VersionAsync(kept.VersionId, cancellationToken) is not { } version)
+            {
+                continue;
+            }
+
+            foreach (var dependency in version.Dependencies.Where(d => d.Type == "required" && d.VersionId is not null))
+            {
+                var project = dependency.ProjectId ?? await ProjectOfAsync(target, dependency.VersionId!, cancellationToken);
+                if (project is not null && bringing.TryGetValue(project, out var brought) && brought.Id != dependency.VersionId)
+                {
+                    var needed = await target.Catalog.VersionAsync(dependency.VersionId!, cancellationToken);
+                    return ModErrors.VersionConflict(brought.Name, needed?.VersionNumber ?? dependency.VersionId!, brought.VersionNumber);
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
