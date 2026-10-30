@@ -4,6 +4,7 @@
     "none": "None",
     "never": "Never",
     "actions": "Actions",
+    "actionsOf": "Actions for {{name}}",
     "opensInNewTab": "(opens in a new tab)",
     "refreshFailed": "Could not refresh; showing what was loaded before. {{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "Menu",
     "openMenu": "Open menu",
     "updates": "Updates",
-    "signIn": "Sign-in providers"
+    "signIn": "Sign-in providers",
+    "themeLight": "Light theme",
+    "themeDark": "Dark theme"
   },
   "auth": {
     "userName": "User name",
@@ -985,6 +988,14 @@
       "label": "Panel language",
       "hint": "Saved in this browser. Each notification channel keeps its own language.",
       "loadFailed": "That language could not be loaded. Reload the page and try again."
+    },
+    "theme": {
+      "title": "Appearance",
+      "label": "Theme",
+      "hint": "Saved in this browser.",
+      "dark": "Dark",
+      "light": "Light",
+      "system": "Same as the system"
     },
     "password": "Password",
     "currentPassword": "Current password",

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { Field, Input } from '../../components/ui/Form';
@@ -388,8 +389,8 @@ function InstalledTable({
                 {mod.size > 0 && <span className="block">{formatSize(mod.size)}</span>}
               </Td>
               {canChange && (
-                <Td>
-                  <div className="flex flex-wrap justify-end gap-2">
+                <Td className="text-right">
+                  <RowActions name={mod.name}>
                     {update && (
                       <Button size="sm" disabled={!enabled} busy={busy(mod)} onClick={() => onUpdate(mod)}>
                         {t('mods.update')}
@@ -407,7 +408,7 @@ function InstalledTable({
                     >
                       {t('mods.remove')}
                     </Button>
-                  </div>
+                  </RowActions>
                 </Td>
               )}
             </tr>

@@ -4,6 +4,7 @@
     "none": "なし",
     "never": "なし",
     "actions": "操作",
+    "actionsOf": "{{name}} の操作",
     "opensInNewTab": "(新しいタブで開きます)",
     "refreshFailed": "更新できませんでした。以前に読み込んだ内容を表示しています。{{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "メニュー",
     "openMenu": "メニューを開く",
     "updates": "アップデート",
-    "signIn": "外部サインイン"
+    "signIn": "外部サインイン",
+    "themeLight": "ライトテーマ",
+    "themeDark": "ダークテーマ"
   },
   "auth": {
     "userName": "ユーザー名",
@@ -985,6 +988,14 @@
       "label": "パネルの言語",
       "hint": "このブラウザーに保存されます。通知チャンネルはそれぞれ独自の言語を使います。",
       "loadFailed": "その言語を読み込めませんでした。ページを再読み込みして、もう一度お試しください。"
+    },
+    "theme": {
+      "title": "外観",
+      "label": "テーマ",
+      "hint": "このブラウザーに保存されます。",
+      "dark": "ダーク",
+      "light": "ライト",
+      "system": "システムと同じ"
     },
     "password": "パスワード",
     "currentPassword": "現在のパスワード",

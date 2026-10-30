@@ -48,6 +48,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       cursorInactiveStyle: 'none',
       fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace',
       fontSize: 13,
+      // A terminal: dark in either theme of the panel, as the game's own console is.
       theme: { background: '#07090d', foreground: '#d6dde6' },
     });
     const fit = new FitAddon();
@@ -99,8 +100,8 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       {stream.refused && <Alert>{t('servers.console.refused')}</Alert>}
       {stream.failed && <Alert>{t('servers.console.failed')}</Alert>}
       {!server.nodeConnected && <p className="text-sm text-muted">{t('servers.console.nodeOffline')}</p>}
-      <div className="overflow-hidden rounded-2xl border border-border bg-[#07090d] shadow-xl shadow-black/30">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface/80 px-3 py-2">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-xl shadow-black/30">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span className="mr-auto flex items-center gap-2 text-sm font-medium">
             <TerminalIcon aria-hidden="true" className="size-4 text-accent" />
             {t('servers.console.title')}
@@ -137,7 +138,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
           <div ref={container} data-testid="console-output" className="size-full overflow-hidden" />
         </div>
         {canOnServer(me, server, Permission.ServerConsoleWrite) && (
-          <div className="border-t border-border bg-surface/60 p-2">
+          <div className="border-t border-border p-2">
             <CommandInput serverId={server.id} running={running} connected={server.nodeConnected} />
           </div>
         )}

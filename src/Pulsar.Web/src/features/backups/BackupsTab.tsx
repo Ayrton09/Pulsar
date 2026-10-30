@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
@@ -453,7 +454,7 @@ function BackupRow({
         <Badge tone={statusTones[backup.status]}>{t(`backups.statuses.${backup.status}`)}</Badge>
       </Td>
       <Td className="text-right whitespace-nowrap">
-        <span className="inline-flex flex-wrap justify-end gap-1">
+        <RowActions name={backup.name}>
           {completed && (
             <a
               href={backupDownloadUrl(serverId, backup.id)}
@@ -496,7 +497,7 @@ function BackupRow({
               {t('actions.delete')}
             </Button>
           )}
-        </span>
+        </RowActions>
       </Td>
     </tr>
   );

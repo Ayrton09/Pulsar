@@ -4,6 +4,7 @@
     "none": "Aucun",
     "never": "Jamais",
     "actions": "Actions",
+    "actionsOf": "Actions pour {{name}}",
     "opensInNewTab": "(s'ouvre dans un nouvel onglet)",
     "refreshFailed": "Actualisation impossible ; les données précédentes restent affichées. {{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "Menu",
     "openMenu": "Ouvrir le menu",
     "updates": "Mises à jour",
-    "signIn": "Connexion externe"
+    "signIn": "Connexion externe",
+    "themeLight": "Thème clair",
+    "themeDark": "Thème sombre"
   },
   "auth": {
     "userName": "Nom d'utilisateur",
@@ -985,6 +988,14 @@
       "label": "Langue du panneau",
       "hint": "Enregistrée dans ce navigateur. Chaque canal de notification garde sa propre langue.",
       "loadFailed": "Impossible de charger cette langue. Rechargez la page et réessayez."
+    },
+    "theme": {
+      "title": "Apparence",
+      "label": "Thème",
+      "hint": "Enregistré dans ce navigateur.",
+      "dark": "Sombre",
+      "light": "Clair",
+      "system": "Celui du système"
     },
     "password": "Mot de passe",
     "currentPassword": "Mot de passe actuel",

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
+import { chooseTheme, themeChoices, useTheme, type ThemeChoice } from '../../app/theme';
 import { Button } from '../../components/ui/Button';
 import { Alert, Card, PageHeader } from '../../components/ui/Display';
 import { Field, Input, Select } from '../../components/ui/Form';
@@ -48,6 +49,7 @@ export function AccountPage() {
       <div className="grid max-w-3xl gap-6">
         <ProfileForm />
         <LanguageSection />
+        <ThemeSection />
         <PasswordForm />
         <TwoFactorSection />
         <LinkedAccountsSection />
@@ -90,6 +92,28 @@ function LanguageSection() {
             {supportedLanguages.map((language) => (
               <option key={language} value={language} lang={language}>
                 {languageNames[language]}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+    </Card>
+  );
+}
+
+/** The panel's theme in this browser: dark until another is chosen here. */
+function ThemeSection() {
+  const { t } = useTranslation();
+  const { choice } = useTheme();
+  return (
+    <Card className="p-6">
+      <h2 className="mb-4 text-lg font-semibold">{t('account.theme.title')}</h2>
+      <Field label={t('account.theme.label')} hint={t('account.theme.hint')}>
+        {(ids) => (
+          <Select {...ids} value={choice} onChange={(e) => chooseTheme(e.target.value as ThemeChoice)}>
+            {themeChoices.map((option) => (
+              <option key={option} value={option}>
+                {t(`account.theme.${option}`)}
               </option>
             ))}
           </Select>

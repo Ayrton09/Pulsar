@@ -4,6 +4,7 @@
     "none": "Ninguno",
     "never": "Nunca",
     "actions": "Acciones",
+    "actionsOf": "Acciones de {{name}}",
     "opensInNewTab": "(se abre en una pestaña nueva)",
     "refreshFailed": "No se pudo actualizar; se muestra lo que se había cargado. {{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "Menú",
     "openMenu": "Abrir menú",
     "updates": "Actualizaciones",
-    "signIn": "Inicio de sesión externo"
+    "signIn": "Inicio de sesión externo",
+    "themeLight": "Tema claro",
+    "themeDark": "Tema oscuro"
   },
   "auth": {
     "userName": "Usuario",
@@ -985,6 +988,14 @@
       "label": "Idioma del panel",
       "hint": "Se guarda en este navegador. Cada canal de notificaciones tiene su propio idioma.",
       "loadFailed": "No se pudo cargar ese idioma. Recargá la página y probá de nuevo."
+    },
+    "theme": {
+      "title": "Apariencia",
+      "label": "Tema",
+      "hint": "Se guarda en este navegador.",
+      "dark": "Oscuro",
+      "light": "Claro",
+      "system": "El del sistema"
     },
     "password": "Contraseña",
     "currentPassword": "Contraseña actual",

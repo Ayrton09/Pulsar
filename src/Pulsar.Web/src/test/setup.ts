@@ -16,10 +16,10 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 };
 
-// Nor media queries: every query reports a narrow screen that never changes.
+// Nor media queries: a wide screen (a table's row actions in the row) in the dark, that never changes.
 window.matchMedia ??= (query: string) =>
   ({
-    matches: false,
+    matches: query.includes('min-width'),
     media: query,
     onchange: null,
     addEventListener() {},

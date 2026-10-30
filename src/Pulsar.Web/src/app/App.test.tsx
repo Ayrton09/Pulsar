@@ -288,4 +288,34 @@ describe('account', () => {
     expect(i18next.language).toBe('en');
     expect(localStorage.getItem('pulsar.language')).toBeNull();
   });
+
+  it('draws the panel dark until the light theme is chosen, here or from the menu, and keeps the choice', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    try {
+      const select = await screen.findByLabelText('Theme');
+      expect(select).toHaveValue('dark');
+      expect(document.documentElement.dataset.theme).toBeUndefined();
+
+      await user.selectOptions(select, 'light');
+      expect(document.documentElement.dataset.theme).toBe('light');
+      expect(localStorage.getItem('pulsar.theme')).toBe('light');
+      expect(api.mock.calls.map(([request]) => (request as Request).method)).not.toContain('PUT');
+
+      // The menu's button switches back, and the page's selector follows it.
+      await user.click(screen.getAllByRole('button', { name: 'Dark theme' }).at(0) as HTMLElement);
+      expect(document.documentElement.dataset.theme).toBeUndefined();
+      expect(select).toHaveValue('dark');
+      expect(screen.getAllByRole('button', { name: 'Light theme' }).length).toBeGreaterThan(0);
+    } finally {
+      localStorage.removeItem('pulsar.theme');
+      delete document.documentElement.dataset.theme;
+    }
+  });
 });

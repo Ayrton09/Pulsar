@@ -4,6 +4,7 @@
     "none": "无",
     "never": "从未",
     "actions": "操作",
+    "actionsOf": "{{name}} 的操作",
     "opensInNewTab": "（在新标签页中打开）",
     "refreshFailed": "无法刷新，显示的是之前加载的内容。{{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "菜单",
     "openMenu": "打开菜单",
     "updates": "更新",
-    "signIn": "外部登录"
+    "signIn": "外部登录",
+    "themeLight": "浅色主题",
+    "themeDark": "深色主题"
   },
   "auth": {
     "userName": "用户名",
@@ -985,6 +988,14 @@
       "label": "面板语言",
       "hint": "保存在此浏览器中。每个通知频道使用各自的语言。",
       "loadFailed": "无法加载该语言。请刷新页面后重试。"
+    },
+    "theme": {
+      "title": "外观",
+      "label": "主题",
+      "hint": "保存在此浏览器中。",
+      "dark": "深色",
+      "light": "浅色",
+      "system": "跟随系统"
     },
     "password": "密码",
     "currentPassword": "当前密码",

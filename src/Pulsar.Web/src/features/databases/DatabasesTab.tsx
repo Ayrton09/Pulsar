@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
@@ -121,37 +122,39 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
                 <Td>{formatDate(database.createdAt)}</Td>
                 {canManage && (
                   <Td className="text-right whitespace-nowrap">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={reveal.isPending}
-                      onClick={() =>
-                        reveal.mutate(database.id, {
-                          onSuccess: (credentials) => {
-                            setShown(credentials);
-                            reveal.reset();
-                          },
-                        })
-                      }
-                    >
-                      {t('databases.showPassword')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={rotate.isPending}
-                      onClick={() => rotatePassword(database)}
-                    >
-                      {t('databases.rotate')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={remove.isPending}
-                      onClick={() => deleteDatabase(database)}
-                    >
-                      {t('actions.delete')}
-                    </Button>
+                    <RowActions name={database.name}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={reveal.isPending}
+                        onClick={() =>
+                          reveal.mutate(database.id, {
+                            onSuccess: (credentials) => {
+                              setShown(credentials);
+                              reveal.reset();
+                            },
+                          })
+                        }
+                      >
+                        {t('databases.showPassword')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={rotate.isPending}
+                        onClick={() => rotatePassword(database)}
+                      >
+                        {t('databases.rotate')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={remove.isPending}
+                        onClick={() => deleteDatabase(database)}
+                      >
+                        {t('actions.delete')}
+                      </Button>
+                    </RowActions>
                   </Td>
                 )}
               </tr>

@@ -2,8 +2,9 @@
 
 /*
  * Design tokens. Components use the Tailwind utilities generated from @theme
- * (bg-surface, text-muted, …). The panel has one theme, dark: the browser's
- * own controls (scrollbars, date pickers) follow it through color-scheme.
+ * (bg-surface, text-muted, …). Dark by default; light when the root has
+ * data-theme="light" (chosen in My account, src/app/theme.ts). The browser's
+ * own controls (scrollbars, date pickers) follow each through color-scheme.
  */
 :root {
   color-scheme: dark;
@@ -19,7 +20,36 @@
   --pulsar-danger: #f26d6d;
   --pulsar-success: #4cc38a;
   --pulsar-warning: #e2b04a;
+  /* The faint glows behind the pages, and the sign-in pages' grid. */
+  --pulsar-glow: rgb(160 140 255 / 0.07);
+  --pulsar-glow-second: rgb(94 200 255 / 0.04);
+  --pulsar-glow-auth: rgb(160 140 255 / 0.14);
+  --pulsar-grid: rgb(255 255 255 / 0.035);
 }
+
+/* Text colors keep at least 4.5:1 on the surfaces (WCAG AA), as the dark ones do. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --pulsar-bg: #f4f5f9;
+  --pulsar-surface: #ffffff;
+  --pulsar-surface-raised: #eceef4;
+  --pulsar-border: #d9dde7;
+  --pulsar-text: #151923;
+  --pulsar-muted: #586174;
+  --pulsar-accent: #6a4ee0;
+  --pulsar-accent-strong: #5536cf;
+  --pulsar-accent-contrast: #ffffff;
+  --pulsar-danger: #c43a3a;
+  --pulsar-success: #18804f;
+  --pulsar-warning: #9a6700;
+  --pulsar-glow: rgb(106 78 224 / 0.08);
+  --pulsar-glow-second: rgb(30 140 200 / 0.05);
+  --pulsar-glow-auth: rgb(106 78 224 / 0.12);
+  --pulsar-grid: rgb(21 25 35 / 0.05);
+}
+
+/* light:… utilities, for the few things drawn differently in the light theme. */
+@custom-variant light (&:where([data-theme='light'] *));
 
 @theme inline {
   --color-bg: var(--pulsar-bg);
@@ -40,15 +70,34 @@ body {
   @apply bg-bg text-text antialiased;
   /* A faint glow of the accent behind the top of every page. */
   background-image:
-    radial-gradient(60rem 30rem at 85% -10%, rgb(160 140 255 / 0.07), transparent 70%),
-    radial-gradient(50rem 25rem at -10% -5%, rgb(94 200 255 / 0.04), transparent 70%);
+    radial-gradient(60rem 30rem at 85% -10%, var(--pulsar-glow), transparent 70%),
+    radial-gradient(50rem 25rem at -10% -5%, var(--pulsar-glow-second), transparent 70%);
   background-attachment: fixed;
+}
+
+/*
+ * On phones, text fields at 16px at least: iOS zooms the page into any smaller one it focuses (and stays zoomed).
+ * Outside Tailwind's layers, so it wins over a field's text-sm.
+ */
+@media (max-width: 47.99rem) {
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  select,
+  textarea {
+    font-size: max(1rem, 1em);
+  }
 }
 
 /* The menu panel on small screens slides in from the left, unless the user asked for less motion. */
 @keyframes pulsar-drawer-in {
   from {
     transform: translateX(-100%);
+  }
+}
+
+/* A table row's actions on a phone rise from the bottom (components/ui/RowActions.tsx). */
+@keyframes pulsar-sheet-in {
+  from {
+    transform: translateY(100%);
   }
 }
 
@@ -61,9 +110,9 @@ body {
 /* Behind the sign-in pages: a faint grid that fades out around the card, under a glow of the accent. */
 .pulsar-auth-backdrop {
   background-image:
-    radial-gradient(36rem 28rem at 50% 45%, rgb(160 140 255 / 0.14), transparent 70%),
-    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    radial-gradient(36rem 28rem at 50% 45%, var(--pulsar-glow-auth), transparent 70%),
+    linear-gradient(to right, var(--pulsar-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--pulsar-grid) 1px, transparent 1px);
   background-size:
     auto,
     48px 48px,

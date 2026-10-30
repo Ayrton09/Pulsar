@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
@@ -213,7 +214,7 @@ function TaskRow({ task, canEdit, showDelete, pending, onRun, onCancel, onEdit, 
         )}
       </Td>
       <Td className="text-right whitespace-nowrap">
-        <span className="inline-flex flex-wrap justify-end gap-1">
+        <RowActions name={task.name}>
           {canEdit && cancellable && (
             <Button
               variant="dangerSubtle"
@@ -266,7 +267,7 @@ function TaskRow({ task, canEdit, showDelete, pending, onRun, onCancel, onEdit, 
               {t('actions.delete')}
             </Button>
           )}
-        </span>
+        </RowActions>
       </Td>
     </tr>
   );

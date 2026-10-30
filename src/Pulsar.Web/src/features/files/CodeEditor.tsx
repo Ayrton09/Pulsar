@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import {
   drawSelection,
   EditorView,
@@ -12,34 +12,36 @@ import {
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { useEffect, useRef } from 'react';
+import { currentTheme, useTheme, type Theme } from '../../app/theme';
 import { languageFor } from './languages';
 
-// Colors from the panel's tokens. The panel is dark only: CodeMirror's own parts (search panel, tooltips) are told so.
-const theme = EditorView.theme(
-  {
-    '&': {
-      backgroundColor: 'var(--pulsar-bg)',
-      color: 'var(--pulsar-text)',
-      fontSize: '13px',
-      height: '100%',
+// Colors from the panel's tokens; CodeMirror's own parts (search panel, tooltips) are told whether the theme is dark.
+const editorTheme = (theme: Theme) =>
+  EditorView.theme(
+    {
+      '&': {
+        backgroundColor: 'var(--pulsar-bg)',
+        color: 'var(--pulsar-text)',
+        fontSize: '13px',
+        height: '100%',
+      },
+      '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace' },
+      '.cm-content': { caretColor: 'var(--pulsar-accent)' },
+      '.cm-gutters': {
+        backgroundColor: 'var(--pulsar-surface)',
+        color: 'var(--pulsar-muted)',
+        borderRight: '1px solid var(--pulsar-border)',
+      },
+      '.cm-activeLine, .cm-activeLineGutter': {
+        backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 8%, transparent)',
+      },
+      '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+        backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 30%, transparent)',
+      },
+      '.cm-panels': { backgroundColor: 'var(--pulsar-surface)', color: 'var(--pulsar-text)' },
     },
-    '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace' },
-    '.cm-content': { caretColor: 'var(--pulsar-accent)' },
-    '.cm-gutters': {
-      backgroundColor: 'var(--pulsar-surface)',
-      color: 'var(--pulsar-muted)',
-      borderRight: '1px solid var(--pulsar-border)',
-    },
-    '.cm-activeLine, .cm-activeLineGutter': {
-      backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 8%, transparent)',
-    },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 30%, transparent)',
-    },
-    '.cm-panels': { backgroundColor: 'var(--pulsar-surface)', color: 'var(--pulsar-text)' },
-  },
-  { dark: true },
-);
+    { dark: theme === 'dark' },
+  );
 
 const highlight = HighlightStyle.define([
   { tag: tags.comment, color: 'var(--pulsar-muted)', fontStyle: 'italic' },
@@ -77,6 +79,9 @@ export default function CodeEditor({
   onSave,
 }: CodeEditorProps) {
   const container = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView | null>(null);
+  const themes = useRef(new Compartment());
+  const { theme } = useTheme();
   const handlers = useRef({ onChange, onSave });
   useEffect(() => {
     handlers.current = { onChange, onSave };
@@ -87,7 +92,7 @@ export default function CodeEditor({
     if (!parent) {
       return;
     }
-    const view = new EditorView({
+    const editor = new EditorView({
       parent,
       state: EditorState.create({
         doc: initial,
@@ -103,7 +108,7 @@ export default function CodeEditor({
           syntaxHighlighting(highlight),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           languageFor(fileName),
-          theme,
+          themes.current.of(editorTheme(currentTheme())),
           lineSeparator ? EditorState.lineSeparator.of(lineSeparator) : [],
           EditorState.readOnly.of(readOnly),
           EditorView.contentAttributes.of(
@@ -132,10 +137,19 @@ export default function CodeEditor({
         ],
       }),
     });
-    return () => view.destroy();
+    view.current = editor;
+    return () => {
+      view.current = null;
+      editor.destroy();
+    };
     // The document is the editor's from here on; a new file mounts a new editor (keyed by the page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A theme changed while editing: the document and its history stay.
+  useEffect(() => {
+    view.current?.dispatch({ effects: themes.current.reconfigure(editorTheme(theme)) });
+  }, [theme]);
 
   return <div ref={container} className="h-[60vh] min-h-64 overflow-hidden rounded-md border border-border" />;
 }

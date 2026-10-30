@@ -4,6 +4,7 @@
     "none": "Keine",
     "never": "Nie",
     "actions": "Aktionen",
+    "actionsOf": "Aktionen für {{name}}",
     "opensInNewTab": "(öffnet in einem neuen Tab)",
     "refreshFailed": "Aktualisierung fehlgeschlagen; es werden die zuvor geladenen Daten angezeigt. {{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "Menü",
     "openMenu": "Menü öffnen",
     "updates": "Updates",
-    "signIn": "Externe Anmeldung"
+    "signIn": "Externe Anmeldung",
+    "themeLight": "Helles Design",
+    "themeDark": "Dunkles Design"
   },
   "auth": {
     "userName": "Benutzername",
@@ -985,6 +988,14 @@
       "label": "Sprache des Panels",
       "hint": "Wird in diesem Browser gespeichert. Jeder Benachrichtigungskanal behält seine eigene Sprache.",
       "loadFailed": "Diese Sprache konnte nicht geladen werden. Laden Sie die Seite neu und versuchen Sie es erneut."
+    },
+    "theme": {
+      "title": "Darstellung",
+      "label": "Design",
+      "hint": "Wird in diesem Browser gespeichert.",
+      "dark": "Dunkel",
+      "light": "Hell",
+      "system": "Wie das System"
     },
     "password": "Passwort",
     "currentPassword": "Aktuelles Passwort",

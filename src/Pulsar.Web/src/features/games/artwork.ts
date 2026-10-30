@@ -73,19 +73,20 @@ export function gameArtwork(templateKey: string, kind: ArtworkKind): string | nu
   return app === undefined ? null : `${steamArtworkOrigin}/store_item_assets/steam/apps/${app}/${files[kind]}`;
 }
 
+// Each theme's: deep in the dark one, light in the light one (they fade into the card's surface).
 const tiles = [
-  'from-violet-600/60 to-indigo-950',
-  'from-sky-600/60 to-slate-950',
-  'from-amber-600/60 to-stone-950',
-  'from-rose-600/60 to-zinc-950',
-  'from-teal-600/60 to-slate-950',
-  'from-fuchsia-600/60 to-neutral-950',
+  'from-violet-600/60 to-indigo-950 light:from-violet-500/70 light:to-indigo-200',
+  'from-sky-600/60 to-slate-950 light:from-sky-500/70 light:to-slate-200',
+  'from-amber-600/60 to-stone-950 light:from-amber-500/70 light:to-stone-200',
+  'from-rose-600/60 to-zinc-950 light:from-rose-500/70 light:to-zinc-200',
+  'from-teal-600/60 to-slate-950 light:from-teal-500/70 light:to-slate-200',
+  'from-fuchsia-600/60 to-neutral-950 light:from-fuchsia-500/70 light:to-neutral-200',
 ] as const;
 
 /** The gradient of a game's drawn tile: Minecraft's green, otherwise one picked by its key, the same every time. */
 export function tileGradient(templateKey: string): string {
   if (templateKey === 'minecraft' || templateKey === 'minecraft-bedrock') {
-    return 'from-emerald-600/70 to-green-950';
+    return 'from-emerald-600/70 to-green-950 light:from-emerald-500/80 light:to-green-200';
   }
   let hash = 0;
   for (const char of templateKey) {

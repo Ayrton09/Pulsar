@@ -4,6 +4,7 @@
     "none": "Nessuno",
     "never": "Mai",
     "actions": "Azioni",
+    "actionsOf": "Azioni per {{name}}",
     "opensInNewTab": "(si apre in una nuova scheda)",
     "refreshFailed": "Impossibile aggiornare; vengono mostrati i dati caricati in precedenza. {{error}}"
   },
@@ -36,7 +37,9 @@
     "menu": "Menu",
     "openMenu": "Apri il menu",
     "updates": "Aggiornamenti",
-    "signIn": "Accesso esterno"
+    "signIn": "Accesso esterno",
+    "themeLight": "Tema chiaro",
+    "themeDark": "Tema scuro"
   },
   "auth": {
     "userName": "Nome utente",
@@ -985,6 +988,14 @@
       "label": "Lingua del pannello",
       "hint": "Salvata in questo browser. Ogni canale di notifica mantiene la propria lingua.",
       "loadFailed": "Impossibile caricare questa lingua. Ricaricare la pagina e riprovare."
+    },
+    "theme": {
+      "title": "Aspetto",
+      "label": "Tema",
+      "hint": "Salvato in questo browser.",
+      "dark": "Scuro",
+      "light": "Chiaro",
+      "system": "Come il sistema"
     },
     "password": "Password",
     "currentPassword": "Password attuale",

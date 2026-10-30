@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { endsSession } from '../../app/queryClient';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
@@ -293,7 +294,7 @@ function FileBrowser({
                       {formatDate(entry.modifiedAt)}
                     </Td>
                     <Td className="text-right whitespace-nowrap">
-                      <span className="inline-flex gap-1">
+                      <RowActions name={visibleName(entry.name)}>
                         {entry.kind === 'file' && (
                           <a
                             href={downloadUrl(serverId, target)}
@@ -347,7 +348,7 @@ function FileBrowser({
                             </Button>
                           </>
                         )}
-                      </span>
+                      </RowActions>
                     </Td>
                   </tr>
                 );

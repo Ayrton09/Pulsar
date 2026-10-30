@@ -10,10 +10,12 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   ScrollText,
   Server,
   LogIn,
   ShieldCheck,
+  Sun,
   Users,
   X,
   type LucideIcon,
@@ -21,6 +23,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet } from 'react-router';
+import { chooseTheme, useTheme } from '../../app/theme';
 import { Button } from '../../components/ui/Button';
 import { Logo } from '../../components/ui/Logo';
 import { errorMessage } from '../../lib/errors';
@@ -122,6 +125,7 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const user = useCurrentUser();
   const logout = useLogout();
   const name = user.displayName ?? user.userName;
+  const { theme } = useTheme();
 
   const visible = (items: NavItem[]) =>
     items.filter((item) => item.anyOf.length === 0 || canAnywhere(user, ...item.anyOf));
@@ -202,6 +206,15 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
             <span className="block truncate text-xs text-muted">{t('nav.account')}</span>
           </span>
         </NavLink>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={theme === 'dark' ? Sun : Moon}
+          className="mt-1 w-full justify-start text-muted hover:text-text"
+          onClick={() => chooseTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          {t(theme === 'dark' ? 'nav.themeLight' : 'nav.themeDark')}
+        </Button>
         <Button
           variant="ghost"
           size="sm"
