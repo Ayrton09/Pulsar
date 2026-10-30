@@ -256,6 +256,8 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         Assert.Equal("restart in 5 s", crashed.Detail);
         _clock.Advance(TimeSpan.FromSeconds(5));
         await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.AutoRestart);
+        // Starting is said before the process is started: what follows it in the mailbox is done first.
+        await supervisor.FlushAsync();
         Assert.Equal(2, _processes.Started.Count);
         Assert.Equal(new ProcessLimits(null, 512L * 1024 * 1024), _processes.Specs[1].Limits);
     }
