@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "kf2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Killing Floor 2",
   "description": "Killing Floor 2 dedicated server, installed anonymously with SteamCMD. Its settings are the PCServer files of KFGame/Config, which its first start writes.",
   "authors": [
@@ -20,9 +20,9 @@
       "key": "name",
       "label": "Server name",
       "type": "string",
-      "default": "Pulsar Killing Floor 2",
       "maxLength": 64,
-      "pattern": "^[^\"\\\\?]{1,64}$"
+      "pattern": "^[^\"\\\\?]{1,64}$",
+      "description": "Leave it empty for the game's own name."
     },
     {
       "key": "map",

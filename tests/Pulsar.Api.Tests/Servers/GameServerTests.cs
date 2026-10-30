@@ -70,7 +70,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         Assert.Equal(["+map", "cs_office"], game.Arguments.SkipWhile(a => a != "+map").Take(2));
         Assert.Equal(27015, game.GamePort);
         var config = await File.ReadAllTextAsync(Path.Combine(root, "cstrike", "cfg", "server.cfg"), Ct);
-        Assert.Contains("hostname \"Pulsar CS:S\"", config, StringComparison.Ordinal);
+        Assert.DoesNotContain("hostname", config, StringComparison.Ordinal); // no name given: the game's own
         Assert.Contains("sv_password \"join-me\"", config, StringComparison.Ordinal);
 
         await ServerApi.CommandAsync(admin, created.Server.Id, "stop");

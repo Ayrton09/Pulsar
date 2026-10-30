@@ -48,6 +48,12 @@ public sealed class BundledGameSettingsTests
                 continue; // a boolean: always written, true or false
             }
 
+            if (option.Label == "Server name")
+            {
+                // Pulsar wrote a name of its own there until 1.0.21: left empty, the line goes, and the game's own name with it.
+                continue;
+            }
+
             // Unset, the lines it would set are not written: the admin's own values stay.
             foreach (var file in manifest.ConfigFileList)
             {
@@ -58,6 +64,49 @@ public sealed class BundledGameSettingsTests
                 }
             }
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(Games))]
+    public void AServerNameLeftEmptyIsNotPulsarsAndLeavesTheGamesOwn(string game)
+    {
+        var manifest = TestManifests.Load(game);
+        if (manifest.VariableList.SingleOrDefault(v => v.Label == "Server name") is not { } name)
+        {
+            return;
+        }
+
+        Assert.Null(name.Default);
+        var required = manifest.VariableList.Where(v => v.Required && v.Default is null)
+            .ToDictionary(v => v.Key, v => (string?)Sample(v), StringComparer.Ordinal);
+        var plan = Render(manifest, required);
+
+        // No argument for it, and its lines are taken out of the files (Pulsar's former name with them).
+        Assert.DoesNotContain(plan.Arguments, a => a.EndsWith('='));
+        foreach (var file in manifest.ConfigFileList)
+        {
+            foreach (var key in file.Set.Where(e => e.Value.Contains($"{{{{var.{name.Key}}}}}", StringComparison.Ordinal)).Select(e => e.Key))
+            {
+                Assert.All(plan.ConfigFiles.Where(f => f.Path == file.Path).SelectMany(f => f.Entries).Where(e => e.Key == key), e => Assert.Equal("", e.Value));
+            }
+        }
+
+        var named = Render(manifest, new Dictionary<string, string?>(required) { [name.Key] = "Mi servidor" });
+        Assert.Contains("Mi servidor", Text(named), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("css", "cstrike/cfg/server.cfg", "hostname \"Pulsar CS:S\"\nsv_cheats 0\n", "hostname")]
+    [InlineData("squad", "SquadGame/ServerConfig/Server.cfg", "ServerName=\"Pulsar Squad\"\nMaxPlayers=98\n", "ServerName")]
+    public void TheNamePulsarWroteBeforeGoesWhenTheNameIsEmpty(string game, string path, string existing, string key)
+    {
+        var manifest = TestManifests.Load(game);
+        var plan = Render(manifest, new Dictionary<string, string?>());
+
+        var text = ConfigFileWriter.Apply(plan.ConfigFiles.Single(f => f.Path == path), existing);
+
+        Assert.DoesNotContain(key, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Pulsar", text, StringComparison.Ordinal);
     }
 
     [Fact]

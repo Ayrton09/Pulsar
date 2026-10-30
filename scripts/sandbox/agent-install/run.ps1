@@ -370,7 +370,7 @@ try {
         foreach ($candidate in (Api GET '/api/v1/templates')) { if ($candidate.key -eq 'css') { $css = $candidate } }
         $game = (Api POST '/api/v1/servers' @{
             nodeId = $nodeId; templateId = $css.id; name = 'sandbox-css'; description = $null
-            variables = @{ map = 'cs_office'; maxPlayers = '12'; password = 'sandbox-join' }
+            variables = @{ hostname = 'Sandbox CS:S'; map = 'cs_office'; maxPlayers = '12'; password = 'sandbox-join' }
         })
         $gameId = $game.server.id
         $gameAccount = "pulsar_$($game.server.shortId)"
@@ -403,7 +403,7 @@ try {
         $srcdsOwner = if ($srcds.Count -eq 1) { Invoke-CimMethod -InputObject $srcds[0] -MethodName GetOwner } else { $null }
         Check 'css: srcds runs as its account with the configured values' ($srcds.Count -eq 1 -and $srcdsOwner.User -eq $gameAccount -and $srcds[0].CommandLine -match '\+map cs_office' -and $srcds[0].CommandLine -match '\+maxplayers 12') "$($srcdsOwner.User): $($srcds[0].CommandLine -replace '\+rcon_password \S+', '+rcon_password ***')"
         $cfg = Get-Content (Join-Path $gameDir 'cstrike\cfg\server.cfg') -Raw
-        Check 'css: server.cfg written before the start' ($cfg -match 'hostname "Pulsar CS:S"' -and $cfg -match 'sv_password "sandbox-join"') (($cfg -split "`n" | Where-Object { $_ -match '^(hostname|sv_password)' }) -join ' | ')
+        Check 'css: server.cfg written before the start' ($cfg -match 'hostname "Sandbox CS:S"' -and $cfg -match 'sv_password "sandbox-join"') (($cfg -split "`n" | Where-Object { $_ -match '^(hostname|sv_password)' }) -join ' | ')
         $udpRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) game udp" -ErrorAction SilentlyContinue
         $tcpRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) game tcp" -ErrorAction SilentlyContinue
         $udpPort = if ($udpRule) { ($udpRule | Get-NetFirewallPortFilter).LocalPort } else { '' }

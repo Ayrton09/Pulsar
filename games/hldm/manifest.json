@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hldm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Half-Life Deathmatch",
   "description": "Half-Life Deathmatch dedicated server (hlds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 2, "minMemoryMb": 512 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar HL Deathmatch", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "crossfire", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "The game's maps: boot_camp, bounce, crossfire, datacore, frenzy, gasworks, lambda_bunker, rapidcore, snark_pit, stalkyard, subtransit, undertow." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 32 },

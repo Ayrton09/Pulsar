@@ -41,7 +41,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             Assert.Equal(Pulsar.Domain.Servers.TemplateSource.Imported, details.Template.Source);
         }
 
-        using (var again = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(manifest.Replace("Pulsar CS:S", "Changed", StringComparison.Ordinal))))
+        using (var again = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(manifest.Replace("de_dust2", "de_inferno", StringComparison.Ordinal))))
         {
             Assert.Equal(HttpStatusCode.Conflict, again.StatusCode); // same key and version: templates never change
         }

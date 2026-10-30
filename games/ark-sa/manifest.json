@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ark-sa",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "name": "ARK: Survival Ascended",
   "description": "ARK: Survival Ascended dedicated server, installed anonymously with SteamCMD (about 12 GB). Dedicated servers are for personal, non-commercial use unless you have a licence from its publisher; read this game's README.",
   "authors": ["Pulsar contributors"],
@@ -11,8 +11,8 @@
   "requirements": { "minDiskGb": 25, "minMemoryMb": 16384 },
 
   "variables": [
-    { "key": "sessionName", "label": "Server name", "type": "string", "default": "Pulsar ARK", "maxLength": 63, "pattern": "^[^?\";\\\\]{1,63}$",
-      "description": "As players see it in the server list." },
+    { "key": "sessionName", "label": "Server name", "type": "string", "maxLength": 63, "pattern": "^[^?\";\\\\]{1,63}$",
+      "description": "As players see it in the server list. Leave it empty for the game's own name." },
     { "key": "map", "label": "Map", "type": "string", "default": "TheIsland_WP", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "The map's name with its _WP suffix: TheIsland_WP, ScorchedEarth_WP, TheCenter_WP, Aberration_WP, Extinction_WP…" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 70, "min": 1, "max": 200 },
@@ -102,7 +102,9 @@
       "executable": "ShooterGame/Binaries/Win64/ArkAscendedServer.exe",
       "workingDirectory": "ShooterGame/Binaries/Win64",
       "arguments": [
-        "{{var.map}}?listen?SessionName={{var.sessionName}}?Port={{port.game}}",
+        { "if": "var.sessionName",
+          "then": ["{{var.map}}?listen?SessionName={{var.sessionName}}?Port={{port.game}}"],
+          "else": ["{{var.map}}?listen?Port={{port.game}}"] },
         "-WinLiveMaxPlayers={{var.maxPlayers}}",
         { "if": "var.mods", "then": ["-mods={{var.mods}}"] },
         { "if": "var.battleye", "then": [], "else": ["-NoBattlEye"] },

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "rust",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "name": "Rust",
   "description": "Rust dedicated server, installed anonymously with SteamCMD (about 6 GB). Generating a new map takes several minutes and a lot of memory.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 15, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar Rust", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "description", "label": "Description", "type": "string", "default": "", "maxLength": 200, "pattern": "^[^\";]{0,200}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 50, "min": 1, "max": 500 },
     { "key": "worldSize", "label": "Map size", "type": "integer", "default": 3000, "min": 1000, "max": 6000,
@@ -91,7 +91,7 @@
         "+server.seed", "{{var.seed}}",
         "+server.worldsize", "{{var.worldSize}}",
         "+server.maxplayers", "{{var.maxPlayers}}",
-        "+server.hostname", "{{var.hostname}}",
+        { "if": "var.hostname", "then": ["+server.hostname", "{{var.hostname}}"] },
         "+server.description", "{{var.description}}",
         { "if": "var.pve", "then": ["+server.pve", "{{var.pve.value}}"] },
         { "if": "var.globalChat", "then": ["+server.globalchat", "{{var.globalChat.value}}"] },

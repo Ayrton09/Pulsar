@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "pvkii",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Pirates, Vikings, and Knights II",
   "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar PVKII", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "bt_glacier", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "Booty (bt_), team wars (tw_), territory (te_), last team standing (lts_), duel (duel_) or competitive (comp_) maps: bt_island, tw_tortuga, te_cara, lts_arena…" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 2, "max": 32 },

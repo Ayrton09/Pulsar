@@ -435,14 +435,20 @@ public static partial class LaunchPlanRenderer
             environment[LaunchPlan.DotnetRootVariable + "_X64"] = root;
         }
 
+        // A value made of options all left empty is empty, whatever text goes around them (Squad's quotes around its name).
+        string Setting(string template) =>
+            Placeholders.Parse(template, out _) is { Count: > 0 } used && used.All(p => p is ["var", var key] && string.IsNullOrEmpty(resolved[key]))
+                ? ""
+                : Placeholders.Replace(template, Placeholder);
+
         // A key kept when empty (an option left unset) is not written at all: its line stays as the file has it.
         var configFiles = manifest.ConfigFileList.Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
         [
             .. file.Set.Where(entry => file.KeepIfEmpty?.Contains(entry.Key, StringComparer.OrdinalIgnoreCase) != true
-                    || Placeholders.Replace(entry.Value, Placeholder).Length > 0)
+                    || Setting(entry.Value).Length > 0)
                 .Select(entry =>
             {
-                var value = Placeholders.Replace(entry.Value, Placeholder);
+                var value = Setting(entry.Value);
                 var secret = IsSecret(entry.Value);
                 if (ConfigFileWriter.ValueError(file.Format, value) is { } error)
                 {

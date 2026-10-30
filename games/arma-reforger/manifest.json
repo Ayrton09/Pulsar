@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "arma-reforger",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "name": "Arma Reforger",
   "description": "Arma Reforger dedicated server, installed anonymously with SteamCMD. Its settings are in server.json and its logs, saves and mods in the profile folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Arma Reforger", "maxLength": 100, "pattern": "^[^\"]{1,100}$" },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 100, "pattern": "^[^\"]{1,100}$", "description": "Leave it empty for the game's own name." },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
       "description": "Players need it to join. Leave empty for a public server." },
     { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{3,32}$",

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "sandstorm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Insurgency: Sandstorm",
   "description": "Insurgency: Sandstorm dedicated server, installed anonymously with SteamCMD, with commands over RCON.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 8, "minMemoryMb": 4096 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Sandstorm", "maxLength": 64, "pattern": "^[^\"?]{1,64}$" },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"?]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "scenario", "label": "Scenario", "type": "enum", "default": "Scenario_Crossing_Checkpoint_Security",
       "options": [
         {"value": "Scenario_Bab_Checkpoint_Security", "label": "Bab: Checkpoint (Security)", "map": {"level": "Bab"}},
@@ -307,7 +307,7 @@
           "else": ["{{var.scenario.level}}?Scenario={{var.scenario}}?Lighting={{var.lighting}}?MaxPlayers={{var.maxPlayers}}"] },
         "-Port={{port.game}}",
         "-QueryPort={{port.query}}",
-        "-hostname={{var.name}}",
+        { "if": "var.name", "then": ["-hostname={{var.name}}"] },
         "-log",
         { "if": "var.gslt", "then": ["-GSLTToken={{var.gslt}}"] }
       ],

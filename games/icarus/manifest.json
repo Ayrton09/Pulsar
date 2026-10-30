@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "icarus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Icarus",
   "description": "Icarus dedicated server, installed anonymously with SteamCMD. Players launch and resume prospects from its lobby; its prospects and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Icarus", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 8 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
       "description": "Players need it to join. Leave empty for a public server." },
@@ -41,7 +41,7 @@
       "executable": "Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe",
       "arguments": [
         "-Log",
-        "-SteamServerName={{var.name}}",
+        { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },
         "-PORT={{port.game}}",
         "-QueryPort={{port.query}}"
       ],

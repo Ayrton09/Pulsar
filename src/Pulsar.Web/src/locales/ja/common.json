@@ -2588,7 +2588,8 @@
       "description": "7 Days to Die の専用サーバーです。SteamCMD で匿名インストールされます(約 17 GB)。設定は pulsar-serverconfig.xml にあります。これはゲーム本来の serverconfig.xml のコピーで、アップデートでは上書きされません。",
       "variables": {
         "serverName": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "password": {
           "label": "参加パスワード",
@@ -2762,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "サーバー名",
-          "description": "サーバーリストでプレイヤーに表示される名前です。"
+          "description": "サーバーリストでプレイヤーに表示される名前です。 空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "マップ",
@@ -2961,7 +2962,8 @@
       "description": "Arma Reforger の専用サーバーです。SteamCMD で匿名インストールされます。設定は server.json に、ログ、セーブ、Mod はサーバーの profile フォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "password": {
           "label": "参加パスワード",
@@ -3112,7 +3114,8 @@
       "description": "Counter-Strike 2 の専用サーバーです。SteamCMD で匿名インストールされます(約 75 GB)。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ"
@@ -3286,7 +3289,8 @@
       "description": "Counter-Strike: Source の専用サーバー(srcds)です。SteamCMD で匿名インストールされます。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ"
@@ -3494,7 +3498,8 @@
       "description": "Enshrouded の専用サーバーです。SteamCMD で匿名インストールされます。設定は enshrouded_server.json に、ワールドはサーバーの savegame フォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "password": {
           "label": "参加パスワード",
@@ -3771,7 +3776,8 @@
       "description": "Left 4 Dead 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 10 GB)。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ",
@@ -4094,7 +4100,8 @@
       "description": "Palworld の専用サーバーです。SteamCMD で匿名インストールされます(約 4 GB)。Pulsar は RCON で操作します。そのほかのワールド設定は PalWorldSettings.ini に手動で追加できます。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "description": {
           "label": "説明"
@@ -4330,7 +4337,8 @@
       "description": "Project Zomboid の専用サーバーです。SteamCMD で匿名インストールされ(約 7 GB)、同梱の Java ランタイムで動作します。ワールドと設定はサーバーの zomboid フォルダーにあります。",
       "variables": {
         "publicName": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "adminPassword": {
           "label": "管理者パスワード",
@@ -4578,7 +4586,8 @@
       "description": "Rust の専用サーバーです。SteamCMD で匿名インストールされます(約 6 GB)。新しいマップの生成には数分と多くのメモリが必要です。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "description": {
           "label": "説明"
@@ -4743,7 +4752,7 @@
         },
         "serverName": {
           "label": "サーバー名",
-          "description": "サーバーリストでプレイヤーに表示される名前です。ゲームのカラータグ(<color=red>…</color>)が使えます。"
+          "description": "サーバーリストでプレイヤーに表示される名前です。ゲームのカラータグ(<color=red>…</color>)が使えます。 空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット数"
@@ -4911,7 +4920,8 @@
       "description": "Sons of the Forest の専用サーバーです。SteamCMD で匿名インストールされます。設定、セーブ、管理者リストはサーバーの userdata フォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "password": {
           "label": "参加パスワード",
@@ -5134,7 +5144,8 @@
       "description": "Team Fortress 2 の専用サーバー(srcds の 64 ビット版)です。SteamCMD で匿名インストールされます(約 15 GB)。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ"
@@ -5330,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "サーバー名",
-          "description": "5〜50 文字。"
+          "description": "5〜50 文字。 空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "マップ",
@@ -5415,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "サーバー名",
-          "description": "サーバーリストに表示されます。パスワードを含めることはできません。"
+          "description": "サーバーリストに表示されます。パスワードを含めることはできません。 空欄にするとゲーム自身の名前になります。"
         },
         "world": {
           "label": "ワールド",
@@ -5549,7 +5560,8 @@
       "description": "V Rising の専用サーバーです。SteamCMD で匿名インストールされます。設定とセーブはサーバーの save-data フォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "description": {
           "label": "説明",
@@ -5830,7 +5842,7 @@
         },
         "serverName": {
           "label": "サーバー名",
-          "description": "サーバー一覧でプレイヤーに表示されます。"
+          "description": "サーバー一覧でプレイヤーに表示されます。 空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット数"
@@ -5944,7 +5956,8 @@
       "description": "Abiotic Factor の専用サーバーです。SteamCMD で匿名インストールされます。ワールドとサンドボックスのルールはサーバーのフォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "world": {
           "label": "ワールド",
@@ -6060,7 +6073,8 @@
       "description": "Conan Exiles の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。ワールドと設定はサーバーのフォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット"
@@ -6211,7 +6225,8 @@
       "description": "Don't Starve Together の専用サーバー(地上)です。SteamCMD で匿名インストールされます。Klei のクラスタートークンがあればオンライン、なければローカルネットワークで動作します。ワールドと設定はサーバーのフォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "description": {
           "label": "説明",
@@ -6279,7 +6294,8 @@
       "description": "Icarus の専用サーバーです。SteamCMD で匿名インストールされます。プレイヤーはロビーからプロスペクトを開始・再開します。プロスペクトと設定はサーバーのフォルダーにあります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット"
@@ -6334,7 +6350,8 @@
       "description": "Killing Floor 2 の専用サーバーです。SteamCMD で匿名インストールされます。設定は KFGame/Config の PCServer ファイルで、初回起動時に作成されます。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "マップ",
@@ -6471,7 +6488,8 @@
       "description": "Insurgency: Sandstorm の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "scenario": {
           "label": "シナリオ",
@@ -6810,7 +6828,8 @@
       "description": "Soulmask の専用サーバーです。SteamCMD で匿名インストールされます。ワールドはサーバーのフォルダーにあり、Pulsar はゲーム自身のコンソールで保存と停止を行います。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット"
@@ -6855,7 +6874,8 @@
       "description": "Space Engineers の専用サーバーです。SteamCMD で匿名インストールされます。設定とセーブデータはサーバーのインスタンスフォルダーにあり、新しいワールドはゲームのシナリオのいずれかから始まります。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "world": {
           "label": "ワールド",
@@ -6959,7 +6979,8 @@
       "description": "Squad の専用サーバーです。SteamCMD で匿名インストールされ、RCON でコマンドを送れます。設定は SquadGame/ServerConfig フォルダーのファイルです。",
       "variables": {
         "name": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "maxPlayers": {
           "label": "スロット"
@@ -7041,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "サーバー名",
-          "description": "ワールド名の代わりにプレイヤーに表示されます。"
+          "description": "ワールド名の代わりにプレイヤーに表示されます。 空欄にするとゲーム自身の名前になります。"
         },
         "world": {
           "label": "ワールド",
@@ -7105,7 +7126,8 @@
       "description": "Half-Life 2: Deathmatch の専用サーバー（srcds）。SteamCMD で匿名インストールします。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ",
@@ -7260,7 +7282,8 @@
       "description": "Pirates, Vikings, and Knights II の専用サーバー（srcds、64 ビット）。SteamCMD で匿名インストールします（約 6 GB）。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ",
@@ -7384,7 +7407,8 @@
       "description": "Counter-Strike 1.6 専用サーバー (hlds)。SteamCMD で匿名インストールします。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ",
@@ -7544,7 +7568,8 @@
       "description": "Half-Life Deathmatch 専用サーバー (hlds)。SteamCMD で匿名インストールします。",
       "variables": {
         "hostname": {
-          "label": "サーバー名"
+          "label": "サーバー名",
+          "description": "空欄にするとゲーム自身の名前になります。"
         },
         "map": {
           "label": "開始マップ",

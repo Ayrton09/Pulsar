@@ -2588,7 +2588,8 @@
       "description": "7 Days to Die 专用服务器，通过 SteamCMD 匿名安装（约 17 GB）。其设置位于 pulsar-serverconfig.xml，这是游戏自带 serverconfig.xml 的副本，更新不会覆盖它。",
       "variables": {
         "serverName": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "password": {
           "label": "加入密码",
@@ -2762,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "服务器名称",
-          "description": "玩家在服务器列表中看到的名称。"
+          "description": "玩家在服务器列表中看到的名称。 留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "地图",
@@ -2961,7 +2962,8 @@
       "description": "Arma Reforger 专用服务器，通过 SteamCMD 匿名安装。其设置位于 server.json，日志、存档和模组位于服务器的 profile 文件夹。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "password": {
           "label": "加入密码",
@@ -3112,7 +3114,8 @@
       "description": "Counter-Strike 2 专用服务器，通过 SteamCMD 匿名安装（约 75 GB）。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图"
@@ -3286,7 +3289,8 @@
       "description": "Counter-Strike: Source 专用服务器（srcds），通过 SteamCMD 匿名安装。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图"
@@ -3494,7 +3498,8 @@
       "description": "Enshrouded 专用服务器，通过 SteamCMD 匿名安装。其设置位于 enshrouded_server.json，世界位于服务器的 savegame 文件夹。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "password": {
           "label": "加入密码",
@@ -3771,7 +3776,8 @@
       "description": "Left 4 Dead 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 10 GB）。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图",
@@ -4094,7 +4100,8 @@
       "description": "Palworld 专用服务器，通过 SteamCMD 匿名安装（约 4 GB）。Pulsar 通过 RCON 与其通信；其他世界设置可手动添加到 PalWorldSettings.ini。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "description": {
           "label": "描述"
@@ -4330,7 +4337,8 @@
       "description": "Project Zomboid 专用服务器，通过 SteamCMD 匿名安装（约 7 GB），使用其自带的 Java 运行时运行。其世界和设置位于服务器的 zomboid 文件夹。",
       "variables": {
         "publicName": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "adminPassword": {
           "label": "管理员密码",
@@ -4578,7 +4586,8 @@
       "description": "Rust 专用服务器，通过 SteamCMD 匿名安装（约 6 GB）。生成新地图需要几分钟和大量内存。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "description": {
           "label": "描述"
@@ -4743,7 +4752,7 @@
         },
         "serverName": {
           "label": "服务器名称",
-          "description": "玩家在服务器列表中看到的名称。游戏的颜色标签（<color=red>…</color>）可用。"
+          "description": "玩家在服务器列表中看到的名称。游戏的颜色标签（<color=red>…</color>）可用。 留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "玩家名额"
@@ -4911,7 +4920,8 @@
       "description": "Sons of the Forest 专用服务器，通过 SteamCMD 匿名安装。其设置、存档和管理员列表位于服务器的 userdata 文件夹。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "password": {
           "label": "加入密码",
@@ -5134,7 +5144,8 @@
       "description": "Team Fortress 2 专用服务器（srcds 的 64 位版本），通过 SteamCMD 匿名安装（约 15 GB）。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图"
@@ -5330,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "5 到 50 个字符。"
+          "description": "5 到 50 个字符。 留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "地图",
@@ -5415,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "显示在服务器列表中。不能包含密码。"
+          "description": "显示在服务器列表中。不能包含密码。 留空则使用游戏自带的名称。"
         },
         "world": {
           "label": "世界",
@@ -5549,7 +5560,8 @@
       "description": "V Rising 专用服务器，通过 SteamCMD 匿名安装。其设置和存档位于服务器的 save-data 文件夹。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "description": {
           "label": "描述",
@@ -5830,7 +5842,7 @@
         },
         "serverName": {
           "label": "服务器名称",
-          "description": "玩家会在服务器列表中看到它。"
+          "description": "玩家会在服务器列表中看到它。 留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "人数上限"
@@ -5944,7 +5956,8 @@
       "description": "Abiotic Factor 专用服务器,通过 SteamCMD 匿名安装。世界和沙盒规则位于服务器文件夹中。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "world": {
           "label": "世界",
@@ -6060,7 +6073,8 @@
       "description": "Conan Exiles 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。世界和设置位于服务器文件夹中。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6211,7 +6225,8 @@
       "description": "Don't Starve Together 专用服务器(地上世界),通过 SteamCMD 匿名安装。有 Klei 集群令牌时在线运行,没有则只在局域网运行。世界和设置位于服务器文件夹中。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "description": {
           "label": "描述",
@@ -6279,7 +6294,8 @@
       "description": "Icarus 专用服务器,通过 SteamCMD 匿名安装。玩家在大厅启动并继续勘探;勘探和设置位于服务器文件夹中。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6334,7 +6350,8 @@
       "description": "Killing Floor 2 专用服务器,通过 SteamCMD 匿名安装。设置为 KFGame/Config 中的 PCServer 文件,首次启动时生成。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "地图",
@@ -6471,7 +6488,8 @@
       "description": "Insurgency: Sandstorm 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "scenario": {
           "label": "场景",
@@ -6810,7 +6828,8 @@
       "description": "Soulmask 专用服务器,通过 SteamCMD 匿名安装。世界位于服务器文件夹中;Pulsar 通过游戏自带的控制台保存并停止它。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6855,7 +6874,8 @@
       "description": "Space Engineers 专用服务器,通过 SteamCMD 匿名安装。设置和存档位于服务器的实例文件夹中;新世界从游戏的某个场景开始。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "world": {
           "label": "世界",
@@ -6959,7 +6979,8 @@
       "description": "Squad 专用服务器,通过 SteamCMD 匿名安装,可通过 RCON 发送命令。设置为其 SquadGame/ServerConfig 文件夹中的文件。",
       "variables": {
         "name": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -7041,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "向玩家显示,代替世界名称。"
+          "description": "向玩家显示,代替世界名称。 留空则使用游戏自带的名称。"
         },
         "world": {
           "label": "世界",
@@ -7105,7 +7126,8 @@
       "description": "Half-Life 2: Deathmatch 专用服务器（srcds），使用 SteamCMD 匿名安装。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图",
@@ -7260,7 +7282,8 @@
       "description": "Pirates, Vikings, and Knights II 专用服务器（srcds，64 位），使用 SteamCMD 匿名安装（约 6 GB）。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图",
@@ -7384,7 +7407,8 @@
       "description": "Counter-Strike 1.6 专用服务器（hlds），通过 SteamCMD 匿名安装。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图",
@@ -7544,7 +7568,8 @@
       "description": "Half-Life Deathmatch 专用服务器（hlds），通过 SteamCMD 匿名安装。",
       "variables": {
         "hostname": {
-          "label": "服务器名称"
+          "label": "服务器名称",
+          "description": "留空则使用游戏自带的名称。"
         },
         "map": {
           "label": "起始地图",

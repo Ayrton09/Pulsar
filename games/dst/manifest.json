@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "dst",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Don't Starve Together",
   "description": "Don't Starve Together dedicated server (the overworld), installed anonymously with SteamCMD. Online with a Klei cluster token, on the local network without one. Its world and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 6, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Don't Starve Together", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$" },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"\\\\]{1,200}$",
       "description": "Shown under the name in the server list." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 6, "min": 1, "max": 64 },

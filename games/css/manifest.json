@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 4, "minMemoryMb": 1024 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar CS:S", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "de_dust2", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 64 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",

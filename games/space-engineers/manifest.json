@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "space-engineers",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Space Engineers",
   "description": "Space Engineers dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the instance folder of the server; a new world starts from one of the game's scenarios.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Space Engineers", "maxLength": 64, "pattern": "^[^\"<>&]{1,64}$" },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"<>&]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "world", "label": "World", "type": "string", "default": "Pulsar World", "maxLength": 64, "pattern": "^[A-Za-z0-9 _-]{1,64}$",
       "description": "The save's name in instance/Saves." },
     { "key": "scenario", "label": "Scenario of a new world", "type": "enum", "default": "StarSystem",

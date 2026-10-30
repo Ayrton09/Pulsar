@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "unturned",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "name": "Unturned",
   "description": "Unturned dedicated server, installed anonymously with SteamCMD. Its settings and world live in Servers/pulsar of the server folder; to be listed on the internet it needs a game server login token.",
   "authors": ["Pulsar contributors"],
@@ -11,8 +11,8 @@
   "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Unturned", "maxLength": 50, "pattern": "^[^\"]{5,50}$",
-      "description": "5 to 50 characters." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 50, "pattern": "^[^\"]{5,50}$",
+      "description": "5 to 50 characters. Leave it empty for the game's own name." },
     { "key": "map", "label": "Map", "type": "string", "default": "PEI", "maxLength": 64, "pattern": "^[A-Za-z0-9 _'-]{1,64}$",
       "description": "As the game names it, capitals included: PEI, Washington, Russia, Germany…" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 1, "max": 200 },

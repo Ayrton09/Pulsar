@@ -2588,7 +2588,8 @@
       "description": "Servidor dedicado de 7 Days to Die, instalado anonimamente com o SteamCMD (cerca de 17 GB). Suas configurações ficam em pulsar-serverconfig.xml, uma cópia do serverconfig.xml do jogo que as atualizações não alteram.",
       "variables": {
         "serverName": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "password": {
           "label": "Senha de entrada",
@@ -2762,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "Nome do servidor",
-          "description": "Como os jogadores o veem na lista de servidores."
+          "description": "Como os jogadores o veem na lista de servidores. Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa",
@@ -2961,7 +2962,8 @@
       "description": "Servidor dedicado de Arma Reforger, instalado anonimamente com o SteamCMD. Suas configurações ficam em server.json, e seus logs, saves e mods, na pasta profile do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "password": {
           "label": "Senha de entrada",
@@ -3112,7 +3114,8 @@
       "description": "Servidor dedicado de Counter-Strike 2, instalado anonimamente com o SteamCMD (cerca de 75 GB).",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial"
@@ -3286,7 +3289,8 @@
       "description": "Servidor dedicado de Counter-Strike: Source (srcds), instalado anonimamente com o SteamCMD.",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial"
@@ -3494,7 +3498,8 @@
       "description": "Servidor dedicado de Enshrouded, instalado anonimamente com o SteamCMD. Suas configurações ficam em enshrouded_server.json e seu mundo, na pasta savegame do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "password": {
           "label": "Senha de entrada",
@@ -3771,7 +3776,8 @@
       "description": "Servidor dedicado de Left 4 Dead 2 (srcds), instalado anonimamente com o SteamCMD (cerca de 10 GB).",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial",
@@ -4094,7 +4100,8 @@
       "description": "Servidor dedicado de Palworld, instalado anonimamente com o SteamCMD (cerca de 4 GB). O Pulsar se comunica com ele por RCON; outras configurações do mundo podem ser adicionadas à mão em PalWorldSettings.ini.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "description": {
           "label": "Descrição"
@@ -4330,7 +4337,8 @@
       "description": "Servidor dedicado de Project Zomboid, instalado anonimamente com o SteamCMD (cerca de 7 GB), executado com o ambiente Java que ele traz. Seu mundo e suas configurações ficam na pasta zomboid do servidor.",
       "variables": {
         "publicName": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "adminPassword": {
           "label": "Senha de administrador",
@@ -4578,7 +4586,8 @@
       "description": "Servidor dedicado de Rust, instalado anonimamente com o SteamCMD (cerca de 6 GB). Gerar um mapa novo leva vários minutos e muita memória.",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "description": {
           "label": "Descrição"
@@ -4743,7 +4752,7 @@
         },
         "serverName": {
           "label": "Nome do servidor",
-          "description": "Como os jogadores veem na lista de servidores. As tags de cor do jogo (<color=red>…</color>) funcionam."
+          "description": "Como os jogadores veem na lista de servidores. As tags de cor do jogo (<color=red>…</color>) funcionam. Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -4911,7 +4920,8 @@
       "description": "Servidor dedicado de Sons of the Forest, instalado anonimamente com o SteamCMD. Suas configurações, saves e lista de administradores ficam na pasta userdata do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "password": {
           "label": "Senha de entrada",
@@ -5134,7 +5144,8 @@
       "description": "Servidor dedicado de Team Fortress 2 (srcds, o de 64 bits), instalado anonimamente com o SteamCMD (cerca de 15 GB).",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial"
@@ -5330,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "De 5 a 50 caracteres."
+          "description": "De 5 a 50 caracteres. Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa",
@@ -5415,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Mostrado na lista de servidores. Não pode conter a senha."
+          "description": "Mostrado na lista de servidores. Não pode conter a senha. Deixe vazio para usar o nome do próprio jogo."
         },
         "world": {
           "label": "Mundo",
@@ -5549,7 +5560,8 @@
       "description": "Servidor dedicado de V Rising, instalado anonimamente com o SteamCMD. Suas configurações e saves ficam na pasta save-data do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "description": {
           "label": "Descrição",
@@ -5830,7 +5842,7 @@
         },
         "serverName": {
           "label": "Nome do servidor",
-          "description": "Os jogadores o veem na lista de servidores."
+          "description": "Os jogadores o veem na lista de servidores. Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Vagas"
@@ -5944,7 +5956,8 @@
       "description": "Servidor dedicado de Abiotic Factor, instalado de forma anônima com o SteamCMD. O mundo e as regras de sandbox ficam na pasta do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "world": {
           "label": "Mundo",
@@ -6060,7 +6073,8 @@
       "description": "Servidor dedicado de Conan Exiles, instalado de forma anônima com o SteamCMD, com comandos via RCON. O mundo e as configurações ficam na pasta do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6211,7 +6225,8 @@
       "description": "Servidor dedicado de Don't Starve Together (a superfície), instalado de forma anônima com o SteamCMD. Online com um token de cluster da Klei, na rede local sem um. O mundo e as configurações ficam na pasta do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "description": {
           "label": "Descrição",
@@ -6279,7 +6294,8 @@
       "description": "Servidor dedicado de Icarus, instalado de forma anônima com o SteamCMD. Os jogadores iniciam e retomam prospecções pelo lobby; as prospecções e as configurações ficam na pasta do servidor.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6334,7 +6350,8 @@
       "description": "Servidor dedicado de Killing Floor 2, instalado de forma anônima com o SteamCMD. As configurações são os arquivos PCServer de KFGame/Config, que a primeira inicialização grava.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa",
@@ -6471,7 +6488,8 @@
       "description": "Servidor dedicado de Insurgency: Sandstorm, instalado de forma anônima com o SteamCMD, com comandos via RCON.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "scenario": {
           "label": "Cenário",
@@ -6810,7 +6828,8 @@
       "description": "Servidor dedicado de Soulmask, instalado de forma anônima com o SteamCMD. O mundo fica na pasta do servidor; o Pulsar o salva e o para pelo console do próprio jogo.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6855,7 +6874,8 @@
       "description": "Servidor dedicado de Space Engineers, instalado de forma anônima com o SteamCMD. As configurações e os saves ficam na pasta de instância do servidor; um mundo novo parte de um dos cenários do jogo.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "world": {
           "label": "Mundo",
@@ -6959,7 +6979,8 @@
       "description": "Servidor dedicado de Squad, instalado de forma anônima com o SteamCMD, com comandos via RCON. As configurações são os arquivos da pasta SquadGame/ServerConfig.",
       "variables": {
         "name": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -7041,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Exibido aos jogadores no lugar do nome do mundo."
+          "description": "Exibido aos jogadores no lugar do nome do mundo. Deixe vazio para usar o nome do próprio jogo."
         },
         "world": {
           "label": "Mundo",
@@ -7105,7 +7126,8 @@
       "description": "Servidor dedicado de Half-Life 2: Deathmatch (srcds), instalado anonimamente com o SteamCMD.",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7260,7 +7282,8 @@
       "description": "Servidor dedicado de Pirates, Vikings, and Knights II (srcds, 64 bits), instalado anonimamente com o SteamCMD (cerca de 6 GB).",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7384,7 +7407,8 @@
       "description": "Servidor dedicado de Counter-Strike 1.6 (hlds), instalado anonimamente com o SteamCMD.",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7544,7 +7568,8 @@
       "description": "Servidor dedicado de Half-Life Deathmatch (hlds), instalado anonimamente com o SteamCMD.",
       "variables": {
         "hostname": {
-          "label": "Nome do servidor"
+          "label": "Nome do servidor",
+          "description": "Deixe vazio para usar o nome do próprio jogo."
         },
         "map": {
           "label": "Mapa inicial",

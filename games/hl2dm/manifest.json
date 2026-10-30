@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hl2dm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Half-Life 2: Deathmatch",
   "description": "Half-Life 2: Deathmatch dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 3, "minMemoryMb": 1024 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar HL2:DM", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "dm_lockdown", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "The game's maps: dm_lockdown, dm_overwatch, dm_powerhouse, dm_resistance, dm_runoff, dm_steamlab, dm_underpass, halls3." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 32 },

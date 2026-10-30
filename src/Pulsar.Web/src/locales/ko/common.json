@@ -2588,7 +2588,8 @@
       "description": "7 Days to Die 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 17 GB). 설정은 pulsar-serverconfig.xml에 있으며, 게임 자체의 serverconfig.xml을 복사한 것이라 업데이트해도 바뀌지 않습니다.",
       "variables": {
         "serverName": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -2762,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보이는 이름입니다."
+          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -2961,7 +2962,8 @@
       "description": "Arma Reforger 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정은 server.json에, 로그·저장 파일·모드는 서버의 profile 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -3112,7 +3114,8 @@
       "description": "Counter-Strike 2 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 75 GB).",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -3286,7 +3289,8 @@
       "description": "Counter-Strike: Source 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다.",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -3494,7 +3498,8 @@
       "description": "Enshrouded 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정은 enshrouded_server.json에, 월드는 서버의 savegame 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -3771,7 +3776,8 @@
       "description": "Left 4 Dead 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 10 GB).",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -4094,7 +4100,8 @@
       "description": "Palworld 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 4 GB). Pulsar가 RCON으로 제어하며, 다른 월드 설정은 PalWorldSettings.ini에 직접 추가할 수 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "description": {
           "label": "설명"
@@ -4330,7 +4337,8 @@
       "description": "Project Zomboid 전용 서버입니다. SteamCMD로 익명 설치되며(약 7 GB), 포함된 Java 런타임으로 실행됩니다. 월드와 설정은 서버의 zomboid 폴더에 있습니다.",
       "variables": {
         "publicName": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "adminPassword": {
           "label": "관리자 비밀번호",
@@ -4578,7 +4586,8 @@
       "description": "Rust 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 6 GB). 새 맵을 생성하는 데 몇 분과 많은 메모리가 필요합니다.",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "description": {
           "label": "설명"
@@ -4743,7 +4752,7 @@
         },
         "serverName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 게임의 색상 태그(<color=red>…</color>)를 사용할 수 있습니다."
+          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 게임의 색상 태그(<color=red>…</color>)를 사용할 수 있습니다. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -4911,7 +4920,8 @@
       "description": "Sons of the Forest 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정, 저장 파일, 관리자 목록은 서버의 userdata 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -5134,7 +5144,8 @@
       "description": "Team Fortress 2 전용 서버(srcds 64비트 버전)이며, SteamCMD로 익명 설치됩니다(약 15GB).",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -5330,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "5~50자."
+          "description": "5~50자. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -5415,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "서버 목록에 표시됩니다. 비밀번호를 포함할 수 없습니다."
+          "description": "서버 목록에 표시됩니다. 비밀번호를 포함할 수 없습니다. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -5549,7 +5560,8 @@
       "description": "V Rising 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정과 저장 파일은 서버의 save-data 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "description": {
           "label": "설명",
@@ -5830,7 +5842,7 @@
         },
         "serverName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보입니다."
+          "description": "서버 목록에서 플레이어에게 보입니다. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -5944,7 +5956,8 @@
       "description": "Abiotic Factor 전용 서버입니다. SteamCMD로 익명 설치됩니다. 월드와 샌드박스 규칙은 서버 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -6060,7 +6073,8 @@
       "description": "Conan Exiles 전용 서버입니다. SteamCMD로 익명 설치되며 RCON으로 명령을 보낼 수 있습니다. 월드와 설정은 서버 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6211,7 +6225,8 @@
       "description": "Don't Starve Together 전용 서버(지상)입니다. SteamCMD로 익명 설치됩니다. Klei 클러스터 토큰이 있으면 온라인, 없으면 로컬 네트워크에서 실행됩니다. 월드와 설정은 서버 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "description": {
           "label": "설명",
@@ -6279,7 +6294,8 @@
       "description": "Icarus 전용 서버입니다. SteamCMD로 익명 설치됩니다. 플레이어는 로비에서 탐사를 시작하고 이어서 합니다. 탐사와 설정은 서버 폴더에 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6334,7 +6350,8 @@
       "description": "Killing Floor 2 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정은 KFGame/Config의 PCServer 파일이며 첫 실행 때 만들어집니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -6471,7 +6488,8 @@
       "description": "Insurgency: Sandstorm 전용 서버입니다. SteamCMD로 익명 설치되며 RCON으로 명령을 보낼 수 있습니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "scenario": {
           "label": "시나리오",
@@ -6810,7 +6828,8 @@
       "description": "Soulmask 전용 서버입니다. SteamCMD로 익명 설치됩니다. 월드는 서버 폴더에 있으며, Pulsar가 게임 자체 콘솔로 저장하고 종료합니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6855,7 +6874,8 @@
       "description": "Space Engineers 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정과 저장 파일은 서버의 인스턴스 폴더에 있으며, 새 월드는 게임의 시나리오 중 하나로 시작합니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -6959,7 +6979,8 @@
       "description": "Squad 전용 서버입니다. SteamCMD로 익명 설치되며 RCON으로 명령을 보낼 수 있습니다. 설정은 SquadGame/ServerConfig 폴더의 파일입니다.",
       "variables": {
         "name": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -7041,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "월드 이름 대신 플레이어에게 표시됩니다."
+          "description": "월드 이름 대신 플레이어에게 표시됩니다. 비워 두면 게임 자체의 이름을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -7105,7 +7126,8 @@
       "description": "Half-Life 2: Deathmatch 전용 서버(srcds). SteamCMD로 익명 설치합니다.",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7260,7 +7282,8 @@
       "description": "Pirates, Vikings, and Knights II 전용 서버(srcds, 64비트). SteamCMD로 익명 설치합니다(약 6GB).",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7384,7 +7407,8 @@
       "description": "Counter-Strike 1.6 전용 서버(hlds)로, SteamCMD로 익명 설치합니다.",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7544,7 +7568,8 @@
       "description": "Half-Life Deathmatch 전용 서버(hlds)로, SteamCMD로 익명 설치합니다.",
       "variables": {
         "hostname": {
-          "label": "서버 이름"
+          "label": "서버 이름",
+          "description": "비워 두면 게임 자체의 이름을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
