@@ -1557,6 +1557,7 @@
       },
       "skip": {
         "forbidden": "你在此服务器上没有该权限。",
+        "nodeOffline": "其节点离线。",
         "notStopped": "未停止，或正忙。",
         "notRunning": "未运行，或正忙。",
         "busy": "正忙、未安装或其节点离线。",

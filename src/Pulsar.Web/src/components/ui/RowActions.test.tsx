@@ -31,6 +31,18 @@ describe('RowActions', () => {
     expect(screen.queryByRole('button', { name: 'Actions for server.cfg' })).not.toBeInTheDocument();
   });
 
+  it('offers no button for a row without actions', () => {
+    screenWide(false);
+    const { container } = render(
+      <RowActions name="data/">
+        {false}
+        {null}
+      </RowActions>,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('keeps them behind one button on a phone, and closes their sheet once one is chosen', async () => {
     screenWide(false);
     const rename = vi.fn();

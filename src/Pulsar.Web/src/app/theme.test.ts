@@ -64,6 +64,18 @@ describe('theme', () => {
     expect(currentTheme()).toBe('dark');
   });
 
+  it('keeps the choice for this visit when the browser refuses storage', () => {
+    fakeSystem(false);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage refused', 'SecurityError');
+    });
+    chooseTheme('light');
+
+    expect([storedTheme(), currentTheme()]).toEqual(['light', 'light']);
+    vi.restoreAllMocks();
+    chooseTheme('dark');
+  });
+
   it('ignores a stored value that is not a theme (the browser keeps what anyone put there)', () => {
     localStorage.setItem('pulsar.theme', 'neon');
     expect(storedTheme()).toBe('dark');

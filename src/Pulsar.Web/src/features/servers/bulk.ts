@@ -39,6 +39,9 @@ export function skipReason(action: BulkAction, server: ServerSummary, me: Curren
   if (!canOnServer(me, server, permissions[action])) {
     return 'forbidden';
   }
+  if (!server.nodeConnected) {
+    return 'nodeOffline';
+  }
   const available = serverActions(server);
   const installed = server.installState === 'installed';
   switch (action) {
@@ -48,7 +51,7 @@ export function skipReason(action: BulkAction, server: ServerSummary, me: Curren
     case 'stop':
       return available[action] ? null : 'notRunning';
     case 'backup':
-      return server.nodeConnected && installed && server.activeOperation === null ? null : 'busy';
+      return installed && server.activeOperation === null ? null : 'busy';
     case 'update':
       return available.reinstall && installed ? null : 'mustBeStopped';
   }

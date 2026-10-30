@@ -29,7 +29,16 @@ const tones: Record<BulkResult, 'success' | 'neutral' | 'danger'> = {
  * The servers picked in the list, and what can be done to all of them at once (gap point 14). Each button says to how
  * many it applies; the others are skipped and said why once it ran, with each server's outcome.
  */
-export function BulkBar({ selected, onClear }: { selected: ServerSummary[]; onClear: () => void }) {
+export function BulkBar({
+  selected,
+  onClear,
+  onBusyChange,
+}: {
+  selected: ServerSummary[];
+  onClear: () => void;
+  /** Whether an action is running on them (the page keeps its selection meanwhile). */
+  onBusyChange: (busy: boolean) => void;
+}) {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const changed = useServersChanged();
@@ -44,11 +53,13 @@ export function BulkBar({ selected, onClear }: { selected: ServerSummary[]; onCl
       return;
     }
     setRunning(action);
+    onBusyChange(true);
     const list: BulkOutcome[] = [];
     try {
       await runBulk(t, action, selected, me, (outcome) => list.push(outcome));
     } finally {
       setRunning(null);
+      onBusyChange(false);
       changed();
     }
     const order = new Map(selected.map((server, index) => [server.id, index]));

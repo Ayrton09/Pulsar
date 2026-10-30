@@ -17,13 +17,16 @@ const barColors: Record<Theme, string> = { dark: '#0b0d12', light: '#f4f5f9' };
 
 const listeners = new Set<() => void>();
 
+/** The choice made in this visit, for when the browser refuses storage (a private window): it holds until reload. */
+let chosen: ThemeChoice | null = null;
+
 /** The theme chosen in this browser; dark until one is. */
 export function storedTheme(): ThemeChoice {
   try {
     const stored = localStorage.getItem(storageKey);
-    return themeChoices.find((choice) => choice === stored) ?? 'dark';
+    return themeChoices.find((choice) => choice === stored) ?? chosen ?? 'dark';
   } catch {
-    return 'dark'; // storage refused (a private window, site data blocked): the default
+    return chosen ?? 'dark'; // storage refused (a private window, site data blocked): this visit's, or the default
   }
 }
 
@@ -62,6 +65,7 @@ export function initTheme() {
 
 /** Changes the theme now and keeps the choice in this browser, for the next visits. */
 export function chooseTheme(choice: ThemeChoice) {
+  chosen = choice;
   try {
     localStorage.setItem(storageKey, choice);
   } catch {

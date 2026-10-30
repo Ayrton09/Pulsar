@@ -36,6 +36,8 @@ export function ServersPage() {
     Permission.ServerInstall,
   );
   const [selecting, setSelecting] = useState(false);
+  // An action running on the picked servers: leaving selection would drop its outcomes.
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const selection = useMemo<ServerSelection>(
     () => ({
@@ -60,8 +62,9 @@ export function ServersPage() {
       (words === '' ||
         [server.name, server.templateName, server.nodeName].some((text) => text.toLocaleLowerCase().includes(words))),
   );
-  // Those picked that are still listed (a deleted server drops out), in the list's order.
-  const selected = all.filter((server) => picked.has(server.id));
+  // Those picked that the list shows now, in its order: a server the search or a filter hides (or that was deleted)
+  // is never acted on unseen.
+  const selected = shown.filter((server) => picked.has(server.id));
   const stopSelecting = () => {
     setSelecting(false);
     setPicked(new Set());
@@ -138,7 +141,7 @@ export function ServersPage() {
                   >
                     {t('servers.bulk.selectShown', { count: shown.length })}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={stopSelecting}>
+                  <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={stopSelecting}>
                     {t('servers.bulk.done')}
                   </Button>
                 </>
@@ -158,7 +161,9 @@ export function ServersPage() {
               selection={selecting ? selection : undefined}
             />
           )}
-          {selecting && selected.length > 0 && <BulkBar selected={selected} onClear={() => setPicked(new Set())} />}
+          {selecting && selected.length > 0 && (
+            <BulkBar selected={selected} onClear={() => setPicked(new Set())} onBusyChange={setBulkBusy} />
+          )}
         </>
       )}
       {creating && <CreateServerDialog onClose={() => setCreating(false)} />}

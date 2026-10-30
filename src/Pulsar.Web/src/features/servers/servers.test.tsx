@@ -586,7 +586,7 @@ describe('actions on several servers', () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       'RetakesAsked',
       'SurfIt is not stopped, or is busy.Skipped',
-      'ZombiesIt is not stopped, or is busy.Skipped',
+      'ZombiesIts node is offline.Skipped',
     ]);
     const posts = api.mock.calls.map(([request]) => request as Request).filter((request) => request.method === 'POST');
     expect(posts.map((request) => new URL(request.url).pathname)).toEqual([
@@ -624,6 +624,35 @@ describe('actions on several servers', () => {
     const [retakes, other] = within(results).getAllByRole('listitem');
     expect(retakes).toHaveTextContent('Failed');
     expect(other).toHaveTextContent('You do not have the permission on this server.');
+  });
+
+  it('acts only on the picked servers the list shows, and says which failed', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([running, { ...running, id: arena.id, name: 'Arena' }]),
+      [`POST /api/v1/servers/${running.id}/stop`]: () =>
+        problem(503, 'node.not_connected', 'The node is not connected.'),
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: 'Select shown (2)' }));
+    // Arena is picked, then hidden by the search: it is not stopped unseen.
+    await user.type(screen.getByRole('searchbox', { name: 'Search servers' }), 'Surf');
+    const bar = screen.getByRole('region', { name: 'Actions on the selected servers' });
+    expect(bar).toHaveTextContent('Selected: 1');
+    await user.click(within(bar).getByRole('button', { name: 'Stop (1)' }));
+
+    const results = await screen.findByRole('dialog', { name: 'Stopping servers' });
+    expect(
+      within(results)
+        .getAllByRole('listitem')
+        .map((row) => row.textContent),
+    ).toEqual(["SurfThe node's agent is not connected.Failed"]);
+    const posts = api.mock.calls.map(([request]) => request as Request).filter((request) => request.method === 'POST');
+    expect(posts.map((request) => new URL(request.url).pathname)).toEqual([`/api/v1/servers/${running.id}/stop`]);
   });
 
   it('asks before stopping them, and stops none when told not to', async () => {

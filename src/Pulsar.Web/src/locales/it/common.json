@@ -1557,6 +1557,7 @@
       },
       "skip": {
         "forbidden": "Non hai il permesso su questo server.",
+        "nodeOffline": "Il suo nodo è offline.",
         "notStopped": "Non è arrestato, o è occupato.",
         "notRunning": "Non è in esecuzione, o è occupato.",
         "busy": "È occupato, non installato o il suo nodo è offline.",

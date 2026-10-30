@@ -1,6 +1,6 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { MoreHorizontal } from 'lucide-react';
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Children, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 // Tailwind's md breakpoint, as the sidebar's: below it a row's actions do not fit beside its name.
@@ -31,6 +31,10 @@ export function RowActions({ name, children }: { name: string; children: ReactNo
   const { t } = useTranslation();
   const wide = useWideScreen();
   const [open, setOpen] = useState(false);
+  // A row without actions for this user (no permission, nothing that applies) gets no button opening an empty sheet.
+  if (Children.toArray(children).length === 0) {
+    return null;
+  }
   if (wide) {
     return <span className="inline-flex flex-wrap justify-end gap-1">{children}</span>;
   }
