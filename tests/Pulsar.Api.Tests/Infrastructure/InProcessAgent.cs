@@ -92,6 +92,12 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>The configuration the running agent uses (key rotations and panel key updates change it).</summary>
     public AgentConfig? LiveConfig => _connection?.Config;
 
+    /// <summary>
+    /// Crash restarts sooner than a node's (5, 15 then 60 s): a test that waits for a second restart would otherwise wait out
+    /// the 15 s its waits allow.
+    /// </summary>
+    private readonly SupervisorOptions Supervisor = new() { CrashBackoff = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5)] };
+
     public AgentConnectionOptions Options { get; } = new() { MetricsInterval = TimeSpan.FromMilliseconds(200), MaxBackoff = TimeSpan.FromSeconds(2) };
 
     public string ServersRoot => Path.Combine(_root, "servers");
@@ -147,7 +153,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
-            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query,
+            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, Supervisor, new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query,
             archives: new FileArchives(new DirectServerFileManager(), NullLogger<FileArchives>.Instance));
         _connection = new AgentConnection(Configs, Keys, _system, _transport, new PanelAuthenticator(_transport, _clock),
             new CredentialRotationClient(_transport),

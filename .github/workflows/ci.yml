@@ -87,7 +87,9 @@ jobs:
           docker exec mariadb healthcheck.sh --connect --innodb_initialized
           echo "PULSAR_TEST_MYSQL=Server=127.0.0.1;Port=3307;User ID=root;Password=pulsar-ci-mariadb" >> "$GITHUB_ENV"
 
+      # A hung test ends the job here (a full run takes about 15 minutes); the API tests name one running over two minutes.
       - name: Test
+        timeout-minutes: 45
         run: dotnet test --solution Pulsar.slnx -c Release --no-build
         env:
           PULSAR_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsar_ci;Password=pulsar_ci

@@ -18,6 +18,7 @@ public sealed class PanelBlockTests : IDisposable
     private readonly PanelBlockOptions _options = new();
     private readonly RecordingFirewall _firewall = new();
     private readonly CancellationTokenSource _stopping = new();
+    private readonly List<PanelBlockKeeper> _keepers = [];
     private IReadOnlyList<Uri> _panels = [new("https://panel.example.com:8444/"), new("https://panel.example.com:8443/")];
 
     private string BookFile => Path.Combine(_root, "state", "panel-addresses.json");
@@ -25,6 +26,16 @@ public sealed class PanelBlockTests : IDisposable
     public void Dispose()
     {
         _stopping.Cancel();
+        // Their refreshes end before the folder goes: one may still be saving the book there.
+        try
+        {
+            Task.WhenAll(_keepers.Select(k => k.Completion)).Wait(TimeSpan.FromSeconds(10));
+        }
+        catch (AggregateException)
+        {
+            // Ended by the cancellation, or failed: either way, done with the folder.
+        }
+
         _stopping.Dispose();
         if (Directory.Exists(_root))
         {
@@ -388,7 +399,7 @@ public sealed class PanelBlockTests : IDisposable
         _panels = [new("panel/relative", UriKind.Relative)]; // no host to read: reading it throws
         var reads = 0;
         var looked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var keeper = new PanelBlockKeeper(_firewall, () =>
+        var keeper = Kept(new PanelBlockKeeper(_firewall, () =>
             {
                 if (Interlocked.Increment(ref reads) == 2)
                 {
@@ -397,7 +408,7 @@ public sealed class PanelBlockTests : IDisposable
 
                 return _panels;
             }, new PanelAddressBook(BookFile, _clock, NullLogger.Instance), _options, _clock, NullLogger<PanelBlockKeeper>.Instance,
-            new Resolver(_ => []).ResolveAsync, () => [IPAddress.Parse("10.0.0.4")]);
+            new Resolver(_ => []).ResolveAsync, () => [IPAddress.Parse("10.0.0.4")]));
 
         keeper.Start(() => [s_first], _stopping.Token); // logged, as the first refresh's failure is
         await looked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
@@ -425,8 +436,14 @@ public sealed class PanelBlockTests : IDisposable
     }
 
     private PanelBlockKeeper Keeper(Resolver resolver) =>
-        new(_firewall, () => _panels, new PanelAddressBook(BookFile, _clock, NullLogger.Instance), _options, _clock,
-            NullLogger<PanelBlockKeeper>.Instance, resolver.ResolveAsync, () => [IPAddress.Parse("10.0.0.4"), IPAddress.Loopback]);
+        Kept(new(_firewall, () => _panels, new PanelAddressBook(BookFile, _clock, NullLogger.Instance), _options, _clock,
+            NullLogger<PanelBlockKeeper>.Instance, resolver.ResolveAsync, () => [IPAddress.Parse("10.0.0.4"), IPAddress.Loopback]));
+
+    private PanelBlockKeeper Kept(PanelBlockKeeper keeper)
+    {
+        _keepers.Add(keeper);
+        return keeper;
+    }
 
     private void Remember(string host, string address)
     {
