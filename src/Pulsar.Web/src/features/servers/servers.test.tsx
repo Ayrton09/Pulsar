@@ -655,6 +655,60 @@ describe('actions on several servers', () => {
     expect(posts.map((request) => new URL(request.url).pathname)).toEqual([`/api/v1/servers/${running.id}/stop`]);
   });
 
+  it('says when a node refused the backup or the update it was asked for', async () => {
+    const backingUp = { ...installedOffline, id: arena.id, name: 'Arena' };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([installedOffline, backingUp]),
+      [`POST /api/v1/servers/${installedOffline.id}/update`]: () =>
+        json(
+          details(installedOffline, [
+            { ...installOperation, type: 'serverUpdate', status: 'failed', errorCode: null, errorMessage: 'Disk full' },
+          ]),
+        ),
+      [`POST /api/v1/servers/${backingUp.id}/update`]: () => json(details(backingUp)),
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: 'Select shown (2)' }));
+    await user.click(screen.getByRole('button', { name: 'Update game (2)' }));
+
+    const results = await screen.findByRole('dialog', { name: 'Updating servers' });
+    expect(
+      within(results)
+        .getAllByRole('listitem')
+        .map((row) => row.textContent),
+    ).toEqual(['RetakesDisk fullFailed', 'ArenaAsked']);
+  });
+
+  it('keeps showing the outcomes of a run whose servers left the filter', async () => {
+    let started = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      // Once started, the server is no longer a stopped one: the Stopped filter hides it.
+      'GET /api/v1/servers': () => json([started ? running : { ...running, runtimeState: 'offline' }]),
+      [`POST /api/v1/servers/${running.id}/start`]: () => {
+        started = true;
+        return json({ status: 'accepted' });
+      },
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /^Stopped/ }));
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Surf' }));
+    await user.click(screen.getByRole('button', { name: 'Start (1)' }));
+
+    const results = await screen.findByRole('dialog', { name: 'Starting servers' });
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Select Surf' })).not.toBeInTheDocument());
+    expect(results).toBeInTheDocument();
+    expect(within(results).getByRole('listitem')).toHaveTextContent('SurfAsked');
+  });
+
   it('asks before stopping them, and stops none when told not to', async () => {
     const api = fakeApi({
       'GET /api/v1/auth/session': session(operator),

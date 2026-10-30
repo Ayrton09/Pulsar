@@ -214,6 +214,15 @@ public sealed partial class ServerSequences
 
             var cleanup = Operation.Create(OperationType.ServerDelete, to, id, null, OperationRequester.System, now);
             server.MoveBack(from, now);
+            // Its files there are as they were: so is its game's version (the new node's install may have reported another).
+            if (await db.Backups.AsNoTracking()
+                    .Where(b => b.ServerId == id && b.NodeId == from && b.Status == BackupStatus.Completed && b.CreatedAt >= sequence.CreatedAt
+                        && b.CreatedVia == OperationRequester.System)
+                    .OrderByDescending(b => b.CreatedAt).FirstOrDefaultAsync(cancellationToken) is { } copied)
+            {
+                server.GameInstalled(copied.GameVersion, now);
+            }
+
             // Sent from the old node's side: the server is the old node's again, the delete only the new node's copy's.
             await services.GetRequiredService<ServerOperations>().RunAsync(server, cleanup, new DeleteServerCommand(id.Value), beforeSave: null,
                 cancellationToken);

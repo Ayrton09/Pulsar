@@ -103,13 +103,20 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         await GameServerTests.AllocateAsync(admin, second.Config!.NodeId, "0.0.0.0", "27015-27020");
         var oldPorts = await AllocationsAsync(server, first.Config.NodeId);
         Assert.NotEmpty(oldPorts);
+        await SetGameVersionAsync(server, "old-node-build");
 
         using (var moving = await admin.PostAsync($"/api/v1/servers/{server}/transfer", new TransferServerRequest(second.Config!.NodeId)))
         {
             await AccessScenario.EnsureSuccessAsync(moving);
         }
 
-        // The new node goes away before the server is installed there.
+        // The server switches to the new node, whose install reports another version; then the new node goes away.
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            await SequenceDriver.DriveAsync(factory);
+            return (await ServerApi.GetAsync(admin, server))!.Server.NodeId == second.Config.NodeId;
+        }, "the server switched to the new node");
+        await SetGameVersionAsync(server, "new-node-build");
         await second.DisposeAsync();
         var transfer = await EndedAsync(server);
         Assert.Equal(SequenceStatus.Failed, transfer.Status);
@@ -117,6 +124,13 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         var back = (await ServerApi.GetAsync(admin, server))!;
         Assert.Equal((first.Config.NodeId, InstallState.Installed, ServerRuntimeState.Offline), (back.Server.NodeId, back.Server.InstallState, back.Server.RuntimeState));
         Assert.Equal(oldPorts, await AllocationsAsync(server, first.Config.NodeId));
+        // Its files on the old node are its old version's, and so is the version it shows.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            Assert.Equal("old-node-build", (await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Servers.AsNoTracking()
+                .SingleAsync(s => s.Id == new ServerId(server), Ct)).GameVersion);
+        }
+
         Assert.Empty(await AllocationsAsync(server, second.Config.NodeId));
         await ServerApi.CommandAsync(admin, server, "start");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running on its old node");
@@ -135,6 +149,14 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
             return transfer is { Status: not SequenceStatus.Running };
         }, () => $"the transfer ended (last: {transfer?.Status} {transfer?.ErrorCode})");
         return transfer!;
+    }
+
+    private async Task SetGameVersionAsync(Guid server, string version)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        (await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct)).GameInstalled(version, DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(Ct);
     }
 
     private async Task<List<int>> AllocationsAsync(Guid server, Guid node)

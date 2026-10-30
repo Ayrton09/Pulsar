@@ -23,10 +23,13 @@ let chosen: ThemeChoice | null = null;
 /** The theme chosen in this browser; dark until one is. */
 export function storedTheme(): ThemeChoice {
   try {
+    if (chosen !== null) {
+      return chosen; // chosen in this visit: what is drawn, even when the browser did not keep it
+    }
     const stored = localStorage.getItem(storageKey);
-    return themeChoices.find((choice) => choice === stored) ?? chosen ?? 'dark';
+    return themeChoices.find((choice) => choice === stored) ?? 'dark';
   } catch {
-    return chosen ?? 'dark'; // storage refused (a private window, site data blocked): this visit's, or the default
+    return 'dark'; // storage refused (a private window, site data blocked): the default
   }
 }
 

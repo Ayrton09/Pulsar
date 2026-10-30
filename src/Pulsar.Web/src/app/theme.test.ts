@@ -64,8 +64,9 @@ describe('theme', () => {
     expect(currentTheme()).toBe('dark');
   });
 
-  it('keeps the choice for this visit when the browser refuses storage', () => {
+  it('keeps the choice for this visit when the browser refuses storage, over what it kept before', () => {
     fakeSystem(false);
+    localStorage.setItem('pulsar.theme', 'system');
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('Storage refused', 'SecurityError');
     });

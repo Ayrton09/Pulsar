@@ -161,9 +161,8 @@ export function ServersPage() {
               selection={selecting ? selection : undefined}
             />
           )}
-          {selecting && selected.length > 0 && (
-            <BulkBar selected={selected} onClear={() => setPicked(new Set())} onBusyChange={setBulkBusy} />
-          )}
+          {/* Mounted while selecting, whatever is picked now: a run and its outcomes survive servers leaving the list. */}
+          {selecting && <BulkBar selected={selected} onClear={() => setPicked(new Set())} onBusyChange={setBulkBusy} />}
         </>
       )}
       {creating && <CreateServerDialog onClose={() => setCreating(false)} />}

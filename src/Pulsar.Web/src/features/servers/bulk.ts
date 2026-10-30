@@ -4,7 +4,7 @@ import { errorMessage } from '../../lib/errors';
 import { canOnServer, Permission } from '../../lib/permissions';
 import type { CurrentUser } from '../auth/api';
 import type { ServerSummary } from './api';
-import { commandRefusal, serverActions } from './serverStatus';
+import { commandRefusal, failureReason, serverActions } from './serverStatus';
 
 /** What can be done to several servers at once (gap point 14): the everyday actions, never kill nor delete. */
 export const bulkActions = ['start', 'restart', 'stop', 'backup', 'update'] as const;
@@ -75,12 +75,16 @@ async function request(t: TFunction, action: BulkAction, id: string): Promise<st
         ? null
         : commandRefusal(t, ack.status, ack.errorCode);
     }
-    case 'backup':
-      await unwrap(api.POST('/api/v1/servers/{id}/backups', { ...path, body: { name: null } }));
-      return null;
-    case 'update':
-      await unwrap(api.POST('/api/v1/servers/{id}/update', { ...path, body: { validate: false } }));
-      return null;
+    // A node that refused the command fails the operation at once: the panel still answers 200, with it failed.
+    case 'backup': {
+      const backup = await unwrap(api.POST('/api/v1/servers/{id}/backups', { ...path, body: { name: null } }));
+      return backup.status === 'failed' ? failureReason(t, backup.errorCode ?? null, backup.errorMessage) : null;
+    }
+    case 'update': {
+      const details = await unwrap(api.POST('/api/v1/servers/{id}/update', { ...path, body: { validate: false } }));
+      const update = details.recentOperations.find((operation) => operation.type === 'serverUpdate');
+      return update?.status === 'failed' ? failureReason(t, update.errorCode, update.errorMessage) : null;
+    }
   }
 }
 
