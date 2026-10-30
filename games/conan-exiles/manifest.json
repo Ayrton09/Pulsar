@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "conan-exiles",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Conan Exiles",
   "description": "Conan Exiles dedicated server, installed anonymously with SteamCMD, with commands over RCON. Its world and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 70, "minMemoryMb": 16384 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 40, "min": 1, "max": 70 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\"\\\\ ]{1,32}$",
       "description": "Players need it to join. Leave empty for a public server." },
@@ -78,7 +78,8 @@
   "configFiles": [
     { "path": "ConanSandbox/Saved/Config/WindowsServer/Engine.ini", "format": "unreal-ini", "mode": "patch",
       "section": "OnlineSubsystem",
-      "set": { "ServerName": "{{var.name}}", "ServerPassword": "{{var.password}}" } },
+      "set": { "ServerName": "{{var.name}}", "ServerPassword": "{{var.password}}" },
+      "keepIfEmpty": ["ServerName"] },
     { "path": "ConanSandbox/Saved/Config/WindowsServer/Game.ini", "format": "unreal-ini", "mode": "patch",
       "section": "RconPlugin",
       "set": { "RconEnabled": "1", "RconPassword": "{{rcon.password}}", "RconPort": "{{port.rcon}}" } },

@@ -2589,7 +2589,7 @@
       "variables": {
         "serverName": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "password": {
           "label": "Senha de entrada",
@@ -2763,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "Nome do servidor",
-          "description": "Como os jogadores o veem na lista de servidores. Deixe vazio para usar o nome do próprio jogo."
+          "description": "Como os jogadores o veem na lista de servidores. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa",
@@ -2963,7 +2963,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "password": {
           "label": "Senha de entrada",
@@ -3115,7 +3115,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial"
@@ -3290,7 +3290,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial"
@@ -3499,7 +3499,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "password": {
           "label": "Senha de entrada",
@@ -3777,7 +3777,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial",
@@ -4101,7 +4101,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "description": {
           "label": "Descrição"
@@ -4338,7 +4338,7 @@
       "variables": {
         "publicName": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "adminPassword": {
           "label": "Senha de administrador",
@@ -4587,7 +4587,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "description": {
           "label": "Descrição"
@@ -4752,7 +4752,7 @@
         },
         "serverName": {
           "label": "Nome do servidor",
-          "description": "Como os jogadores veem na lista de servidores. As tags de cor do jogo (<color=red>…</color>) funcionam. Deixe vazio para usar o nome do próprio jogo."
+          "description": "Como os jogadores veem na lista de servidores. As tags de cor do jogo (<color=red>…</color>) funcionam. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -4921,7 +4921,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "password": {
           "label": "Senha de entrada",
@@ -5145,7 +5145,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial"
@@ -5341,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "De 5 a 50 caracteres. Deixe vazio para usar o nome do próprio jogo."
+          "description": "De 5 a 50 caracteres. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa",
@@ -5426,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Mostrado na lista de servidores. Não pode conter a senha. Deixe vazio para usar o nome do próprio jogo."
+          "description": "Mostrado na lista de servidores. Não pode conter a senha. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "world": {
           "label": "Mundo",
@@ -5561,7 +5561,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "description": {
           "label": "Descrição",
@@ -5842,7 +5842,7 @@
         },
         "serverName": {
           "label": "Nome do servidor",
-          "description": "Os jogadores o veem na lista de servidores. Deixe vazio para usar o nome do próprio jogo."
+          "description": "Os jogadores o veem na lista de servidores. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Vagas"
@@ -5957,7 +5957,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "world": {
           "label": "Mundo",
@@ -6074,7 +6074,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6226,7 +6226,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "description": {
           "label": "Descrição",
@@ -6295,7 +6295,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6351,7 +6351,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa",
@@ -6489,7 +6489,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "scenario": {
           "label": "Cenário",
@@ -6829,7 +6829,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6875,7 +6875,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "world": {
           "label": "Mundo",
@@ -6980,7 +6980,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -7062,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "Nome do servidor",
-          "description": "Exibido aos jogadores no lugar do nome do mundo. Deixe vazio para usar o nome do próprio jogo."
+          "description": "Exibido aos jogadores no lugar do nome do mundo. Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "world": {
           "label": "Mundo",
@@ -7127,7 +7127,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7283,7 +7283,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7408,7 +7408,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial",
@@ -7569,7 +7569,7 @@
       "variables": {
         "hostname": {
           "label": "Nome do servidor",
-          "description": "Deixe vazio para usar o nome do próprio jogo."
+          "description": "Deixe vazio para manter o nome dos arquivos do jogo (ou o do próprio jogo)."
         },
         "map": {
           "label": "Mapa inicial",

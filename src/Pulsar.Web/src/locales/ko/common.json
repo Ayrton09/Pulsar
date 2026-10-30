@@ -2589,7 +2589,7 @@
       "variables": {
         "serverName": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -2763,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -2963,7 +2963,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -3115,7 +3115,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -3290,7 +3290,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -3499,7 +3499,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -3777,7 +3777,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -4101,7 +4101,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "description": {
           "label": "설명"
@@ -4338,7 +4338,7 @@
       "variables": {
         "publicName": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "adminPassword": {
           "label": "관리자 비밀번호",
@@ -4587,7 +4587,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "description": {
           "label": "설명"
@@ -4752,7 +4752,7 @@
         },
         "serverName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 게임의 색상 태그(<color=red>…</color>)를 사용할 수 있습니다. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "서버 목록에서 플레이어에게 보이는 이름입니다. 게임의 색상 태그(<color=red>…</color>)를 사용할 수 있습니다. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -4921,7 +4921,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -5145,7 +5145,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵"
@@ -5341,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "5~50자. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "5~50자. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -5426,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "서버 목록에 표시됩니다. 비밀번호를 포함할 수 없습니다. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "서버 목록에 표시됩니다. 비밀번호를 포함할 수 없습니다. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -5561,7 +5561,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "description": {
           "label": "설명",
@@ -5842,7 +5842,7 @@
         },
         "serverName": {
           "label": "서버 이름",
-          "description": "서버 목록에서 플레이어에게 보입니다. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "서버 목록에서 플레이어에게 보입니다. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -5957,7 +5957,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -6074,7 +6074,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6226,7 +6226,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "description": {
           "label": "설명",
@@ -6295,7 +6295,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6351,7 +6351,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "맵",
@@ -6489,7 +6489,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "scenario": {
           "label": "시나리오",
@@ -6829,7 +6829,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -6875,7 +6875,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -6980,7 +6980,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -7062,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "서버 이름",
-          "description": "월드 이름 대신 플레이어에게 표시됩니다. 비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "월드 이름 대신 플레이어에게 표시됩니다. 비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "world": {
           "label": "월드",
@@ -7127,7 +7127,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7283,7 +7283,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7408,7 +7408,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵",
@@ -7569,7 +7569,7 @@
       "variables": {
         "hostname": {
           "label": "서버 이름",
-          "description": "비워 두면 게임 자체의 이름을 사용합니다."
+          "description": "비워 두면 게임 파일에 있는 이름(또는 게임 자체의 이름)을 사용합니다."
         },
         "map": {
           "label": "시작 맵",

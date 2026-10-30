@@ -2589,7 +2589,7 @@
       "variables": {
         "serverName": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "password": {
           "label": "加入密码",
@@ -2763,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "服务器名称",
-          "description": "玩家在服务器列表中看到的名称。 留空则使用游戏自带的名称。"
+          "description": "玩家在服务器列表中看到的名称。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "地图",
@@ -2963,7 +2963,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "password": {
           "label": "加入密码",
@@ -3115,7 +3115,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图"
@@ -3290,7 +3290,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图"
@@ -3499,7 +3499,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "password": {
           "label": "加入密码",
@@ -3777,7 +3777,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图",
@@ -4101,7 +4101,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "description": {
           "label": "描述"
@@ -4338,7 +4338,7 @@
       "variables": {
         "publicName": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "adminPassword": {
           "label": "管理员密码",
@@ -4587,7 +4587,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "description": {
           "label": "描述"
@@ -4752,7 +4752,7 @@
         },
         "serverName": {
           "label": "服务器名称",
-          "description": "玩家在服务器列表中看到的名称。游戏的颜色标签（<color=red>…</color>）可用。 留空则使用游戏自带的名称。"
+          "description": "玩家在服务器列表中看到的名称。游戏的颜色标签（<color=red>…</color>）可用。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "玩家名额"
@@ -4921,7 +4921,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "password": {
           "label": "加入密码",
@@ -5145,7 +5145,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图"
@@ -5341,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "5 到 50 个字符。 留空则使用游戏自带的名称。"
+          "description": "5 到 50 个字符。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "地图",
@@ -5426,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "显示在服务器列表中。不能包含密码。 留空则使用游戏自带的名称。"
+          "description": "显示在服务器列表中。不能包含密码。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "world": {
           "label": "世界",
@@ -5561,7 +5561,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "description": {
           "label": "描述",
@@ -5842,7 +5842,7 @@
         },
         "serverName": {
           "label": "服务器名称",
-          "description": "玩家会在服务器列表中看到它。 留空则使用游戏自带的名称。"
+          "description": "玩家会在服务器列表中看到它。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "人数上限"
@@ -5957,7 +5957,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "world": {
           "label": "世界",
@@ -6074,7 +6074,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6226,7 +6226,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "description": {
           "label": "描述",
@@ -6295,7 +6295,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6351,7 +6351,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "地图",
@@ -6489,7 +6489,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "scenario": {
           "label": "场景",
@@ -6829,7 +6829,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -6875,7 +6875,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "world": {
           "label": "世界",
@@ -6980,7 +6980,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "maxPlayers": {
           "label": "槽位"
@@ -7062,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "服务器名称",
-          "description": "向玩家显示,代替世界名称。 留空则使用游戏自带的名称。"
+          "description": "向玩家显示,代替世界名称。 留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "world": {
           "label": "世界",
@@ -7127,7 +7127,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图",
@@ -7283,7 +7283,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图",
@@ -7408,7 +7408,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图",
@@ -7569,7 +7569,7 @@
       "variables": {
         "hostname": {
           "label": "服务器名称",
-          "description": "留空则使用游戏自带的名称。"
+          "description": "留空则使用游戏文件中的名称（或游戏自带的名称）。"
         },
         "map": {
           "label": "起始地图",

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "terraria",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Terraria",
   "description": "Terraria dedicated server through TShock, its community server, installed from TShock's GitHub releases with the .NET runtime it needs in the server's folder. TShock adds accounts, groups and permissions; its settings are tshock/config.json.",
   "authors": ["Pulsar contributors"],
@@ -12,7 +12,7 @@
 
   "variables": [
     { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$",
-      "description": "Shown to players in place of the world's name. Leave it empty for the game's own name." },
+      "description": "Shown to players in place of the world's name. Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "world", "label": "World", "type": "string", "default": "World", "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
       "description": "The world's file in worlds (a new one is made when it does not exist)." },
     { "key": "size", "label": "Size of a new world", "type": "enum", "default": "2",
@@ -84,7 +84,7 @@
         "/Settings/SpawnProtection": "{{var.spawnProtection}}",
         "/Settings/EnableWhitelist": "{{var.whitelist}}"
       },
-      "keepIfEmpty": ["/Settings/PvPMode"]
+      "keepIfEmpty": ["/Settings/ServerName", "/Settings/PvPMode"]
     }
   ],
 

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "7dtd",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "name": "7 Days to Die",
   "description": "7 Days to Die dedicated server, installed anonymously with SteamCMD (about 17 GB). Its settings live in pulsar-serverconfig.xml, a copy of the game's own serverconfig.xml that its updates leave alone.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 30, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "serverName", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^.{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "serverName", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^.{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
       "description": "Players need it to join. Leave empty for an open server." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 64 },
@@ -151,7 +151,7 @@
         "ServerDescription": "{{var.description}}",
         "ServerWebsiteURL": "{{var.website}}"
       },
-      "keepIfEmpty": ["SandboxCode", "Region", "Language", "WorldGenSeed", "WorldGenSize", "MaxSpawnedAnimals", "ServerMaxAllowedViewDistance", "LandClaimCount", "LandClaimSize", "LandClaimExpiryTime", "LandClaimDecayMode", "BedrollExpiryTime", "PlayerSafeZoneLevel", "ServerAllowCrossplay", "PersistentPlayerProfiles", "BuildCreate", "MaxSpawnedZombies", "PlayerKillingMode", "ServerDescription", "ServerWebsiteURL"] }
+      "keepIfEmpty": ["ServerName", "SandboxCode", "Region", "Language", "WorldGenSeed", "WorldGenSize", "MaxSpawnedAnimals", "ServerMaxAllowedViewDistance", "LandClaimCount", "LandClaimSize", "LandClaimExpiryTime", "LandClaimDecayMode", "BedrollExpiryTime", "PlayerSafeZoneLevel", "ServerAllowCrossplay", "PersistentPlayerProfiles", "BuildCreate", "MaxSpawnedZombies", "PlayerKillingMode", "ServerDescription", "ServerWebsiteURL"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

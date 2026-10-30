@@ -2589,7 +2589,7 @@
       "variables": {
         "serverName": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "password": {
           "label": "Beitrittspasswort",
@@ -2763,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "Servername",
-          "description": "So sehen Spieler ihn in der Serverliste. Leer lassen für den eigenen Namen des Spiels."
+          "description": "So sehen Spieler ihn in der Serverliste. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Karte",
@@ -2963,7 +2963,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "password": {
           "label": "Beitrittspasswort",
@@ -3115,7 +3115,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte"
@@ -3290,7 +3290,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte"
@@ -3499,7 +3499,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "password": {
           "label": "Beitrittspasswort",
@@ -3777,7 +3777,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte",
@@ -4101,7 +4101,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "description": {
           "label": "Beschreibung"
@@ -4338,7 +4338,7 @@
       "variables": {
         "publicName": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "adminPassword": {
           "label": "Admin-Passwort",
@@ -4587,7 +4587,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "description": {
           "label": "Beschreibung"
@@ -4752,7 +4752,7 @@
         },
         "serverName": {
           "label": "Servername",
-          "description": "So sehen Spieler ihn in der Serverliste. Die Farb-Tags des Spiels (<color=red>…</color>) funktionieren. Leer lassen für den eigenen Namen des Spiels."
+          "description": "So sehen Spieler ihn in der Serverliste. Die Farb-Tags des Spiels (<color=red>…</color>) funktionieren. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -4921,7 +4921,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "password": {
           "label": "Beitrittspasswort",
@@ -5145,7 +5145,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte"
@@ -5341,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "5 bis 50 Zeichen. Leer lassen für den eigenen Namen des Spiels."
+          "description": "5 bis 50 Zeichen. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Karte",
@@ -5426,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Wird in der Serverliste angezeigt. Er darf das Passwort nicht enthalten. Leer lassen für den eigenen Namen des Spiels."
+          "description": "Wird in der Serverliste angezeigt. Er darf das Passwort nicht enthalten. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "world": {
           "label": "Welt",
@@ -5561,7 +5561,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "description": {
           "label": "Beschreibung",
@@ -5842,7 +5842,7 @@
         },
         "serverName": {
           "label": "Servername",
-          "description": "Spieler sehen ihn in der Serverliste. Leer lassen für den eigenen Namen des Spiels."
+          "description": "Spieler sehen ihn in der Serverliste. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Plätze"
@@ -5957,7 +5957,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "world": {
           "label": "Welt",
@@ -6074,7 +6074,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6226,7 +6226,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "description": {
           "label": "Beschreibung",
@@ -6295,7 +6295,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6351,7 +6351,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Karte",
@@ -6489,7 +6489,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "scenario": {
           "label": "Szenario",
@@ -6829,7 +6829,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -6875,7 +6875,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "world": {
           "label": "Welt",
@@ -6980,7 +6980,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -7062,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "Servername",
-          "description": "Wird den Spielern anstelle des Weltnamens angezeigt. Leer lassen für den eigenen Namen des Spiels."
+          "description": "Wird den Spielern anstelle des Weltnamens angezeigt. Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "world": {
           "label": "Welt",
@@ -7127,7 +7127,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte",
@@ -7283,7 +7283,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte",
@@ -7408,7 +7408,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte",
@@ -7569,7 +7569,7 @@
       "variables": {
         "hostname": {
           "label": "Servername",
-          "description": "Leer lassen für den eigenen Namen des Spiels."
+          "description": "Leer lassen, um den Namen aus den Dateien des Spiels (oder seinen eigenen) zu behalten."
         },
         "map": {
           "label": "Startkarte",

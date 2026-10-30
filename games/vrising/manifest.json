@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "vrising",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "name": "V Rising",
   "description": "V Rising dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the save-data folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 6, "minMemoryMb": 4096 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"]{1,200}$",
       "description": "Shown under the name in the server list." },
     { "key": "saveName", "label": "World", "type": "string", "default": "world1", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",

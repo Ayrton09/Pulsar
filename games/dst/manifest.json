@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "dst",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Don't Starve Together",
   "description": "Don't Starve Together dedicated server (the overworld), installed anonymously with SteamCMD. Online with a Klei cluster token, on the local network without one. Its world and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 6, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"\\\\]{1,200}$",
       "description": "Shown under the name in the server list." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 6, "min": 1, "max": 64 },
@@ -69,7 +69,7 @@
     { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "NETWORK",
       "set": { "cluster_name": "{{var.name}}", "cluster_description": "{{var.description}}", "cluster_password": "{{var.password}}",
         "cluster_intention": "{{var.intention}}" },
-      "keepIfEmpty": ["cluster_description", "cluster_intention"] },
+      "keepIfEmpty": ["cluster_name", "cluster_description", "cluster_intention"] },
     { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "MISC",
       "set": { "console_enabled": "true" } },
     { "path": "save/Cluster_1/cluster.ini", "format": "unreal-ini", "mode": "patch", "section": "SHARD",

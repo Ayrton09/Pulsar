@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "pvkii",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Pirates, Vikings, and Knights II",
   "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "bt_glacier", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "Booty (bt_), team wars (tw_), territory (te_), last team standing (lts_), duel (duel_) or competitive (comp_) maps: bt_island, tw_tortuga, te_cara, lts_arena…" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 2, "max": 32 },
@@ -103,7 +103,7 @@
         "sv_allowdownload": "{{var.allowDownload}}",
         "sv_pure": "{{var.pure}}"
       },
-      "keepIfEmpty": ["mp_timelimit", "mp_timelimit_waitroundend", "mp_roundtime", "mp_roundlimit", "mp_winlimit", "mp_autoteambalance", "mp_limitteams",
+      "keepIfEmpty": ["hostname", "mp_timelimit", "mp_timelimit_waitroundend", "mp_roundtime", "mp_roundlimit", "mp_winlimit", "mp_autoteambalance", "mp_limitteams",
         "mp_suddendeathtime", "sv_alltalk", "sv_tags", "sv_region", "sv_lan", "sv_downloadurl", "sv_allowdownload", "sv_pure"] }
   ],
 

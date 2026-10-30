@@ -106,7 +106,7 @@ public static partial class ConfigFileWriter
             foreach (var line in lines)
             {
                 var key = KeyOf(file.Format, line);
-                if (key is null || !pending.TryGetValue(key, out var entry))
+                if (key is null || !pending.TryGetValue(key, out var entry) || Keeps(entry, line, e => Line(file.Format, e)))
                 {
                     output.Add(line);
                     continue;
@@ -243,7 +243,8 @@ public static partial class ConfigFileWriter
             var removed = false;
             foreach (Match match in XmlProperty().Matches(line))
             {
-                if (InComment(line, match.Index, commented) || !pending.TryGetValue(match.Groups["key"].Value, out var entry))
+                if (InComment(line, match.Index, commented) || !pending.TryGetValue(match.Groups["key"].Value, out var entry)
+                    || Keeps(entry, match.Value, XmlElement))
                 {
                     continue;
                 }
@@ -357,6 +358,11 @@ public static partial class ConfigFileWriter
                 throw new LaunchPlanException($"{file.Path}: {entry.Key} holds other elements, not a value; fix the manifest or the file.");
             }
 
+            if (remove && entry.Former is { } former && element.Value != former)
+            {
+                continue; // not the name Pulsar wrote: the user's own
+            }
+
             if (remove)
             {
                 element.Remove();
@@ -422,6 +428,12 @@ public static partial class ConfigFileWriter
             if (parent is null)
             {
                 continue;
+            }
+
+            if (remove && entry.Former is { } former
+                && (JsonChild(parent, names[^1]) is not JsonValue current || current.ToJsonString() != JsonValueOf(file, entry with { Value = former }).ToJsonString()))
+            {
+                continue; // not the name Pulsar wrote: the user's own
             }
 
             if (remove)
@@ -619,6 +631,13 @@ public static partial class ConfigFileWriter
     [GeneratedRegex("""<property\s+name="(?<key>[^"]+)"\s+value="[^"]*"\s*/>""", RegexOptions.CultureInvariant)]
     private static partial Regex XmlProperty();
 
+    /// <summary>
+    /// Whether an empty entry leaves <paramref name="item"/> as it is: it is kept as the file has it, unless it is exactly what
+    /// Pulsar wrote there before (<see cref="ConfigEntry.Former"/>).
+    /// </summary>
+    private static bool Keeps(ConfigEntry entry, string item, Func<ConfigEntry, string> write) =>
+        entry.Value.Length == 0 && entry.Former is { } former && item.Trim() != write(entry with { Value = former }).Trim();
+
     /// <summary>Replaces the first item setting each key, drops its repeats and appends the missing ones; empty values remove the key.</summary>
     private static List<string> Patch(List<string> items, IReadOnlyList<ConfigEntry> entries, Func<ConfigEntry, string> write)
     {
@@ -627,7 +646,7 @@ public static partial class ConfigFileWriter
         var output = new List<string>();
         foreach (var item in items)
         {
-            if (UnrealKey(item) is not { } key || !pending.TryGetValue(key, out var entry))
+            if (UnrealKey(item) is not { } key || !pending.TryGetValue(key, out var entry) || Keeps(entry, item, write))
             {
                 output.Add(item);
             }

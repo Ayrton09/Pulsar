@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft-bedrock",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "name": "Minecraft: Bedrock Edition",
   "description": "Minecraft: Bedrock Edition's dedicated server, downloaded from Mojang (its program signed by Microsoft). Players on Windows, consoles and phones join with the same version of the game.",
   "authors": ["Pulsar contributors"],
@@ -18,7 +18,7 @@
       "pattern": "^(latest|[0-9]{1,4}(\\.[0-9]{1,4}){2,3})$",
       "description": "'latest' for the latest release, or a version such as 1.21.50.07. Players need the same version. Changing it takes an update." },
     { "key": "serverName", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^;\\\\]{1,64}$",
-      "description": "Shown to players in the server list. Leave it empty for the game's own name." },
+      "description": "Shown to players in the server list. Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 10, "min": 1, "max": 200 },
     { "key": "gamemode", "label": "Game mode", "type": "enum", "default": "survival",
       "options": [
@@ -110,7 +110,7 @@
         "texturepack-required": "{{var.texturepackRequired}}",
         "chat-restriction": "{{var.chatRestriction}}"
       },
-      "keepIfEmpty": ["server-udp-ports", "level-name", "level-seed", "view-distance", "tick-distance", "allow-cheats", "force-gamemode", "default-player-permission-level",
+      "keepIfEmpty": ["server-name", "server-udp-ports", "level-name", "level-seed", "view-distance", "tick-distance", "allow-cheats", "force-gamemode", "default-player-permission-level",
         "player-idle-timeout", "max-threads", "texturepack-required", "chat-restriction"] }
   ],
 

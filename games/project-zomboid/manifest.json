@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "project-zomboid",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "name": "Project Zomboid",
   "description": "Project Zomboid dedicated server, installed anonymously with SteamCMD (about 7 GB), run with the Java runtime it ships. Its world and settings live in the zomboid folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 15, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "publicName", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^.{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "publicName", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^.{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "required": true, "maxLength": 64, "pattern": "^[A-Za-z0-9_.!@#$%^&*-]{8,64}$",
       "description": "For the \"admin\" account in the game. Set again at every start." },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
@@ -157,7 +157,7 @@
         "Faction": "{{var.faction}}",
         "DoLuaChecksum": "{{var.luaChecksum}}"
       },
-      "keepIfEmpty": ["PVP", "SafetySystem", "PauseEmpty", "Open", "AutoCreateUserInWhiteList", "GlobalChat", "VoiceEnable", "SteamVAC", "SaveWorldEveryMinutes", "PingLimit", "PublicDescription", "ServerWelcomeMessage",
+      "keepIfEmpty": ["PublicName", "PVP", "SafetySystem", "PauseEmpty", "Open", "AutoCreateUserInWhiteList", "GlobalChat", "VoiceEnable", "SteamVAC", "SaveWorldEveryMinutes", "PingLimit", "PublicDescription", "ServerWelcomeMessage",
         "Map", "AnnounceDeath", "NoFire", "PlayerSafehouse", "SafehouseAllowLoot", "SafehouseAllowTrepass", "SafehouseAllowFire", "SafehouseAllowRespawn", "SafehouseDaySurvivedToClaim", "HoursForLootRespawn", "ShowSafety", "PVPMeleeDamageModifier", "PVPFirearmDamageModifier", "SleepAllowed", "SleepNeeded", "MaxAccountsPerUser", "BackupsCount", "BackupsOnStart", "BackupsPeriod", "Faction", "DoLuaChecksum"] }
   ],
 

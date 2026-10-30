@@ -29,7 +29,7 @@ public sealed class SourceManifestTests
 
         var file = Assert.Single(plan.ConfigFiles);
         Assert.Equal("cstrike/cfg/server.cfg", file.Path);
-        Assert.Equal([new ConfigEntry("hostname", "", Secret: false), new ConfigEntry("sv_password", "", Secret: true)], file.Entries);
+        Assert.Equal([new ConfigEntry("hostname", "", Secret: false) { Former = "Pulsar CS:S" }, new ConfigEntry("sv_password", "", Secret: true)], file.Entries);
         Assert.IsType<RconReadiness>(plan.Readiness);
         Assert.Equal("quit", Assert.IsType<RconCommandStop>(Assert.Single(plan.Stop.Steps)).Command);
     }

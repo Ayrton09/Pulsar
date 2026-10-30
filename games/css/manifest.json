@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 4, "minMemoryMb": 1024 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "de_dust2", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 64 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
@@ -141,7 +141,7 @@
         "sv_maxupdaterate": "{{var.maxUpdateRate}}",
         "tv_autorecord": "{{var.tvAutorecord}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_timelimit", "mp_winlimit", "mp_roundtime", "mp_freezetime", "mp_startmoney", "mp_autoteambalance", "mp_limitteams", "mp_c4timer", "sv_alltalk", "bot_quota", "sv_tags", "sv_region", "sv_steamgroup", "sv_lan", "sv_cheats", "sv_voiceenable", "mp_allowspectators", "mp_forcecamera", "mp_fraglimit", "mp_footsteps", "sv_downloadurl", "sv_allowdownload", "sv_pausable", "sv_pure", "sv_maxrate", "sv_maxupdaterate", "tv_autorecord"] }
+      "keepIfEmpty": ["hostname", "mp_friendlyfire", "mp_maxrounds", "mp_timelimit", "mp_winlimit", "mp_roundtime", "mp_freezetime", "mp_startmoney", "mp_autoteambalance", "mp_limitteams", "mp_c4timer", "sv_alltalk", "bot_quota", "sv_tags", "sv_region", "sv_steamgroup", "sv_lan", "sv_cheats", "sv_voiceenable", "mp_allowspectators", "mp_forcecamera", "mp_fraglimit", "mp_footsteps", "sv_downloadurl", "sv_allowdownload", "sv_pausable", "sv_pure", "sv_maxrate", "sv_maxupdaterate", "tv_autorecord"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

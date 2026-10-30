@@ -48,12 +48,6 @@ public sealed class BundledGameSettingsTests
                 continue; // a boolean: always written, true or false
             }
 
-            if (option.Label == "Server name")
-            {
-                // Pulsar wrote a name of its own there until 1.0.21: left empty, the line goes, and the game's own name with it.
-                continue;
-            }
-
             // Unset, the lines it would set are not written: the admin's own values stay.
             foreach (var file in manifest.ConfigFileList)
             {
@@ -68,7 +62,7 @@ public sealed class BundledGameSettingsTests
 
     [Theory]
     [MemberData(nameof(Games))]
-    public void AServerNameLeftEmptyIsNotPulsarsAndLeavesTheGamesOwn(string game)
+    public void AServerNameLeftEmptyLeavesTheFilesNameButNotTheOnePulsarWroteBefore(string game)
     {
         var manifest = TestManifests.Load(game);
         if (manifest.VariableList.SingleOrDefault(v => v.Label == "Server name") is not { } name)
@@ -79,34 +73,43 @@ public sealed class BundledGameSettingsTests
         Assert.Null(name.Default);
         var required = manifest.VariableList.Where(v => v.Required && v.Default is null)
             .ToDictionary(v => v.Key, v => (string?)Sample(v), StringComparer.Ordinal);
-        var plan = Render(manifest, required);
-
-        // No argument for it, and its lines are taken out of the files (Pulsar's former name with them).
-        Assert.DoesNotContain(plan.Arguments, a => a.EndsWith('='));
-        foreach (var file in manifest.ConfigFileList)
+        Dictionary<string, string?> Named(string? value) => new(required) { [name.Key] = value };
+        var unset = Render(manifest, required);
+        Assert.DoesNotContain(unset.Arguments, a => a.EndsWith('='));
+        Assert.Contains("Mi servidor", Text(Render(manifest, Named("Mi servidor"))), StringComparison.Ordinal);
+        if (!manifest.ConfigFileList.Any(f => f.Set.Values.Any(v => v.Contains($"{{{{var.{name.Key}}}}}", StringComparison.Ordinal))))
         {
-            foreach (var key in file.Set.Where(e => e.Value.Contains($"{{{{var.{name.Key}}}}}", StringComparison.Ordinal)).Select(e => e.Key))
-            {
-                Assert.All(plan.ConfigFiles.Where(f => f.Path == file.Path).SelectMany(f => f.Entries).Where(e => e.Key == key), e => Assert.Equal("", e.Value));
-            }
+            return; // on the command line only: left out while empty
         }
 
-        var named = Render(manifest, new Dictionary<string, string?>(required) { [name.Key] = "Mi servidor" });
-        Assert.Contains("Mi servidor", Text(named), StringComparison.Ordinal);
+        // A name the user wrote into the game's files stays.
+        var own = Write(Render(manifest, Named("Mi nombre propio")), []);
+        Assert.Contains("Mi nombre propio", string.Concat(Write(unset, own).Values), StringComparison.Ordinal);
+
+        // The one Pulsar wrote there before 1.0.21 goes (Arma Reforger's stays: its file must have a name).
+        if (FormerServerNames.Of(game) is { } former)
+        {
+            Assert.Equal(name.Key, former.Variable);
+            var pulsars = Write(Render(manifest, Named(former.Value)), []);
+            Assert.Contains(former.Value, string.Concat(pulsars.Values), StringComparison.Ordinal);
+            Assert.DoesNotContain(former.Value, string.Concat(Write(unset, pulsars).Values), StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Equal("arma-reforger", game);
+        }
     }
 
-    [Theory]
-    [InlineData("css", "cstrike/cfg/server.cfg", "hostname \"Pulsar CS:S\"\nsv_cheats 0\n", "hostname")]
-    [InlineData("squad", "SquadGame/ServerConfig/Server.cfg", "ServerName=\"Pulsar Squad\"\nMaxPlayers=98\n", "ServerName")]
-    public void TheNamePulsarWroteBeforeGoesWhenTheNameIsEmpty(string game, string path, string existing, string key)
+    /// <summary>The plan's files written over <paramref name="files"/> (by path), as a start writes them.</summary>
+    private static Dictionary<string, string> Write(LaunchPlan plan, Dictionary<string, string> files)
     {
-        var manifest = TestManifests.Load(game);
-        var plan = Render(manifest, new Dictionary<string, string?>());
+        var written = new Dictionary<string, string>(files, StringComparer.Ordinal);
+        foreach (var file in plan.ConfigFiles)
+        {
+            written[file.Path] = ConfigFileWriter.Apply(file, written.GetValueOrDefault(file.Path));
+        }
 
-        var text = ConfigFileWriter.Apply(plan.ConfigFiles.Single(f => f.Path == path), existing);
-
-        Assert.DoesNotContain(key, text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Pulsar", text, StringComparison.Ordinal);
+        return written;
     }
 
     [Fact]

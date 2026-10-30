@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "squad",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Squad",
   "description": "Squad dedicated server, installed anonymously with SteamCMD, with commands over RCON. Its settings are the files of its SquadGame/ServerConfig folder.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 20, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 80, "min": 2, "max": 100 },
     { "key": "reservedSlots", "label": "Reserved slots", "type": "integer", "min": 0, "max": 20,
       "description": "Slots kept for the admins and whitelisted players of Admins.cfg." },
@@ -80,7 +80,7 @@
         "ServerMessageInterval": "{{var.messageInterval}}",
         "RecordDemos": "{{var.recordDemos}}"
       },
-      "keepIfEmpty": ["NumReservedSlots", "ShouldAdvertise", "PublicQueueLimit", "AllowTeamChanges", "PreventTeamChangeIfUnbalanced", "TKAutoKickEnabled",
+      "keepIfEmpty": ["ServerName", "NumReservedSlots", "ShouldAdvertise", "PublicQueueLimit", "AllowTeamChanges", "PreventTeamChangeIfUnbalanced", "TKAutoKickEnabled",
         "AutoTKBanNumberTKs", "TimeBetweenMatches", "ServerMessageInterval", "RecordDemos"] }
   ],
 

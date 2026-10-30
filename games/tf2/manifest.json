@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "tf2",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "name": "Team Fortress 2",
   "description": "Team Fortress 2 dedicated server (srcds, the 64-bit one), installed anonymously with SteamCMD (about 15 GB).",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 20, "minMemoryMb": 2048 },
 
   "variables": [
-    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "hostname", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\";]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "map", "label": "Starting map", "type": "string", "default": "ctf_2fort", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 2, "max": 100 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
@@ -127,7 +127,7 @@
         "sv_pure": "{{var.pure}}",
         "sv_visiblemaxplayers": "{{var.visibleMaxPlayers}}"
       },
-      "keepIfEmpty": ["mp_timelimit", "mp_winlimit", "mp_maxrounds", "mp_autoteambalance", "mp_teams_unbalance_limit", "tf_weapon_criticals",
+      "keepIfEmpty": ["hostname", "mp_timelimit", "mp_winlimit", "mp_maxrounds", "mp_autoteambalance", "mp_teams_unbalance_limit", "tf_weapon_criticals",
         "tf_use_fixed_weaponspreads", "mp_friendlyfire", "sv_alltalk", "mp_disable_respawn_times", "tf_bot_quota", "tf_bot_difficulty",
         "sv_tags", "sv_region", "sv_lan", "sv_cheats", "mp_stalemate_enable", "mp_stalemate_timelimit", "mp_allowspectators", "mp_forcecamera", "tf_damage_disablespread", "sv_downloadurl", "sv_allowdownload", "sv_pure", "sv_visiblemaxplayers"] }
   ],

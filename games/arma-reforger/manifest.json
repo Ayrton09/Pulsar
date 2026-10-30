@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "arma-reforger",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "name": "Arma Reforger",
   "description": "Arma Reforger dedicated server, installed anonymously with SteamCMD. Its settings are in server.json and its logs, saves and mods in the profile folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 100, "pattern": "^[^\"]{1,100}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 100, "pattern": "^[^\"]{1,100}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
       "description": "Players need it to join. Leave empty for a public server." },
     { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{3,32}$",
@@ -80,7 +80,7 @@
   "install": { "steps": [
     { "type": "steamcmd", "appId": 1874900 },
     { "type": "writeFileIfMissing", "path": "server.json",
-      "content": "{\n  \"bindAddress\": \"0.0.0.0\",\n  \"bindPort\": 2001,\n  \"publicAddress\": \"\",\n  \"publicPort\": 2001,\n  \"a2s\": {\n    \"address\": \"0.0.0.0\",\n    \"port\": 17777\n  },\n  \"game\": {\n    \"name\": \"Pulsar Arma Reforger\",\n    \"password\": \"\",\n    \"passwordAdmin\": \"\",\n    \"scenarioId\": \"{ECC61978EDCC2B5A}Missions/23_Campaign.conf\",\n    \"maxPlayers\": 32,\n    \"visible\": true,\n    \"gameProperties\": {\n      \"serverMaxViewDistance\": 1600,\n      \"networkViewDistance\": 1500,\n      \"disableThirdPerson\": false,\n      \"fastValidation\": true,\n      \"battlEye\": true\n    },\n    \"mods\": []\n  }\n}\n" }
+      "content": "{\n  \"bindAddress\": \"0.0.0.0\",\n  \"bindPort\": 2001,\n  \"publicAddress\": \"\",\n  \"publicPort\": 2001,\n  \"a2s\": {\n    \"address\": \"0.0.0.0\",\n    \"port\": 17777\n  },\n  \"game\": {\n    \"name\": \"Arma Reforger Server\",\n    \"password\": \"\",\n    \"passwordAdmin\": \"\",\n    \"scenarioId\": \"{ECC61978EDCC2B5A}Missions/23_Campaign.conf\",\n    \"maxPlayers\": 32,\n    \"visible\": true,\n    \"gameProperties\": {\n      \"serverMaxViewDistance\": 1600,\n      \"networkViewDistance\": 1500,\n      \"disableThirdPerson\": false,\n      \"fastValidation\": true,\n      \"battlEye\": true\n    },\n    \"mods\": []\n  }\n}\n" }
   ] },
   "update": { "steps": [ { "type": "steamcmd", "appId": 1874900 } ] },
 
@@ -126,7 +126,7 @@
         "/operating/disableAI": "{{var.disableAi}}",
         "/operating/slotReservationTimeout": "{{var.slotReservationTimeout}}"
       },
-      "keepIfEmpty": ["/game/crossPlatform", "/game/gameProperties/disableThirdPerson", "/game/gameProperties/battlEye",
+      "keepIfEmpty": ["/game/name", "/game/crossPlatform", "/game/gameProperties/disableThirdPerson", "/game/gameProperties/battlEye",
         "/game/gameProperties/serverMaxViewDistance",
         "/game/gameProperties/networkViewDistance", "/game/gameProperties/serverMinGrassDistance", "/game/gameProperties/fastValidation", "/game/gameProperties/VONDisableUI", "/game/gameProperties/VONDisableDirectSpeechUI", "/game/gameProperties/VONCanTransmitCrossFaction", "/operating/playerSaveTime", "/operating/aiLimit", "/operating/disableAI", "/operating/slotReservationTimeout"],
       "lists": { "/game/mods": { "variable": "mods", "key": "modId" } } }

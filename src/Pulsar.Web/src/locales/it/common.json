@@ -2589,7 +2589,7 @@
       "variables": {
         "serverName": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "password": {
           "label": "Password di accesso",
@@ -2763,7 +2763,7 @@
       "variables": {
         "sessionName": {
           "label": "Nome del server",
-          "description": "Come lo vedono i giocatori nell'elenco dei server. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Come lo vedono i giocatori nell'elenco dei server. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa",
@@ -2963,7 +2963,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "password": {
           "label": "Password di accesso",
@@ -3115,7 +3115,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale"
@@ -3290,7 +3290,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale"
@@ -3499,7 +3499,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "password": {
           "label": "Password di accesso",
@@ -3777,7 +3777,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale",
@@ -4101,7 +4101,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "description": {
           "label": "Descrizione"
@@ -4338,7 +4338,7 @@
       "variables": {
         "publicName": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "adminPassword": {
           "label": "Password amministratore",
@@ -4587,7 +4587,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "description": {
           "label": "Descrizione"
@@ -4752,7 +4752,7 @@
         },
         "serverName": {
           "label": "Nome del server",
-          "description": "Come lo vedono i giocatori nell'elenco dei server. I tag colore del gioco (<color=red>…</color>) funzionano. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Come lo vedono i giocatori nell'elenco dei server. I tag colore del gioco (<color=red>…</color>) funzionano. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slots"
@@ -4921,7 +4921,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "password": {
           "label": "Password di accesso",
@@ -5145,7 +5145,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale"
@@ -5341,7 +5341,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Da 5 a 50 caratteri. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Da 5 a 50 caratteri. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa",
@@ -5426,7 +5426,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Mostrato nell'elenco dei server. Non può contenere la password. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Mostrato nell'elenco dei server. Non può contenere la password. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "world": {
           "label": "Mondo",
@@ -5561,7 +5561,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "description": {
           "label": "Descrizione",
@@ -5842,7 +5842,7 @@
         },
         "serverName": {
           "label": "Nome del server",
-          "description": "I giocatori lo vedono nell'elenco dei server. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "I giocatori lo vedono nell'elenco dei server. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slot"
@@ -5957,7 +5957,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "world": {
           "label": "Mondo",
@@ -6074,7 +6074,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slot"
@@ -6226,7 +6226,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "description": {
           "label": "Descrizione",
@@ -6295,7 +6295,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slot"
@@ -6351,7 +6351,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa",
@@ -6489,7 +6489,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "scenario": {
           "label": "Scenario",
@@ -6829,7 +6829,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slot"
@@ -6875,7 +6875,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "world": {
           "label": "Mondo",
@@ -6980,7 +6980,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "maxPlayers": {
           "label": "Slot"
@@ -7062,7 +7062,7 @@
       "variables": {
         "name": {
           "label": "Nome del server",
-          "description": "Mostrato ai giocatori al posto del nome del mondo. Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Mostrato ai giocatori al posto del nome del mondo. Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "world": {
           "label": "Mondo",
@@ -7127,7 +7127,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale",
@@ -7283,7 +7283,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale",
@@ -7408,7 +7408,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale",
@@ -7569,7 +7569,7 @@
       "variables": {
         "hostname": {
           "label": "Nome del server",
-          "description": "Lascialo vuoto per usare il nome del gioco stesso."
+          "description": "Lascialo vuoto per mantenere il nome dei file del gioco (o quello del gioco stesso)."
         },
         "map": {
           "label": "Mappa iniziale",

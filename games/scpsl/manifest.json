@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "scpsl",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "name": "SCP: Secret Laboratory",
   "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, in config/config (config_gameplay.txt starts as the game's own template), and its plugins (LabAPI, EXILED) in profile/AppData/Roaming; LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
   "authors": ["Pulsar contributors"],
@@ -15,7 +15,7 @@
       "options": [ { "value": "accepted", "label": "I accept it" } ],
       "description": "The game's terms for servers: https://link.scpslgame.com/eula. Its server does not run without accepting them." },
     { "key": "serverName", "label": "Server name", "type": "string", "maxLength": 400, "pattern": "^[^\"\\\\]{1,400}$",
-      "description": "As players see it in the server list. The game's rich text works: <color=#FF8800>…</color>, <b>…</b>, <i>…</i>, <size=60>…</size>. Leave it empty for the game's own name." },
+      "description": "As players see it in the server list. The game's rich text works: <color=#FF8800>…</color>, <b>…</b>, <i>…</i>, <size=60>…</size>. Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 20, "min": 1, "max": 100 },
     { "key": "playerListTitle", "label": "Player list title", "type": "string", "maxLength": 400, "pattern": "^[^\"\\\\]{1,400}$",
       "description": "Shown above the player list. Empty: the server name." },
@@ -131,7 +131,7 @@
         "maximum_MTF_respawn_amount": "{{var.mtfMaxAmount}}",
         "maximum_CI_respawn_amount": "{{var.ciMaxAmount}}"
       },
-      "keepIfEmpty": ["player_list_title", "contact_email", "server_tickrate", "friendly_fire", "friendly_fire_multiplier", "auto_round_restart_time", "lobby_waiting_time", "late_join_time", "afk_time", "warhead_tminus_start_duration", "disable_decontamination", "map_seed", "enable_whitelist",
+      "keepIfEmpty": ["server_name", "player_list_title", "contact_email", "server_tickrate", "friendly_fire", "friendly_fire_multiplier", "auto_round_restart_time", "lobby_waiting_time", "late_join_time", "afk_time", "warhead_tminus_start_duration", "disable_decontamination", "map_seed", "enable_whitelist",
         "hide_from_public_list", "serverinfo_pastebin_id", "ip_banning", "enable_fast_round_restart", "fast_round_restart_delay", "intercom_cooldown", "intercom_max_speech_time", "lock_gates_on_countdown", "open_doors_on_countdown", "isolate_zones_on_countdown", "keep_items_after_escaping", "end_round_on_one_player", "spawn_protect_enabled", "spawn_protect_time", "minimum_MTF_time_to_spawn", "maximum_MTF_time_to_spawn", "maximum_MTF_respawn_amount", "maximum_CI_respawn_amount"] }
   ],
 

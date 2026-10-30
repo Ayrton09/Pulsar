@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "sotf",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "name": "Sons of the Forest",
   "description": "Sons of the Forest dedicated server, installed anonymously with SteamCMD. Its settings, saves and admin list live in the userdata folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 10, "minMemoryMb": 8192 },
 
   "variables": [
-    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty for the game's own name." },
+    { "key": "name", "label": "Server name", "type": "string", "maxLength": 64, "pattern": "^[^\"]{1,64}$", "description": "Leave it empty to keep the name set in the game's files (or the game's own)." },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 40, "pattern": "^[^\" ]{1,40}$",
       "description": "Players need it to join. Leave empty for a public server." },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 8 },
@@ -133,7 +133,7 @@
         "/ActiveTargetFramerate": "{{var.activeFps}}",
         "/IdleTargetFramerate": "{{var.idleFps}}"
       },
-      "keepIfEmpty": ["/SaveInterval", "/LanOnly", "/GameSettings/Gameplay.TreeRegrowth", "/GameSettings/Structure.Damage",
+      "keepIfEmpty": ["/ServerName", "/SaveInterval", "/LanOnly", "/GameSettings/Gameplay.TreeRegrowth", "/GameSettings/Structure.Damage",
         "/CustomGameModeSettings/GameSetting.Vail.EnemySpawn",
         "/CustomGameModeSettings/GameSetting.Vail.EnemyHealth",
         "/CustomGameModeSettings/GameSetting.Vail.EnemyDamage",

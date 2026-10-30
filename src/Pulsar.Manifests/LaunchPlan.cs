@@ -89,6 +89,12 @@ public sealed record ConfigEntry(string Key, string Value, bool Secret)
     /// </summary>
     public bool Bare { get; init; }
 
+    /// <summary>
+    /// For an empty value kept as the file has it: the value Pulsar wrote there before (its own server name, until 1.0.21).
+    /// The key goes only while the file still holds that; anything else (the user's own) stays.
+    /// </summary>
+    public string? Former { get; init; }
+
     public override string ToString() => Secret ? $"{Key}=***" : $"{Key}={Value}";
 }
 
@@ -441,11 +447,18 @@ public static partial class LaunchPlanRenderer
                 ? ""
                 : Placeholders.Replace(template, Placeholder);
 
+        // The server name Pulsar gave this game before 1.0.21, while it is left empty now: its line goes only while it holds it.
+        var former = FormerServerNames.Of(manifest.Key) is { } name && string.IsNullOrEmpty(resolved.GetValueOrDefault(name.Variable)) ? name : ((string Variable, string Value)?)null;
+        string? Former(string template) =>
+            former is { } name && Placeholders.Parse(template, out _).Any(p => p is ["var", var key] && key == name.Variable)
+                ? Placeholders.Replace(template, p => p is ["var", var key] && key == name.Variable ? name.Value : Placeholder(p))
+                : null;
+
         // A key kept when empty (an option left unset) is not written at all: its line stays as the file has it.
         var configFiles = manifest.ConfigFileList.Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
         [
             .. file.Set.Where(entry => file.KeepIfEmpty?.Contains(entry.Key, StringComparer.OrdinalIgnoreCase) != true
-                    || Setting(entry.Value).Length > 0)
+                    || Setting(entry.Value).Length > 0 || Former(entry.Value) is not null)
                 .Select(entry =>
             {
                 var value = Setting(entry.Value);
@@ -460,6 +473,7 @@ public static partial class LaunchPlanRenderer
                     Kind = file.Format == ConfigFileFormat.Json ? KindOf(entry.Value) : ConfigValueKind.Text,
                     WriteEmpty = file.WriteIfEmpty?.Contains(entry.Key, StringComparer.Ordinal) == true,
                     Bare = file.Format == ConfigFileFormat.UnrealIni && file.Struct is not null && IsWordChoice(entry.Value),
+                    Former = value.Length == 0 ? Former(entry.Value) : null,
                 };
             }),
         ])
@@ -708,4 +722,39 @@ public static partial class LaunchPlanRenderer
     /// <summary>A word Unreal reads as an enum's value without quotes: a letter, then letters, digits or underscores.</summary>
     [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
     internal static partial Regex UnrealWord();
+}
+
+/// <summary>
+/// The server names Pulsar's bundled games had by default until 1.0.21 ("Pulsar CS:S"), when the name became empty unless
+/// the user sets one. Left empty, a game's files lose that name, and keep any other.
+/// </summary>
+public static class FormerServerNames
+{
+    private static readonly Dictionary<string, (string Variable, string Value)> s_names = new(StringComparer.Ordinal)
+    {
+        ["7dtd"] = ("serverName", "Pulsar 7 Days to Die"),
+        ["conan-exiles"] = ("name", "Pulsar Conan Exiles"),
+        ["cs16"] = ("hostname", "Pulsar CS 1.6"),
+        ["cs2"] = ("hostname", "Pulsar CS2"),
+        ["css"] = ("hostname", "Pulsar CS:S"),
+        ["dst"] = ("name", "Pulsar Don't Starve Together"),
+        ["enshrouded"] = ("name", "Pulsar Enshrouded"),
+        ["hl2dm"] = ("hostname", "Pulsar HL2:DM"),
+        ["hldm"] = ("hostname", "Pulsar HL Deathmatch"),
+        ["kf2"] = ("name", "Pulsar Killing Floor 2"),
+        ["l4d2"] = ("hostname", "Pulsar L4D2"),
+        ["minecraft-bedrock"] = ("serverName", "Pulsar Bedrock"),
+        ["palworld"] = ("name", "Pulsar Palworld"),
+        ["project-zomboid"] = ("publicName", "Pulsar Project Zomboid"),
+        ["pvkii"] = ("hostname", "Pulsar PVKII"),
+        ["scpsl"] = ("serverName", "Pulsar SCP SL"),
+        ["sotf"] = ("name", "Pulsar Sons of the Forest"),
+        ["space-engineers"] = ("name", "Pulsar Space Engineers"),
+        ["squad"] = ("name", "Pulsar Squad"),
+        ["terraria"] = ("name", "Pulsar Terraria"),
+        ["tf2"] = ("hostname", "Pulsar TF2"),
+        ["unturned"] = ("name", "Pulsar Unturned"),
+    };
+
+    public static (string Variable, string Value)? Of(string game) => s_names.TryGetValue(game, out var name) ? name : null;
 }
