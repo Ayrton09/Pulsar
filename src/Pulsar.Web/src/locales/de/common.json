@@ -1519,6 +1519,49 @@
       "noResults": "Nichts gefunden.",
       "notFound": "Nicht im Workshop",
       "by": "von {{author}}"
+    },
+    "bulk": {
+      "start": "Auswählen",
+      "done": "Fertig",
+      "selectShown": "Angezeigte auswählen ({{count}})",
+      "select": "{{name}} auswählen",
+      "label": "Aktionen für die ausgewählten Server",
+      "selected": "Ausgewählt: {{count}}",
+      "clear": "Auswahl aufheben",
+      "actions": {
+        "start": "Starten ({{count}})",
+        "restart": "Neu starten ({{count}})",
+        "stop": "Stoppen ({{count}})",
+        "backup": "Sichern ({{count}})",
+        "update": "Spiel aktualisieren ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "Diesen Server neu starten? Seine Spieler werden getrennt.",
+        "restart_other": "{{count}} Server neu starten? Ihre Spieler werden getrennt.",
+        "stop_one": "Diesen Server stoppen? Seine Spieler werden getrennt.",
+        "stop_other": "{{count}} Server stoppen? Ihre Spieler werden getrennt.",
+        "update_one": "Das Spiel dieses Servers aktualisieren?",
+        "update_other": "Das Spiel von {{count}} Servern aktualisieren?"
+      },
+      "results": {
+        "start": "Server werden gestartet",
+        "restart": "Server werden neu gestartet",
+        "stop": "Server werden gestoppt",
+        "backup": "Server werden gesichert",
+        "update": "Server werden aktualisiert"
+      },
+      "outcomes": {
+        "done": "Angefordert",
+        "skipped": "Übersprungen",
+        "failed": "Fehlgeschlagen"
+      },
+      "skip": {
+        "forbidden": "Du hast die Berechtigung auf diesem Server nicht.",
+        "notStopped": "Er ist nicht gestoppt oder beschäftigt.",
+        "notRunning": "Er läuft nicht oder ist beschäftigt.",
+        "busy": "Er ist beschäftigt, nicht installiert oder sein Node ist offline.",
+        "mustBeStopped": "Er muss gestoppt und installiert sein, mit verbundenem Node."
+      }
     }
   },
   "panelKeys": {

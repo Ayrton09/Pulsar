@@ -1519,6 +1519,49 @@
       "noResults": "什么也没找到。",
       "notFound": "不在 Workshop 中",
       "by": "作者：{{author}}"
+    },
+    "bulk": {
+      "start": "选择",
+      "done": "完成",
+      "selectShown": "选择显示的 ({{count}})",
+      "select": "选择 {{name}}",
+      "label": "对所选服务器的操作",
+      "selected": "已选：{{count}}",
+      "clear": "取消选择",
+      "actions": {
+        "start": "启动 ({{count}})",
+        "restart": "重启 ({{count}})",
+        "stop": "停止 ({{count}})",
+        "backup": "备份 ({{count}})",
+        "update": "更新游戏 ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "重启此服务器？其玩家将断开连接。",
+        "restart_other": "重启 {{count}} 台服务器？其玩家将断开连接。",
+        "stop_one": "停止此服务器？其玩家将断开连接。",
+        "stop_other": "停止 {{count}} 台服务器？其玩家将断开连接。",
+        "update_one": "更新此服务器的游戏？",
+        "update_other": "更新 {{count}} 台服务器的游戏？"
+      },
+      "results": {
+        "start": "正在启动服务器",
+        "restart": "正在重启服务器",
+        "stop": "正在停止服务器",
+        "backup": "正在备份服务器",
+        "update": "正在更新服务器"
+      },
+      "outcomes": {
+        "done": "已请求",
+        "skipped": "已跳过",
+        "failed": "失败"
+      },
+      "skip": {
+        "forbidden": "你在此服务器上没有该权限。",
+        "notStopped": "未停止，或正忙。",
+        "notRunning": "未运行，或正忙。",
+        "busy": "正忙、未安装或其节点离线。",
+        "mustBeStopped": "必须已停止并已安装，且节点在线。"
+      }
     }
   },
   "panelKeys": {

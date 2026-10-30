@@ -13,11 +13,49 @@ import type { ServerSummary } from './api';
 import { GameUpdateBadge, NodeDisconnectedBadge, ServerStatusPill, StateReason } from './components';
 import { PowerButtons } from './PowerButtons';
 
+/** Servers picked in the list for an action on all of them (gap point 14). */
+export interface ServerSelection {
+  selected: ReadonlySet<string>;
+  toggle: (id: string) => void;
+}
+
+/** Picks the server; above the link that opens it. */
+function SelectBox({
+  server,
+  selection,
+  className,
+}: {
+  server: ServerSummary;
+  selection: ServerSelection;
+  className: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <label className={`z-10 grid size-9 cursor-pointer place-items-center rounded-lg ${className}`}>
+      <input
+        type="checkbox"
+        checked={selection.selected.has(server.id)}
+        onChange={() => selection.toggle(server.id)}
+        aria-label={t('servers.bulk.select', { name: server.name })}
+        className="size-5 cursor-pointer accent-[var(--pulsar-accent)]"
+      />
+    </label>
+  );
+}
+
 /**
  * One server in the list: its game's picture with its status, its live usage while it runs, where players connect and
  * the power buttons. The whole card opens the server; the address and the buttons sit above that link.
  */
-export function ServerCard({ server, headingLevel = 2 }: { server: ServerSummary; headingLevel?: 2 | 3 }) {
+export function ServerCard({
+  server,
+  headingLevel = 2,
+  selection,
+}: {
+  server: ServerSummary;
+  headingLevel?: 2 | 3;
+  selection?: ServerSelection | undefined;
+}) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const alive = server.runtimeState === 'running' || server.runtimeState === 'starting';
@@ -47,6 +85,13 @@ export function ServerCard({ server, headingLevel = 2 }: { server: ServerSummary
             </span>
           )}
         </div>
+        {selection && (
+          <SelectBox
+            server={server}
+            selection={selection}
+            className="absolute top-2 right-2 bg-black/55 backdrop-blur-sm"
+          />
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-3 px-4 pb-4">
         <div className="min-w-0">
@@ -97,12 +142,15 @@ export function ServerCollection({
   label,
   headingLevel = 2,
   gridClassName,
+  selection,
 }: {
   servers: ServerSummary[];
   label?: string | undefined;
   headingLevel?: 2 | 3;
   /** The cards' columns. */
   gridClassName: string;
+  /** Lets the user pick servers, for an action on all of them. */
+  selection?: ServerSelection | undefined;
 }) {
   const { t } = useTranslation();
   const artwork = useArtworkShown();
@@ -117,7 +165,7 @@ export function ServerCollection({
       >
         {servers.map((server) => (
           <li key={server.id}>
-            <ServerRow server={server} headingLevel={headingLevel} />
+            <ServerRow server={server} headingLevel={headingLevel} selection={selection} />
           </li>
         ))}
       </ul>
@@ -127,7 +175,7 @@ export function ServerCollection({
     <ul aria-label={label} className={`grid grid-cols-1 gap-5 ${gridClassName}`}>
       {servers.map((server) => (
         <li key={server.id} className="flex min-w-0">
-          <ServerCard server={server} headingLevel={headingLevel} />
+          <ServerCard server={server} headingLevel={headingLevel} selection={selection} />
         </li>
       ))}
     </ul>
@@ -135,7 +183,15 @@ export function ServerCollection({
 }
 
 /** One server as a row of the list shown without game artwork: what its card says, without the picture. */
-export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary; headingLevel?: 2 | 3 }) {
+export function ServerRow({
+  server,
+  headingLevel = 2,
+  selection,
+}: {
+  server: ServerSummary;
+  headingLevel?: 2 | 3;
+  selection?: ServerSelection | undefined;
+}) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const alive = server.runtimeState === 'running' || server.runtimeState === 'starting';
@@ -145,6 +201,9 @@ export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary;
       aria-labelledby={`server-card-${server.id}`}
       className="relative flex flex-col gap-3 px-4 py-3 transition-colors focus-within:bg-surface-raised/40 hover:bg-surface-raised/40 lg:flex-row lg:items-center lg:gap-6"
     >
+      {selection && (
+        <SelectBox server={server} selection={selection} className="relative -my-1 -ml-2 self-start lg:self-center" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Heading id={`server-card-${server.id}`} className="min-w-0 truncate text-base font-semibold">

@@ -1519,6 +1519,49 @@
       "noResults": "見つかりませんでした。",
       "notFound": "Workshop にありません",
       "by": "作者: {{author}}"
+    },
+    "bulk": {
+      "start": "選択",
+      "done": "完了",
+      "selectShown": "表示中を選択 ({{count}})",
+      "select": "{{name}} を選択",
+      "label": "選択したサーバーへの操作",
+      "selected": "選択中: {{count}}",
+      "clear": "選択を解除",
+      "actions": {
+        "start": "起動 ({{count}})",
+        "restart": "再起動 ({{count}})",
+        "stop": "停止 ({{count}})",
+        "backup": "バックアップ ({{count}})",
+        "update": "ゲームを更新 ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "このサーバーを再起動しますか？プレイヤーは切断されます。",
+        "restart_other": "{{count}} 台のサーバーを再起動しますか？プレイヤーは切断されます。",
+        "stop_one": "このサーバーを停止しますか？プレイヤーは切断されます。",
+        "stop_other": "{{count}} 台のサーバーを停止しますか？プレイヤーは切断されます。",
+        "update_one": "このサーバーのゲームを更新しますか？",
+        "update_other": "{{count}} 台のサーバーのゲームを更新しますか？"
+      },
+      "results": {
+        "start": "サーバーを起動中",
+        "restart": "サーバーを再起動中",
+        "stop": "サーバーを停止中",
+        "backup": "サーバーをバックアップ中",
+        "update": "サーバーを更新中"
+      },
+      "outcomes": {
+        "done": "要求済み",
+        "skipped": "スキップ",
+        "failed": "失敗"
+      },
+      "skip": {
+        "forbidden": "このサーバーでの権限がありません。",
+        "notStopped": "停止していないか、処理中です。",
+        "notRunning": "起動していないか、処理中です。",
+        "busy": "処理中か、未インストールか、ノードがオフラインです。",
+        "mustBeStopped": "停止済みでインストール済み、ノードが接続中である必要があります。"
+      }
     }
   },
   "panelKeys": {

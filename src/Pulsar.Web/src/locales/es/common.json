@@ -1519,6 +1519,49 @@
       "noResults": "No se encontró nada.",
       "notFound": "No está en el Workshop",
       "by": "de {{author}}"
+    },
+    "bulk": {
+      "start": "Seleccionar",
+      "done": "Listo",
+      "selectShown": "Seleccionar los mostrados ({{count}})",
+      "select": "Seleccionar {{name}}",
+      "label": "Acciones sobre los servidores seleccionados",
+      "selected": "Seleccionados: {{count}}",
+      "clear": "Deseleccionar",
+      "actions": {
+        "start": "Iniciar ({{count}})",
+        "restart": "Reiniciar ({{count}})",
+        "stop": "Detener ({{count}})",
+        "backup": "Hacer backup ({{count}})",
+        "update": "Actualizar juego ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "¿Reiniciar este servidor? Sus jugadores se desconectan.",
+        "restart_other": "¿Reiniciar {{count}} servidores? Sus jugadores se desconectan.",
+        "stop_one": "¿Detener este servidor? Sus jugadores se desconectan.",
+        "stop_other": "¿Detener {{count}} servidores? Sus jugadores se desconectan.",
+        "update_one": "¿Actualizar el juego de este servidor?",
+        "update_other": "¿Actualizar el juego de {{count}} servidores?"
+      },
+      "results": {
+        "start": "Iniciando servidores",
+        "restart": "Reiniciando servidores",
+        "stop": "Deteniendo servidores",
+        "backup": "Haciendo backups",
+        "update": "Actualizando servidores"
+      },
+      "outcomes": {
+        "done": "Pedido",
+        "skipped": "Salteado",
+        "failed": "Falló"
+      },
+      "skip": {
+        "forbidden": "No tenés el permiso en este servidor.",
+        "notStopped": "No está detenido, o está ocupado.",
+        "notRunning": "No está en marcha, o está ocupado.",
+        "busy": "Está ocupado, no está instalado o su nodo no está conectado.",
+        "mustBeStopped": "Tiene que estar detenido e instalado, con su nodo conectado."
+      }
     }
   },
   "panelKeys": {

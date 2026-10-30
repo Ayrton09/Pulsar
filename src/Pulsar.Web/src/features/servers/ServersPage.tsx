@@ -1,5 +1,5 @@
-import { Plus, Search } from 'lucide-react';
-import { useState } from 'react';
+import { ListChecks, Plus, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card, PageHeader } from '../../components/ui/Display';
@@ -8,8 +8,9 @@ import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchServers } from '../live/hooks';
 import { useServers, type ServerSummary } from './api';
+import { BulkBar } from './BulkBar';
 import { CreateServerDialog } from './CreateServerDialog';
-import { ServerCollection } from './ServerCard';
+import { ServerCollection, type ServerSelection } from './ServerCard';
 
 const filters = ['all', 'online', 'offline'] as const;
 type Filter = (typeof filters)[number];
@@ -25,6 +26,31 @@ export function ServersPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const canCreate = canAnywhere(me, Permission.ServerCreate);
+  // Picking servers for an action on all of them, for whoever may do one of those somewhere.
+  const canBulk = canAnywhere(
+    me,
+    Permission.ServerStart,
+    Permission.ServerRestart,
+    Permission.ServerStop,
+    Permission.ServerBackupsCreate,
+    Permission.ServerInstall,
+  );
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const selection = useMemo<ServerSelection>(
+    () => ({
+      selected: picked,
+      toggle: (id) =>
+        setPicked((current) => {
+          const next = new Set(current);
+          if (!next.delete(id)) {
+            next.add(id);
+          }
+          return next;
+        }),
+    }),
+    [picked],
+  );
 
   const all = servers.data ?? [];
   const words = search.trim().toLocaleLowerCase();
@@ -34,6 +60,12 @@ export function ServersPage() {
       (words === '' ||
         [server.name, server.templateName, server.nodeName].some((text) => text.toLocaleLowerCase().includes(words))),
   );
+  // Those picked that are still listed (a deleted server drops out), in the list's order.
+  const selected = all.filter((server) => picked.has(server.id));
+  const stopSelecting = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
   const counts: Record<Filter, number> = {
     all: all.length,
     online: all.filter(alive).length,
@@ -96,6 +128,25 @@ export function ServersPage() {
                 </button>
               ))}
             </div>
+            {canBulk &&
+              (selecting ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setPicked(new Set([...picked, ...shown.map((server) => server.id)]))}
+                  >
+                    {t('servers.bulk.selectShown', { count: shown.length })}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={stopSelecting}>
+                    {t('servers.bulk.done')}
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="secondary" icon={ListChecks} onClick={() => setSelecting(true)}>
+                  {t('servers.bulk.start')}
+                </Button>
+              ))}
           </div>
           {shown.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted">{t('servers.noMatch')}</p>
@@ -104,8 +155,10 @@ export function ServersPage() {
               servers={shown}
               label={t('servers.title')}
               gridClassName="sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              selection={selecting ? selection : undefined}
             />
           )}
+          {selecting && selected.length > 0 && <BulkBar selected={selected} onClear={() => setPicked(new Set())} />}
         </>
       )}
       {creating && <CreateServerDialog onClose={() => setCreating(false)} />}

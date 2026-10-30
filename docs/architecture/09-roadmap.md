@@ -471,7 +471,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 11. More notifications: CPU or memory high for a while, a server back online.
 12. Signing in with Discord, Google or an OIDC provider.
 13. **A light theme and a better phone layout** · *done*: dark by default, light or the system's from My account or the menu; row actions as a sheet on phones, 16 px fields (doc 07).
-14. Actions on several servers at once.
+14. **Actions on several servers at once** · *done*: start, restart, stop, back up and update game on the servers picked in the list, each server's own request, permission and audit entry (doc 07).
 15. Hosting: quotas per user, users creating their servers within them, suspending servers, billing integration.
 
 ## 1.0.10 — Fixes and template updates (2026-10-26)
@@ -535,10 +535,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - Signing in with Discord, Google or an OpenID Connect provider (gap point 12): only accounts that exist, once their owner linked the provider's account with the password; the panel's two-step verification still asked (doc 07, "Sign-in providers"; doc 08, T59).
 - More notifications (gap point 11): a server or node using much CPU or memory for a while (thresholds in the notification settings), and a server running again after a crash (doc 02, "Notifications"; doc 07).
 
-## 1.0.20 — A light theme, phones (gap point 13)
+## 1.0.20 — A light theme, phones, several servers at once (gap points 13 and 14)
 
 - A light theme beside the dark one, which stays the default: chosen in My account (Dark, Light, or the system's) or with the menu's button, and kept in the browser (doc 07).
 - On phones, a table row's actions open as a sheet from the bottom, and text fields no longer make iOS zoom in (doc 07).
+- Actions on several servers at once (gap point 14): pick servers in the list, then start, restart, stop, back up or update them; each server's outcome is shown (doc 07).
 
 ## Before the first public release
 

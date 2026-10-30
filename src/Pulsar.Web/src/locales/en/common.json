@@ -1519,6 +1519,49 @@
       "noResults": "Nothing found.",
       "notFound": "Not in the Workshop",
       "by": "by {{author}}"
+    },
+    "bulk": {
+      "start": "Select",
+      "done": "Done",
+      "selectShown": "Select shown ({{count}})",
+      "select": "Select {{name}}",
+      "label": "Actions on the selected servers",
+      "selected": "Selected: {{count}}",
+      "clear": "Clear",
+      "actions": {
+        "start": "Start ({{count}})",
+        "restart": "Restart ({{count}})",
+        "stop": "Stop ({{count}})",
+        "backup": "Back up ({{count}})",
+        "update": "Update game ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "Restart this server? Its players are disconnected.",
+        "restart_other": "Restart {{count}} servers? Their players are disconnected.",
+        "stop_one": "Stop this server? Its players are disconnected.",
+        "stop_other": "Stop {{count}} servers? Their players are disconnected.",
+        "update_one": "Update this server's game?",
+        "update_other": "Update the game of {{count}} servers?"
+      },
+      "results": {
+        "start": "Starting servers",
+        "restart": "Restarting servers",
+        "stop": "Stopping servers",
+        "backup": "Backing up servers",
+        "update": "Updating servers"
+      },
+      "outcomes": {
+        "done": "Asked",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      },
+      "skip": {
+        "forbidden": "You do not have the permission on this server.",
+        "notStopped": "It is not stopped, or is busy.",
+        "notRunning": "It is not running, or is busy.",
+        "busy": "It is busy, not installed or its node is offline.",
+        "mustBeStopped": "It must be stopped and installed, with its node online."
+      }
     }
   },
   "panelKeys": {

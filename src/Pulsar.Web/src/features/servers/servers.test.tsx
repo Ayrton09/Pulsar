@@ -561,6 +561,102 @@ describe('server card buttons', () => {
   });
 });
 
+describe('actions on several servers', () => {
+  const arena = { ...installedOffline, id: '0192f1a0-0000-7000-8000-0000000000e4', name: 'Arena' };
+
+  it('asks each server it applies to, and says why the others were skipped', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([installedOffline, running, crashLoop]),
+      [`POST /api/v1/servers/${installedOffline.id}/start`]: () => json({ status: 'accepted' }),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: 'Select shown (3)' }));
+    const bar = screen.getByRole('region', { name: 'Actions on the selected servers' });
+    expect(bar).toHaveTextContent('Selected: 3');
+    // Retakes is stopped; Surf runs; Zombies' node is offline.
+    expect(within(bar).getByRole('button', { name: 'Stop (1)' })).toBeEnabled();
+    await user.click(within(bar).getByRole('button', { name: 'Start (1)' }));
+
+    const results = await screen.findByRole('dialog', { name: 'Starting servers' });
+    const rows = within(results).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'RetakesAsked',
+      'SurfIt is not stopped, or is busy.Skipped',
+      'ZombiesIt is not stopped, or is busy.Skipped',
+    ]);
+    const posts = api.mock.calls.map(([request]) => request as Request).filter((request) => request.method === 'POST');
+    expect(posts.map((request) => new URL(request.url).pathname)).toEqual([
+      `/api/v1/servers/${installedOffline.id}/start`,
+    ]);
+  });
+
+  it("goes by each server's own permissions, and says what the panel refused", async () => {
+    // A role on Retakes only: Arena is listed (seen through another role) but not this user's to start.
+    const friend = {
+      ...adminUser,
+      permissions: [],
+      serverPermissions: [
+        { id: installedOffline.id, permissions: ['server.view', 'server.start'] },
+        { id: arena.id, permissions: ['server.view'] },
+      ],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(friend),
+      'GET /api/v1/servers': () => json([installedOffline, arena]),
+      [`POST /api/v1/servers/${installedOffline.id}/start`]: () =>
+        json({ status: 'rejected', errorCode: 'server.must_be_installed' }),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Retakes' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Arena' }));
+    const bar = screen.getByRole('region', { name: 'Actions on the selected servers' });
+    expect(within(bar).getByRole('button', { name: 'Stop (0)' })).toBeDisabled();
+    await user.click(within(bar).getByRole('button', { name: 'Start (1)' }));
+
+    const results = await screen.findByRole('dialog', { name: 'Starting servers' });
+    const [retakes, other] = within(results).getAllByRole('listitem');
+    expect(retakes).toHaveTextContent('Failed');
+    expect(other).toHaveTextContent('You do not have the permission on this server.');
+  });
+
+  it('asks before stopping them, and stops none when told not to', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([running]),
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Surf' }));
+    await user.click(screen.getByRole('button', { name: 'Stop (1)' }));
+
+    expect(confirm).toHaveBeenCalledWith('Stop this server? Its players are disconnected.');
+    expect(api.mock.calls.map(([request]) => (request as Request).method)).not.toContain('POST');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('is not offered to a user who may only view servers', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      'GET /api/v1/servers': () => json([running, installedOffline]),
+    });
+    renderAt('/servers');
+
+    await screen.findByRole('list', { name: 'Servers' });
+    expect(screen.queryByRole('button', { name: 'Select' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+});
+
 describe('server page', () => {
   it('changes the game only once the user says the files go, with what the new game needs', async () => {
     let body: unknown;

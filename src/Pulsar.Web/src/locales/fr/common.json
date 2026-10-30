@@ -1519,6 +1519,49 @@
       "noResults": "Rien trouvé.",
       "notFound": "Pas dans le Workshop",
       "by": "par {{author}}"
+    },
+    "bulk": {
+      "start": "Sélectionner",
+      "done": "Terminé",
+      "selectShown": "Sélectionner ceux affichés ({{count}})",
+      "select": "Sélectionner {{name}}",
+      "label": "Actions sur les serveurs sélectionnés",
+      "selected": "Sélectionnés : {{count}}",
+      "clear": "Désélectionner",
+      "actions": {
+        "start": "Démarrer ({{count}})",
+        "restart": "Redémarrer ({{count}})",
+        "stop": "Arrêter ({{count}})",
+        "backup": "Sauvegarder ({{count}})",
+        "update": "Mettre à jour le jeu ({{count}})"
+      },
+      "confirm": {
+        "restart_one": "Redémarrer ce serveur ? Ses joueurs sont déconnectés.",
+        "restart_other": "Redémarrer {{count}} serveurs ? Leurs joueurs sont déconnectés.",
+        "stop_one": "Arrêter ce serveur ? Ses joueurs sont déconnectés.",
+        "stop_other": "Arrêter {{count}} serveurs ? Leurs joueurs sont déconnectés.",
+        "update_one": "Mettre à jour le jeu de ce serveur ?",
+        "update_other": "Mettre à jour le jeu de {{count}} serveurs ?"
+      },
+      "results": {
+        "start": "Démarrage des serveurs",
+        "restart": "Redémarrage des serveurs",
+        "stop": "Arrêt des serveurs",
+        "backup": "Sauvegarde des serveurs",
+        "update": "Mise à jour des serveurs"
+      },
+      "outcomes": {
+        "done": "Demandé",
+        "skipped": "Ignoré",
+        "failed": "Échec"
+      },
+      "skip": {
+        "forbidden": "Vous n'avez pas la permission sur ce serveur.",
+        "notStopped": "Il n'est pas arrêté, ou il est occupé.",
+        "notRunning": "Il n'est pas en marche, ou il est occupé.",
+        "busy": "Il est occupé, pas installé ou son nœud est hors ligne.",
+        "mustBeStopped": "Il doit être arrêté et installé, avec son nœud connecté."
+      }
     }
   },
   "panelKeys": {
