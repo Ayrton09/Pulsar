@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -110,7 +110,7 @@
   "configFiles": [
     { "path": "cstrike/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "mp_friendlyfire": "{{var.friendlyFire}}",
         "mp_maxrounds": "{{var.maxRounds}}",
         "mp_timelimit": "{{var.timeLimit}}",

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "pvkii",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "name": "Pirates, Vikings, and Knights II",
   "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
   "authors": ["Pulsar contributors"],
@@ -86,7 +86,7 @@
   "configFiles": [
     { "path": "pvkii/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "mp_timelimit": "{{var.timeLimit}}",
         "mp_timelimit_waitroundend": "{{var.waitRoundEnd}}",
         "mp_roundtime": "{{var.roundTime}}",

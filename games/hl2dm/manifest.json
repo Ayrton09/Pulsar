@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hl2dm",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "name": "Half-Life 2: Deathmatch",
   "description": "Half-Life 2: Deathmatch dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -90,7 +90,7 @@
   "configFiles": [
     { "path": "hl2mp/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "mp_teamplay": "{{var.teamplay}}",
         "mp_fraglimit": "{{var.fragLimit}}",
         "mp_timelimit": "{{var.timeLimit}}",

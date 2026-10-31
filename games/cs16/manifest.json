@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs16",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "name": "Counter-Strike 1.6",
   "description": "Counter-Strike 1.6 dedicated server (hlds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -92,7 +92,7 @@
   "configFiles": [
     { "path": "cstrike/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "mp_friendlyfire": "{{var.friendlyFire}}",
         "mp_maxrounds": "{{var.maxRounds}}",
         "mp_timelimit": "{{var.timeLimit}}",

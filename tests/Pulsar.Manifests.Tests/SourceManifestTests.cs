@@ -29,7 +29,8 @@ public sealed class SourceManifestTests
 
         var file = Assert.Single(plan.ConfigFiles);
         Assert.Equal("cstrike/cfg/server.cfg", file.Path);
-        Assert.Equal([new ConfigEntry("hostname", "", Secret: false) { Former = "Pulsar CS:S" }, new ConfigEntry("sv_password", "", Secret: true)], file.Entries);
+        Assert.Equal([new ConfigEntry("hostname", "", Secret: false) { Former = "Pulsar CS:S" }, new ConfigEntry("sv_password", "", Secret: true),
+            new ConfigEntry("rcon_password", "", Secret: false)], file.Entries);
         Assert.IsType<RconReadiness>(plan.Readiness);
         Assert.Equal("quit", Assert.IsType<RconCommandStop>(Assert.Single(plan.Stop.Steps)).Command);
     }
@@ -317,6 +318,33 @@ public sealed class SourceManifestTests
 
         Assert.Equal("quit", Assert.IsType<RconCommandStop>(Assert.Single(stop.Steps)).Command);
         Assert.InRange(stop.TimeoutSeconds, 1, 5);
+    }
+
+    [Theory]
+    [InlineData("css", "cstrike/cfg/server.cfg")]
+    [InlineData("cs2", "game/csgo/cfg/server.cfg")]
+    [InlineData("tf2", "tf/cfg/server.cfg")]
+    [InlineData("l4d2", "left4dead2/cfg/server.cfg")]
+    [InlineData("hl2dm", "hl2mp/cfg/server.cfg")]
+    [InlineData("pvkii", "pvkii/cfg/server.cfg")]
+    [InlineData("cs16", "cstrike/server.cfg")]
+    [InlineData("hldm", "valve/server.cfg")]
+    public void AnRconPasswordInTheServerCfgIsTakenOutSoPulsarsStays(string game, string path)
+    {
+        // The game runs server.cfg after its command line: a password there (an old host's) replaced Pulsar's, which then
+        // could neither send commands nor stop the game with quit (it was killed after its stop's timeout).
+        var manifest = TestManifests.Load(game);
+        var required = manifest.VariableList.Where(v => v.Required && v.Default is null).ToDictionary(v => v.Key, v => (string?)"x", StringComparer.Ordinal);
+        var plan = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", required,
+            manifest.PortList.ToDictionary(p => p.Name, p => new PortAssignment(PortAssignment.AnyAddress, p.Default), StringComparer.Ordinal), RconPassword: Rcon));
+        var file = plan.ConfigFiles.Single(f => f.Path == path);
+
+        var text = ConfigFileWriter.Apply(file, "hostname \"Mi servidor\"\nrcon_password \"de-otro-host\"\nsv_cheats 0\n");
+
+        Assert.DoesNotContain("rcon_password", text, StringComparison.Ordinal);
+        Assert.Contains("hostname \"Mi servidor\"", text, StringComparison.Ordinal);
+        Assert.Contains("+rcon_password", plan.Arguments);
+        Assert.DoesNotContain(Rcon, string.Join('\n', file.Entries.Select(e => e.Value)), StringComparison.Ordinal);
     }
 
     private static LaunchPlan Render(IReadOnlyDictionary<string, string?> values, IReadOnlyDictionary<string, PortAssignment>? ports = null) =>

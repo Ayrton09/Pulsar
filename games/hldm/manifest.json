@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hldm",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "name": "Half-Life Deathmatch",
   "description": "Half-Life Deathmatch dedicated server (hlds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -82,7 +82,7 @@
   "configFiles": [
     { "path": "valve/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "mp_teamplay": "{{var.teamplay}}",
         "mp_fraglimit": "{{var.fragLimit}}",
         "mp_timelimit": "{{var.timeLimit}}",

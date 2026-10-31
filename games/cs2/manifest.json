@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -111,7 +111,7 @@
   "configFiles": [
     { "path": "game/csgo/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
-        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}", "rcon_password": "",
         "sv_tags": "{{var.tags}}", "sv_lan": "{{var.lan}}", "sv_cheats": "{{var.cheats}}", "sv_voiceenable": "{{var.voice}}"
       },
       "keepIfEmpty": ["hostname", "sv_tags", "sv_lan", "sv_cheats", "sv_voiceenable"] },
