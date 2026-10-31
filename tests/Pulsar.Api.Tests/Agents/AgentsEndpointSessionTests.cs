@@ -254,7 +254,10 @@ public sealed class AgentsEndpointProtocolTests(AgentsEndpointProtocolTests.Http
     {
         Assert.SkipUnless(OperatingSystem.IsWindows() && System.Net.Quic.QuicListener.IsSupported, "QUIC is not available on this machine.");
         factory.StartServer();
-        var udp = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners();
+        // QUIC listens on every address (0.0.0.0 and [::]): only those count, as other tests' sockets (game queries,
+        // in-process agents) may hold the same port number on another one.
+        var udp = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners()
+            .Where(endpoint => endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any)).ToList();
 
         // The main endpoint shows that HTTP/3 would listen here; the agents' endpoint stays on TCP, behind its budgets.
         Assert.Contains(udp, endpoint => endpoint.Port == factory.MainPort);

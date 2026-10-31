@@ -359,8 +359,9 @@ public sealed class PanelBlockTests : IDisposable
         await AdvanceUntilNextAsync(_options.PollInterval);
 
         // Its period, not the 6 hours the wall clock stepped back nor at once. The clock moves on in steps while the keeper
-        // works, so on a slow machine (a CI runner) the refresh is seen some steps late.
-        Assert.InRange(_clock.GetElapsedTime(refreshedAt), _options.RefreshInterval, 2 * _options.RefreshInterval);
+        // works, so on a slow machine (a CI runner) the refresh is seen many steps late (13 minutes once): the upper bound
+        // only has to tell its period from those 6 hours.
+        Assert.InRange(_clock.GetElapsedTime(refreshedAt), _options.RefreshInterval, TimeSpan.FromHours(1));
     }
 
     [Fact]

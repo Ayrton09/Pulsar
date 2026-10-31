@@ -186,7 +186,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <param name="what">Described when the wait times out (it can report what was last seen).</param>
     public static async Task EventuallyAsync(Func<Task<bool>> condition, Func<string> what)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(15);
+        // Long enough for a CI runner running the whole suite at once (a backup there once took over 15 s); what never
+        // happens still fails.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (!await condition())
         {
             Assert.True(DateTime.UtcNow < deadline, $"Timed out waiting for: {what()}");

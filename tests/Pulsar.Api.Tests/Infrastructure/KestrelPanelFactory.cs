@@ -123,11 +123,24 @@ public class KestrelPanelFactory : PulsarApiFactory
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>A loopback port free for TCP, and for UDP on every address (HTTP/3 listens there on the same number).</summary>
     private static int FreePort()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
+        while (true)
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            try
+            {
+                using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, port));
+                return port;
+            }
+            catch (SocketException)
+            {
+                // Taken for UDP: another one.
+            }
+        }
     }
 
     private sealed class SystemContext : IRequestContext
