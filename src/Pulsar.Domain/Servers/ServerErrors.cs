@@ -47,6 +47,12 @@ public static class ServerErrors
 
     public static DomainError MustBeStopped { get; } = new("server.must_be_stopped", "Stop the server first.");
 
+    public static DomainError ExternalIdTaken { get; } = new("server.external_id_taken", "Another server has this external id.");
+
+    /// <summary>Giving a server to a user gives them its owner's permissions: only whoever holds them all there.</summary>
+    public static DomainError OwnerForbidden { get; } =
+        new("server.owner_forbidden", "You can only give a server to a user if you hold everything its owner may do on it.");
+
     /// <summary>Suspended by whoever hosts it (Pulsar 1.0.24): it does not run, and only they reach it until it is unsuspended.</summary>
     public static DomainError Suspended { get; } = new("server.suspended", "The server is suspended.");
 

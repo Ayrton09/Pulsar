@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "Reiniciar após uma falha",
     "shortId": "ID curto",
+    "externalId": "Id externo",
     "yes": "Sim",
     "no": "Não",
     "overview": "Visão geral",

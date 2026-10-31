@@ -50,7 +50,8 @@ public sealed record ServerSummary(
     ServerAddressView? GameAddress,
     bool GameUpdateAvailable = false,
     ServerSuspensionView? Suspension = null,
-    Guid? OwnerId = null);
+    Guid? OwnerId = null,
+    string? ExternalId = null);
 
 /// <summary>The server is suspended (Pulsar 1.0.24): since when, and why when someone said.</summary>
 public sealed record ServerSuspensionView(DateTimeOffset At, string? Reason);
@@ -145,12 +146,18 @@ public sealed partial class ServerManagement(
     /// <summary>The manifest port players connect to, by the manifests' convention.</summary>
     private const string GamePortName = "game";
 
-    public async Task<IReadOnlyList<ServerSummary>> ListAsync(Guid? nodeId, CancellationToken cancellationToken)
+    /// <param name="externalId">Only the server another system calls so (1.0.24).</param>
+    public async Task<IReadOnlyList<ServerSummary>> ListAsync(Guid? nodeId, CancellationToken cancellationToken, string? externalId = null)
     {
         var query = db.Servers.AsNoTracking();
         if (nodeId is { } node)
         {
             query = query.Where(s => s.NodeId == new NodeId(node));
+        }
+
+        if (externalId is not null)
+        {
+            query = query.Where(s => s.ExternalId == externalId);
         }
 
         var servers = await query.OrderBy(s => s.Name).ToListAsync(cancellationToken);
@@ -177,8 +184,13 @@ public sealed partial class ServerManagement(
     /// <param name="owned">A server a user creates within their quota (1.0.24): theirs, with these caps, checked by the quota.</param>
     public async Task<Result<ServerDetails>> CreateAsync(NodeId nodeId, Guid templateId, string name, string? description,
         IReadOnlyDictionary<string, string?>? variables, IReadOnlyDictionary<string, Guid?>? ports, CancellationToken cancellationToken,
-        IReadOnlyDictionary<string, int?>? portNumbers = null, OwnedServer? owned = null)
+        IReadOnlyDictionary<string, int?>? portNumbers = null, OwnedServer? owned = null, string? externalId = null)
     {
+        if (externalId is not null && !ExternalIds.IsValid(externalId))
+        {
+            return ExternalIds.Invalid;
+        }
+
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
             return NodeErrors.NotFound;
@@ -192,6 +204,12 @@ public sealed partial class ServerManagement(
                 // A node the user cannot see is one that does not exist, for them.
                 return ResourceVisibility.Node.Any(p => granted.Has(p, AccessTarget.ForNode(nodeId))) ? ServerErrors.CreateForbidden : NodeErrors.NotFound;
             }
+        }
+
+        // Told only to whoever may create the server: another system's id of a server says nothing to the rest.
+        if (externalId is not null && await db.Servers.AnyAsync(s => s.ExternalId == externalId, cancellationToken))
+        {
+            return ServerErrors.ExternalIdTaken;
         }
 
         var template = await templates.FindOfferedAsync(templateId, cancellationToken);
@@ -238,6 +256,7 @@ public sealed partial class ServerManagement(
             return configured.Error!;
         }
 
+        server.SetExternalId(externalId, now);
         if (owned is not null)
         {
             // Its caps are what the quota counts: a node that cannot enforce them gets no server of a quota.
@@ -299,8 +318,10 @@ public sealed partial class ServerManagement(
         }
         catch (DbUpdateException)
         {
-            // An allocation was taken by another server meanwhile (version check or unique index).
-            return ServerErrors.AllocationUnavailable;
+            // An allocation was taken by another server meanwhile (version check or unique index), or its external id.
+            return externalId is not null && await db.Servers.AsNoTracking().AnyAsync(s => s.ExternalId == externalId, CancellationToken.None)
+                ? ServerErrors.ExternalIdTaken
+                : ServerErrors.AllocationUnavailable;
         }
 
         if (owned is not null)
@@ -1262,6 +1283,10 @@ public sealed partial class ServerManagement(
         var templates = await db.GameTemplates.AsNoTracking().Where(t => templateIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => new { t.Name, t.Key }, cancellationToken);
         var serverIds = servers.Select(s => s.Id).ToList();
+        // A billing system's id of a server (a customer's order) is for whoever hosts it, not its players (1.0.24).
+        var granted = request.UserId is { } viewer ? await permissions.GetAsync(viewer, cancellationToken) : null;
+        bool Hosts(Server s) => granted is null || granted.HasGlobal(Permissions.User.Manage)
+            || granted.Has(Permissions.Server.LimitsEdit, AccessTarget.ForServer(s.Id, s.NodeId));
         // On its own node only: a server being transferred holds the ports of the node it leaves until it is done.
         var nodeOf = servers.ToDictionary(s => s.Id, s => s.NodeId);
         var gamePorts = (await db.NodeAllocations.AsNoTracking()
@@ -1281,7 +1306,7 @@ public sealed partial class ServerManagement(
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
             templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id),
-            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null, s.OwnerId?.Value))];
+            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null, s.OwnerId?.Value, Hosts(s) ? s.ExternalId : null))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

@@ -145,6 +145,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
             user.Property(u => u.DisplayName).HasMaxLength(PulsarUser.MaxDisplayNameLength);
             user.HasIndex(u => u.NormalizedUserName).HasDatabaseName("ix_users_normalized_user_name");
             user.HasIndex(u => u.NormalizedEmail).HasDatabaseName("ix_users_normalized_email");
+            user.Property(u => u.ExternalId).HasMaxLength(ExternalIds.MaxLength);
+            user.HasIndex(u => u.ExternalId).IsUnique().HasDatabaseName("ix_users_external_id");
         });
         builder.Entity<IdentityUserClaim<UserId>>().ToTable("user_claims");
         builder.Entity<IdentityUserLogin<UserId>>().ToTable("user_logins");

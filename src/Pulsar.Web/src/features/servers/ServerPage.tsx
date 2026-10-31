@@ -531,6 +531,10 @@ function OverviewCard({ details }: { details: ServerDetails }) {
           [t('servers.lastStopped'), when(server.lastStoppedAt)],
           [t('servers.restartOnCrash'), details.restartOnCrash ? t('servers.yes') : t('servers.no')],
           [t('servers.shortId'), <code key="short">{server.shortId}</code>],
+          // 1.0.24: what a billing system calls it.
+          ...(server.externalId
+            ? [[t('servers.externalId'), <code key="external">{server.externalId}</code>] as [string, ReactNode]]
+            : []),
         ]}
       />
     </Card>

@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "Nach einem Absturz neu starten",
     "shortId": "Kurz-ID",
+    "externalId": "Externe ID",
     "yes": "Ja",
     "no": "Nein",
     "overview": "Übersicht",

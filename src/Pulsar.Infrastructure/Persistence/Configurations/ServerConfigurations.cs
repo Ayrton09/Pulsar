@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
@@ -52,6 +53,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.Description).HasMaxLength(Server.MaxDescriptionLength);
         builder.Property(s => s.GameVersion).HasMaxLength(Server.MaxGameVersionLength);
         builder.Property(s => s.SuspensionReason).HasMaxLength(Server.MaxSuspensionReasonLength);
+        builder.Property(s => s.ExternalId).HasMaxLength(ExternalIds.MaxLength);
+        builder.HasIndex(s => s.ExternalId).IsUnique();
         builder.Ignore(s => s.IsSuspended);
         builder.Property(s => s.InstallState).HasConversion<SnakeCaseEnumConverter<InstallState>>();
         builder.Property(s => s.RuntimeState).HasConversion<SnakeCaseEnumConverter<ServerRuntimeState>>();

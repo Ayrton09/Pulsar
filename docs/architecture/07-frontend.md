@@ -260,6 +260,8 @@ The server page's Administration section says when a newer version of the server
 
 A user with a quota sees Servers in the menu, what the quota allows and uses above the list, and *New server*: a dialog with the quota's connected nodes, the games offered (their newest version), the name, the memory and CPU caps (checked against what is left, with the game's own memory hint) and the values the game cannot go without. The server it makes opens on its console. User managers give, change and take away a user's quota from the user's dialog: the totals and the nodes, among those they may create servers on.
 
+A server's overview shows its external id to whoever hosts it (`server.limits.edit` there, or `user.manage`), when a billing system gave it one.
+
 ## Suspended servers (1.0.24)
 
 A suspended server carries a *Suspended* badge in the list, on its card and on its page. Its users see its page as a notice alone (since when, the reason, and that whoever hosts it lifts it), without tabs or power buttons. Whoever may suspend it (`server.suspend`) sees the same notice with *Lift suspension* above the whole page, and suspends a server from *Administration* with an optional reason its users will read. Start, restart, reinstall, clone, transfer and change of game are greyed out while it is suspended.

@@ -20,4 +20,7 @@ public sealed class PulsarUser : IdentityUser<UserId>
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? LastLoginAt { get; set; }
+
+    /// <summary>What another system (a billing system) calls the user, to find them again (Pulsar 1.0.24; <c>ExternalIds</c>).</summary>
+    public string? ExternalId { get; set; }
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Common;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api.Access;
@@ -25,14 +26,16 @@ public sealed record UserResponse(
     IReadOnlyList<AccessReference> Access,
     int ApiKeys = 0,
     int SshKeys = 0,
-    IReadOnlyList<SsoKind>? SsoLinks = null);
+    IReadOnlyList<SsoKind>? SsoLinks = null,
+    string? ExternalId = null);
 
 public sealed record CreateUserRequest(
     [property: Required, StringLength(PulsarUser.MaxUserNameLength, MinimumLength = 1)] string UserName,
     [property: Required, StringLength(256)] string Password,
     [property: StringLength(PulsarUser.MaxDisplayNameLength)] string? DisplayName,
     [property: EmailAddress, StringLength(256)] string? Email,
-    IReadOnlyList<Guid>? RoleIds);
+    IReadOnlyList<Guid>? RoleIds,
+    [property: StringLength(ExternalIds.MaxLength)] string? ExternalId = null);
 
 /// <summary>Full replacement of the editable profile fields (null clears display name and email).</summary>
 public sealed record UpdateUserRequest(

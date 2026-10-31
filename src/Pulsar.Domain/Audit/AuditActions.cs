@@ -41,6 +41,7 @@ public static class AuditActions
         public const string SsoLinksRemoved = "user.sso_links_removed";
         public const string QuotaSet = "user.quota_set";
         public const string QuotaRemoved = "user.quota_removed";
+        public const string ExternalIdChanged = "user.external_id_changed";
     }
 
     /// <summary>Sign-in providers (1.0.18).</summary>
@@ -92,6 +93,8 @@ public static class AuditActions
         public const string TransferRequested = "server.transfer_requested";
         public const string Suspended = "server.suspended";
         public const string Unsuspended = "server.unsuspended";
+        public const string OwnerChanged = "server.owner_changed";
+        public const string ExternalIdChanged = "server.external_id_changed";
         public const string AddonInstallRequested = "server.addon_install_requested";
         public const string AddonRemoveRequested = "server.addon_remove_requested";
         public const string ModsInstallRequested = "server.mods_install_requested";

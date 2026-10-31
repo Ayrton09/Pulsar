@@ -86,6 +86,8 @@ public static class AccessErrors
     public static DomainError QuotaInvalid { get; } = new("quota.invalid",
         $"A quota allows 0 to {UserQuota.MaxServersLimit} servers, memory and CPU totals of 0 or more, on at most {UserQuota.MaxNodes} nodes.");
 
+    public static DomainError UserExternalIdTaken { get; } = new("user.external_id_taken", "Another user has this external id.");
+
     public static DomainError QuotaConflict { get; } = new("quota.conflict", "The quota was changed at the same moment; try again.");
 
     public static DomainError QuotaNotFound { get; } = new("quota.not_found", "You have no quota to create servers with.");

@@ -29,7 +29,8 @@ public sealed record CreateServerRequest(
     [property: StringLength(Server.MaxDescriptionLength)] string? Description,
     Dictionary<string, string?>? Variables = null,
     Dictionary<string, Guid?>? Ports = null,
-    Dictionary<string, int?>? PortNumbers = null);
+    Dictionary<string, int?>? PortNumbers = null,
+    [property: StringLength(ExternalIds.MaxLength)] string? ExternalId = null);
 
 /// <param name="Variables">Only the variables to change; null or empty puts the default back (or clears a secret).</param>
 public sealed record UpdateServerSettingsRequest(
@@ -82,6 +83,12 @@ public sealed record ServerLimitsRequest(
     [property: Range(Server.MinMemoryLimitMb, Server.MaxMemoryLimitMb)] int? MemoryMb,
     [property: Range(0, Server.MaxDatabaseLimit)] int? Databases = null);
 
+/// <summary>What another system calls a server or a user (1.0.24); null removes it.</summary>
+public sealed record ExternalIdRequest([property: StringLength(ExternalIds.MaxLength)] string? ExternalId);
+
+/// <summary>Who owns a server (1.0.24); null: nobody.</summary>
+public sealed record ServerOwnerRequest(Guid? UserId);
+
 /// <summary>Suspends a server (1.0.24); the reason, if any, is shown to its users.</summary>
 public sealed record SuspendServerRequest([property: StringLength(Server.MaxSuspensionReasonLength)] string? Reason);
 
@@ -129,6 +136,17 @@ public static class ServerEndpoints
                 return await DetailsAsync(Task.FromResult(suspended));
             })
             .RequirePermission(Permissions.Server.Suspend);
+        // 1.0.24, for billing systems: what they call the server, and whose it is.
+        servers.MapPut("/{id:guid}/external-id", (Guid id, ExternalIdRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.SetExternalIdAsync(new ServerId(id), request.ExternalId, ct)))
+            .RequirePermission(Permissions.Server.LimitsEdit);
+        servers.MapPut("/{id:guid}/owner", async Task<Results<Ok<ServerDetails>, ProblemHttpResult>> (Guid id, ServerOwnerRequest request,
+                Pulsar.Api.Access.UserManagement users, ServerManagement m, CancellationToken ct) =>
+            {
+                var changed = await users.SetServerOwnerAsync(new ServerId(id), request.UserId is { } user ? new UserId(user) : null, ct);
+                return changed ?? (await m.GetAsync(new ServerId(id), ct)).ToHttp();
+            })
+            .RequirePermission(Permissions.User.Manage);
         servers.MapPost("/{id:guid}/unsuspend", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.UnsuspendAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Suspend);
         servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult>> (Guid id, IPulsarDbContext db,
@@ -227,8 +245,9 @@ public static class ServerEndpoints
             : ApiProblems.FromDomainError(result.Error!);
     }
 
-    private static async Task<Ok<IReadOnlyList<ServerSummary>>> ListAsync(Guid? nodeId, ServerManagement servers, CancellationToken ct) =>
-        TypedResults.Ok(await servers.ListAsync(nodeId, ct));
+    private static async Task<Ok<IReadOnlyList<ServerSummary>>> ListAsync(Guid? nodeId, string? externalId, ServerManagement servers,
+        CancellationToken ct) =>
+        TypedResults.Ok(await servers.ListAsync(nodeId, ct, externalId));
 
     private static async Task<Results<Ok<ServerDetails>, ProblemHttpResult>> GetAsync(Guid id, ServerManagement servers, CancellationToken ct) =>
         (await servers.GetAsync(new ServerId(id), ct)).ToHttp();
@@ -237,7 +256,7 @@ public static class ServerEndpoints
         CreateServerRequest request, ServerManagement servers, CancellationToken ct)
     {
         var result = await servers.CreateAsync(new NodeId(request.NodeId), request.TemplateId, request.Name, request.Description, request.Variables,
-            request.Ports, ct, request.PortNumbers);
+            request.Ports, ct, request.PortNumbers, externalId: request.ExternalId);
         if (!result.IsSuccess)
         {
             return ApiProblems.FromDomainError(result.Error!);

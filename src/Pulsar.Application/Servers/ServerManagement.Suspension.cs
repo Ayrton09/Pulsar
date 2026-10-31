@@ -87,6 +87,39 @@ public sealed partial class ServerManagement
         return await DetailsAsync(server, cancellationToken);
     }
 
+    /// <summary>What another system (a billing system) calls the server from now on (1.0.24); null: nothing.</summary>
+    public async Task<Result<ServerDetails>> SetExternalIdAsync(ServerId id, string? externalId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var set = server.SetExternalId(externalId, clock.GetUtcNow());
+        if (!set.IsSuccess)
+        {
+            return set.Error!;
+        }
+
+        if (externalId is not null && await db.Servers.AnyAsync(s => s.ExternalId == externalId && s.Id != id, cancellationToken))
+        {
+            return ServerErrors.ExternalIdTaken;
+        }
+
+        audit.Record(AuditActions.Server.ExternalIdChanged, metadata: new { externalId }).WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return ServerErrors.ExternalIdTaken; // taken at the same moment (unique index), or the row changed: asked again
+        }
+
+        return await DetailsAsync(server, cancellationToken);
+    }
+
     /// <summary>
     /// Stops suspended servers their agents report starting or running (a node that was away when they were suspended,
     /// or that started them before it heard): the suspension pass of the sequences' loop. Returns how many it asked.

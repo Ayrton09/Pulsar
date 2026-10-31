@@ -36,9 +36,11 @@ public sealed class UserManagement(
     ServerQuotas quotas,
     TimeProvider clock)
 {
-    public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
+    /// <param name="externalId">Only the user another system calls so (1.0.24).</param>
+    public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct, string? externalId = null)
     {
-        var all = await db.Users.AsNoTracking().OrderBy(u => u.NormalizedUserName).ToListAsync(ct);
+        var all = await db.Users.AsNoTracking().Where(u => externalId == null || u.ExternalId == externalId).OrderBy(u => u.NormalizedUserName)
+            .ToListAsync(ct);
         var roles = await RoleReferencesAsync(null, ct);
         var access = await AccessReferencesAsync(null, ct);
         var keys = await apiKeys.CountAsync([.. all.Select(u => u.Id)], ct);
@@ -80,6 +82,16 @@ public sealed class UserManagement(
             }
         }
 
+        if (input.ExternalId is { } externalId && !ExternalIds.IsValid(externalId))
+        {
+            return ApiProblems.FromDomainError(ExternalIds.Invalid);
+        }
+
+        if (input.ExternalId is not null && await db.Users.AnyAsync(u => u.ExternalId == input.ExternalId, ct))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken);
+        }
+
         var now = clock.GetUtcNow();
         var user = new PulsarUser
         {
@@ -88,10 +100,20 @@ public sealed class UserManagement(
             DisplayName = Clean(input.DisplayName),
             Email = Clean(input.Email),
             CreatedAt = now,
+            ExternalId = input.ExternalId,
         };
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var created = await users.CreateAsync(user, input.Password);
+        IdentityResult created;
+        try
+        {
+            created = await users.CreateAsync(user, input.Password);
+        }
+        catch (DbUpdateException) when (input.ExternalId is not null)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken); // taken at the same moment (unique index)
+        }
+
         if (!created.Succeeded)
         {
             return IdentityProblems.Validation(created);
@@ -579,6 +601,86 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
+    /// <summary>What another system (a billing system) calls the user from now on (1.0.24); null: nothing.</summary>
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> SetExternalIdAsync(UserId id, string? externalId, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        if (externalId is not null && !ExternalIds.IsValid(externalId))
+        {
+            return ApiProblems.FromDomainError(ExternalIds.Invalid);
+        }
+
+        if (externalId is not null && await db.Users.AnyAsync(u => u.ExternalId == externalId && u.Id != id, ct))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken);
+        }
+
+        user!.ExternalId = externalId;
+        audit.Record(AuditActions.User.ExternalIdChanged, metadata: new { userName = user.UserName, externalId }).WithTarget("user", user.Id.ToString());
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken);
+        }
+
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Gives the server to <paramref name="owner"/>, or to nobody (1.0.24, for billing systems): its owner holds
+    /// <see cref="PermissionCatalog.OwnerKeys"/> there and it counts against their quota, if they have one. Only for an
+    /// actor who holds all of those on the server themselves, and may manage both the new owner and the one before.
+    /// Returns the problem, or null when it was done.
+    /// </summary>
+    public async Task<ProblemHttpResult?> SetServerOwnerAsync(ServerId serverId, UserId? owner, CancellationToken ct)
+    {
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == serverId, ct);
+        if (server is null)
+        {
+            return ApiProblems.FromDomainError(ServerErrors.NotFound);
+        }
+
+        var actor = await evaluator.GetAsync(Actor, ct);
+        var target = AccessTarget.ForServer(server.Id, server.NodeId);
+        if (!PermissionCatalog.OwnerKeys.All(p => actor.Has(p, target)))
+        {
+            return ApiProblems.FromDomainError(ServerErrors.OwnerForbidden);
+        }
+
+        foreach (var user in new[] { owner, server.OwnerId }.OfType<UserId>().Distinct())
+        {
+            if ((await FindManageableAsync(user, ct)).Problem is { } problem)
+            {
+                return problem;
+            }
+        }
+
+        var before = server.OwnerId;
+        if (before == owner)
+        {
+            return null;
+        }
+
+        server.OwnedBy(owner, clock.GetUtcNow());
+        audit.Record(AuditActions.Server.OwnerChanged, metadata: new { from = before?.Value, to = owner?.Value }).WithServer(server.Id, server.NodeId);
+        await db.SaveChangesAsync(ct);
+        foreach (var user in new[] { owner, before }.OfType<UserId>())
+        {
+            evaluator.Invalidate(user);
+            connections.EndUser(user); // their live pages follow what they may see now
+        }
+
+        return null;
+    }
+
     private async Task<UserQuotaResponse> QuotaResponseAsync(UserQuota quota, CancellationToken ct) =>
         new(quota.MaxServers, quota.MaxMemoryMb, quota.MaxCpuPercent, [.. quota.NodeIds.Select(n => n.Value)],
             await quotas.UsageAsync(quota.UserId, ct));
@@ -700,7 +802,8 @@ public sealed class UserManagement(
         [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)],
         apiKeys,
         sshKeys,
-        [.. links[user.Id].Order()]);
+        [.. links[user.Id].Order()],
+        user.ExternalId);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

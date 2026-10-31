@@ -202,6 +202,9 @@ public sealed class Server
     /// </summary>
     public UserId? OwnerId { get; private set; }
 
+    /// <summary>What another system (a billing system) calls it, to find it again (Pulsar 1.0.24; <see cref="ExternalIds"/>).</summary>
+    public string? ExternalId { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -549,6 +552,19 @@ public sealed class Server
         ExtraArguments = [.. extraArguments];
         AutoStart = autoStart;
         RestartOnCrash = restartOnCrash;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>What another system calls it from now on; null: nothing. Uniqueness is the database's.</summary>
+    public Result SetExternalId(string? externalId, DateTimeOffset now)
+    {
+        if (externalId is not null && !ExternalIds.IsValid(externalId))
+        {
+            return ExternalIds.Invalid;
+        }
+
+        ExternalId = externalId;
         UpdatedAt = now;
         return Result.Success();
     }

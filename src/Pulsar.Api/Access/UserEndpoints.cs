@@ -35,6 +35,9 @@ public static class UserEndpoints
         users.MapPut("/{id:guid}/quota", (Guid id, SetUserQuotaRequest request, UserManagement m, CancellationToken ct) =>
                 m.SetQuotaAsync(new UserId(id), request, ct))
             .RequirePermission(Permissions.User.Manage);
+        users.MapPut("/{id:guid}/external-id", (Guid id, Pulsar.Api.Servers.ExternalIdRequest request, UserManagement m, CancellationToken ct) =>
+                m.SetExternalIdAsync(new UserId(id), request.ExternalId, ct))
+            .RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}/quota", (Guid id, UserManagement m, CancellationToken ct) => m.RemoveQuotaAsync(new UserId(id), ct))
             .RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteAsync(new UserId(id), ct))
@@ -50,6 +53,6 @@ public static class UserEndpoints
         return api;
     }
 
-    private static async Task<Ok<IReadOnlyList<UserResponse>>> ListAsync(UserManagement users, CancellationToken ct) =>
-        TypedResults.Ok(await users.ListAsync(ct));
+    private static async Task<Ok<IReadOnlyList<UserResponse>>> ListAsync(string? externalId, UserManagement users, CancellationToken ct) =>
+        TypedResults.Ok(await users.ListAsync(ct, externalId));
 }

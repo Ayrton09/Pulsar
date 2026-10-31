@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "충돌 후 다시 시작",
     "shortId": "짧은 ID",
+    "externalId": "외부 ID",
     "yes": "예",
     "no": "아니요",
     "overview": "개요",

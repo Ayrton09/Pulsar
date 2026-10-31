@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "クラッシュ後に再起動",
     "shortId": "短縮ID",
+    "externalId": "外部 ID",
     "yes": "はい",
     "no": "いいえ",
     "overview": "概要",

@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "崩溃后重启",
     "shortId": "短 ID",
+    "externalId": "外部 ID",
     "yes": "是",
     "no": "否",
     "overview": "概览",

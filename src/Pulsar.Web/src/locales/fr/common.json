@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "Redémarrer après un plantage",
     "shortId": "Identifiant court",
+    "externalId": "Id externe",
     "yes": "Oui",
     "no": "Non",
     "overview": "Vue d'ensemble",

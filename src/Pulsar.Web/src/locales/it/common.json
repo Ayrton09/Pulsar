@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "Riavvia dopo un blocco",
     "shortId": "ID breve",
+    "externalId": "Id esterno",
     "yes": "Sì",
     "no": "No",
     "overview": "Panoramica",

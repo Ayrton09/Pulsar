@@ -1188,6 +1188,7 @@
     },
     "restartOnCrash": "Restart after a crash",
     "shortId": "Short id",
+    "externalId": "External id",
     "yes": "Yes",
     "no": "No",
     "overview": "Overview",

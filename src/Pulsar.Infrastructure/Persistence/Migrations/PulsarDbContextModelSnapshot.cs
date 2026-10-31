@@ -2644,6 +2644,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("down_after_crash");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("external_id");
+
                     b.PrimitiveCollection<string[]>("ExtraArguments")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2758,6 +2763,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BackupStorageId")
                         .HasDatabaseName("ix_servers_backup_storage_id");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_servers_external_id");
 
                     b.HasIndex("NodeId")
                         .HasDatabaseName("ix_servers_node_id");
@@ -3319,6 +3328,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("email_confirmed");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("external_id");
+
                     b.Property<bool>("IsDisabled")
                         .HasColumnType("boolean")
                         .HasColumnName("is_disabled");
@@ -3372,6 +3386,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_users");
+
+                    b.HasIndex("ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_external_id");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("ix_users_normalized_email");

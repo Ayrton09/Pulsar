@@ -123,6 +123,10 @@ The server is theirs (`servers.owner_id`): on it they hold every permission a se
 
 Quotas are given, changed and taken away by user managers (`GET`, `PUT`, `DELETE /users/{id}/quota`; `user.manage`, `user.view` to read) under the rules of user management, audited (`user.quota_set` with the totals and nodes, `user.quota_removed`). Giving one on a node is giving the right to create servers there: only on nodes where the actor holds `server.create`. Lowering a quota below what is used, or taking it away, takes no server away: the user creates no more. The session says whether the user has a quota (`hasQuota`), so the Servers page is theirs even before they own a server.
 
+### External ids and owners (1.0.24)
+
+For billing systems (docs/guides/billing.md), users and servers carry an optional **external id**: what another system calls them, 1–128 ASCII letters, digits and `. _ - : @`, unique (`users.external_id`, `servers.external_id`, unique indexes), set when they are created (`externalId` in `POST /users` and `POST /servers`; taken: `409 *.external_id_taken`, so a retried request never makes two) or later (`PUT /users/{id}/external-id`, `user.manage`; `PUT /servers/{id}/external-id`, `server.limits.edit`), audited, and searched with `?externalId=` on both lists. Pulsar reads nothing into it. A server is given to a user, or taken back, with `PUT /servers/{id}/owner` (`user.manage`): only by an actor who holds every one of the owner's permissions on it and may manage both the new owner and the one before (rule 6), audited as `server.owner_changed`; both users' live connections close, as with a role change. A server given this way counts against its owner's quota, if they have one, like one they created.
+
 ### API keys (Phase 12)
 
 A user creates keys for scripts and tools from their account (`/api/v1/account/api-keys`, session cookie only) and sends one as `Authorization: Bearer pulsar_…`.
@@ -372,6 +376,7 @@ CREATE TABLE servers (
     cpu_limit_percent    integer CHECK (cpu_limit_percent BETWEEN 1 AND 100),  -- Phase 12: share of the node; NULL: no cap
     memory_limit_mb      integer CHECK (memory_limit_mb BETWEEN 128 AND 1048576),  -- Phase 12: committed memory; NULL: no cap
     backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere
+    external_id          varchar(128) UNIQUE,  -- 1.0.24: what a billing system calls it ("External ids and owners")
     owner_id             uuid REFERENCES users(id) ON DELETE SET NULL,  -- 1.0.24: created within this user's quota ("Quotas")
     suspended_at         timestamptz,          -- 1.0.24: suspended since (doc 05, "Suspension"); NULL: not suspended
     suspension_reason    varchar(200),         -- shown to the server's users; NULL: none given
