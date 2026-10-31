@@ -58,6 +58,8 @@ internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cach
         var servers = await db.ServerAccess.AsNoTracking().Where(a => a.UserId == user)
             .Join(db.Servers, a => a.ServerId, s => s.Id, (a, s) => new { a.ServerId, s.NodeId, a.RoleId })
             .ToListAsync(cancellationToken);
+        // 1.0.24: the servers they created within their quota are theirs.
+        var owned = await db.Servers.AsNoTracking().Where(s => s.OwnerId == user).Select(s => s.Id).ToListAsync(cancellationToken);
         var scopedRoleIds = nodes.Select(n => n.RoleId).Concat(servers.Select(s => s.RoleId)).Distinct().ToList();
         var scopedRoles = scopedRoleIds.Count == 0
             ? []
@@ -77,6 +79,16 @@ internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cach
         foreach (var server in servers)
         {
             builder.Add(scopedRoles[server.RoleId], AccessTarget.ForServer(server.ServerId, server.NodeId));
+        }
+
+        foreach (var server in owned)
+        {
+            builder.AddOwned(server);
+        }
+
+        if (await db.UserQuotas.AnyAsync(q => q.UserId == user, cancellationToken))
+        {
+            builder.WithQuota();
         }
 
         var permissions = builder.Build();

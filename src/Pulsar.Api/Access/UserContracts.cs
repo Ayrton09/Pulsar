@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Infrastructure.Identity;
 
@@ -43,3 +44,13 @@ public sealed record ResetPasswordRequest([property: Required, StringLength(256)
 
 /// <summary>The complete set of global roles the user should have.</summary>
 public sealed record SetUserRolesRequest([property: Required] IReadOnlyList<Guid> RoleIds);
+
+/// <summary>A user's quota (1.0.24): what it allows, the nodes, and what their servers use of it.</summary>
+public sealed record UserQuotaResponse(int MaxServers, int MaxMemoryMb, int MaxCpuPercent, IReadOnlyList<Guid> NodeIds, QuotaUsage Used);
+
+/// <summary>Gives a user a quota, or changes it (1.0.24): totals for the servers they own, and where they may create them.</summary>
+public sealed record SetUserQuotaRequest(
+    [property: Range(0, UserQuota.MaxServersLimit)] int MaxServers,
+    [property: Range(0, int.MaxValue)] int MaxMemoryMb,
+    [property: Range(0, UserQuota.MaxCpuPercentLimit)] int MaxCpuPercent,
+    [property: MaxLength(UserQuota.MaxNodes)] IReadOnlyList<Guid>? NodeIds);

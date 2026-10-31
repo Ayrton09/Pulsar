@@ -61,6 +61,17 @@ public static class PermissionCatalog
 
     public static FrozenSet<string> AllKeys { get; } = s_definitions.Keys.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>
+    /// What the owner of a server they created within their quota holds on it (Pulsar 1.0.24): everything a server's
+    /// role may hold but its settings (its name, its ports, and the values its template protects from its users, which
+    /// stay whoever hosts it's), and deleting it (its place in the quota is theirs to free). Never its caps, nor its
+    /// suspension.
+    /// </summary>
+    public static FrozenSet<string> OwnerKeys { get; } = s_definitions.Values
+        .Where(d => d.GrantableScopes.Contains(PermissionScope.Server) && d.Key != Permissions.Server.SettingsEdit).Select(d => d.Key)
+        .Append(Permissions.Server.Delete)
+        .ToFrozenSet(StringComparer.Ordinal);
+
     public static bool Exists(string key) => s_definitions.ContainsKey(key);
 
     /// <summary>True when a role of <paramref name="scope"/> may contain <paramref name="key"/>.</summary>

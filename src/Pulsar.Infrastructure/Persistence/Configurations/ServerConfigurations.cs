@@ -70,6 +70,9 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
 
         builder.HasOne<BackupStorage>().WithMany().HasForeignKey(s => s.BackupStorageId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Node>().WithMany().HasForeignKey(s => s.NodeId).OnDelete(DeleteBehavior.Restrict);
+        // 1.0.24: a deleted user's servers stay, nobody's.
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(s => s.OwnerId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasIndex(s => s.OwnerId);
         builder.HasOne<GameTemplate>().WithMany().HasForeignKey(s => s.TemplateId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Operation>().WithMany().HasForeignKey(s => s.ActiveOperationId).OnDelete(DeleteBehavior.SetNull);
     }

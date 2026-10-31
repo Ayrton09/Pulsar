@@ -29,6 +29,14 @@ public static class UserEndpoints
             .RequirePermission(Permissions.User.Manage);
         users.MapPut("/{id:guid}/roles", (Guid id, SetUserRolesRequest request, UserManagement m, CancellationToken ct) =>
             m.SetRolesAsync(new UserId(id), request, ct)).RequirePermission(Permissions.User.Manage);
+        // 1.0.24: what a user may create for themselves.
+        users.MapGet("/{id:guid}/quota", (Guid id, UserManagement m, CancellationToken ct) => m.GetQuotaAsync(new UserId(id), ct))
+            .RequirePermission(Permissions.User.View, Permissions.User.Manage);
+        users.MapPut("/{id:guid}/quota", (Guid id, SetUserQuotaRequest request, UserManagement m, CancellationToken ct) =>
+                m.SetQuotaAsync(new UserId(id), request, ct))
+            .RequirePermission(Permissions.User.Manage);
+        users.MapDelete("/{id:guid}/quota", (Guid id, UserManagement m, CancellationToken ct) => m.RemoveQuotaAsync(new UserId(id), ct))
+            .RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteAsync(new UserId(id), ct))
             .RequirePermission(Permissions.User.Manage);
         users.MapPut("/{id:guid}/nodes/{nodeId:guid}/roles/{roleId:guid}", (Guid id, Guid nodeId, Guid roleId, UserManagement m, CancellationToken ct) =>

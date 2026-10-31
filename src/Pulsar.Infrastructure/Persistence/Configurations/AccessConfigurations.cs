@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
@@ -115,6 +117,29 @@ internal sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
         builder.HasIndex(k => k.UserId);
         builder.Property(k => k.Permissions).HasColumnType("text[]");
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>Quotas (1.0.24, docs/architecture/02 "Quotas"): one per user at most, gone with their user.</summary>
+internal sealed class UserQuotaConfiguration : IEntityTypeConfiguration<UserQuota>
+{
+    public void Configure(EntityTypeBuilder<UserQuota> builder)
+    {
+        builder.ToTable("user_quotas", t =>
+        {
+            t.HasCheckConstraint("ck_user_quotas_max_servers", $"max_servers BETWEEN 0 AND {UserQuota.MaxServersLimit}");
+            t.HasCheckConstraint("ck_user_quotas_max_memory_mb", "max_memory_mb >= 0");
+            t.HasCheckConstraint("ck_user_quotas_max_cpu_percent", $"max_cpu_percent BETWEEN 0 AND {UserQuota.MaxCpuPercentLimit}");
+        });
+        builder.HasKey(q => q.UserId);
+        builder.Property(q => q.UserId).ValueGeneratedNever();
+        builder.Property(q => q.NodeIds).HasColumnType("uuid[]").HasConversion(
+            nodes => nodes.Select(n => n.Value).ToArray(),
+            values => values.Select(v => new NodeId(v)).ToList(),
+            new ValueComparer<IReadOnlyList<NodeId>>((a, b) => a!.SequenceEqual(b!), v => v.Aggregate(0, (h, n) => HashCode.Combine(h, n)),
+                v => v.ToList()));
+        builder.Property<uint>("Version").IsRowVersion();
+        builder.HasOne<PulsarUser>().WithOne().HasForeignKey<UserQuota>(q => q.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

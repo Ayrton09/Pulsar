@@ -82,4 +82,23 @@ public static class AccessErrors
         new("role.in_use", "The role is assigned to users; remove those assignments before deleting it.");
 
     public static DomainError UserNotFound { get; } = new("user.not_found", "The user does not exist.");
+
+    public static DomainError QuotaInvalid { get; } = new("quota.invalid",
+        $"A quota allows 0 to {UserQuota.MaxServersLimit} servers, memory and CPU totals of 0 or more, on at most {UserQuota.MaxNodes} nodes.");
+
+    public static DomainError QuotaConflict { get; } = new("quota.conflict", "The quota was changed at the same moment; try again.");
+
+    public static DomainError QuotaNotFound { get; } = new("quota.not_found", "You have no quota to create servers with.");
+
+    public static DomainError QuotaNodeNotAllowed { get; } = new("quota.node_not_allowed", "Your quota does not let you create servers on that node.");
+
+    public static DomainError QuotaServers { get; } = new("quota.servers", "You have as many servers as your quota allows.");
+
+    public static DomainError QuotaMemory { get; } = new("quota.memory", "That much memory would go over your quota.");
+
+    public static DomainError QuotaCpu { get; } = new("quota.cpu", "That much CPU would go over your quota.");
+
+    /// <summary>Giving a quota on a node is giving the right to create servers there: only who may do it there.</summary>
+    public static DomainError QuotaEscalation { get; } =
+        new("access.escalation", "You can only let users create servers on nodes where you may create them yourself.");
 }

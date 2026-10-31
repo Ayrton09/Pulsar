@@ -320,7 +320,9 @@
         "password_reset": "Cambió la contraseña de un usuario",
         "two_factor_reset": "Desactivó la verificación en dos pasos de un usuario",
         "api_keys_revoked": "Revocó las API keys de un usuario",
-        "ssh_keys_deleted": "Borró las claves SSH de un usuario"
+        "ssh_keys_deleted": "Borró las claves SSH de un usuario",
+        "quota_set": "Cambió la cuota de un usuario",
+        "quota_removed": "Quitó la cuota de un usuario"
       },
       "role": {
         "created": "Creó un rol",
@@ -981,6 +983,15 @@
       "link_not_found": "Tu cuenta no está vinculada a ese proveedor.",
       "unlink_failed": "No se pudo desvincular la cuenta. Probá de nuevo.",
       "provider_unavailable": "No se pudo contactar al proveedor: {{detail}}"
+    },
+    "quota": {
+      "invalid": "Una cuota permite de 0 a 1000 servidores, totales de memoria y CPU de 0 o más, en hasta 100 nodos.",
+      "not_found": "No tenés una cuota para crear servidores.",
+      "node_not_allowed": "Tu cuota no te deja crear servidores en ese nodo.",
+      "servers": "Ya tenés tantos servidores como permite tu cuota.",
+      "memory": "Esa memoria se pasaría de tu cuota.",
+      "cpu": "Esa CPU se pasaría de tu cuota.",
+      "conflict": "La cuota cambió en el mismo momento; probá de nuevo."
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "Dejalo vacío para conservar el secret guardado.",
       "saved": "Guardado."
     }
+  },
+  "quotas": {
+    "title": "Cuota",
+    "create": "Nuevo servidor",
+    "createAction": "Crear servidor",
+    "servers": "Servidores",
+    "memory": "Memoria (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} de {{max}}",
+    "noNodes": "Ningún nodo de tu cuota está conectado ahora.",
+    "game": "Juego",
+    "chooseGame": "Elegí un juego",
+    "memoryLabel": "Memoria (MB)",
+    "cpuLabel": "CPU (% del nodo)",
+    "memoryRange": "Entre {{min}} y {{max}} MB: lo que le queda a tu cuota.",
+    "cpuRange": "Entre 1 y {{max}} %: lo que le queda a tu cuota.",
+    "gameNeeds": "El juego pide {{memory}} MB.",
+    "adminHint": "Le permite al usuario crear sus propios servidores en los nodos marcados, mientras todos los suyos entren en estos totales. Son suyos; bajar la cuota no le saca ningún servidor.",
+    "inUse": "En uso: {{servers}} servidores, {{memory}} MB, {{cpu}} % de CPU.",
+    "maxServers": "Servidores",
+    "maxMemory": "Memoria en total (MB)",
+    "maxCpu": "CPU en total (%)",
+    "nodes": "Nodos",
+    "noNodesToGive": "No hay ningún nodo donde puedas crear servidores.",
+    "remove": "Quitar la cuota",
+    "removeConfirm": "¿Quitarle la cuota a este usuario? Sus servidores siguen siendo suyos; no crea más.",
+    "give": "Dar cuota"
   }
 }

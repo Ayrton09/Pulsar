@@ -40,6 +40,8 @@ interface NavItem {
   icon: LucideIcon;
   /** Shown only to users holding any of these; empty = everyone. */
   anyOf: string[];
+  /** Shown too to users with a quota (1.0.24), who create their own servers. */
+  quota?: boolean;
 }
 
 // Tailwind's md breakpoint: from here on the sidebar is always shown and the menu panel is not needed.
@@ -128,10 +130,13 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const { theme } = useTheme();
 
   const visible = (items: NavItem[]) =>
-    items.filter((item) => item.anyOf.length === 0 || canAnywhere(user, ...item.anyOf));
+    items.filter(
+      (item) =>
+        item.anyOf.length === 0 || canAnywhere(user, ...item.anyOf) || (item.quota === true && user.hasQuota === true),
+    );
   const main = visible([
     { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard, anyOf: [] },
-    { to: '/servers', label: t('nav.servers'), icon: Server, anyOf: [Permission.ServerView] },
+    { to: '/servers', label: t('nav.servers'), icon: Server, anyOf: [Permission.ServerView], quota: true },
     {
       to: '/nodes',
       label: t('nav.nodes'),

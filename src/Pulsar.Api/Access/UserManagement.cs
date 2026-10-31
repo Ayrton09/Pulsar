@@ -8,6 +8,7 @@ using Pulsar.Api.Sftp;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -32,6 +33,7 @@ public sealed class UserManagement(
     ApiKeys apiKeys,
     SshKeys sshKeys,
     SftpConnections sftp,
+    ServerQuotas quotas,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
@@ -478,6 +480,108 @@ public sealed class UserManagement(
 
         return true;
     }
+
+    /// <summary>The user's quota (1.0.24) and what their servers use of it; 404 <c>quota.not_found</c> without one.</summary>
+    public async Task<Results<Ok<UserQuotaResponse>, ProblemHttpResult>> GetQuotaAsync(UserId id, CancellationToken ct)
+    {
+        if (await users.FindByIdAsync(id.ToString()) is null)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+        }
+
+        var quota = await db.UserQuotas.AsNoTracking().SingleOrDefaultAsync(q => q.UserId == id, ct);
+        return quota is null ? ApiProblems.FromDomainError(AccessErrors.QuotaNotFound) : TypedResults.Ok(await QuotaResponseAsync(quota, ct));
+    }
+
+    /// <summary>
+    /// Gives the user a quota, or changes it (1.0.24). Letting them create servers on a node is as much as giving them
+    /// <c>server.create</c> there: only on nodes where the actor holds it, for a user the actor may manage. Lowering it
+    /// below what their servers use takes nothing away: it only stops them creating more.
+    /// </summary>
+    public async Task<Results<Ok<UserQuotaResponse>, ProblemHttpResult>> SetQuotaAsync(UserId id, SetUserQuotaRequest input, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        var nodes = (input.NodeIds ?? []).Distinct().Select(n => new NodeId(n)).ToList();
+        var actor = await evaluator.GetAsync(Actor, ct);
+        if (nodes.Any(n => !actor.Has(Permissions.Server.Create, AccessTarget.ForNode(n))))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.QuotaEscalation);
+        }
+
+        if (await db.Nodes.CountAsync(n => nodes.Contains(n.Id), ct) != nodes.Count)
+        {
+            return ApiProblems.FromDomainError(NodeErrors.NotFound);
+        }
+
+        var now = clock.GetUtcNow();
+        var quota = await db.UserQuotas.SingleOrDefaultAsync(q => q.UserId == id, ct);
+        if (quota is null)
+        {
+            var created = UserQuota.Create(id, input.MaxServers, input.MaxMemoryMb, input.MaxCpuPercent, nodes, now);
+            if (!created.IsSuccess)
+            {
+                return ApiProblems.FromDomainError(created.Error!);
+            }
+
+            quota = created.Value;
+            db.UserQuotas.Add(quota);
+        }
+        else if (quota.Set(input.MaxServers, input.MaxMemoryMb, input.MaxCpuPercent, nodes, now) is { IsSuccess: false } invalid)
+        {
+            return ApiProblems.FromDomainError(invalid.Error!);
+        }
+
+        audit.Record(AuditActions.User.QuotaSet, metadata: new
+        {
+            userName = user!.UserName,
+            input.MaxServers,
+            input.MaxMemoryMb,
+            input.MaxCpuPercent,
+            nodes = nodes.Select(n => n.Value),
+        }).WithTarget("user", user.Id.ToString());
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Given or changed by someone else at the same moment: theirs stands, this one is asked again.
+            return ApiProblems.FromDomainError(AccessErrors.QuotaConflict);
+        }
+
+        evaluator.Invalidate(id);
+        return TypedResults.Ok(await QuotaResponseAsync(quota, ct));
+    }
+
+    /// <summary>Takes the user's quota away: their servers stay theirs, they create no more.</summary>
+    public async Task<Results<NoContent, ProblemHttpResult>> RemoveQuotaAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        if (await db.UserQuotas.SingleOrDefaultAsync(q => q.UserId == id, ct) is not { } quota)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.QuotaNotFound);
+        }
+
+        db.UserQuotas.Remove(quota);
+        audit.Record(AuditActions.User.QuotaRemoved, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
+        await db.SaveChangesAsync(ct);
+        evaluator.Invalidate(id);
+        return TypedResults.NoContent();
+    }
+
+    private async Task<UserQuotaResponse> QuotaResponseAsync(UserQuota quota, CancellationToken ct) =>
+        new(quota.MaxServers, quota.MaxMemoryMb, quota.MaxCpuPercent, [.. quota.NodeIds.Select(n => n.Value)],
+            await quotas.UsageAsync(quota.UserId, ct));
 
     private UserId Actor => request.UserId ?? throw new InvalidOperationException("User management requires a signed-in user.");
 

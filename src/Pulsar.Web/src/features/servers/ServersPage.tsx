@@ -10,6 +10,8 @@ import { useWatchServers } from '../live/hooks';
 import { useServers, type ServerSummary } from './api';
 import { BulkBar } from './BulkBar';
 import { CreateServerDialog } from './CreateServerDialog';
+import { useMyQuota } from '../quotas/api';
+import { OwnedServerDialog, QuotaSummary } from '../quotas/OwnedServerDialog';
 import { ServerCollection, type ServerSelection } from './ServerCard';
 
 const filters = ['all', 'online', 'offline'] as const;
@@ -20,12 +22,17 @@ const alive = (server: ServerSummary) => server.runtimeState === 'running' || se
 export function ServersPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
-  const servers = useServers();
-  useWatchServers();
+  // A user with a quota and no server yet sees none: the list is not asked for.
+  const canView = canAnywhere(me, Permission.ServerView);
+  const servers = useServers(canView);
+  useWatchServers(canView);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const canCreate = canAnywhere(me, Permission.ServerCreate);
+  // 1.0.24: a user with a quota creates their own servers within it.
+  const quota = useMyQuota(!canCreate && me.hasQuota === true).data ?? null;
+  const [creatingOwned, setCreatingOwned] = useState(false);
   // Picking servers for an action on all of them, for whoever may do one of those somewhere.
   const canBulk = canAnywhere(
     me,
@@ -54,7 +61,7 @@ export function ServersPage() {
     [picked],
   );
 
-  const all = servers.data ?? [];
+  const all = (canView ? servers.data : []) ?? [];
   const words = search.trim().toLocaleLowerCase();
   const shown = all.filter(
     (server) =>
@@ -81,16 +88,27 @@ export function ServersPage() {
         title={t('servers.title')}
         description={t('servers.description')}
         actions={
-          canCreate && (
+          canCreate ? (
             <Button icon={Plus} onClick={() => setCreating(true)}>
               {t('servers.create')}
             </Button>
+          ) : (
+            quota && (
+              <Button icon={Plus} onClick={() => setCreatingOwned(true)}>
+                {t('quotas.create')}
+              </Button>
+            )
           )
         }
       />
-      {servers.isPending && <Spinner label={t('common.loading')} />}
+      {quota && (
+        <section aria-label={t('quotas.title')} className="mb-6">
+          <QuotaSummary quota={quota} />
+        </section>
+      )}
+      {canView && servers.isPending && <Spinner label={t('common.loading')} />}
       {servers.isError && <Alert>{errorMessage(t, servers.error)}</Alert>}
-      {servers.data?.length === 0 && (
+      {(!canView || servers.data?.length === 0) && (
         <Card className="p-6">
           <p className="text-sm text-muted">{canCreate ? t('servers.emptyCreate') : t('servers.empty')}</p>
         </Card>
@@ -166,6 +184,7 @@ export function ServersPage() {
         </>
       )}
       {creating && <CreateServerDialog onClose={() => setCreating(false)} />}
+      {creatingOwned && quota && <OwnedServerDialog quota={quota} onClose={() => setCreatingOwned(false)} />}
     </>
   );
 }

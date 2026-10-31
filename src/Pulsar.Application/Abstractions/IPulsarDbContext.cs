@@ -30,6 +30,8 @@ public interface IPulsarDbContext
 
     DbSet<ApiKey> ApiKeys { get; }
 
+    DbSet<UserQuota> UserQuotas { get; }
+
     DbSet<SshKey> SshKeys { get; }
 
     DbSet<ServerAddon> ServerAddons { get; }

@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IBundledTemplates>(sp => sp.GetRequiredService<TemplateCatalog>());
         services.AddScoped<ServerOperations>();
         services.AddScoped<ServerManagement>();
+        services.AddScoped<ServerQuotas>();
         services.AddScoped<ServerBackups>();
         services.AddScoped<ServerAddons>();
         services.AddScoped<ServerMods>();

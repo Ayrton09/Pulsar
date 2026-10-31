@@ -16,6 +16,7 @@ public sealed record SessionResponse(bool SetupRequired, CurrentUserResponse? Us
 /// <param name="Permissions">Permissions held globally (everywhere).</param>
 /// <param name="NodePermissions">Permissions held on single nodes, and so on their servers.</param>
 /// <param name="ServerPermissions">Permissions held on single servers.</param>
+/// <param name="HasQuota">They may create servers of their own within a quota (1.0.24).</param>
 public sealed record CurrentUserResponse(
     Guid Id,
     string UserName,
@@ -25,7 +26,8 @@ public sealed record CurrentUserResponse(
     bool TwoFactorEnabled,
     bool TwoFactorSetupRequired,
     IReadOnlyList<ScopedPermissions> NodePermissions,
-    IReadOnlyList<ScopedPermissions> ServerPermissions);
+    IReadOnlyList<ScopedPermissions> ServerPermissions,
+    bool HasQuota = false);
 
 /// <summary>What a user may do on one node or one server, besides their global permissions.</summary>
 public sealed record ScopedPermissions(Guid Id, IReadOnlyList<string> Permissions);

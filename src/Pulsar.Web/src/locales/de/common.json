@@ -320,7 +320,9 @@
         "password_reset": "Passwort eines Benutzers festgelegt",
         "two_factor_reset": "Zwei-Faktor-Authentifizierung eines Benutzers deaktiviert",
         "api_keys_revoked": "API-Schlüssel eines Benutzers widerrufen",
-        "ssh_keys_deleted": "SSH-Schlüssel eines Benutzers gelöscht"
+        "ssh_keys_deleted": "SSH-Schlüssel eines Benutzers gelöscht",
+        "quota_set": "Das Kontingent eines Benutzers geändert",
+        "quota_removed": "Das Kontingent eines Benutzers entfernt"
       },
       "role": {
         "created": "Rolle erstellt",
@@ -981,6 +983,15 @@
       "link_not_found": "Dein Konto ist nicht mit diesem Anbieter verknüpft.",
       "unlink_failed": "Das Konto konnte nicht getrennt werden. Versuche es erneut.",
       "provider_unavailable": "Der Anbieter war nicht erreichbar: {{detail}}"
+    },
+    "quota": {
+      "invalid": "Ein Kontingent erlaubt 0 bis 1000 Server, Summen für Arbeitsspeicher und CPU ab 0, auf höchstens 100 Nodes.",
+      "not_found": "Du hast kein Kontingent, um Server zu erstellen.",
+      "node_not_allowed": "Dein Kontingent erlaubt dir keine Server auf diesem Node.",
+      "servers": "Du hast so viele Server, wie dein Kontingent erlaubt.",
+      "memory": "So viel Arbeitsspeicher würde dein Kontingent überschreiten.",
+      "cpu": "So viel CPU würde dein Kontingent überschreiten.",
+      "conflict": "Das Kontingent wurde gleichzeitig geändert; versuche es erneut."
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "Leer lassen, um das gespeicherte Secret zu behalten.",
       "saved": "Gespeichert."
     }
+  },
+  "quotas": {
+    "title": "Kontingent",
+    "create": "Neuer Server",
+    "createAction": "Server erstellen",
+    "servers": "Server",
+    "memory": "Arbeitsspeicher (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} von {{max}}",
+    "noNodes": "Keiner der Nodes deines Kontingents ist gerade verbunden.",
+    "game": "Spiel",
+    "chooseGame": "Wähle ein Spiel",
+    "memoryLabel": "Arbeitsspeicher (MB)",
+    "cpuLabel": "CPU (% des Nodes)",
+    "memoryRange": "Zwischen {{min}} und {{max}} MB: was deinem Kontingent bleibt.",
+    "cpuRange": "Zwischen 1 und {{max}} %: was deinem Kontingent bleibt.",
+    "gameNeeds": "Das Spiel verlangt {{memory}} MB.",
+    "adminHint": "Erlaubt dem Benutzer, auf den markierten Nodes eigene Server zu erstellen, solange alle seine Server in diesen Summen bleiben. Sie gehören ihm; ein kleineres Kontingent nimmt ihm keinen Server weg.",
+    "inUse": "Belegt: {{servers}} Server, {{memory}} MB, {{cpu}} % CPU.",
+    "maxServers": "Server",
+    "maxMemory": "Arbeitsspeicher gesamt (MB)",
+    "maxCpu": "CPU gesamt (%)",
+    "nodes": "Nodes",
+    "noNodesToGive": "Es gibt keinen Node, auf dem du Server erstellen darfst.",
+    "remove": "Kontingent entfernen",
+    "removeConfirm": "Das Kontingent dieses Benutzers entfernen? Seine Server bleiben seine; er erstellt keine weiteren.",
+    "give": "Kontingent geben"
   }
 }

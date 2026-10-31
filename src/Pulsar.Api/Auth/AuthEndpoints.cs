@@ -326,6 +326,6 @@ public static class AuthEndpoints
         return new CurrentUserResponse(user.Id.Value, user.UserName!, user.DisplayName, user.Email,
             [.. permissions.Global.Order(StringComparer.Ordinal)], user.TwoFactorEnabled, permissions.RequiresTwoFactor && !user.TwoFactorEnabled,
             [.. permissions.Nodes.Select(n => new ScopedPermissions(n.Key.Value, [.. n.Value.Order(StringComparer.Ordinal)]))],
-            [.. permissions.Servers.Select(s => new ScopedPermissions(s.Key.Value, [.. s.Value.Order(StringComparer.Ordinal)]))]);
+            [.. permissions.Servers.Select(s => new ScopedPermissions(s.Key.Value, [.. s.Value.Order(StringComparer.Ordinal)]))], permissions.HasQuota);
     }
 }

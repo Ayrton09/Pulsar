@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { QuotaSection } from '../quotas/QuotaSection';
 import { Alert, Badge, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
@@ -329,6 +330,8 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
         {!isSelf && roles.data && (
           <AccessSection user={user} roles={roles.data} onSaved={() => setNotice(t('users.saved'))} />
         )}
+
+        {!isSelf && <QuotaSection userId={user.id} />}
 
         {!isSelf && (
           <div className="space-y-3 border-t border-border pt-4">

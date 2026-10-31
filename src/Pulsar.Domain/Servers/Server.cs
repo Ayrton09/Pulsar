@@ -196,6 +196,12 @@ public sealed class Server
 
     public bool IsSuspended => SuspendedAt is not null;
 
+    /// <summary>
+    /// The user who created it within their quota (Pulsar 1.0.24) and owns it: they hold
+    /// <see cref="Access.PermissionCatalog.OwnerKeys"/> on it, and its caps count against their quota. Null: nobody's (made by whoever hosts it).
+    /// </summary>
+    public UserId? OwnerId { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -545,6 +551,13 @@ public sealed class Server
         RestartOnCrash = restartOnCrash;
         UpdatedAt = now;
         return Result.Success();
+    }
+
+    /// <summary>The user who owns it from now on (made within their quota); null: nobody.</summary>
+    public void OwnedBy(UserId? owner, DateTimeOffset now)
+    {
+        OwnerId = owner;
+        UpdatedAt = now;
     }
 
     /// <summary>

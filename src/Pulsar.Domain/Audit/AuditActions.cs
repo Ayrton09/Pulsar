@@ -39,6 +39,8 @@ public static class AuditActions
         public const string ApiKeysRevoked = "user.api_keys_revoked";
         public const string SshKeysDeleted = "user.ssh_keys_deleted";
         public const string SsoLinksRemoved = "user.sso_links_removed";
+        public const string QuotaSet = "user.quota_set";
+        public const string QuotaRemoved = "user.quota_removed";
     }
 
     /// <summary>Sign-in providers (1.0.18).</summary>

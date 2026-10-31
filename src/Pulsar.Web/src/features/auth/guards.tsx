@@ -126,10 +126,19 @@ export function PublicOnly({ page }: { page: 'login' | 'setup' }) {
 }
 
 /** Hides a page from users without any of the permissions (the API refuses them anyway). */
-export function RequirePermission({ anyOf, children }: { anyOf: string[]; children: ReactNode }) {
+/** `orQuota`: a user with a quota (1.0.24) may come in too (the servers page, where they create theirs). */
+export function RequirePermission({
+  anyOf,
+  orQuota = false,
+  children,
+}: {
+  anyOf: string[];
+  orQuota?: boolean;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const { data } = useSession();
-  if (!canAnywhere(data?.user, ...anyOf)) {
+  if (!canAnywhere(data?.user, ...anyOf) && !(orQuota && data?.user?.hasQuota === true)) {
     return (
       <div className="py-16 text-center" role="alert">
         <h1 className="text-xl font-semibold">{t('forbidden.title')}</h1>

@@ -320,7 +320,9 @@
         "password_reset": "Set a user's password",
         "two_factor_reset": "Turned off a user's two-factor authentication",
         "api_keys_revoked": "Revoked a user's API keys",
-        "ssh_keys_deleted": "Deleted a user's SSH keys"
+        "ssh_keys_deleted": "Deleted a user's SSH keys",
+        "quota_set": "Changed a user's quota",
+        "quota_removed": "Removed a user's quota"
       },
       "role": {
         "created": "Created a role",
@@ -981,6 +983,15 @@
       "link_not_found": "Your account is not linked to that provider.",
       "unlink_failed": "The account could not be unlinked. Try again.",
       "provider_unavailable": "The provider could not be reached: {{detail}}"
+    },
+    "quota": {
+      "invalid": "A quota allows 0 to 1000 servers, memory and CPU totals of 0 or more, on at most 100 nodes.",
+      "not_found": "You have no quota to create servers with.",
+      "node_not_allowed": "Your quota does not let you create servers on that node.",
+      "servers": "You have as many servers as your quota allows.",
+      "memory": "That much memory would go over your quota.",
+      "cpu": "That much CPU would go over your quota.",
+      "conflict": "The quota was changed at the same moment; try again."
     }
   },
   "account": {
@@ -2799,5 +2810,32 @@
       "secretKeep": "Leave it empty to keep the saved secret.",
       "saved": "Saved."
     }
+  },
+  "quotas": {
+    "title": "Quota",
+    "create": "New server",
+    "createAction": "Create server",
+    "servers": "Servers",
+    "memory": "Memory (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} of {{max}}",
+    "noNodes": "None of your quota's nodes is connected now.",
+    "game": "Game",
+    "chooseGame": "Choose a game",
+    "memoryLabel": "Memory (MB)",
+    "cpuLabel": "CPU (% of the node)",
+    "memoryRange": "Between {{min}} and {{max}} MB: what your quota has left.",
+    "cpuRange": "Between 1 and {{max}} %: what your quota has left.",
+    "gameNeeds": "The game asks for {{memory}} MB.",
+    "adminHint": "Lets the user create servers for themselves on the nodes ticked, as long as all of theirs stay within these totals. They own them; lowering the quota takes no server away.",
+    "inUse": "In use: {{servers}} servers, {{memory}} MB, {{cpu}} % of CPU.",
+    "maxServers": "Servers",
+    "maxMemory": "Memory in all (MB)",
+    "maxCpu": "CPU in all (%)",
+    "nodes": "Nodes",
+    "noNodesToGive": "There is no node you may create servers on.",
+    "remove": "Remove quota",
+    "removeConfirm": "Remove this user's quota? Their servers stay theirs; they create no more.",
+    "give": "Give quota"
   }
 }

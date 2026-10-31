@@ -32,6 +32,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
+    public DbSet<UserQuota> UserQuotas => Set<UserQuota>();
+
     public DbSet<SshKey> SshKeys => Set<SshKey>();
 
     public DbSet<ServerAddon> ServerAddons => Set<ServerAddon>();

@@ -320,7 +320,9 @@
         "password_reset": "사용자 비밀번호 설정",
         "two_factor_reset": "사용자의 2단계 인증 끔",
         "api_keys_revoked": "사용자의 API 키 폐기",
-        "ssh_keys_deleted": "사용자의 SSH 키 삭제"
+        "ssh_keys_deleted": "사용자의 SSH 키 삭제",
+        "quota_set": "사용자의 할당량을 변경함",
+        "quota_removed": "사용자의 할당량을 제거함"
       },
       "role": {
         "created": "역할 생성",
@@ -981,6 +983,15 @@
       "link_not_found": "계정이 그 제공자와 연결되어 있지 않습니다.",
       "unlink_failed": "계정 연결을 해제하지 못했습니다. 다시 시도하세요.",
       "provider_unavailable": "제공자에 연결할 수 없습니다: {{detail}}"
+    },
+    "quota": {
+      "invalid": "할당량은 서버 0~1000개, 0 이상의 메모리와 CPU 합계, 최대 100개 노드를 허용합니다.",
+      "not_found": "서버를 만들 할당량이 없습니다.",
+      "node_not_allowed": "할당량으로는 그 노드에 서버를 만들 수 없습니다.",
+      "servers": "할당량이 허용하는 만큼 서버가 이미 있습니다.",
+      "memory": "그 메모리는 할당량을 넘습니다.",
+      "cpu": "그 CPU는 할당량을 넘습니다.",
+      "conflict": "할당량이 같은 순간에 변경되었습니다. 다시 시도하세요."
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "비워 두면 저장된 시크릿을 유지합니다.",
       "saved": "저장했습니다."
     }
+  },
+  "quotas": {
+    "title": "할당량",
+    "create": "새 서버",
+    "createAction": "서버 만들기",
+    "servers": "서버",
+    "memory": "메모리 (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} / {{max}}",
+    "noNodes": "할당량의 노드 중 지금 연결된 노드가 없습니다.",
+    "game": "게임",
+    "chooseGame": "게임 선택",
+    "memoryLabel": "메모리 (MB)",
+    "cpuLabel": "CPU (노드의 %)",
+    "memoryRange": "{{min}}~{{max}} MB: 할당량에 남은 양입니다.",
+    "cpuRange": "1~{{max}} %: 할당량에 남은 양입니다.",
+    "gameNeeds": "이 게임은 {{memory}} MB가 필요합니다.",
+    "adminHint": "체크한 노드에서 사용자가 직접 서버를 만들 수 있게 합니다. 모든 서버가 이 합계 안에 있는 동안만입니다. 서버는 사용자의 것이며, 할당량을 줄여도 서버를 빼앗지 않습니다.",
+    "inUse": "사용 중: 서버 {{servers}}개, {{memory}} MB, CPU {{cpu}} %.",
+    "maxServers": "서버",
+    "maxMemory": "메모리 합계 (MB)",
+    "maxCpu": "CPU 합계 (%)",
+    "nodes": "노드",
+    "noNodesToGive": "서버를 만들 수 있는 노드가 없습니다.",
+    "remove": "할당량 제거",
+    "removeConfirm": "이 사용자의 할당량을 제거할까요? 서버는 그대로 사용자의 것이지만 더 만들 수 없습니다.",
+    "give": "할당량 부여"
   }
 }

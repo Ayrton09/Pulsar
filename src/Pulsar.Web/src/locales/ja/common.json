@@ -320,7 +320,9 @@
         "password_reset": "ユーザーのパスワードを設定",
         "two_factor_reset": "ユーザーの二要素認証をオフにした",
         "api_keys_revoked": "ユーザーのAPIキーを失効",
-        "ssh_keys_deleted": "ユーザーのSSHキーを削除"
+        "ssh_keys_deleted": "ユーザーのSSHキーを削除",
+        "quota_set": "ユーザーのクォータを変更しました",
+        "quota_removed": "ユーザーのクォータを削除しました"
       },
       "role": {
         "created": "ロールを作成",
@@ -981,6 +983,15 @@
       "link_not_found": "アカウントはそのプロバイダーと連携していません。",
       "unlink_failed": "アカウントの連携を解除できませんでした。もう一度お試しください。",
       "provider_unavailable": "プロバイダーに接続できませんでした: {{detail}}"
+    },
+    "quota": {
+      "invalid": "クォータで許可できるのはサーバー 0〜1000 台、0 以上のメモリと CPU の合計、最大 100 ノードです。",
+      "not_found": "サーバーを作成するためのクォータがありません。",
+      "node_not_allowed": "クォータではそのノードにサーバーを作成できません。",
+      "servers": "クォータで許可された数のサーバーがすでにあります。",
+      "memory": "そのメモリではクォータを超えます。",
+      "cpu": "その CPU ではクォータを超えます。",
+      "conflict": "クォータが同時に変更されました。もう一度お試しください。"
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "空のままにすると保存済みのシークレットを維持します。",
       "saved": "保存しました。"
     }
+  },
+  "quotas": {
+    "title": "クォータ",
+    "create": "新しいサーバー",
+    "createAction": "サーバーを作成",
+    "servers": "サーバー",
+    "memory": "メモリ (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} / {{max}}",
+    "noNodes": "クォータのノードはどれも今は接続されていません。",
+    "game": "ゲーム",
+    "chooseGame": "ゲームを選択",
+    "memoryLabel": "メモリ (MB)",
+    "cpuLabel": "CPU (ノードの %)",
+    "memoryRange": "{{min}}〜{{max}} MB: クォータの残りです。",
+    "cpuRange": "1〜{{max}} %: クォータの残りです。",
+    "gameNeeds": "このゲームには {{memory}} MB が必要です。",
+    "adminHint": "チェックしたノードに、ユーザーが自分のサーバーを作成できるようにします。すべてのサーバーがこの合計に収まる範囲でです。サーバーはそのユーザーのものになり、クォータを下げてもサーバーは取り上げられません。",
+    "inUse": "使用中: サーバー {{servers}} 台、{{memory}} MB、CPU {{cpu}} %。",
+    "maxServers": "サーバー",
+    "maxMemory": "メモリ合計 (MB)",
+    "maxCpu": "CPU 合計 (%)",
+    "nodes": "ノード",
+    "noNodesToGive": "サーバーを作成できるノードがありません。",
+    "remove": "クォータを削除",
+    "removeConfirm": "このユーザーのクォータを削除しますか? サーバーはそのユーザーのままですが、新しく作成できなくなります。",
+    "give": "クォータを付与"
   }
 }

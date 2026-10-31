@@ -428,6 +428,56 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.UserQuota", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("MaxCpuPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_cpu_percent");
+
+                    b.Property<int>("MaxMemoryMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_memory_mb");
+
+                    b.Property<int>("MaxServers")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_servers");
+
+                    b.Property<Guid[]>("NodeIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("node_ids");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_user_quotas");
+
+                    b.ToTable("user_quotas", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_quotas_max_cpu_percent", "max_cpu_percent BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("ck_user_quotas_max_memory_mb", "max_memory_mb >= 0");
+
+                            t.HasCheckConstraint("ck_user_quotas_max_servers", "max_servers BETWEEN 0 AND 1000");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -2641,6 +2691,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("node_id");
 
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
                     b.Property<bool>("RestartOnCrash")
                         .HasColumnType("boolean")
                         .HasColumnName("restart_on_crash");
@@ -2707,6 +2761,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NodeId")
                         .HasDatabaseName("ix_servers_node_id");
+
+                    b.HasIndex("OwnerId")
+                        .HasDatabaseName("ix_servers_owner_id");
 
                     b.HasIndex("ShortId")
                         .IsUnique()
@@ -3464,6 +3521,16 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_ssh_keys_users_user_id");
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.UserQuota", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithOne()
+                        .HasForeignKey("Pulsar.Domain.Access.UserQuota", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_quotas_users_user_id");
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>
                 {
                     b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
@@ -3817,6 +3884,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_servers_nodes_node_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_servers_users_owner_id");
 
                     b.HasOne("Pulsar.Domain.Servers.SteamAccount", null)
                         .WithMany()

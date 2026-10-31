@@ -26,7 +26,7 @@ const pages: RouteObject[] = [
               const { ServersPage } = await import('../features/servers/ServersPage');
               return {
                 element: (
-                  <RequirePermission anyOf={[Permission.ServerView]}>
+                  <RequirePermission anyOf={[Permission.ServerView]} orQuota>
                     <ServersPage />
                   </RequirePermission>
                 ),

@@ -53,12 +53,14 @@ public sealed class EffectivePermissions
         FrozenSet<string> global,
         FrozenDictionary<NodeId, FrozenSet<string>> nodes,
         FrozenDictionary<ServerId, FrozenSet<string>> servers,
-        bool requiresTwoFactor)
+        bool requiresTwoFactor,
+        bool hasQuota = false)
     {
         _global = global;
         _nodes = nodes;
         _servers = servers;
         RequiresTwoFactor = requiresTwoFactor;
+        HasQuota = hasQuota;
     }
 
     public static EffectivePermissions None { get; } = new Builder().Build();
@@ -67,6 +69,9 @@ public sealed class EffectivePermissions
 
     /// <summary>One of the user's roles requires two-factor authentication.</summary>
     public bool RequiresTwoFactor { get; }
+
+    /// <summary>The user has a quota (Pulsar 1.0.24): they may create servers of their own, wherever it says.</summary>
+    public bool HasQuota { get; }
 
     public bool IsEmpty => _global.Count == 0 && _nodes.Count == 0 && _servers.Count == 0;
 
@@ -113,7 +118,8 @@ public sealed class EffectivePermissions
             _global.Where(allowed.Contains).ToFrozenSet(StringComparer.Ordinal),
             Narrow(_nodes, allowed),
             Narrow(_servers, allowed),
-            RequiresTwoFactor);
+            RequiresTwoFactor,
+            HasQuota);
     }
 
     private static FrozenDictionary<TKey, FrozenSet<string>> Narrow<TKey>(FrozenDictionary<TKey, FrozenSet<string>> map, IReadOnlySet<string> allowed)
@@ -132,6 +138,7 @@ public sealed class EffectivePermissions
         private readonly Dictionary<NodeId, HashSet<string>> _nodes = [];
         private readonly Dictionary<ServerId, HashSet<string>> _servers = [];
         private bool _requiresTwoFactor;
+        private bool _hasQuota;
 
         /// <summary>Adds a role granted at <paramref name="target"/>. The role must be of the target's scope.</summary>
         public Builder Add(Role role, AccessTarget target)
@@ -155,11 +162,26 @@ public sealed class EffectivePermissions
             return this;
         }
 
+        /// <summary>The user owns <paramref name="server"/> (made within their quota): <see cref="PermissionCatalog.OwnerKeys"/> there.</summary>
+        public Builder AddOwned(ServerId server)
+        {
+            GetOrAdd(_servers, server).UnionWith(PermissionCatalog.OwnerKeys);
+            return this;
+        }
+
+        /// <summary>The user has a quota to create servers with.</summary>
+        public Builder WithQuota()
+        {
+            _hasQuota = true;
+            return this;
+        }
+
         public EffectivePermissions Build() => new(
             _global.ToFrozenSet(StringComparer.Ordinal),
             _nodes.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)),
             _servers.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)),
-            _requiresTwoFactor);
+            _requiresTwoFactor,
+            _hasQuota);
 
         private static HashSet<string> GetOrAdd<TKey>(Dictionary<TKey, HashSet<string>> map, TKey key)
             where TKey : notnull

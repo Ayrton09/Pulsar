@@ -15,6 +15,7 @@ const user: Schemas['CurrentUserResponse'] = {
   twoFactorSetupRequired: false,
   nodePermissions: [{ id: node, permissions: ['server.view', 'server.start'] }],
   serverPermissions: [{ id: server.id, permissions: ['server.console.view'] }],
+  hasQuota: false,
 };
 
 describe('permissions', () => {

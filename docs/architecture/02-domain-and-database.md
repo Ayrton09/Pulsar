@@ -115,6 +115,14 @@ Effective permissions(user, server S on node N) =
 
 There is no `Admin = true`: "administrator" is just a role.
 
+### Quotas (1.0.24)
+
+A user may have one **quota** (`user_quotas`): how many servers they may own, the memory and CPU caps of all of them added up, and the nodes they may create them on. With one, they create servers for themselves without `server.create` (`POST /account/servers`, the signed-in user only): on a node of the quota that is connected, as any offered game, with a memory cap (128 MiB or more) and a CPU cap (1–100 % of the node) that must fit in what the quota has left, and only the user-editable values of the game (its protected ones keep the template's default). Its ports are free allocations of the node, as for anyone who cannot add allocations; a node whose agent cannot enforce caps gets no server of a quota. The user's servers are counted, and the quota read again, with the user's row locked, so creations at the same moment cannot both take the last place.
+
+The server is theirs (`servers.owner_id`): on it they hold every permission a server's role may hold but `server.settings.edit` (its name, its ports and the values its template protects from its users stay whoever hosts it's), and `server.delete` (deleting it frees its place in the quota), computed by the evaluator like a role on the server, never its caps (`server.limits.edit`) nor its suspension. An administrator who changes its caps later changes what it counts. A deleted user's servers stay, nobody's.
+
+Quotas are given, changed and taken away by user managers (`GET`, `PUT`, `DELETE /users/{id}/quota`; `user.manage`, `user.view` to read) under the rules of user management, audited (`user.quota_set` with the totals and nodes, `user.quota_removed`). Giving one on a node is giving the right to create servers there: only on nodes where the actor holds `server.create`. Lowering a quota below what is used, or taking it away, takes no server away: the user creates no more. The session says whether the user has a quota (`hasQuota`), so the Servers page is theirs even before they own a server.
+
 ### API keys (Phase 12)
 
 A user creates keys for scripts and tools from their account (`/api/v1/account/api-keys`, session cookie only) and sends one as `Authorization: Bearer pulsar_…`.
@@ -364,6 +372,7 @@ CREATE TABLE servers (
     cpu_limit_percent    integer CHECK (cpu_limit_percent BETWEEN 1 AND 100),  -- Phase 12: share of the node; NULL: no cap
     memory_limit_mb      integer CHECK (memory_limit_mb BETWEEN 128 AND 1048576),  -- Phase 12: committed memory; NULL: no cap
     backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere
+    owner_id             uuid REFERENCES users(id) ON DELETE SET NULL,  -- 1.0.24: created within this user's quota ("Quotas")
     suspended_at         timestamptz,          -- 1.0.24: suspended since (doc 05, "Suspension"); NULL: not suspended
     suspension_reason    varchar(200),         -- shown to the server's users; NULL: none given
     auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts (new servers: on, 1.0.12)

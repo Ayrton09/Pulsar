@@ -320,7 +320,9 @@
         "password_reset": "Definiu a senha de um usuário",
         "two_factor_reset": "Desativou a autenticação em dois fatores de um usuário",
         "api_keys_revoked": "Revogou as chaves de API de um usuário",
-        "ssh_keys_deleted": "Excluiu as chaves SSH de um usuário"
+        "ssh_keys_deleted": "Excluiu as chaves SSH de um usuário",
+        "quota_set": "Alterou a cota de um usuário",
+        "quota_removed": "Removeu a cota de um usuário"
       },
       "role": {
         "created": "Criou uma função",
@@ -981,6 +983,15 @@
       "link_not_found": "Sua conta não está vinculada a esse provedor.",
       "unlink_failed": "Não foi possível desvincular a conta. Tente novamente.",
       "provider_unavailable": "Não foi possível contatar o provedor: {{detail}}"
+    },
+    "quota": {
+      "invalid": "Uma cota permite de 0 a 1000 servidores, totais de memória e CPU de 0 ou mais, em até 100 nós.",
+      "not_found": "Você não tem uma cota para criar servidores.",
+      "node_not_allowed": "Sua cota não deixa você criar servidores nesse nó.",
+      "servers": "Você já tem tantos servidores quanto sua cota permite.",
+      "memory": "Essa memória passaria da sua cota.",
+      "cpu": "Essa CPU passaria da sua cota.",
+      "conflict": "A cota foi alterada no mesmo momento; tente de novo."
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "Deixe vazio para manter o secret salvo.",
       "saved": "Salvo."
     }
+  },
+  "quotas": {
+    "title": "Cota",
+    "create": "Novo servidor",
+    "createAction": "Criar servidor",
+    "servers": "Servidores",
+    "memory": "Memória (MB)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} de {{max}}",
+    "noNodes": "Nenhum nó da sua cota está conectado agora.",
+    "game": "Jogo",
+    "chooseGame": "Escolha um jogo",
+    "memoryLabel": "Memória (MB)",
+    "cpuLabel": "CPU (% do nó)",
+    "memoryRange": "Entre {{min}} e {{max}} MB: o que resta da sua cota.",
+    "cpuRange": "Entre 1 e {{max}} %: o que resta da sua cota.",
+    "gameNeeds": "O jogo pede {{memory}} MB.",
+    "adminHint": "Permite ao usuário criar os próprios servidores nos nós marcados, desde que todos os dele fiquem dentro destes totais. São dele; baixar a cota não tira nenhum servidor.",
+    "inUse": "Em uso: {{servers}} servidores, {{memory}} MB, {{cpu}} % de CPU.",
+    "maxServers": "Servidores",
+    "maxMemory": "Memória no total (MB)",
+    "maxCpu": "CPU no total (%)",
+    "nodes": "Nós",
+    "noNodesToGive": "Não há nenhum nó onde você possa criar servidores.",
+    "remove": "Remover a cota",
+    "removeConfirm": "Remover a cota deste usuário? Os servidores continuam dele; ele não cria mais.",
+    "give": "Dar cota"
   }
 }

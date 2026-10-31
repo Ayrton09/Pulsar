@@ -49,10 +49,17 @@ public sealed record ServerSummary(
     string TemplateKey,
     ServerAddressView? GameAddress,
     bool GameUpdateAvailable = false,
-    ServerSuspensionView? Suspension = null);
+    ServerSuspensionView? Suspension = null,
+    Guid? OwnerId = null);
 
 /// <summary>The server is suspended (Pulsar 1.0.24): since when, and why when someone said.</summary>
 public sealed record ServerSuspensionView(DateTimeOffset At, string? Reason);
+
+/// <summary>
+/// A server a user creates within their quota (Pulsar 1.0.24): <paramref name="Owner"/>'s, with these caps;
+/// <paramref name="WithinQuota"/> checks it fits once the user's row is locked.
+/// </summary>
+public sealed record OwnedServer(UserId Owner, int CpuPercent, int MemoryMb, Func<CancellationToken, Task<Result>> WithinQuota);
 
 /// <summary>Where players connect: the allocation of the server's <c>game</c> port (0.0.0.0 when it listens on every address).</summary>
 public sealed record ServerAddressView(string IpAddress, int Port);
@@ -167,16 +174,17 @@ public sealed partial class ServerManagement(
     /// </summary>
     /// <param name="ports">Allocation per port; a required port left out gets a free one.</param>
     /// <param name="portNumbers">Port number per port, the other way to choose one (see <see cref="ResolvePortsAsync"/>).</param>
+    /// <param name="owned">A server a user creates within their quota (1.0.24): theirs, with these caps, checked by the quota.</param>
     public async Task<Result<ServerDetails>> CreateAsync(NodeId nodeId, Guid templateId, string name, string? description,
         IReadOnlyDictionary<string, string?>? variables, IReadOnlyDictionary<string, Guid?>? ports, CancellationToken cancellationToken,
-        IReadOnlyDictionary<string, int?>? portNumbers = null)
+        IReadOnlyDictionary<string, int?>? portNumbers = null, OwnedServer? owned = null)
     {
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
             return NodeErrors.NotFound;
         }
 
-        if (request.UserId is { } user)
+        if (owned is null && request.UserId is { } user)
         {
             var granted = await permissions.GetAsync(user, cancellationToken);
             if (!granted.Has(Permissions.Server.Create, AccessTarget.ForNode(nodeId)))
@@ -230,8 +238,36 @@ public sealed partial class ServerManagement(
             return configured.Error!;
         }
 
+        if (owned is not null)
+        {
+            // Its caps are what the quota counts: a node that cannot enforce them gets no server of a quota.
+            if (!Announces(connection, AgentCapabilities.Limits))
+            {
+                return ServerErrors.LimitsUnsupported;
+            }
+
+            var capped = server.SetLimits(owned.CpuPercent, owned.MemoryMb, now);
+            if (!capped.IsSuccess)
+            {
+                return capped.Error!;
+            }
+
+            server.OwnedBy(owned.Owner, now);
+        }
+
         db.Servers.Add(server);
-        await using var transaction = portNumbers is { Count: > 0 } ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        await using var transaction = portNumbers is { Count: > 0 } || owned is not null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (owned is not null)
+        {
+            // The user's servers are counted with their row locked: two creations at once cannot both take the last place.
+            await locks.LockUserAsync(owned.Owner, cancellationToken);
+            var fits = await owned.WithinQuota(cancellationToken);
+            if (!fits.IsSuccess)
+            {
+                return fits.Error!;
+            }
+        }
+
         var resolved = await ResolvePortsAsync(server, manifest, ports, portNumbers, cancellationToken);
         if (!resolved.IsSuccess)
         {
@@ -250,7 +286,7 @@ public sealed partial class ServerManagement(
             return valid.Error!;
         }
 
-        audit.Record(AuditActions.Server.Created, metadata: new { server.Name, template = $"{template.Key}@{template.Version}" })
+        audit.Record(AuditActions.Server.Created, metadata: new { server.Name, template = $"{template.Key}@{template.Version}", owner = owned?.Owner.Value })
             .WithServer(server.Id, nodeId);
         RecordAddedAllocations(server, resolved.Value.Added);
         try
@@ -265,6 +301,11 @@ public sealed partial class ServerManagement(
         {
             // An allocation was taken by another server meanwhile (version check or unique index).
             return ServerErrors.AllocationUnavailable;
+        }
+
+        if (owned is not null)
+        {
+            permissions.Invalidate(owned.Owner); // theirs from now on
         }
 
         await RunOperationAsync(server, OperationType.ServerProvision,
@@ -1240,7 +1281,7 @@ public sealed partial class ServerManagement(
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
             templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id),
-            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null))];
+            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null, s.OwnerId?.Value))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

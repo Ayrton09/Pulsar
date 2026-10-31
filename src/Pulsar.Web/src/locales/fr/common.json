@@ -320,7 +320,9 @@
         "password_reset": "Définition du mot de passe d'un utilisateur",
         "two_factor_reset": "Désactivation de l'authentification à deux facteurs d'un utilisateur",
         "api_keys_revoked": "Révocation des clés d'API d'un utilisateur",
-        "ssh_keys_deleted": "Suppression des clés SSH d'un utilisateur"
+        "ssh_keys_deleted": "Suppression des clés SSH d'un utilisateur",
+        "quota_set": "A modifié le quota d'un utilisateur",
+        "quota_removed": "A retiré le quota d'un utilisateur"
       },
       "role": {
         "created": "Création d'un rôle",
@@ -981,6 +983,15 @@
       "link_not_found": "Votre compte n'est pas lié à ce fournisseur.",
       "unlink_failed": "Le compte n'a pas pu être dissocié. Réessayez.",
       "provider_unavailable": "Le fournisseur n'a pas pu être joint : {{detail}}"
+    },
+    "quota": {
+      "invalid": "Un quota permet de 0 à 1000 serveurs, des totaux de mémoire et de CPU de 0 ou plus, sur 100 nœuds au plus.",
+      "not_found": "Vous n'avez pas de quota pour créer des serveurs.",
+      "node_not_allowed": "Votre quota ne vous permet pas de créer des serveurs sur ce nœud.",
+      "servers": "Vous avez autant de serveurs que votre quota le permet.",
+      "memory": "Autant de mémoire dépasserait votre quota.",
+      "cpu": "Autant de CPU dépasserait votre quota.",
+      "conflict": "Le quota a été modifié au même moment ; réessayez."
     }
   },
   "account": {
@@ -7917,5 +7928,32 @@
       "secretKeep": "Laissez vide pour garder le secret enregistré.",
       "saved": "Enregistré."
     }
+  },
+  "quotas": {
+    "title": "Quota",
+    "create": "Nouveau serveur",
+    "createAction": "Créer le serveur",
+    "servers": "Serveurs",
+    "memory": "Mémoire (Mo)",
+    "cpu": "CPU (%)",
+    "usedOf": "{{used}} sur {{max}}",
+    "noNodes": "Aucun nœud de votre quota n'est connecté pour le moment.",
+    "game": "Jeu",
+    "chooseGame": "Choisissez un jeu",
+    "memoryLabel": "Mémoire (Mo)",
+    "cpuLabel": "CPU (% du nœud)",
+    "memoryRange": "Entre {{min}} et {{max}} Mo : ce qui reste à votre quota.",
+    "cpuRange": "Entre 1 et {{max}} % : ce qui reste à votre quota.",
+    "gameNeeds": "Le jeu demande {{memory}} Mo.",
+    "adminHint": "Permet à l'utilisateur de créer ses propres serveurs sur les nœuds cochés, tant que tous les siens restent dans ces totaux. Ils sont à lui ; baisser le quota ne lui retire aucun serveur.",
+    "inUse": "Utilisé : {{servers}} serveurs, {{memory}} Mo, {{cpu}} % de CPU.",
+    "maxServers": "Serveurs",
+    "maxMemory": "Mémoire au total (Mo)",
+    "maxCpu": "CPU au total (%)",
+    "nodes": "Nœuds",
+    "noNodesToGive": "Il n'y a aucun nœud sur lequel vous pouvez créer des serveurs.",
+    "remove": "Retirer le quota",
+    "removeConfirm": "Retirer le quota de cet utilisateur ? Ses serveurs restent les siens ; il n'en crée plus.",
+    "give": "Donner un quota"
   }
 }
