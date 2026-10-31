@@ -469,25 +469,41 @@ public sealed partial class ServerManagement(
     /// <summary>The install that follows a successful provisioning (started by the panel itself).</summary>
     public async Task ContinueInstallAsync(ServerId id, UserId? requestedBy, CancellationToken cancellationToken)
     {
-        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-        if (server is null)
+        // Taken once: a try made again still has the code.
+        var guardCode = guardCodes.Take(id);
+        Server? server;
+        for (var attempt = 1; ; attempt++)
         {
-            return;
-        }
+            server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+            if (server is null)
+            {
+                return;
+            }
 
-        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
-        var login = await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(template), Connection(server.NodeId), guardCodes.Take(server.Id),
-            cancellationToken);
-        if (!login.IsSuccess)
-        {
-            // Nobody waits for this one: the failed install says why on the server's page (a new server's game needs an account).
-            await operations.FailAsync(server, Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, requestedBy, OperationRequester.System,
-                clock.GetUtcNow()), login.Error!, cancellationToken);
-        }
-        else
-        {
-            await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value, login.Value), requestedBy,
-                OperationRequester.System, cancellationToken);
+            var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+            var login = await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(template), Connection(server.NodeId), guardCode, cancellationToken);
+            try
+            {
+                if (!login.IsSuccess)
+                {
+                    // Nobody waits for this one: the failed install says why on the server's page (a new server's game needs an account).
+                    await operations.FailAsync(server, Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, requestedBy,
+                        OperationRequester.System, clock.GetUtcNow()), login.Error!, cancellationToken);
+                }
+                else
+                {
+                    await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value, login.Value), requestedBy,
+                        OperationRequester.System, cancellationToken);
+                }
+
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 3)
+            {
+                // Something else saved the server meanwhile (a transfer's step, a game update check): nothing was recorded or
+                // sent, so it is read again and the install begun on what it is now, rather than never.
+                db.ChangeTracker.Clear();
+            }
         }
 
         // The install could not even begin (the server was busy, or started meanwhile): it failed, rather than installing for ever.

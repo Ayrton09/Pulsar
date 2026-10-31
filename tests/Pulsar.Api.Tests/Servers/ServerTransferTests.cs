@@ -151,12 +151,24 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         return transfer!;
     }
 
+    // The panel may be saving the same server row (an install's result, a transfer step), so a write that lost the race is
+    // read and made again.
     private async Task SetGameVersionAsync(Guid server, string version)
     {
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
-        (await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct)).GameInstalled(version, DateTimeOffset.UtcNow);
-        await db.SaveChangesAsync(Ct);
+        for (var attempt = 1; ; attempt++)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            (await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct)).GameInstalled(version, DateTimeOffset.UtcNow);
+            try
+            {
+                await db.SaveChangesAsync(Ct);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 10)
+            {
+            }
+        }
     }
 
     private async Task<List<int>> AllocationsAsync(Guid server, Guid node)
