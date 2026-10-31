@@ -544,6 +544,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.StopTimedOut);
         Assert.Equal(1, game.TerminatedWith);
         await _events.WaitForAsync(RuntimeState.Starting);
+        await supervisor.FlushAsync(); // Starting is told before the game is started
         Assert.Single(_processes.Started);
     }
 
