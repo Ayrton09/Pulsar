@@ -320,10 +320,30 @@ internal sealed class WindowsGameProcess : IGameProcess
     }
 
     /// <summary>
-    /// Whether the pipe holds more output already: the console host writes a screen update at once, so a wrap cut by a
-    /// read is still waiting there, while a line break that ended an update has nothing after it.
+    /// Whether the pipe holds more output: the console host writes a screen update at once, so a wrap cut by a read is
+    /// still waiting there, while a line break that ended an update has nothing after it. A busy machine may let a moment
+    /// pass between the writes of one update, so the pipe is looked at a few times (some 30 ms at most, only for text
+    /// that ends where a wrap may begin) before the line is passed on as ended.
     /// </summary>
-    private static unsafe bool MoreWaiting(SafeFileHandle pipe)
+    private static bool MoreWaiting(SafeFileHandle pipe)
+    {
+        for (var look = 0; ; look++)
+        {
+            if (Available(pipe))
+            {
+                return true;
+            }
+
+            if (look == 3)
+            {
+                return false;
+            }
+
+            Thread.Sleep(10);
+        }
+    }
+
+    private static unsafe bool Available(SafeFileHandle pipe)
     {
         // The reader's own thread closes the pipe, after its last read: the handle is still open here.
         uint available = 0;
