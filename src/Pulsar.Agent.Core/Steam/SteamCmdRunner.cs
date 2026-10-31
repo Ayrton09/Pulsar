@@ -227,7 +227,7 @@ public sealed partial class SteamCmdRunner(
             "+app_info_print", query.AppId.ToString(CultureInfo.InvariantCulture),
             "+quit",
         ];
-        for (var selfUpdates = 0; ; selfUpdates++)
+        for (int selfUpdates = 0, failures = 0; ; selfUpdates++)
         {
             var (exitCode, text) = await PrintAsync(query, arguments, cancellationToken);
             if (SteamBuilds.Latest(text, query.AppId, query.Branch) is { } build)
@@ -242,12 +242,23 @@ public sealed partial class SteamCmdRunner(
                 continue; // a new copy updated itself first and printed nothing else
             }
 
+            // SteamCMD fails now and then without the info (Steam or the network for a moment): asked again, as installs are.
+            var tail = Tail(text);
+            if (exitCode != 0 && failures < options.RetryDelays.Count)
+            {
+                LogCheckRetried(query.ServerId, query.AppId, exitCode, tail);
+                await Task.Delay(options.RetryDelays[failures++], clock, cancellationToken);
+                selfUpdates--;
+                files.Delete(query.ServerRoot, WorkingDirectory + "/appcache/appinfo.vdf");
+                continue;
+            }
+
             if (text.Split('\n').Select(SteamCmdOutput.Parse).OfType<SteamCmdLine.Failure>().FirstOrDefault() is { } failure)
             {
                 throw new GameProcessException(SteamCmdOutput.Classify(failure.Message).Code, failure.Message);
             }
 
-            LogNoBuild(query.ServerId, query.AppId, query.Branch, exitCode);
+            LogNoBuild(query.ServerId, query.AppId, query.Branch, exitCode, tail);
             throw new GameProcessException("steamcmd.no_build", exitCode == 0
                 ? $"Steam's answer names no build of app {query.AppId.ToString(CultureInfo.InvariantCulture)} on the branch '{query.Branch}'."
                 : $"SteamCMD exited with code {exitCode.ToString(CultureInfo.InvariantCulture)} without the app's info.");
@@ -851,6 +862,14 @@ public sealed partial class SteamCmdRunner(
     private partial void LogLatestBuild(Guid serverId, int appId, string branch, string build);
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "Server {ServerId}: SteamCMD printed no build of app {AppId} on branch {Branch} (exit code {ExitCode})")]
-    private partial void LogNoBuild(Guid serverId, int appId, string branch, int exitCode);
+        Message = "Server {ServerId}: SteamCMD printed no build of app {AppId} on branch {Branch} (exit code {ExitCode}). Last lines: {Tail}")]
+    private partial void LogNoBuild(Guid serverId, int appId, string branch, int exitCode, string tail);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Server {ServerId}: SteamCMD exited with code {ExitCode} without the info of app {AppId}; asking again. Last lines: {Tail}")]
+    private partial void LogCheckRetried(Guid serverId, int appId, int exitCode, string tail);
+
+    /// <summary>SteamCMD's last lines of a check (an anonymous sign-in: nothing secret), for the log.</summary>
+    private static string Tail(string text) =>
+        string.Join(" | ", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).TakeLast(6));
 }

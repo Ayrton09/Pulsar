@@ -982,6 +982,40 @@ public sealed class SteamCmdRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ACheckThatSteamCmdLeavesWithoutTheInfoIsAskedAgain()
+    {
+        // As a node saw on 2026-10-30: exit code 1 and no info, then the same command answered at once.
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Specs.Count == 1)
+            {
+                process.Print("Connecting anonymously to Steam Public...OK\r\nWaiting for client config...OK\r\n");
+                process.Exit(1);
+                return;
+            }
+
+            process.Print(SteamBuildsTests.AppInfo.ReplaceLineEndings("\r\n"));
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        Assert.Equal("20476133", await runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+        Assert.Equal(2, _processes.Specs.Count);
+    }
+
+    [Fact]
+    public async Task ACheckThatKeepsFailingSaysSoAfterItsRetries()
+    {
+        _processes.OnStarted = (process, _) => process.Exit(1);
+        using var runner = Runner();
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() => runner.LatestBuildAsync(Query(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.no_build", failed.Code);
+        Assert.Equal(2, _processes.Specs.Count); // once, and once more per retry delay
+    }
+
+    [Fact]
     public async Task AFailedSignInIsTheChecksFailure()
     {
         _processes.OnStarted = (process, _) =>
