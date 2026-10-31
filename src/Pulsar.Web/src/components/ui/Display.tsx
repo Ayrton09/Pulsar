@@ -50,12 +50,13 @@ export function Meter({ percent, className = '' }: { percent: number; className?
   );
 }
 
-type Tone = 'neutral' | 'accent' | 'success' | 'danger';
+type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
 
 const tones: Record<Tone, string> = {
   neutral: 'border-border text-muted',
   accent: 'border-accent/40 text-accent',
   success: 'border-success/40 text-success',
+  warning: 'border-warning/40 text-warning',
   danger: 'border-danger/40 text-danger',
 };
 

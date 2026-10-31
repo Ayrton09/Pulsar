@@ -407,7 +407,7 @@ internal sealed partial class SftpSession(
             }
 
             await using var operation = await files.BeginAsync(cancellationToken);
-            SftpFileSystem.Require(operation, server, write: false);
+            await SftpFileSystem.RequireAsync(operation, server, write: false, cancellationToken);
             var page = await operation.Files.ListPageAsync(server.Id, handle.Path, after, cancellationToken);
             if (!page.IsSuccess)
             {
@@ -537,7 +537,7 @@ internal sealed partial class SftpSession(
         var offset = (long)request.Offset;
         await using (var operation = await files.BeginAsync(cancellationToken))
         {
-            SftpFileSystem.Require(operation, handle.Server, write: false);
+            await SftpFileSystem.RequireAsync(operation, handle.Server, write: false, cancellationToken);
             if (handle.Content is null || offset < handle.Position - handle.Retained || offset > handle.Position + options.ReadWindowBytes)
             {
                 if (handle.Content is not null && offset >= handle.End && handle.End == handle.Size)
@@ -617,7 +617,7 @@ internal sealed partial class SftpSession(
 
         await using (var operation = await files.BeginAsync(cancellationToken))
         {
-            SftpFileSystem.Require(operation, handle.Server, write: true);
+            await SftpFileSystem.RequireAsync(operation, handle.Server, write: true, cancellationToken);
         }
 
         var data = request.Data;

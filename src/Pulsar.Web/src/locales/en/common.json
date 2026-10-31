@@ -243,6 +243,7 @@
       },
       "create": "Create servers",
       "delete": "Delete servers",
+      "suspend": "Suspend servers",
       "databases": {
         "view": "View databases",
         "manage": "Manage databases and read their passwords"
@@ -363,6 +364,8 @@
         "template_changed": "Moved a server to another version of its template",
         "game_changed": "Changed a server's game",
         "transfer_requested": "Asked to move a server to another node",
+        "suspended": "Suspended a server",
+        "unsuspended": "Lifted a server's suspension",
         "update_requested": "Asked to update a game",
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
@@ -638,6 +641,8 @@
       "busy": "Another operation is running on this server. Wait for it to finish.",
       "not_installed": "The server is not installed yet.",
       "must_be_stopped": "Stop the server first.",
+      "suspended": "The server is suspended.",
+      "suspension_reason_invalid": "A suspension's reason is up to 200 characters of text.",
       "command_rejected": "The node's agent rejected the command.",
       "host_incompatible": "The server's game still runs under an earlier version of the agent, which cannot manage it. Stop or start the server to end that game (it is killed, without saving).",
       "host_not_ended": "The server's game still runs in a host process that the agent could not end or check. Try again in a moment; it is never started a second time beside it.",
@@ -761,6 +766,7 @@
       "missed": "The panel was not running at that time.",
       "interrupted": "The panel stopped before the run ended.",
       "not_running": "The server was not running.",
+      "suspended": "The server was suspended.",
       "unreadable": "The task's schedule (its cron expression or time zone) can no longer be read: edit it to run it again.",
       "error": "The panel could not run the task; its log has the details.",
       "steps_invalid": "A task has 1 to 32 steps: commands and messages are one line (messages up to 128 characters), waits last 1 second to a day.",
@@ -1270,6 +1276,18 @@
       "failed": "The server could not be moved to {{node}}: it stays on its node as it was.",
       "leftCopy": "The server moved to {{node}}, but its copy on the old node could not be deleted.",
       "nodeGone": "a node that no longer exists"
+    },
+    "suspension": {
+      "badge": "Suspended",
+      "title": "This server is suspended",
+      "since": "Since {{date}}.",
+      "reason": "Reason: {{reason}}",
+      "contact": "Ask whoever hosts it to lift the suspension.",
+      "suspend": "Suspend",
+      "unsuspend": "Lift suspension",
+      "hint": "{{name}} stops now and nobody can start it. Until you lift the suspension its other users see only this notice, without its console, files or backups.",
+      "reasonLabel": "Reason (optional)",
+      "reasonHint": "Shown to the server's users."
     },
     "changeGame": {
       "title": "Change game",

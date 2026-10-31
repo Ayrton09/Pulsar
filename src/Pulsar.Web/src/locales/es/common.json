@@ -243,6 +243,7 @@
       },
       "create": "Crear servidores",
       "delete": "Eliminar servidores",
+      "suspend": "Suspender servidores",
       "databases": {
         "view": "Ver bases de datos",
         "manage": "Administrar bases de datos y leer sus contraseñas"
@@ -363,6 +364,8 @@
         "template_changed": "Pasó un servidor a otra versión de su plantilla",
         "game_changed": "Cambió el juego de un servidor",
         "transfer_requested": "Pidió mover un servidor a otro nodo",
+        "suspended": "Suspendió un servidor",
+        "unsuspended": "Levantó la suspensión de un servidor",
         "update_requested": "Pidió actualizar un juego",
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
@@ -638,6 +641,8 @@
       "busy": "Hay otra operación en curso en este servidor. Esperá a que termine.",
       "not_installed": "El servidor todavía no está instalado.",
       "must_be_stopped": "Primero detené el servidor.",
+      "suspended": "El servidor está suspendido.",
+      "suspension_reason_invalid": "El motivo de una suspensión es un texto de hasta 200 caracteres.",
       "command_rejected": "El agente del nodo rechazó el comando.",
       "host_incompatible": "El juego del servidor sigue corriendo con una versión anterior del agente, que no puede manejarlo. Detené o iniciá el servidor para terminar ese juego (se lo mata, sin guardar).",
       "host_not_ended": "El juego del servidor sigue corriendo en un proceso anfitrión que el agente no pudo terminar ni verificar. Probá de nuevo en un momento; nunca se inicia una segunda copia a su lado.",
@@ -761,6 +766,7 @@
       "missed": "El panel no estaba en marcha a esa hora.",
       "interrupted": "El panel se detuvo antes de que terminara la ejecución.",
       "not_running": "El servidor no estaba en marcha.",
+      "suspended": "El servidor estaba suspendido.",
       "unreadable": "El panel ya no puede leer el horario de la tarea (su expresión cron o su zona horaria): editala para que vuelva a ejecutarse.",
       "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles.",
       "steps_invalid": "Una tarea tiene de 1 a 32 pasos: los comandos y mensajes son de una línea (los mensajes, de hasta 128 caracteres), las esperas duran de 1 segundo a un día.",
@@ -1270,6 +1276,18 @@
       "failed": "No se pudo mover el servidor a {{node}}: queda en su nodo como estaba.",
       "leftCopy": "El servidor se movió a {{node}}, pero no se pudo borrar su copia del nodo viejo.",
       "nodeGone": "un nodo que ya no existe"
+    },
+    "suspension": {
+      "badge": "Suspendido",
+      "title": "Este servidor está suspendido",
+      "since": "Desde el {{date}}.",
+      "reason": "Motivo: {{reason}}",
+      "contact": "Pedile a quien lo aloja que levante la suspensión.",
+      "suspend": "Suspender",
+      "unsuspend": "Levantar la suspensión",
+      "hint": "{{name}} se detiene ahora y nadie puede iniciarlo. Hasta que levantes la suspensión, sus demás usuarios solo ven este aviso, sin su consola, archivos ni copias.",
+      "reasonLabel": "Motivo (opcional)",
+      "reasonHint": "Lo ven los usuarios del servidor."
     },
     "changeGame": {
       "title": "Cambiar juego",

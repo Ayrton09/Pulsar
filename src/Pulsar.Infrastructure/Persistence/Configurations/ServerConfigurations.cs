@@ -51,6 +51,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.Name).HasMaxLength(Server.MaxNameLength);
         builder.Property(s => s.Description).HasMaxLength(Server.MaxDescriptionLength);
         builder.Property(s => s.GameVersion).HasMaxLength(Server.MaxGameVersionLength);
+        builder.Property(s => s.SuspensionReason).HasMaxLength(Server.MaxSuspensionReasonLength);
+        builder.Ignore(s => s.IsSuspended);
         builder.Property(s => s.InstallState).HasConversion<SnakeCaseEnumConverter<InstallState>>();
         builder.Property(s => s.RuntimeState).HasConversion<SnakeCaseEnumConverter<ServerRuntimeState>>();
         builder.Property(s => s.DesiredState).HasConversion<SnakeCaseEnumConverter<DesiredState>>();

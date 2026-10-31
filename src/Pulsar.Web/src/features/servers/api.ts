@@ -254,3 +254,21 @@ export function useDeleteServer() {
     onSuccess: changed,
   });
 }
+
+/** Suspends the server (1.0.24): it is stopped and only those who may suspend it reach it; `reason` is shown to its users. */
+export function useSuspendServer() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string | null }) =>
+      unwrap(api.POST('/api/v1/servers/{id}/suspend', { params: { path: { id } }, body: { reason } })),
+    onSuccess: changed,
+  });
+}
+
+export function useUnsuspendServer() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/servers/{id}/unsuspend', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}

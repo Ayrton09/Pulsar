@@ -27,8 +27,11 @@ export function PowerButtons({ server, compact = false }: { server: ServerSummar
     // Killing loses unsaved progress: it looks dangerous, without outshouting the everyday actions.
     ['kill', Permission.ServerKill, available.kill, OctagonX, 'dangerSubtle'],
   ];
+  // A suspended server (1.0.24) is not run by its users: only whoever may suspend it still stops it.
+  const locked = server.suspension != null && !canOnServer(me, server, Permission.ServerSuspend);
   const visible = buttons.filter(
-    ([name, permission, enabled]) => canOnServer(me, server, permission) && (!compact || (enabled && name !== 'kill')),
+    ([name, permission, enabled]) =>
+      !locked && canOnServer(me, server, permission) && (!compact || (enabled && name !== 'kill')),
   );
   if (visible.length === 0) {
     return null;

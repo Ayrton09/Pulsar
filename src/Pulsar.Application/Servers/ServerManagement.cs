@@ -48,7 +48,11 @@ public sealed record ServerSummary(
     DateTimeOffset CreatedAt,
     string TemplateKey,
     ServerAddressView? GameAddress,
-    bool GameUpdateAvailable = false);
+    bool GameUpdateAvailable = false,
+    ServerSuspensionView? Suspension = null);
+
+/// <summary>The server is suspended (Pulsar 1.0.24): since when, and why when someone said.</summary>
+public sealed record ServerSuspensionView(DateTimeOffset At, string? Reason);
 
 /// <summary>Where players connect: the allocation of the server's <c>game</c> port (0.0.0.0 when it listens on every address).</summary>
 public sealed record ServerAddressView(string IpAddress, int Port);
@@ -1235,7 +1239,8 @@ public sealed partial class ServerManagement(
             Connection(s.NodeId) is not null, s.TemplateId.Value, templates.GetValueOrDefault(s.TemplateId)?.Name ?? "", s.InstallState, s.RuntimeState,
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
-            templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id)))];
+            templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id),
+            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

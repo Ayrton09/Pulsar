@@ -216,6 +216,50 @@ public sealed class ServerTests
         Assert.Equal(NodeErrors.AllocationAddressInvalid, NodeAllocation.Create(NodeId.New(), address, 27015, null, s_now).Error);
     }
 
+    [Fact]
+    public void ASuspendedServerIsNeitherStartedNorChangedUntilItIsUnsuspended()
+    {
+        var server = NewServer();
+        Install(server);
+        Assert.True(server.RequestStart(s_now).IsSuccess);
+
+        Assert.True(server.Suspend("  Unpaid  ", s_now).IsSuccess);
+        Assert.Equal((true, "Unpaid", DesiredState.Stopped), (server.IsSuspended, server.SuspensionReason, server.DesiredState));
+        Assert.Equal(ServerErrors.Suspended, server.RequestStart(s_now).Error);
+        foreach (var type in (OperationType[])[OperationType.ServerInstall, OperationType.ServerUpdate, OperationType.ServerProvision,
+                     OperationType.AddonInstall, OperationType.ModsChange, OperationType.ModpackInstall])
+        {
+            Assert.Equal(ServerErrors.Suspended, server.BeginOperation(Operation.Create(type, server.NodeId, server.Id, null, OperationRequester.User, s_now), s_now).Error);
+        }
+
+        // Its backups stay open to whoever may still reach it.
+        var backup = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        Assert.True(server.BeginOperation(backup, s_now).IsSuccess);
+        backup.Complete(OperationStatus.Succeeded, null, null, s_now);
+        server.OperationCompleted(backup, s_now);
+
+        // Suspended again: the reason changes, not since when.
+        var later = s_now.AddHours(1);
+        Assert.True(server.Suspend(null, later).IsSuccess);
+        Assert.Equal((s_now, (string?)null), (server.SuspendedAt!.Value, server.SuspensionReason));
+
+        Assert.True(server.Unsuspend(later));
+        Assert.False(server.Unsuspend(later));
+        Assert.Equal((false, DesiredState.Stopped), (server.IsSuspended, server.DesiredState));
+        Assert.True(server.RequestStart(later).IsSuccess);
+    }
+
+    [Theory]
+    [InlineData("Unpaid\ninvoice")]
+    [InlineData("Unpaid\u0007")]
+    public void ASuspensionsReasonIsShortPlainText(string reason)
+    {
+        var server = NewServer();
+        Assert.Equal(ServerErrors.SuspensionReasonInvalid, server.Suspend(reason, s_now).Error);
+        Assert.Equal(ServerErrors.SuspensionReasonInvalid, server.Suspend(new string('a', Server.MaxSuspensionReasonLength + 1), s_now).Error);
+        Assert.False(server.IsSuspended);
+    }
+
     private static Server NewServer() =>
         Server.Create(NodeId.New(), TemplateId.New(), "Test", null, Server.NewShortId(), s_now).Value;
 

@@ -70,6 +70,7 @@ public sealed class Server
     public const int MaxMemoryLimitMb = 1024 * 1024; // 1 TiB
     public const int DefaultDatabaseLimit = 2;
     public const int MaxDatabaseLimit = 50;
+    public const int MaxSuspensionReasonLength = 200;
 
     private const string ShortIdAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -184,6 +185,17 @@ public sealed class Server
     /// </summary>
     public bool DownAfterCrash { get; private set; }
 
+    /// <summary>
+    /// Suspended by whoever hosts it (Pulsar 1.0.24, docs/architecture/05 "Suspension"): it does not run, and only users
+    /// who may suspend it can reach it until it is unsuspended. Null: not suspended.
+    /// </summary>
+    public DateTimeOffset? SuspendedAt { get; private set; }
+
+    /// <summary>Why it was suspended, shown to its users; null when none was given or it is not suspended.</summary>
+    public string? SuspensionReason { get; private set; }
+
+    public bool IsSuspended => SuspendedAt is not null;
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -234,6 +246,14 @@ public sealed class Server
         if (ActiveOperationId is not null)
         {
             return ServerErrors.Busy;
+        }
+
+        // Suspended: its game is neither put on a node nor changed until it is unsuspended; its backups, files and deletion
+        // stay open to whoever may still reach it.
+        if (IsSuspended && operation.Type is OperationType.ServerProvision or OperationType.ServerInstall or OperationType.ServerUpdate
+                or OperationType.AddonInstall or OperationType.AddonRemove or OperationType.ModsChange or OperationType.ModpackInstall)
+        {
+            return ServerErrors.Suspended;
         }
 
         if (operation.Type is OperationType.ServerUpdate or OperationType.BackupCreate or OperationType.BackupRestore
@@ -311,6 +331,11 @@ public sealed class Server
 
     public Result RequestStart(DateTimeOffset now)
     {
+        if (IsSuspended)
+        {
+            return ServerErrors.Suspended;
+        }
+
         if (InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
@@ -520,6 +545,39 @@ public sealed class Server
         RestartOnCrash = restartOnCrash;
         UpdatedAt = now;
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Suspends the server (or changes why, when it is already): it is wanted stopped, and the caller stops it. The reason
+    /// is trimmed; an empty one is none.
+    /// </summary>
+    public Result Suspend(string? reason, DateTimeOffset now)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (trimmed is { Length: > MaxSuspensionReasonLength } || (trimmed is not null && !DisplayNames.IsDisplayable(trimmed)))
+        {
+            return ServerErrors.SuspensionReasonInvalid;
+        }
+
+        SuspendedAt ??= now;
+        SuspensionReason = trimmed;
+        DesiredState = DesiredState.Stopped;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>Ends a suspension; false when it was not suspended. The server stays stopped until someone starts it.</summary>
+    public bool Unsuspend(DateTimeOffset now)
+    {
+        if (!IsSuspended)
+        {
+            return false;
+        }
+
+        SuspendedAt = null;
+        SuspensionReason = null;
+        UpdatedAt = now;
+        return true;
     }
 
     /// <summary>How many backups retention keeps (locked ones are kept besides); null keeps them all.</summary>

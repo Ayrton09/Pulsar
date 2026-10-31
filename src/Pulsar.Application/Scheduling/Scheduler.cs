@@ -209,6 +209,11 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
     private static async Task<DomainError?> UnmetAsync(IServiceProvider services, IPulsarDbContext db, ScheduledTask task, Server server,
         CancellationToken cancellationToken)
     {
+        if (server.IsSuspended)
+        {
+            return ScheduleErrors.Suspended;
+        }
+
         var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
         if ((task.OnlyIfRunning || task.Action == ScheduledAction.ConsoleCommand) && !running)
         {

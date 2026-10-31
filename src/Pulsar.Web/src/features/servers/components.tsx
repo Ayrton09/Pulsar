@@ -70,6 +70,12 @@ export function NodeDisconnectedBadge() {
   return <Badge tone="danger">{t('servers.nodeDisconnected')}</Badge>;
 }
 
+/** Suspended by whoever hosts it (Pulsar 1.0.24). */
+export function SuspendedBadge() {
+  const { t } = useTranslation();
+  return <Badge tone="warning">{t('servers.suspension.badge')}</Badge>;
+}
+
 /** The last check found an update of the server's game (Pulsar 1.0.9). */
 export function GameUpdateBadge() {
   const { t } = useTranslation();

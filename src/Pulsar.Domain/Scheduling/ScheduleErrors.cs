@@ -61,6 +61,9 @@ public static class ScheduleErrors
     /// <summary>The task runs only while the server does, and it did not.</summary>
     public static DomainError NotRunning { get; } = new("schedules.not_running", "The server was not running.");
 
+    /// <summary>A suspended server's tasks are skipped until it is unsuspended (1.0.24).</summary>
+    public static DomainError Suspended { get; } = new("schedules.suspended", "The server was suspended.");
+
     /// <summary>The task runs only while nobody plays, and someone did.</summary>
     public static DomainError NotEmpty { get; } = new("schedules.not_empty", "Someone was playing.");
 

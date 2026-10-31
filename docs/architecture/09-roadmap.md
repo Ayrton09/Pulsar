@@ -472,7 +472,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 12. Signing in with Discord, Google or an OIDC provider.
 13. **A light theme and a better phone layout** · *done*: dark by default, light or the system's from My account or the menu; row actions as a sheet on phones, 16 px fields (doc 07).
 14. **Actions on several servers at once** · *done*: start, restart, stop, back up and update game on the servers picked in the list, each server's own request, permission and audit entry (doc 07).
-15. Hosting: quotas per user, users creating their servers within them, suspending servers, billing integration.
+15. Hosting: quotas per user, users creating their servers within them, suspending servers, billing integration. · *suspension done (1.0.24, doc 05, "Suspension")*; quotas, servers users create and billing next.
 
 ## 1.0.10 — Fixes and template updates (2026-10-26)
 

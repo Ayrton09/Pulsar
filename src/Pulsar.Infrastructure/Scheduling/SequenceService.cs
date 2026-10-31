@@ -9,8 +9,9 @@ namespace Pulsar.Infrastructure.Scheduling;
 
 /// <summary>
 /// The loop of game updates and sequences (Pulsar 1.0.9): asks the nodes whose servers are due an update check, starts
-/// the automatic updates that may start, and moves the running sequences on; then sleeps until the next one is due, a
-/// sequence changes, or <see cref="s_longestSleep"/> passes (checks come due by themselves).
+/// the automatic updates that may start, stops suspended servers a node runs anyway (1.0.24), and moves the running
+/// sequences on; then sleeps until the next one is due, a sequence changes, or <see cref="s_longestSleep"/> passes
+/// (checks come due by themselves).
 /// </summary>
 internal sealed partial class SequenceService(IServiceScopeFactory scopes, ServerSequences sequences, SequenceSignal signal, TimeProvider clock,
     ILogger<SequenceService> logger) : BackgroundService
@@ -36,6 +37,18 @@ internal sealed partial class SequenceService(IServiceScopeFactory scopes, Serve
                 catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                 {
                     LogUpdatesPassFailed(ex);
+                }
+
+                // Suspended servers a node runs anyway (it was away when they were suspended) are stopped (1.0.24).
+                try
+                {
+                    await using var scope = scopes.CreateAsyncScope();
+                    scope.ServiceProvider.GetRequiredService<RequestContextOverride>().Context = new SystemRequestContext(ServerManagement.SuspensionActorName);
+                    await scope.ServiceProvider.GetRequiredService<ServerManagement>().StopSuspendedAsync(stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    LogSuspensionPassFailed(ex);
                 }
 
                 var pass = await sequences.RunDueAsync(clock.GetUtcNow(), stoppingToken);
@@ -73,4 +86,7 @@ internal sealed partial class SequenceService(IServiceScopeFactory scopes, Serve
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The game updates' pass failed; the sequences go on")]
     private partial void LogUpdatesPassFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The suspended servers' pass failed; the sequences go on")]
+    private partial void LogSuspensionPassFailed(Exception exception);
 }

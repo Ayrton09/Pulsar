@@ -88,6 +88,8 @@ public static class AuditActions
         public const string TemplateChanged = "server.template_changed";
         public const string GameChanged = "server.game_changed";
         public const string TransferRequested = "server.transfer_requested";
+        public const string Suspended = "server.suspended";
+        public const string Unsuspended = "server.unsuspended";
         public const string AddonInstallRequested = "server.addon_install_requested";
         public const string AddonRemoveRequested = "server.addon_remove_requested";
         public const string ModsInstallRequested = "server.mods_install_requested";

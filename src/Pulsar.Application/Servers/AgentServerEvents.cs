@@ -7,6 +7,7 @@ using Pulsar.Application.Databases;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
+using Pulsar.Application.Scheduling;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -32,7 +33,7 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy, Serv
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
 public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier,
-    Notifier notifications, ServerDatabases databases, TimeProvider clock, ILogger<AgentServerEvents> logger)
+    Notifier notifications, ServerDatabases databases, SequenceSignal sequences, TimeProvider clock, ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
@@ -77,6 +78,12 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
+                // A suspended server its node started anyway (1.0.24): the suspension pass stops it now, not at its next round.
+                if (server.IsSuspended && server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running)
+                {
+                    sequences.Notify();
+                }
+
                 return true;
             }
             catch (DbUpdateConcurrencyException)

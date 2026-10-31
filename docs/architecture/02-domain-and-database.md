@@ -80,11 +80,12 @@ public sealed class Server
 | `server.install` (install/update/reinstall) | server, node, global |
 | `server.limits.edit` (CPU and memory caps, Phase 12; the database limit and the Steam account, Phase 13) | node, global |
 | `server.create` `server.delete` `server.transfer` (future) | node, global |
+| `server.suspend` (suspend a server, lift it, and reach it while it is suspended; 1.0.24) | node, global |
 | `node.view` `node.manage` `node.credentials.manage` | node, global |
 | `template.view` `template.manage` | global |
 | `user.view` `user.manage` `role.manage` `audit.view` `settings.manage` | global |
 
-Inheritance: **global ⊃ node ⊃ server**. A `node`-scoped role may contain `node.*` and `server.*` (applies to every server on the node). A `server`-scoped role may only contain `server.*`, except `server.create/delete` and `server.limits.edit` (whoever hosts a server sets its caps, not whoever runs it).
+Inheritance: **global ⊃ node ⊃ server**. A `node`-scoped role may contain `node.*` and `server.*` (applies to every server on the node). A `server`-scoped role may only contain `server.*`, except `server.create/delete`, `server.limits.edit` and `server.suspend` (whoever hosts a server sets its caps and suspends it, not whoever runs it).
 
 ### Evaluation
 
@@ -363,7 +364,8 @@ CREATE TABLE servers (
     cpu_limit_percent    integer CHECK (cpu_limit_percent BETWEEN 1 AND 100),  -- Phase 12: share of the node; NULL: no cap
     memory_limit_mb      integer CHECK (memory_limit_mb BETWEEN 128 AND 1048576),  -- Phase 12: committed memory; NULL: no cap
     backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere
-    is_suspended         boolean NOT NULL DEFAULT false,
+    suspended_at         timestamptz,          -- 1.0.24: suspended since (doc 05, "Suspension"); NULL: not suspended
+    suspension_reason    varchar(200),         -- shown to the server's users; NULL: none given
     auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts (new servers: on, 1.0.12)
     restart_on_crash     boolean NOT NULL DEFAULT true,
     extra_arguments      text[] NOT NULL DEFAULT '{}',    -- only if the manifest allows it

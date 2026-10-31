@@ -118,6 +118,14 @@ Cases:
 
 `DeleteServerCommand` (operation): stops (kills if needed), kills processes of its account outside the Job, removes firewall rules, deletes the directory **without following reparse points**, deletes its backups (Phase 7: always; the panel drops their rows with the server), removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
 
+## Suspension
+
+*Implemented in 1.0.24* (the first part of hosting, doc 09). Whoever holds `server.suspend` on a server's node, or globally, suspends it (`POST /servers/{id}/suspend`, with an optional reason of up to 200 characters of plain text) and lifts the suspension (`POST /servers/{id}/unsuspend`); both are audited (`server.suspended` with the reason, `server.unsuspended`). Suspending again changes the reason, not since when.
+
+- **It stops and stays stopped.** The suspension is saved first, then the server is stopped and its agent gets its spec again with neither *start with the agent* nor *restart after a crash*: whatever happens to the stop, nobody starts it. The domain refuses a start, a restart, and every operation that puts its game on a node or changes it (provisioning, install, update, addons, mods, modpacks; so a transfer and a change of game too); its backups, its files' zips and its deletion stay open to whoever still reaches it. Its scheduled tasks are skipped (*the server was suspended*), automatic game updates do not start, newer template versions are neither notified nor moved to.
+- **A node that did not hear it.** The sequences' loop stops, every 15 seconds at most, any suspended server an agent reports starting or running (its node was away, or started it before it heard), and sends it the spec again.
+- **Who reaches it.** Every route under `/servers/{id}` of a suspended server answers `409 server.suspended` to whoever holds no `server.suspend` there, whatever else they hold (a global role included), but its own page (`GET /servers/{id}`), which says since when and why; its live console is refused to them, and SFTP neither lists nor opens it (a file opened before is refused at its next read or write). A user who cannot see the server at all still gets 404. Whoever may suspend it sees everything of it, so as to look into why, but must lift the suspension before it runs again; lifting it leaves the server stopped.
+
 ## Implementation (Phase 3)
 
 - **Agent:** `ServerSupervisor` (state machine and mailbox: readiness, stop steps, timeouts and crash backoff are timers posting messages, tagged with the process generation) and `ServerHost` (stored specs in `state\servers`, the supervisors, the commands, and operations whose results wait in `state\outbox` until the panel has them). **Panel:** `Server`, `GameTemplate` and `Operation` in the domain, `ServerManagement` (REST), `AgentServerEvents` (hub events and reconciliation).

@@ -78,6 +78,22 @@ internal sealed partial class ConsoleMirrors(
         Leave(connectionId, server);
     }
 
+    /// <summary>
+    /// Nobody watches the server's console anymore (it was suspended, 1.0.24): whoever may still see it watches it again
+    /// by opening it, which checks again.
+    /// </summary>
+    public async Task EndWatchesAsync(ServerId server)
+    {
+        foreach (var (connectionId, watched) in _connections)
+        {
+            if (watched.TryRemove(server, out _))
+            {
+                await hub.Groups.RemoveFromGroupAsync(connectionId, Group(server));
+                Leave(connectionId, server);
+            }
+        }
+    }
+
     /// <summary>The browser connection is gone: it watches nothing anymore.</summary>
     public void Disconnected(string connectionId)
     {

@@ -1,5 +1,6 @@
 import {
   Archive,
+  Ban,
   CalendarClock,
   Copy,
   Clock,
@@ -54,10 +55,11 @@ import {
   type OperationView,
   type ServerDetails,
 } from './api';
-import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
+import { NodeDisconnectedBadge, ServerStateBadge, StateReason, SuspendedBadge } from './components';
 import { ChangeGameDialog } from './ChangeGameDialog';
 import { CloneServerDialog } from './CloneServerDialog';
 import { TransferServerDialog } from './TransferServerDialog';
+import { SuspendServerDialog, SuspensionNotice } from './Suspension';
 import { ConsoleTab } from './ConsoleTab';
 import { useGameText } from './gameText';
 import { PowerButtons } from './PowerButtons';
@@ -161,6 +163,16 @@ function ServerView({ id }: { id: string }) {
   }
 
   const { server } = details.data;
+  // Suspended (1.0.24): its users see why and nothing else of it; whoever may suspend it sees everything.
+  if (server.suspension && !canOnServer(me, server, Permission.ServerSuspend)) {
+    return (
+      <>
+        <ServerHero details={details.data} />
+        <SuspensionNotice details={details.data} />
+      </>
+    );
+  }
+
   return (
     <>
       {details.isError && (
@@ -169,6 +181,7 @@ function ServerView({ id }: { id: string }) {
         </div>
       )}
       <ServerHero details={details.data} />
+      <SuspensionNotice details={details.data} />
       {(server.runtimeState === 'starting' || server.runtimeState === 'running') && metrics && (
         <ServerUsage metrics={metrics} limits={details.data.limits} />
       )}
@@ -325,6 +338,7 @@ function ServerHero({ details }: { details: ServerDetails }) {
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-2xl font-bold tracking-tight break-words sm:text-3xl">{server.name}</h1>
             <ServerStateBadge server={server} />
+            {server.suspension && <SuspendedBadge />}
             {!server.nodeConnected && <NodeDisconnectedBadge />}
           </div>
           {details.description && <p className="mt-1 text-sm text-muted">{details.description}</p>}
@@ -584,15 +598,17 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const [changingGame, setChangingGame] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [suspending, setSuspending] = useState(false);
   const { server } = details;
   const available = serverActions(server);
+  const canSuspend = canOnServer(me, details.server, Permission.ServerSuspend);
   const canInstall = canOnServer(me, details.server, Permission.ServerInstall);
   const canDelete = canOnServer(me, details.server, Permission.ServerDelete);
   // A clone is a backup of this server copied into a new one: its files, readable there.
   const canClone =
     canOnServer(me, details.server, Permission.ServerBackupsCreate) &&
     canOnServer(me, details.server, Permission.ServerFilesView);
-  if (!canInstall && !canDelete && !canClone) {
+  if (!canInstall && !canDelete && !canClone && !canSuspend) {
     return null;
   }
 
@@ -656,6 +672,11 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
             {t('servers.changeGame.title')}
           </Button>
         )}
+        {canSuspend && !server.suspension && (
+          <Button variant="secondary" icon={Ban} onClick={() => setSuspending(true)}>
+            {t('servers.suspension.suspend')}
+          </Button>
+        )}
         {canDelete && (
           <Button
             variant="danger"
@@ -682,6 +703,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
       {changingGame && <ChangeGameDialog details={details} onClose={() => setChangingGame(false)} />}
       {cloning && <CloneServerDialog details={details} onClose={() => setCloning(false)} />}
       {transferring && <TransferServerDialog details={details} onClose={() => setTransferring(false)} />}
+      {suspending && <SuspendServerDialog details={details} onClose={() => setSuspending(false)} />}
     </section>
   );
 }

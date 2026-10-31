@@ -34,6 +34,21 @@ public sealed class AllowWithoutTwoFactorMetadata
 
 internal sealed record PermissionRequirement(IReadOnlyList<string> AnyOf, bool Anywhere) : IAuthorizationRequirement;
 
+/// <summary>Endpoint metadata: the endpoint stays open on a suspended server (its page, which says it is suspended).</summary>
+public sealed class AllowWhileSuspendedMetadata
+{
+    public static AllowWhileSuspendedMetadata Instance { get; } = new();
+}
+
+/// <summary>Part of every permission policy: a suspended server is reached only by those who may suspend it (1.0.24).</summary>
+internal sealed class SuspensionRequirement : IAuthorizationRequirement
+{
+    public static SuspensionRequirement Instance { get; } = new();
+}
+
+/// <summary>A route of a suspended server, for a user who may see it but not suspend it: answered 409.</summary>
+internal sealed record SuspendedServerFailure;
+
 /// <summary>A resource the user may not even see: answered 404 like one that does not exist (docs/architecture/02).</summary>
 internal sealed record HiddenResourceFailure(string Code, string Title);
 
@@ -85,6 +100,11 @@ internal sealed class PulsarAuthorizationResultHandler : IAuthorizationMiddlewar
         if (authorizeResult.Forbidden && context.Items[typeof(HiddenResourceFailure)] is HiddenResourceFailure hidden)
         {
             return ApiProblems.Create(StatusCodes.Status404NotFound, hidden.Code, hidden.Title).ExecuteAsync(context);
+        }
+
+        if (authorizeResult.Forbidden && context.Items.ContainsKey(typeof(SuspendedServerFailure)))
+        {
+            return ApiProblems.FromDomainError(ServerErrors.Suspended).ExecuteAsync(context);
         }
 
         return _default.HandleAsync(next, context, policy, authorizeResult);
@@ -160,6 +180,47 @@ internal sealed class PermissionAuthorizationHandler(IPermissionEvaluator evalua
     }
 }
 
+/// <summary>
+/// Suspended servers (docs/architecture/05, "Suspension"): every route under <c>/servers/{id}</c> of one is refused with
+/// 409 to whoever holds no <c>server.suspend</c> there, whatever else they hold, but its own page. Users who may not see
+/// it at all are left to the permission gate's 404.
+/// </summary>
+internal sealed class SuspensionAuthorizationHandler(IPermissionEvaluator evaluator, IPulsarDbContext db) : AuthorizationHandler<SuspensionRequirement>
+{
+    private const string ServerRoute = "/api/v1/servers/{id";
+
+    protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, SuspensionRequirement requirement)
+    {
+        if (context.User.GetUserId() is not { } user || context.Resource is not HttpContext http || http.GetEndpoint() is not RouteEndpoint route
+            || !(route.RoutePattern.RawText?.StartsWith(ServerRoute, StringComparison.Ordinal) ?? false)
+            || route.Metadata.GetMetadata<AllowWhileSuspendedMetadata>() is not null
+            || http.GetRouteValue("id") is not string raw || !Guid.TryParse(raw, out var id))
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
+        var cancellationToken = http.RequestAborted;
+        var server = await db.Servers.AsNoTracking().Where(s => s.Id == new ServerId(id))
+            .Select(s => new { s.SuspendedAt, s.NodeId }).SingleOrDefaultAsync(cancellationToken);
+        if (server?.SuspendedAt is null)
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
+        var target = AccessTarget.ForServer(new ServerId(id), server.NodeId);
+        var permissions = await evaluator.GetAsync(user, cancellationToken);
+        if (permissions.Has(Permissions.Server.Suspend, target) || !ResourceVisibility.Server.Any(p => permissions.Has(p, target)))
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
+        http.Items[typeof(SuspendedServerFailure)] = new SuspendedServerFailure();
+    }
+}
+
 public static class PermissionEndpointExtensions
 {
     /// <summary>
@@ -188,7 +249,7 @@ public static class PermissionEndpointExtensions
         // The session cookie or an API key (docs/architecture/02, "API keys").
         var policy = new AuthorizationPolicyBuilder(UserSchemes.CookieOrApiKey)
             .RequireAuthenticatedUser()
-            .AddRequirements(TwoFactorRequirement.Instance, new PermissionRequirement(anyOf, anywhere))
+            .AddRequirements(TwoFactorRequirement.Instance, new PermissionRequirement(anyOf, anywhere), SuspensionRequirement.Instance)
             .Build();
         return builder.RequireAuthorization(policy).WithMetadata(new RequiredPermissionMetadata(anyOf, anywhere));
     }
@@ -203,6 +264,10 @@ public static class PermissionEndpointExtensions
             .Build();
         return builder.RequireAuthorization(policy).WithMetadata(SignedInUserMetadata.Instance);
     }
+
+    /// <summary>Keeps the endpoint open on a suspended server to users who may not suspend it (its page).</summary>
+    public static TBuilder AllowWhileSuspended<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder => builder.WithMetadata(AllowWhileSuspendedMetadata.Instance);
 
     /// <summary>Keeps the endpoint open to a user who still has to set up two-factor authentication.</summary>
     public static TBuilder AllowWithoutTwoFactor<TBuilder>(this TBuilder builder)

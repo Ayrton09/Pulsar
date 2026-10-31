@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
@@ -81,6 +82,9 @@ public sealed record ServerLimitsRequest(
     [property: Range(Server.MinMemoryLimitMb, Server.MaxMemoryLimitMb)] int? MemoryMb,
     [property: Range(0, Server.MaxDatabaseLimit)] int? Databases = null);
 
+/// <summary>Suspends a server (1.0.24); the reason, if any, is shown to its users.</summary>
+public sealed record SuspendServerRequest([property: StringLength(Server.MaxSuspensionReasonLength)] string? Reason);
+
 public sealed record ConsoleCommandRequest([property: Required, StringLength(Pulsar.Contracts.ConsoleInput.MaxLength, MinimumLength = 1)] string Command);
 
 /// <param name="Player">The player's name as the game has it (or its id, for a game whose commands take one).</param>
@@ -94,7 +98,7 @@ public static class ServerEndpoints
     {
         var servers = api.MapGroup("/servers").WithTags("Servers");
         servers.MapGet("/", ListAsync).RequirePermissionAnywhere(Permissions.Server.View);
-        servers.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Server.View);
+        servers.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Server.View).AllowWhileSuspended();
         servers.MapPost("/", CreateAsync).RequirePermissionAnywhere(Permissions.Server.Create); // checked on the node by ServerManagement
         servers.MapPost("/{id:guid}/start", (Guid id, ServerManagement m, CancellationToken ct) => CommandAsync(m.StartAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Start);
@@ -112,6 +116,21 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.Install);
         servers.MapDelete("/{id:guid}", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.DeleteAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Delete);
+        // 1.0.24: whoever hosts the server stops it and keeps everyone else out until it is unsuspended.
+        servers.MapPost("/{id:guid}/suspend", async (Guid id, SuspendServerRequest request, ServerManagement m, ConsoleMirrors consoles, CancellationToken ct) =>
+            {
+                var suspended = await m.SuspendAsync(new ServerId(id), request.Reason, ct);
+                if (suspended.IsSuccess)
+                {
+                    // Watches opened before stop: the console's live output is no longer theirs to see (it is opened again by those who may).
+                    await consoles.EndWatchesAsync(new ServerId(id));
+                }
+
+                return await DetailsAsync(Task.FromResult(suspended));
+            })
+            .RequirePermission(Permissions.Server.Suspend);
+        servers.MapPost("/{id:guid}/unsuspend", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.UnsuspendAsync(new ServerId(id), ct)))
+            .RequirePermission(Permissions.Server.Suspend);
         servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult>> (Guid id, IPulsarDbContext db,
                 MetricHistory history, CancellationToken ct, string range = "hour") =>
                 MetricHistory.ParseRange(range) is not { } span ? ApiProblems.Create(StatusCodes.Status400BadRequest, "metrics.invalid_range", "The range must be hour, day, week or month.")

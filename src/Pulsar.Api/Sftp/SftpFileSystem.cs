@@ -28,9 +28,14 @@ internal sealed class SftpException(uint code, string message) : Exception(messa
 }
 
 /// <summary>A server as one SFTP connection sees it.</summary>
-internal sealed record SftpServer(ServerId Id, NodeId NodeId, string ShortId, string Folder, DateTimeOffset CreatedAt)
+/// <param name="Suspended">Suspended (1.0.24): reached only by users who may suspend it.</param>
+internal sealed record SftpServer(ServerId Id, NodeId NodeId, string ShortId, string Folder, DateTimeOffset CreatedAt, bool Suspended = false)
 {
     public AccessTarget Target => AccessTarget.ForServer(Id, NodeId);
+
+    /// <summary>Whether the user may see its files now.</summary>
+    public bool Reached(EffectivePermissions permissions) =>
+        permissions.Has(Permissions.Server.FilesView, Target) && (!Suspended || permissions.Has(Permissions.Server.Suspend, Target));
 }
 
 /// <summary>
@@ -192,7 +197,7 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
             path = string.Join('/', segments.Skip(1));
         }
 
-        if (server is null || !operation.Permissions.Has(Permissions.Server.FilesView, server.Target))
+        if (server is null || !server.Reached(operation.Permissions))
         {
             // Something new at the top of the root (a folder made, a file uploaded) is a change to the root.
             throw write && Identity.ServerShortId is null && segments.Length == 1
@@ -219,10 +224,12 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
         return new SftpLocation(server, path, canEdit);
     }
 
-    /// <summary>Checks the permission again for a file opened earlier.</summary>
-    public static void Require(SftpOperation operation, SftpServer server, bool write)
+    /// <summary>Checks the permission again for a file opened earlier, and whether its server was suspended since.</summary>
+    public static async Task RequireAsync(SftpOperation operation, SftpServer server, bool write, CancellationToken cancellationToken)
     {
-        if (!operation.Permissions.Has(Permissions.Server.FilesView, server.Target))
+        var suspended = await operation.Db.Servers.AsNoTracking().Where(s => s.Id == server.Id).Select(s => (bool?)(s.SuspendedAt != null))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (suspended is not { } now || !(server with { Suspended = now }).Reached(operation.Permissions))
         {
             throw SftpException.NotFound();
         }
@@ -246,11 +253,11 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
         }
 
         var servers = await query
-            .Select(s => new { s.Id, s.NodeId, s.ShortId, s.Name, s.CreatedAt })
+            .Select(s => new { s.Id, s.NodeId, s.ShortId, s.Name, s.CreatedAt, Suspended = s.SuspendedAt != null })
             .ToListAsync(cancellationToken);
         return [.. servers
-            .Select(s => new SftpServer(s.Id, s.NodeId, s.ShortId, FolderName(s.Name, s.ShortId), s.CreatedAt))
-            .Where(s => operation.Permissions.Has(Permissions.Server.FilesView, s.Target))
+            .Select(s => new SftpServer(s.Id, s.NodeId, s.ShortId, FolderName(s.Name, s.ShortId), s.CreatedAt, s.Suspended))
+            .Where(s => s.Reached(operation.Permissions))
             .OrderBy(s => s.Folder, FileNameOrder.Comparer)
             .Select(s => (s, operation.Permissions.Has(Permissions.Server.FilesEdit, s.Target)))];
     }
@@ -271,14 +278,14 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
     {
         var found = await operation.Db.Servers.AsNoTracking()
             .Where(s => s.ShortId == shortId)
-            .Select(s => new { s.Id, s.NodeId, s.ShortId, s.Name, s.CreatedAt })
+            .Select(s => new { s.Id, s.NodeId, s.ShortId, s.Name, s.CreatedAt, Suspended = s.SuspendedAt != null })
             .SingleOrDefaultAsync(cancellationToken);
         if (found is null)
         {
             return null;
         }
 
-        var server = new SftpServer(found.Id, found.NodeId, found.ShortId, FolderName(found.Name, found.ShortId), found.CreatedAt);
+        var server = new SftpServer(found.Id, found.NodeId, found.ShortId, FolderName(found.Name, found.ShortId), found.CreatedAt, found.Suspended);
 
         // A folder is found by its whole current name (as listed), never by its short id alone.
         return folder is null || string.Equals(folder, server.Folder, StringComparison.OrdinalIgnoreCase) ? server : null;

@@ -42,7 +42,9 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         ArgumentNullException.ThrowIfNull(template);
         var allocations = await AllocationsOf(server, cancellationToken);
         var addons = await ServerAddons.InstalledKeysAsync(db, server.Id, cancellationToken);
-        return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart, server.RestartOnCrash,
+        // A suspended server is started by nobody (1.0.24): neither with its node nor after a crash.
+        return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
+            server.RestartOnCrash && !server.IsSuspended,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
             server.SteamBranch);
     }

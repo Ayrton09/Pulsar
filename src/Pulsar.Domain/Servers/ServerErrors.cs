@@ -47,6 +47,12 @@ public static class ServerErrors
 
     public static DomainError MustBeStopped { get; } = new("server.must_be_stopped", "Stop the server first.");
 
+    /// <summary>Suspended by whoever hosts it (Pulsar 1.0.24): it does not run, and only they reach it until it is unsuspended.</summary>
+    public static DomainError Suspended { get; } = new("server.suspended", "The server is suspended.");
+
+    public static DomainError SuspensionReasonInvalid { get; } =
+        new("server.suspension_reason_invalid", $"A suspension's reason is up to {Server.MaxSuspensionReasonLength} characters of text.");
+
     public static DomainError CommandRejected { get; } = new("server.command_rejected", "The node's agent rejected the command.");
 
     public static DomainError NotRunning { get; } = new("server.not_running", "The server is not running.");

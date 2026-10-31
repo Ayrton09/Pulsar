@@ -243,6 +243,7 @@
       },
       "create": "Criar servidores",
       "delete": "Excluir servidores",
+      "suspend": "Suspender servidores",
       "databases": {
         "view": "Ver bancos de dados",
         "manage": "Gerenciar bancos de dados e ler suas senhas"
@@ -363,6 +364,8 @@
         "template_changed": "Mudou um servidor para outra versão do seu modelo",
         "game_changed": "Trocou o jogo de um servidor",
         "transfer_requested": "Pediu para mover um servidor para outro nó",
+        "suspended": "Suspendeu um servidor",
+        "unsuspended": "Retirou a suspensão de um servidor",
         "update_requested": "Pediu para atualizar um jogo",
         "settings_changed": "Alterou as configurações de um servidor",
         "ports_changed": "Alterou as portas de um servidor",
@@ -638,6 +641,8 @@
       "busy": "Outra operação está em execução neste servidor. Aguarde ela terminar.",
       "not_installed": "O servidor ainda não está instalado.",
       "must_be_stopped": "Pare o servidor primeiro.",
+      "suspended": "O servidor está suspenso.",
+      "suspension_reason_invalid": "O motivo de uma suspensão é um texto de até 200 caracteres.",
       "command_rejected": "O agente do nó rejeitou o comando.",
       "host_incompatible": "O jogo do servidor ainda é executado sob uma versão anterior do agente, que não pode gerenciá-lo. Pare ou inicie o servidor para encerrar esse jogo (ele é encerrado à força, sem salvar).",
       "host_not_ended": "O jogo do servidor ainda é executado em um processo host que o agente não conseguiu encerrar nem verificar. Tente novamente em instantes; ele nunca é iniciado uma segunda vez ao lado.",
@@ -761,6 +766,7 @@
       "missed": "O painel não estava em execução nesse momento.",
       "interrupted": "O painel parou antes de a execução terminar.",
       "not_running": "O servidor não estava em execução.",
+      "suspended": "O servidor estava suspenso.",
       "unreadable": "O agendamento da tarefa (sua expressão cron ou fuso horário) não pode mais ser lido: edite-o para executá-la novamente.",
       "error": "O painel não conseguiu executar a tarefa; o log dele tem os detalhes.",
       "steps_invalid": "Uma tarefa tem de 1 a 32 etapas: comandos e mensagens são de uma linha (mensagens de até 128 caracteres), esperas duram de 1 segundo a um dia.",
@@ -1270,6 +1276,18 @@
       "failed": "Não foi possível mover o servidor para {{node}}: ele fica no seu nó como estava.",
       "leftCopy": "O servidor foi movido para {{node}}, mas não foi possível apagar sua cópia no nó antigo.",
       "nodeGone": "um nó que não existe mais"
+    },
+    "suspension": {
+      "badge": "Suspenso",
+      "title": "Este servidor está suspenso",
+      "since": "Desde {{date}}.",
+      "reason": "Motivo: {{reason}}",
+      "contact": "Peça a quem o hospeda para retirar a suspensão.",
+      "suspend": "Suspender",
+      "unsuspend": "Retirar a suspensão",
+      "hint": "{{name}} para agora e ninguém pode iniciá-lo. Até você retirar a suspensão, os outros usuários dele veem só este aviso, sem console, arquivos nem backups.",
+      "reasonLabel": "Motivo (opcional)",
+      "reasonHint": "Mostrado aos usuários do servidor."
     },
     "changeGame": {
       "title": "Trocar de jogo",

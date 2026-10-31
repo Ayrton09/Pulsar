@@ -957,6 +957,61 @@ describe('a game server page', () => {
     await vi.waitFor(() => expect(body).toEqual({ templateId: newer }));
   });
 
+  it('shows a suspended server to its users as a notice alone, without its tabs or power buttons', async () => {
+    const suspension = { at: '2026-10-31T12:00:00Z', reason: 'Unpaid invoice' };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details({ ...summary, suspension })),
+    });
+    renderAt(`/servers/${serverId}`);
+
+    expect(await screen.findByText('This server is suspended')).toBeInTheDocument();
+    expect(screen.getByText('Reason: Unpaid invoice')).toBeInTheDocument();
+    expect(screen.getByText('Ask whoever hosts it to lift the suspension.')).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lift suspension' })).not.toBeInTheDocument();
+  });
+
+  it('suspends a server with a reason and lifts it, for whoever may suspend it', async () => {
+    const host = { ...operator, permissions: [...operator.permissions, 'server.suspend'] };
+    let body: unknown;
+    let lifted = false;
+    let suspended = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(host),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json(
+          details(
+            suspended ? { ...summary, suspension: { at: '2026-10-31T12:00:00Z', reason: 'Abuse report' } } : summary,
+          ),
+        ),
+      [`POST /api/v1/servers/${serverId}/suspend`]: async (request) => {
+        body = await request.json();
+        suspended = true;
+        return json(details({ ...summary, suspension: { at: '2026-10-31T12:00:00Z', reason: 'Abuse report' } }));
+      },
+      [`POST /api/v1/servers/${serverId}/unsuspend`]: () => {
+        lifted = true;
+        suspended = false;
+        return json(details());
+      },
+    });
+    renderAt(`/servers/${serverId}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Suspend' }));
+    await user.type(screen.getByLabelText('Reason (optional)'), '  Abuse report ');
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Suspend' }));
+    await vi.waitFor(() => expect(body).toEqual({ reason: 'Abuse report' }));
+
+    // Whoever may suspend it still sees all of it, and lifts it from the notice.
+    expect(await screen.findByText('This server is suspended')).toBeInTheDocument();
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Lift suspension' }));
+    await vi.waitFor(() => expect(lifted).toBe(true));
+  });
+
   it('shows limits read-only to who cannot change them', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),

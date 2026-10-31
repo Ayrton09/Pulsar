@@ -44,6 +44,7 @@ public static class PermissionCatalog
         new(Permissions.Server.LimitsEdit, s_nodeGlobal),
         new(Permissions.Server.Create, s_nodeGlobal),
         new(Permissions.Server.Delete, s_nodeGlobal),
+        new(Permissions.Server.Suspend, s_nodeGlobal),
         new(Permissions.Node.View, s_nodeGlobal),
         new(Permissions.Node.Manage, s_nodeGlobal),
         new(Permissions.Node.CredentialsManage, s_nodeGlobal),

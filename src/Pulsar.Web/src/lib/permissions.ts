@@ -36,6 +36,7 @@ export const Permission = {
   ServerStartupEdit: 'server.startup.edit',
   ServerSettingsEdit: 'server.settings.edit',
   ServerDelete: 'server.delete',
+  ServerSuspend: 'server.suspend',
 } as const;
 
 type CurrentUser = Schemas['CurrentUserResponse'] | null | undefined;

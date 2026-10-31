@@ -771,9 +771,9 @@ public sealed partial class GameUpdates(
         {
             var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == candidate.ServerId, cancellationToken);
             if (server is null || server.InstallState != InstallState.Installed || server.ActiveOperationId is not null
-                || Connection(server.NodeId) is null)
+                || Connection(server.NodeId) is null || server.IsSuspended)
             {
-                continue; // later
+                continue; // later (a suspended one once it is unsuspended)
             }
 
             var running = server.RuntimeState is ServerRuntimeState.Starting or ServerRuntimeState.Running;
@@ -857,7 +857,7 @@ public sealed partial class GameUpdates(
                 from w in db.GameUpdateWatches.AsNoTracking()
                 where w.TemplatePolicy != GameUpdatePolicy.Off && w.SequenceId == null
                 join s in db.Servers.AsNoTracking() on w.ServerId equals s.Id
-                where s.InstallState == InstallState.Installed
+                where s.InstallState == InstallState.Installed && s.SuspendedAt == null
                 join t in db.GameTemplates.AsNoTracking() on s.TemplateId equals t.Id
                 select new { w.ServerId, w.TemplatePolicy, w.NotifiedTemplate, w.AttemptedTemplate, t.Key, t.Version })
             .ToListAsync(cancellationToken);

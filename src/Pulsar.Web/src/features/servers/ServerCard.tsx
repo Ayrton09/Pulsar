@@ -10,7 +10,7 @@ import { useArtworkShown } from '../games/api';
 import { GameArt } from '../games/GameArt';
 import { useServerMetrics } from '../live/hooks';
 import type { ServerSummary } from './api';
-import { GameUpdateBadge, NodeDisconnectedBadge, ServerStatusPill, StateReason } from './components';
+import { GameUpdateBadge, NodeDisconnectedBadge, ServerStatusPill, StateReason, SuspendedBadge } from './components';
 import { PowerButtons } from './PowerButtons';
 
 /** Servers picked in the list for an action on all of them (gap point 14). */
@@ -74,6 +74,11 @@ export function ServerCard({
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-surface to-transparent" />
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
           <ServerStatusPill server={server} />
+          {server.suspension && (
+            <span className="rounded-full bg-black/70 backdrop-blur-sm">
+              <SuspendedBadge />
+            </span>
+          )}
           {!server.nodeConnected && (
             <span className="rounded-full bg-black/70 backdrop-blur-sm">
               <NodeDisconnectedBadge />
@@ -215,6 +220,7 @@ export function ServerRow({
             </Link>
           </Heading>
           <ServerStatusPill server={server} />
+          {server.suspension && <SuspendedBadge />}
           {!server.nodeConnected && <NodeDisconnectedBadge />}
           {server.gameUpdateAvailable && <GameUpdateBadge />}
         </div>

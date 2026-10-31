@@ -243,6 +243,7 @@
       },
       "create": "创建服务器",
       "delete": "删除服务器",
+      "suspend": "停用服务器",
       "databases": {
         "view": "查看数据库",
         "manage": "管理数据库并读取其密码"
@@ -363,6 +364,8 @@
         "template_changed": "将服务器切换到其模板的另一个版本",
         "game_changed": "更换了服务器的游戏",
         "transfer_requested": "请求将服务器迁移到另一个节点",
+        "suspended": "停用了服务器",
+        "unsuspended": "解除了服务器的停用",
         "update_requested": "请求更新游戏",
         "settings_changed": "更改了服务器设置",
         "ports_changed": "更改了服务器端口",
@@ -638,6 +641,8 @@
       "busy": "此服务器上正在执行另一项操作。请等待其完成。",
       "not_installed": "服务器尚未安装。",
       "must_be_stopped": "请先停止服务器。",
+      "suspended": "服务器已停用。",
+      "suspension_reason_invalid": "停用原因是不超过 200 个字符的文本。",
       "command_rejected": "节点的代理拒绝了该命令。",
       "host_incompatible": "该服务器的游戏仍在旧版本代理下运行，当前代理无法管理它。请停止或启动服务器以结束该游戏（将被强制终止，不会保存）。",
       "host_not_ended": "该服务器的游戏仍在某个宿主进程中运行，代理无法结束或检查它。请稍后重试；绝不会在其旁边再次启动。",
@@ -761,6 +766,7 @@
       "missed": "当时面板未在运行。",
       "interrupted": "面板在运行结束前已停止。",
       "not_running": "服务器未在运行。",
+      "suspended": "服务器当时已停用。",
       "unreadable": "该任务的计划（cron 表达式或时区）已无法读取：请编辑后再运行。",
       "error": "面板无法运行该任务；详情见其日志。",
       "steps_invalid": "任务有 1 到 32 个步骤：命令和消息为一行（消息最多 128 个字符），等待时长为 1 秒到一天。",
@@ -1270,6 +1276,18 @@
       "failed": "无法将服务器迁移到 {{node}}：它原样留在原节点上。",
       "leftCopy": "服务器已迁移到 {{node}}，但无法删除其在旧节点上的副本。",
       "nodeGone": "一个已不存在的节点"
+    },
+    "suspension": {
+      "badge": "已停用",
+      "title": "此服务器已停用",
+      "since": "自 {{date}} 起。",
+      "reason": "原因：{{reason}}",
+      "contact": "请联系托管方解除停用。",
+      "suspend": "停用",
+      "unsuspend": "解除停用",
+      "hint": "{{name}} 会立即停止，任何人都无法启动。解除停用前，其他用户只能看到这条通知，无法使用控制台、文件或备份。",
+      "reasonLabel": "原因（可选）",
+      "reasonHint": "会显示给服务器的用户。"
     },
     "changeGame": {
       "title": "更换游戏",

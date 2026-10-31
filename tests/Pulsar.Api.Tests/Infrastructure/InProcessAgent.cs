@@ -112,6 +112,10 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>The agent's remote storage (in memory).</summary>
     public MemoryRemoteBackups RemoteBackups { get; } = new();
 
+    /// <summary>The spec the agent keeps for <paramref name="server"/>, as it starts the game from it.</summary>
+    public ServerRuntimeSpec StoredSpec(Guid server) =>
+        new ServerStore(Configs.Paths, new PlainStateProtector()).Load(server)?.Spec ?? throw new InvalidOperationException("The agent has no such server.");
+
     /// <summary>The agent's servers while it runs.</summary>
     public ServerHost? Servers => _servers;
 

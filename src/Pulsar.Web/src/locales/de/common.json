@@ -243,6 +243,7 @@
       },
       "create": "Server erstellen",
       "delete": "Server löschen",
+      "suspend": "Server sperren",
       "databases": {
         "view": "Datenbanken anzeigen",
         "manage": "Datenbanken verwalten und deren Passwörter lesen"
@@ -363,6 +364,8 @@
         "template_changed": "Server auf eine andere Version seiner Vorlage umgestellt",
         "game_changed": "Spiel eines Servers gewechselt",
         "transfer_requested": "Verschieben eines Servers auf einen anderen Node angefordert",
+        "suspended": "Einen Server gesperrt",
+        "unsuspended": "Die Sperre eines Servers aufgehoben",
         "update_requested": "Aktualisierung eines Spiels angefordert",
         "settings_changed": "Einstellungen eines Servers geändert",
         "ports_changed": "Ports eines Servers geändert",
@@ -638,6 +641,8 @@
       "busy": "Auf diesem Server läuft gerade ein anderer Vorgang. Warten Sie, bis er beendet ist.",
       "not_installed": "Der Server ist noch nicht installiert.",
       "must_be_stopped": "Stoppen Sie zuerst den Server.",
+      "suspended": "Der Server ist gesperrt.",
+      "suspension_reason_invalid": "Der Grund einer Sperre ist ein Text mit höchstens 200 Zeichen.",
       "command_rejected": "Der Agent des Nodes hat den Befehl abgelehnt.",
       "host_incompatible": "Das Spiel des Servers läuft noch unter einer früheren Version des Agents, die es nicht verwalten kann. Stoppen oder starten Sie den Server, um dieses Spiel zu beenden (es wird beendet, ohne zu speichern).",
       "host_not_ended": "Das Spiel des Servers läuft noch in einem Host-Prozess, den der Agent weder beenden noch prüfen konnte. Versuchen Sie es in einem Moment erneut; es wird nie ein zweites Mal daneben gestartet.",
@@ -761,6 +766,7 @@
       "missed": "Das Panel lief zu diesem Zeitpunkt nicht.",
       "interrupted": "Das Panel wurde beendet, bevor die Ausführung zu Ende war.",
       "not_running": "Der Server lief nicht.",
+      "suspended": "Der Server war gesperrt.",
       "unreadable": "Der Zeitplan der Aufgabe (ihr Cron-Ausdruck oder ihre Zeitzone) kann nicht mehr gelesen werden: Bearbeiten Sie ihn, um die Aufgabe wieder auszuführen.",
       "error": "Das Panel konnte die Aufgabe nicht ausführen; Details stehen in seinem Protokoll.",
       "steps_invalid": "Eine Aufgabe hat 1 bis 32 Schritte: Befehle und Nachrichten sind einzeilig (Nachrichten bis 128 Zeichen), Wartezeiten dauern 1 Sekunde bis einen Tag.",
@@ -1270,6 +1276,18 @@
       "failed": "Der Server konnte nicht nach {{node}} verschoben werden: Er bleibt auf seinem Node, wie er war.",
       "leftCopy": "Der Server wurde nach {{node}} verschoben, aber seine Kopie auf dem alten Node konnte nicht gelöscht werden.",
       "nodeGone": "einen Node, den es nicht mehr gibt"
+    },
+    "suspension": {
+      "badge": "Gesperrt",
+      "title": "Dieser Server ist gesperrt",
+      "since": "Seit {{date}}.",
+      "reason": "Grund: {{reason}}",
+      "contact": "Bitte den Betreiber, die Sperre aufzuheben.",
+      "suspend": "Sperren",
+      "unsuspend": "Sperre aufheben",
+      "hint": "{{name}} wird jetzt gestoppt und kann von niemandem gestartet werden. Bis du die Sperre aufhebst, sehen seine anderen Benutzer nur diesen Hinweis, ohne Konsole, Dateien oder Backups.",
+      "reasonLabel": "Grund (optional)",
+      "reasonHint": "Wird den Benutzern des Servers angezeigt."
     },
     "changeGame": {
       "title": "Spiel wechseln",

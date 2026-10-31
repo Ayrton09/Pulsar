@@ -258,6 +258,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddAuthorization();
         services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, TwoFactorAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, SuspensionAuthorizationHandler>();
         services.AddSingleton<IAuthorizationMiddlewareResultHandler, PulsarAuthorizationResultHandler>();
 
         services.AddAntiforgery(options =>

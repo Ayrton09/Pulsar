@@ -243,6 +243,7 @@
       },
       "create": "Creare server",
       "delete": "Eliminare server",
+      "suspend": "Sospendere i server",
       "databases": {
         "view": "Visualizzare i database",
         "manage": "Gestire i database e leggerne le password"
@@ -363,6 +364,8 @@
         "template_changed": "Ha spostato un server a un'altra versione del suo modello",
         "game_changed": "Cambiato il gioco di un server",
         "transfer_requested": "Richiesto lo spostamento di un server su un altro nodo",
+        "suspended": "Ha sospeso un server",
+        "unsuspended": "Ha revocato la sospensione di un server",
         "update_requested": "Ha chiesto di aggiornare un gioco",
         "settings_changed": "Ha modificato le impostazioni di un server",
         "ports_changed": "Ha modificato le porte di un server",
@@ -638,6 +641,8 @@
       "busy": "Un'altra operazione è in corso su questo server. Attendere che finisca.",
       "not_installed": "Il server non è ancora installato.",
       "must_be_stopped": "Arrestare prima il server.",
+      "suspended": "Il server è sospeso.",
+      "suspension_reason_invalid": "Il motivo di una sospensione è un testo di al massimo 200 caratteri.",
       "command_rejected": "L'agent del nodo ha rifiutato il comando.",
       "host_incompatible": "Il gioco del server è ancora in esecuzione con una versione precedente dell'agent, che non può gestirlo. Arrestare o avviare il server per terminare quel gioco (viene terminato forzatamente, senza salvare).",
       "host_not_ended": "Il gioco del server è ancora in esecuzione in un processo host che l'agent non ha potuto terminare né verificare. Riprovare tra un momento; non viene mai avviato una seconda volta accanto al primo.",
@@ -761,6 +766,7 @@
       "missed": "In quel momento il pannello non era in esecuzione.",
       "interrupted": "Il pannello si è arrestato prima della fine dell'esecuzione.",
       "not_running": "Il server non era in esecuzione.",
+      "suspended": "Il server era sospeso.",
       "unreadable": "La pianificazione dell'attività (l'espressione cron o il fuso orario) non può più essere letta: modificarla per eseguirla di nuovo.",
       "error": "Il pannello non ha potuto eseguire l'attività; i dettagli sono nel suo log.",
       "steps_invalid": "Un'attività ha da 1 a 32 passi: comandi e messaggi sono di una riga (messaggi fino a 128 caratteri), le attese durano da 1 secondo a un giorno.",
@@ -1270,6 +1276,18 @@
       "failed": "Non è stato possibile spostare il server su {{node}}: resta sul suo nodo com'era.",
       "leftCopy": "Il server è stato spostato su {{node}}, ma non è stato possibile eliminarne la copia sul vecchio nodo.",
       "nodeGone": "un nodo che non esiste più"
+    },
+    "suspension": {
+      "badge": "Sospeso",
+      "title": "Questo server è sospeso",
+      "since": "Dal {{date}}.",
+      "reason": "Motivo: {{reason}}",
+      "contact": "Chiedi a chi lo ospita di revocare la sospensione.",
+      "suspend": "Sospendi",
+      "unsuspend": "Revoca la sospensione",
+      "hint": "{{name}} si ferma ora e nessuno può avviarlo. Finché non revochi la sospensione, gli altri suoi utenti vedono solo questo avviso, senza console, file né backup.",
+      "reasonLabel": "Motivo (facoltativo)",
+      "reasonHint": "Mostrato agli utenti del server."
     },
     "changeGame": {
       "title": "Cambia gioco",

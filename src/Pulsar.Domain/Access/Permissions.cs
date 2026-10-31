@@ -41,6 +41,12 @@ public static class Permissions
         public const string LimitsEdit = "server.limits.edit";
         public const string Create = "server.create";
         public const string Delete = "server.delete";
+
+        /// <summary>
+        /// Suspend a server and end its suspension, and reach it while it is suspended (Pulsar 1.0.24): grantable on a node
+        /// or globally only, like its caps, so a server's own users cannot lift it.
+        /// </summary>
+        public const string Suspend = "server.suspend";
     }
 
     public static class Node

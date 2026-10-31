@@ -243,6 +243,7 @@
       },
       "create": "Créer des serveurs",
       "delete": "Supprimer des serveurs",
+      "suspend": "Suspendre des serveurs",
       "databases": {
         "view": "Voir les bases de données",
         "manage": "Gérer les bases de données et lire leurs mots de passe"
@@ -363,6 +364,8 @@
         "template_changed": "Passage d'un serveur à une autre version de son modèle",
         "game_changed": "Jeu d'un serveur changé",
         "transfer_requested": "Déplacement d'un serveur vers un autre nœud demandé",
+        "suspended": "A suspendu un serveur",
+        "unsuspended": "A levé la suspension d'un serveur",
         "update_requested": "Demande de mise à jour d'un jeu",
         "settings_changed": "Modification des paramètres d'un serveur",
         "ports_changed": "Modification des ports d'un serveur",
@@ -638,6 +641,8 @@
       "busy": "Une autre opération est en cours sur ce serveur. Attendez qu'elle se termine.",
       "not_installed": "Le serveur n'est pas encore installé.",
       "must_be_stopped": "Arrêtez d'abord le serveur.",
+      "suspended": "Le serveur est suspendu.",
+      "suspension_reason_invalid": "Le motif d'une suspension est un texte de 200 caractères au plus.",
       "command_rejected": "L'agent du nœud a rejeté la commande.",
       "host_incompatible": "Le jeu du serveur tourne encore sous une version antérieure de l'agent, qui ne peut pas le gérer. Arrêtez ou démarrez le serveur pour mettre fin à ce jeu (il est arrêté de force, sans sauvegarde).",
       "host_not_ended": "Le jeu du serveur tourne encore dans un processus hôte que l'agent n'a pas pu terminer ou vérifier. Réessayez dans un instant ; il n'est jamais lancé une seconde fois à côté.",
@@ -761,6 +766,7 @@
       "missed": "Le panneau n'était pas en marche à ce moment-là.",
       "interrupted": "Le panneau s'est arrêté avant la fin de l'exécution.",
       "not_running": "Le serveur n'était pas en marche.",
+      "suspended": "Le serveur était suspendu.",
       "unreadable": "La planification de la tâche (son expression cron ou son fuseau horaire) n'est plus lisible : modifiez-la pour la relancer.",
       "error": "Le panneau n'a pas pu exécuter la tâche ; son journal donne les détails.",
       "steps_invalid": "Une tâche a de 1 à 32 étapes : les commandes et les messages tiennent sur une ligne (128 caractères au plus pour les messages), les attentes durent de 1 seconde à un jour.",
@@ -1270,6 +1276,18 @@
       "failed": "Le serveur n'a pas pu être déplacé vers {{node}} : il reste sur son nœud tel qu'il était.",
       "leftCopy": "Le serveur a été déplacé vers {{node}}, mais sa copie sur l'ancien nœud n'a pas pu être supprimée.",
       "nodeGone": "un nœud qui n'existe plus"
+    },
+    "suspension": {
+      "badge": "Suspendu",
+      "title": "Ce serveur est suspendu",
+      "since": "Depuis le {{date}}.",
+      "reason": "Motif : {{reason}}",
+      "contact": "Demandez à son hébergeur de lever la suspension.",
+      "suspend": "Suspendre",
+      "unsuspend": "Lever la suspension",
+      "hint": "{{name}} s'arrête maintenant et personne ne peut le démarrer. Tant que vous ne levez pas la suspension, ses autres utilisateurs ne voient que cet avis, sans sa console, ses fichiers ni ses sauvegardes.",
+      "reasonLabel": "Motif (facultatif)",
+      "reasonHint": "Affiché aux utilisateurs du serveur."
     },
     "changeGame": {
       "title": "Changer de jeu",

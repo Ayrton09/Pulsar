@@ -153,7 +153,7 @@ internal sealed class PanelHub(
     /// its answer: the browser keeps it until then and drops what it already has.
     /// </summary>
     public async Task<ConsoleSnapshot?> WatchConsole(Guid serverId, long? fromSequence) =>
-        await FindServerAsync(serverId, Permissions.Server.ConsoleView) is { } server
+        await FindServerAsync(serverId, Permissions.Server.ConsoleView, whileSuspended: false) is { } server
             ? await consoles.WatchAsync(Context.ConnectionId, server.Id, server.Node, fromSequence, Context.ConnectionAborted)
             : null;
 
@@ -192,15 +192,24 @@ internal sealed class PanelHub(
     private async Task<EffectivePermissions?> PermissionsAsync() =>
         Context.User?.GetUserId() is { } user ? await permissions.GetAsync(user, Context.ConnectionAborted) : null;
 
-    /// <summary>The server and its node, if it exists and the user holds <paramref name="permission"/> on it.</summary>
-    private async Task<(ServerId Id, NodeId Node)?> FindServerAsync(Guid serverId, string permission)
+    /// <summary>
+    /// The server and its node, if it exists and the user holds <paramref name="permission"/> on it; a suspended one
+    /// (1.0.24) only for those who may suspend it, unless <paramref name="whileSuspended"/> (its page).
+    /// </summary>
+    private async Task<(ServerId Id, NodeId Node)?> FindServerAsync(Guid serverId, string permission, bool whileSuspended = true)
     {
         var id = new ServerId(serverId);
-        var node = await db.Servers.Where(s => s.Id == id).Select(s => (NodeId?)s.NodeId).SingleOrDefaultAsync(Context.ConnectionAborted);
-        return node is { } nodeId && Context.User?.GetUserId() is { } user
-            && (await permissions.GetAsync(user, Context.ConnectionAborted)).Has(permission, AccessTarget.ForServer(id, nodeId))
-                ? (id, nodeId)
-                : null;
+        var server = await db.Servers.Where(s => s.Id == id).Select(s => new { s.NodeId, s.SuspendedAt }).SingleOrDefaultAsync(Context.ConnectionAborted);
+        if (server is null || Context.User?.GetUserId() is not { } user)
+        {
+            return null;
+        }
+
+        var target = AccessTarget.ForServer(id, server.NodeId);
+        var granted = await permissions.GetAsync(user, Context.ConnectionAborted);
+        return granted.Has(permission, target) && (whileSuspended || server.SuspendedAt is null || granted.Has(Permissions.Server.Suspend, target))
+            ? (id, server.NodeId)
+            : null;
     }
 }
 
