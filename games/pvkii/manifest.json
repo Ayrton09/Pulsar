@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "pvkii",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Pirates, Vikings, and Knights II",
   "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
   "authors": ["Pulsar contributors"],
@@ -112,7 +112,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {

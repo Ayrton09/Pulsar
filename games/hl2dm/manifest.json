@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hl2dm",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Half-Life 2: Deathmatch",
   "description": "Half-Life 2: Deathmatch dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -118,7 +118,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {

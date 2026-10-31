@@ -300,6 +300,25 @@ public sealed class SourceManifestTests
         Assert.Contains(errors, e => e.Path == "ports");
     }
 
+    [Theory]
+    [InlineData("css")]
+    [InlineData("cs2")]
+    [InlineData("tf2")]
+    [InlineData("l4d2")]
+    [InlineData("hl2dm")]
+    [InlineData("pvkii")]
+    [InlineData("cs16")]
+    [InlineData("hldm")]
+    public void SourceAndGoldSrcGamesAreEndedSoonAfterTheirQuit(string game)
+    {
+        // They keep no world to save: a game still there seconds after its quit (stuck, or held while Windows reports its
+        // crash on the way out) is ended then, not after half a minute.
+        var stop = TestManifests.Load(game).Stop;
+
+        Assert.Equal("quit", Assert.IsType<RconCommandStop>(Assert.Single(stop.Steps)).Command);
+        Assert.InRange(stop.TimeoutSeconds, 1, 5);
+    }
+
     private static LaunchPlan Render(IReadOnlyDictionary<string, string?> values, IReadOnlyDictionary<string, PortAssignment>? ports = null) =>
         LaunchPlanRenderer.Render(TestManifests.Load("css"), ManifestValidator.WindowsX64, new ServerBinding("abcd1234", values, ports ?? s_gamePort,
             RconPassword: Rcon));

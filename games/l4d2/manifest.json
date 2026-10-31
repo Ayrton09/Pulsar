@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "l4d2",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "name": "Left 4 Dead 2",
   "description": "Left 4 Dead 2 dedicated server (srcds), installed anonymously with SteamCMD (about 10 GB).",
   "authors": ["Pulsar contributors"],
@@ -110,7 +110,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {

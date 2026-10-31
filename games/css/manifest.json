@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -149,7 +149,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {

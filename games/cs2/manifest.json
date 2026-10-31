@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -237,7 +237,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {

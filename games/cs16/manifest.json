@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs16",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Counter-Strike 1.6",
   "description": "Counter-Strike 1.6 dedicated server (hlds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -127,7 +127,7 @@
 
   "stop": {
     "steps": [ { "type": "rconCommand", "command": "quit" } ],
-    "timeoutSeconds": 30
+    "timeoutSeconds": 5
   },
 
   "backup": {
