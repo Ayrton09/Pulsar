@@ -189,9 +189,17 @@ public sealed class GameProcessTests : IDisposable
 
         var limited = await BurnAsync(process, output, 1);
         process.ApplyLimits(new ProcessLimits(50, null));
-        var raised = await BurnAsync(process, output, 2);
+        // A cap is only a ceiling: on a busy machine (CI's runners, the other test assemblies) one round may get less,
+        // so the raised one is measured again, up to three times, until it gets the room the cap gives.
+        var round = 2;
+        var raised = await BurnAsync(process, output, round);
+        while (raised <= limited * 2 && round < 4)
+        {
+            raised = Math.Max(raised, await BurnAsync(process, output, ++round));
+        }
+
         process.ApplyLimits(new ProcessLimits(5, null));
-        var lowered = await BurnAsync(process, output, 3);
+        var lowered = await BurnAsync(process, output, round + 1);
 
         // A hard cap of a share of every processor (with room for scheduling granularity), changed at once both ways.
         Assert.True(limited <= 0.15, $"Limited to 10 %: {limited:P0} of the machine");

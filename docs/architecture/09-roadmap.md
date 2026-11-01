@@ -545,6 +545,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 2 failed to start on a node whose server account has no Steam client ("Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory"): the game does not ship the Steam client's libraries. Its template now copies them beside `cs2.exe` from the server's SteamCMD after every install and update, checked as signed by Valve (`steamClient`, doc 04; T60, doc 08). It was not seen before because the game had only been run on a machine with Steam installed, as that machine's user.
 
+## 1.0.27 — Metamod:Source between its two lines
+
+- Metamod:Source could not be installed on Counter-Strike 2: the project published a stable 1.12 release after the 2.0 builds the game needs, and an addon that takes pre-releases looked only at the newest release. It now takes the newest release that has the addon's file.
+- The CPU limit test measures the raised limit again when a busy runner gives it less than the cap allows.
+
 ## 1.0.26 — Counter-Strike 2 Workshop maps
 
 - A Counter-Strike 2 server with a Workshop map did not load it: the template passed `+host_workshop_map` instead of `+map`, and the Workshop download needs a server already up on a map. It now starts on the starting map and changes to the Workshop map or collection after (template 1.5.1).

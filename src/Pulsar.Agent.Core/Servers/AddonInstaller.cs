@@ -269,9 +269,9 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     private static async Task<(string Release, string Name, string Url, string Sha256)> AssetAsync(VerifiedDownloader client, string what,
         GitHubReleaseSource source, CancellationToken cancellationToken)
     {
-        var release = await ReleaseAsync(client, source, cancellationToken);
         var pattern = new Regex(source.Asset, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-        var matching = (release.Assets ?? []).Where(a => a.Name is not null && pattern.IsMatch(a.Name)).ToList();
+        var release = await ReleaseAsync(client, source, pattern, cancellationToken);
+        var matching = Matching(release, pattern);
         if (matching is not [{ Name: { } name, BrowserDownloadUrl: { } url } asset])
         {
             throw Failed("addon.no_asset", $"{what} {release.TagName}: {matching.Count} assets match '{source.Asset}', not one.");
@@ -285,7 +285,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         return (release.TagName ?? name, name, url, digest[7..]);
     }
 
-    private static async Task<GitHubRelease> ReleaseAsync(VerifiedDownloader client, GitHubReleaseSource source, CancellationToken cancellationToken)
+    private static List<GitHubAsset> Matching(GitHubRelease release, Regex pattern) =>
+        (release.Assets ?? []).Where(a => a.Name is not null && pattern.IsMatch(a.Name)).ToList();
+
+    private static async Task<GitHubRelease> ReleaseAsync(VerifiedDownloader client, GitHubReleaseSource source, Regex pattern,
+        CancellationToken cancellationToken)
     {
         if (source.Tag is { } tag)
         {
@@ -299,7 +303,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         }
 
         var releases = await client.GetJsonAsync<GitHubRelease[]>(new Uri(GitHubApi, $"repos/{source.Repo}/releases?per_page=10"), null, cancellationToken);
-        return releases.FirstOrDefault(r => !r.Draft) ?? throw Failed("addon.no_release", $"{source.Repo} has no release.");
+        // The newest one with the asset: a project may publish another line's releases among them (Metamod:Source's
+        // stable 1.12 between its 2.0 builds for Counter-Strike 2).
+        var published = releases.Where(r => !r.Draft).ToList();
+        return published.Find(r => Matching(r, pattern).Count > 0) ?? published.FirstOrDefault()
+            ?? throw Failed("addon.no_release", $"{source.Repo} has no release.");
     }
 
     /// <param name="within">Only this folder of the archive, unpacked as its root (a Thunderstore package's); all of it when null or empty.</param>

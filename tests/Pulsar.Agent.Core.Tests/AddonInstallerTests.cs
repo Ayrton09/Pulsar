@@ -204,6 +204,33 @@ public sealed class AddonInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task APreReleaseSourceSkipsANewerReleaseOfAnotherLineWithoutItsAsset()
+    {
+        // Metamod:Source publishes its stable 1.12 between the 2.0 builds Counter-Strike 2 needs.
+        var zip = Zip(("addons/metamod/bin/win64/server.dll", "mm"));
+        _http.Routes["https://api.github.com/repos/alliedmodders/metamod-source/releases?per_page=10"] = () => Json(new object[]
+        {
+            new
+            {
+                tag_name = "1.12.0.1229", draft = false,
+                assets = new[] { new { name = "mmsource-1.12.0-git1229-windows.zip", browser_download_url = "https://github.com/x/old.zip", digest = "sha256:" + new string('0', 64) } },
+            },
+            new
+            {
+                tag_name = "2.0.0.1483", draft = false,
+                assets = new[] { new { name = "mmsource-2.0.0-git1483-windows.zip", browser_download_url = "https://github.com/x/mm.zip", digest = "sha256:" + Sha256(zip) } },
+            },
+        });
+        _http.Routes["https://github.com/x/mm.zip"] = () => Ok(zip);
+        Directory.CreateDirectory(Path.Combine(_root, "game", "csgo"));
+
+        var record = await InstallAsync(s_metamod);
+
+        Assert.Equal("2.0.0.1483", record.Release);
+        Assert.Equal("mm", File.ReadAllText(Path.Combine(_root, "game", "csgo", "addons", "metamod", "bin", "win64", "server.dll")));
+    }
+
+    [Fact]
     public async Task APreReleaseSourceTakesTheNewestReleaseIntoItsFolderAndItsLineGoesAwayWithIt()
     {
         var zip = Zip(("addons/metamod/bin/win64/server.dll", "mm"), ("addons/metamod.vdf", "\"Plugin\" {}"));
