@@ -541,6 +541,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - On phones, a table row's actions open as a sheet from the bottom, and text fields no longer make iOS zoom in (doc 07).
 - Actions on several servers at once (gap point 14): pick servers in the list, then start, restart, stop, back up or update them; each server's outcome is shown (doc 07).
 
+## 1.0.25 — Counter-Strike 2 on nodes without Steam
+
+- Counter-Strike 2 failed to start on a node whose server account has no Steam client ("Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory"): the game does not ship the Steam client's libraries. Its template now copies them beside `cs2.exe` from the server's SteamCMD after every install and update, checked as signed by Valve (`steamClient`, doc 04; T60, doc 08). It was not seen before because the game had only been run on a machine with Steam installed, as that machine's user.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

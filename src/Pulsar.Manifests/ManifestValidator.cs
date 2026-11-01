@@ -833,6 +833,11 @@ public static partial class ManifestValidator
                         context.Error($"{path}.betaPasswordVar", "Must name a secret variable, together with 'beta'.");
                     }
 
+                    if (steam.SteamClient is { } steamClient)
+                    {
+                        ValidateRelativePath($"{path}.steamClient", steamClient, context.Error);
+                    }
+
                     break;
                 case EnsureDirectoryStep step:
                     ValidateRelativePath($"{path}.path", step.Path, context.Error);

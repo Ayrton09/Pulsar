@@ -1,5 +1,9 @@
 # Counter-Strike 2 (cs2)
 
+## Steam's client libraries (1.0.25)
+
+The dedicated server does not ship `steamclient64.dll`: it looks for it beside `cs2.exe` or in an installed Steam client, which the server's own account does not have, and then stops with "Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory". The install and the update copy it, with `tier0_s64.dll` and `vstdlib_s64.dll`, from the server's SteamCMD into `game/bin/win64` (`steamClient`). A server installed before gets them when it moves to this template version (1.5.0), which installs again, or at its next game update.
+
 ## Options added in 1.0.8
 
 - Server: `sv_tags`, `sv_lan`, `sv_cheats`, `sv_voiceenable` (in `server.cfg`).

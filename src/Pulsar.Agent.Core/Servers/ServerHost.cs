@@ -191,10 +191,12 @@ public sealed partial class ServerHost(
                 yield return AgentCapabilities.ExtractArchive;
             }
 
-            // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
+            // Its install accepts the server only signed by Microsoft, and the Steam client's libraries only signed by Valve: an
+            // agent that cannot check signatures does not offer them.
             if (installOptions.CodeSignatures is not null)
             {
                 yield return AgentCapabilities.MinecraftBedrock;
+                yield return AgentCapabilities.SteamClient;
             }
 
             if (installOptions.TestGameAvailable)
@@ -1259,6 +1261,11 @@ public sealed partial class ServerHost(
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, beta, betaPassword,
                     validate ?? steam.Validate, login);
                 await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
+                if (steam.SteamClient is { } folder)
+                {
+                    console.Note($"Copying Steam's client libraries to {folder}", clock.GetUtcNow());
+                    installSteps.CopySteamClient(provisioned.Directory, folder);
+                }
             }
             else
             {

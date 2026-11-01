@@ -308,12 +308,18 @@ public abstract record InstallStep;
 /// <param name="Beta">A beta branch (<c>-beta</c>).</param>
 /// <param name="BetaPasswordVar">Secret string variable holding the branch password (<c>-betapassword</c>).</param>
 /// <param name="Validate">Verify every file against Steam on every run (slow); an update operation can ask for it too.</param>
+/// <param name="SteamClient">
+/// A folder of the server the Steam client's libraries are copied into after every run, from the server's SteamCMD
+/// (Pulsar 1.0.25): a game server that does not ship them (Counter-Strike 2) looks for them beside its executable, or
+/// in a Steam client the server's account does not have.
+/// </param>
 public sealed record SteamCmdStep(
     int AppId,
     string Login = SteamCmdStep.AnonymousLogin,
     string? Beta = null,
     string? BetaPasswordVar = null,
-    bool Validate = false) : InstallStep
+    bool Validate = false,
+    string? SteamClient = null) : InstallStep
 {
     public const string AnonymousLogin = "anonymous";
     public const string AccountLogin = "account";

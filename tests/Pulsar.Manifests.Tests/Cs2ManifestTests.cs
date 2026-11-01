@@ -25,4 +25,16 @@ public sealed class Cs2ManifestTests
         Assert.DoesNotContain("+sv_setsteamaccount", withoutToken.Arguments);
         Assert.Equal(["+game_type", "0", "+game_mode", "1"], withoutToken.Arguments.Skip(9).Take(4));
     }
+
+    [Fact]
+    public void InstallsAndUpdatesWithSteamsClientLibrariesBesideTheGame()
+    {
+        // Its account has no Steam client: without them SteamGameServer_Init fails ("Could not determine Steam client install directory").
+        var manifest = TestManifests.Load("cs2");
+
+        Assert.Equal("game/bin/win64", Assert.IsType<SteamCmdStep>(Assert.Single(manifest.Install!.Steps)).SteamClient);
+        Assert.Equal("game/bin/win64", Assert.IsType<SteamCmdStep>(Assert.Single(manifest.Update!.Steps)).SteamClient);
+        Assert.True(ManifestFeatures.UsesSteamClient(manifest));
+        Assert.False(ManifestFeatures.UsesSteamClient(TestManifests.Load("css")));
+    }
 }

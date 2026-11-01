@@ -885,6 +885,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string GoldSrcRcon = "manifest.goldsrc_rcon";
 
+    /// <summary>
+    /// Not a command: the agent copies the Steam client's libraries beside a game after SteamCMD installs it (Pulsar 1.0.25,
+    /// <c>steamClient</c>); an older one refuses manifests that ask for it.
+    /// </summary>
+    public const string SteamClient = "manifest.steam_client";
+
     /// <summary>The agent provisions a server clean (<see cref="ProvisionServerCommand.Clean"/>, Pulsar 1.0.16): it becomes another game.</summary>
     public const string ChangeGame = "server.change_game";
 

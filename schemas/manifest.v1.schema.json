@@ -238,7 +238,8 @@
         },
         "beta": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
         "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password. The agent fails the install (steamcmd.beta_password_invalid) when its value is one SteamCMD would not receive whole: more than 64 characters, spaces, double quotes or control characters, or a leading + or -." },
-        "validate": { "type": "boolean", "default": false }
+        "validate": { "type": "boolean", "default": false },
+        "steamClient": { "$ref": "#/$defs/RelativePath", "description": "A folder (the game executable's) the Steam client's libraries (steamclient64.dll, tier0_s64.dll, vstdlib_s64.dll) are copied into from the server's SteamCMD after every run, each checked as signed by Valve: for a game server that does not ship them and would look for an installed Steam client (Counter-Strike 2). Agents read it from Pulsar 1.0.25." }
       }
     },
     "EnsureDirectoryStep": {

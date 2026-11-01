@@ -40,6 +40,8 @@ public sealed class ServerAddonTests(PulsarApiFactory factory) : IClassFixture<P
         await GameServerTests.AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27030");
         var server = await InstalledAsync(admin, agent, "cs2");
         var root = Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId);
+        // The game finds Steam's client libraries beside it, copied from its SteamCMD (1.0.25).
+        Assert.Equal("steamclient64.dll of SteamCMD", await File.ReadAllTextAsync(Path.Combine(root, "game", "bin", "win64", "steamclient64.dll"), Ct));
         var gameInfo = Path.Combine(root, "game", "csgo", "gameinfo.gi");
         Directory.CreateDirectory(Path.GetDirectoryName(gameInfo)!);
         await File.WriteAllTextAsync(gameInfo, GameInfo, Ct);

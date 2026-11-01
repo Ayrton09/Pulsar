@@ -81,6 +81,13 @@ public static class ManifestFeatures
             || manifest.ConfigFileList.Any(f => f.Lists is { Count: > 0 });
     }
 
+    /// <summary>The Steam client's libraries copied beside the game (Pulsar 1.0.25, <see cref="SteamCmdStep.SteamClient"/>).</summary>
+    public static bool UsesSteamClient(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<SteamCmdStep>().Any(s => s.SteamClient is not null);
+    }
+
     /// <summary>GoldSrc's RCON over UDP (Pulsar 1.0.15): an older agent refuses the protocol.</summary>
     public static bool UsesGoldSrcRcon(GameManifest manifest)
     {

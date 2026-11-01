@@ -220,6 +220,8 @@ public sealed class SourceManifestTests
     [InlineData("""{"type": "steamcmd", "appId": 0}""", "install.steps[1].appId")]
     [InlineData("""{"type": "steamcmd", "appId": 232330, "beta": "pre release"}""", "install.steps[1].beta")]
     [InlineData("""{"type": "steamcmd", "appId": 232330, "beta": "x", "betaPasswordVar": "hostname"}""", "install.steps[1].betaPasswordVar")]
+    [InlineData("""{"type": "steamcmd", "appId": 232330, "steamClient": "../bin"}""", "install.steps[1].steamClient")]
+    [InlineData("""{"type": "steamcmd", "appId": 232330, "steamClient": ".pulsar/steamcmd"}""", "install.steps[1].steamClient")]
     [InlineData("""{"type": "writeFileIfMissing", "path": "../x.cfg", "content": ""}""", "install.steps[1].path")]
     [InlineData("""{"type": "testGameServer", "path": "bin"}""", "install.steps[1]")]
     public void InstallStepsAreChecked(string step, string path)

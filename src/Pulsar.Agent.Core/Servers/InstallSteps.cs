@@ -322,6 +322,63 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         files.Write(serverDirectory, copy.To, content);
     }
 
+    /// <summary>The Steam client's libraries <see cref="CopySteamClient"/> copies, as SteamCMD keeps them.</summary>
+    public static readonly IReadOnlyList<string> SteamClientFiles = ["steamclient64.dll", "tier0_s64.dll", "vstdlib_s64.dll"];
+
+    /// <summary>Largest Steam client library copied (steamclient64.dll is about 26 MB).</summary>
+    public const long MaxSteamClientFileSize = 256L * 1024 * 1024;
+
+    // The organization of Valve's code signing certificates: "Valve" (2025), then "Valve Corp." (2026).
+    private static readonly string[] s_valveSigners = ["Valve Corp.", "Valve"];
+
+    /// <summary>
+    /// Copies the Steam client's libraries from the server's SteamCMD into <paramref name="folder"/> (Pulsar 1.0.25,
+    /// <see cref="SteamCmdStep.SteamClient"/>): a game server looks for them beside its executable when its account has
+    /// no Steam client. SteamCMD runs as the server's account, which can change its folder, so each file is read into
+    /// the agent's own temporary file and written only once that copy is signed by Valve; every run replaces them, as
+    /// SteamCMD updates itself.
+    /// </summary>
+    public void CopySteamClient(string serverDirectory, string folder)
+    {
+        var signatures = options.CodeSignatures
+            ?? throw new GameProcessException("steamclient.untrusted", "This agent cannot check code signatures, so it does not copy Steam's client libraries.");
+        foreach (var name in SteamClientFiles)
+        {
+            var checkedCopy = Path.GetTempFileName();
+            try
+            {
+                using (var source = files.OpenRead(serverDirectory, $"{Steam.SteamCmdRunner.WorkingDirectory}/{name}")
+                    ?? throw new GameProcessException("steamclient.missing", $"SteamCMD has no {name} to copy."))
+                using (var copy = File.Create(checkedCopy))
+                {
+                    var buffer = new byte[81920];
+                    int read;
+                    while ((read = source.Read(buffer)) > 0)
+                    {
+                        if (copy.Length + read > MaxSteamClientFileSize)
+                        {
+                            throw new GameProcessException("steamclient.too_large", $"SteamCMD's {name} is larger than {MaxSteamClientFileSize / 1024 / 1024} MiB.");
+                        }
+
+                        copy.Write(buffer, 0, read);
+                    }
+                }
+
+                if (!s_valveSigners.Any(signer => signatures.IsSignedBy(checkedCopy, signer)))
+                {
+                    throw new GameProcessException("steamclient.untrusted", $"SteamCMD's {name} is not signed by Valve; it was not copied.");
+                }
+
+                using var verified = File.OpenRead(checkedCopy);
+                files.Write(serverDirectory, $"{folder}/{name}", verified);
+            }
+            finally
+            {
+                File.Delete(checkedCopy);
+            }
+        }
+    }
+
     /// <summary>A path inside the server directory whose existing components are real directories, never links.</summary>
     public static string Resolve(string serverDirectory, string relativePath)
     {

@@ -148,6 +148,12 @@ public sealed class ScriptedProcessManager : IGameProcessManager
             await File.WriteAllTextAsync(path, $"app {app}");
         }
 
+        // SteamCMD's own Steam client libraries, which a template may copy beside its game (cs2).
+        foreach (var library in Pulsar.Agent.Core.Servers.InstallSteps.SteamClientFiles)
+        {
+            await File.WriteAllTextAsync(Path.Combine(spec.ServerRoot, ".pulsar", "steamcmd", library), $"{library} of SteamCMD");
+        }
+
         // What SteamCMD keeps of what it installed: the build an update check compares.
         var appManifest = Path.Combine(spec.ServerRoot, "steamapps", $"appmanifest_{app}.acf");
         Directory.CreateDirectory(Path.GetDirectoryName(appManifest)!);
@@ -296,6 +302,13 @@ public sealed class ScriptedSteamCmdSource(string path) : Pulsar.Agent.Core.Stea
         File.WriteAllText(path, "steamcmd");
         return Task.FromResult(path);
     }
+}
+
+/// <summary>Code signatures of the scripted games' files: what SteamCMD keeps is Valve's, as the real one's is.</summary>
+public sealed class ScriptedSignatures : Pulsar.Agent.Core.Servers.ICodeSignatures
+{
+    public bool IsSignedBy(string path, string organization) =>
+        organization == "Valve Corp." && File.ReadAllText(path).EndsWith(" of SteamCMD", StringComparison.Ordinal);
 }
 
 /// <summary>RCON to the scripted Source games: reachable while the game started on that port runs; "quit" stops it.</summary>

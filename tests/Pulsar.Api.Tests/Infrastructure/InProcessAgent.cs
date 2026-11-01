@@ -150,7 +150,9 @@ public sealed class InProcessAgent : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(testGame, "Pulsar.TestGameServer.exe"), "not a real executable", TestContext.Current.CancellationToken);
 
         var channel = Channel = new PanelChannel();
-        var install = Http is null ? new InstallOptions { TestGameDirectory = testGame } : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http };
+        var install = Http is null
+            ? new InstallOptions { TestGameDirectory = testGame, CodeSignatures = new ScriptedSignatures() }
+            : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http, CodeSignatures = new ScriptedSignatures() };
         var files = new DirectServerFiles();
         _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files, new DirectServerFileManager(), SteamLogins,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);

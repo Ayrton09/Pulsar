@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -77,8 +77,8 @@
     { "name": "tv", "label": "CSTV", "protocols": ["udp"], "default": 27020, "required": false, "description": "Assign it to enable CSTV." }
   ],
 
-  "install": { "steps": [ { "type": "steamcmd", "appId": 730 } ] },
-  "update": { "steps": [ { "type": "steamcmd", "appId": 730 } ] },
+  "install": { "steps": [ { "type": "steamcmd", "appId": 730, "steamClient": "game/bin/win64" } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 730, "steamClient": "game/bin/win64" } ] },
 
   "runtime": {
     "windows-x64": {

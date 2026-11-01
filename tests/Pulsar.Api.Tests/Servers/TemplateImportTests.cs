@@ -350,7 +350,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             .Where(t => t.Source == TemplateSource.Bundled).ToList();
 
         // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need, one before 1.0.15
-        // GoldSrc's RCON.
+        // GoldSrc's RCON, one before 1.0.25 (or one that cannot check Valve's signature) the copy of Steam's client libraries.
         string[] all = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         foreach (var (game, capability, values) in new[]
@@ -361,6 +361,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("arma-reforger", AgentCapabilities.CatalogLists, new Dictionary<string, string?>()),
             ("cs16", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
             ("hldm", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
+            ("cs2", AgentCapabilities.SteamClient, new Dictionary<string, string?>()),
         })
         {
             var template = templates.Single(t => t.Key == game);

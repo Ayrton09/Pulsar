@@ -81,7 +81,8 @@ public sealed partial class SteamCmdRunner(
     /// <summary>Where a Steam account's cached login is while it is lent to the server's SteamCMD, relative to the server's directory.</summary>
     public const string LentLogin = WorkingDirectory + "/" + SteamLoginStore.CachedLoginFile;
 
-    private const string WorkingDirectory = ".pulsar/steamcmd";
+    /// <summary>The server's SteamCMD folder, relative to its directory.</summary>
+    internal const string WorkingDirectory = ".pulsar/steamcmd";
     private const int SelfUpdateExitCode = 7;
 
     // Output of app_info_print kept at most: the app's info is tens of kilobytes; SteamCMD's own lines come before it.

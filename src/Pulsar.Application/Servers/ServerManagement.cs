@@ -861,7 +861,8 @@ public sealed partial class ServerManagement(
     /// <summary>
     /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
     /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
-    /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12, GoldSrc's RCON 1.0.15.
+    /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12, GoldSrc's RCON 1.0.15,
+    /// the Steam client's libraries 1.0.25.
     /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
@@ -883,7 +884,8 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesUmod(manifest) || Announces(connection, AgentCapabilities.UmodPlugins))
         && (!ManifestFeatures.UsesThunderstore(manifest) || Announces(connection, AgentCapabilities.ThunderstorePackages))
         && (!ManifestFeatures.UsesCatalogLists(manifest) || Announces(connection, AgentCapabilities.CatalogLists))
-        && (!ManifestFeatures.UsesGoldSrcRcon(manifest) || Announces(connection, AgentCapabilities.GoldSrcRcon));
+        && (!ManifestFeatures.UsesGoldSrcRcon(manifest) || Announces(connection, AgentCapabilities.GoldSrcRcon))
+        && (!ManifestFeatures.UsesSteamClient(manifest) || Announces(connection, AgentCapabilities.SteamClient));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;
