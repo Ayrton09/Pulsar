@@ -263,13 +263,16 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         using var admin = await factory.CreateAdminClientAsync();
         await using var agent = await ConnectedAgentAsync(admin, "retention-race");
         var server = await InstalledServerAsync(admin, agent, "Retention race");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database;
+        // No limit while they are made: a backup's own retention runs after it, in the background, and could read the
+        // limit of 1 set below and prune before the lock this test is about.
+        await database.ExecuteSqlRawAsync("UPDATE servers SET backup_limit = NULL WHERE id = {0}", [server], Ct);
         var oldest = await MadeAsync(admin, server, "oldest");
         var older = await MadeAsync(admin, server, "older");
         var newer = await MadeAsync(admin, server, "newer");
         var newest = await MadeAsync(admin, server, "newest");
-        await using var scope = factory.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database
-            .ExecuteSqlRawAsync("UPDATE servers SET backup_limit = 1 WHERE id = {0}", [server], Ct);
+        await database.ExecuteSqlRawAsync("UPDATE servers SET backup_limit = 1 WHERE id = {0}", [server], Ct);
 
         // Retention takes the newer, the older and the oldest, in that order; a user locks the older one while the node
         // deletes the newer.

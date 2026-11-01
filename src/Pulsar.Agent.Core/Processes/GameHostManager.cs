@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using Microsoft.Extensions.Logging;
 
@@ -63,6 +64,15 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     /// does not answer is killed with its game, and a machine that is starting can be slow.
     /// </summary>
     public TimeSpan ReattachTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How often an existing host is asked when it closes the connection at once (it was still ending the previous one:
+    /// seen on Linux's pipes) before it is taken not to answer.
+    /// </summary>
+    public int ReattachAttempts { get; init; } = 3;
+
+    /// <summary>The pause before asking again a host that closed the connection at once.</summary>
+    public TimeSpan ReattachRetryPause { get; init; } = TimeSpan.FromMilliseconds(200);
 
     /// <summary>How long a request to a running host may take (a release waits for the game's tree to end).</summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
@@ -140,26 +150,45 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
             return null;
         }
 
-        HostedGameProcess? process = null;
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            process = await HostedGameProcess.ConnectAsync(this, host, ReattachTimeout, ReattachTimeout, cancellationToken).ConfigureAwait(false);
-            if (process.Status.ProcessId is null)
+            var asked = Stopwatch.GetTimestamp();
+            HostedGameProcess? process = null;
+            try
             {
-                await process.DisposeAsync().ConfigureAwait(false);
+                process = await HostedGameProcess.ConnectAsync(this, host, ReattachTimeout, ReattachTimeout, cancellationToken).ConfigureAwait(false);
+                if (process.Status.ProcessId is null)
+                {
+                    await process.DisposeAsync().ConfigureAwait(false);
+                    return null;
+                }
+
+                await process.SubscribeAsync(outputFrom, cancellationToken).ConfigureAwait(false);
+                LogReattached(process.ServerId, host.ProcessId, process.ProcessId);
+                return process;
+            }
+            catch (GameProcessException ex) when (ex.Code == "host.incompatible")
+            {
+                LogIncompatible(host.ProcessId, ex.Message);
+                throw;
+            }
+            catch (GameProcessException ex) when (process is null && ex.Code == "host.unreachable" && attempt < ReattachAttempts
+                                                  && Stopwatch.GetElapsedTime(asked) < ReattachTimeout / 2 && launcher.IsAlive(host))
+            {
+                // Closed at once while connecting, not silent: the host was still ending the connection before (its game
+                // exited just as the agent left). Asked again rather than killed with its game. (A connection that failed
+                // later, once made, is given up: disposing it would release or kill the host anyway.)
+                LogReattachRetried(host.ProcessId, ex.Message);
+                await Task.Delay(ReattachRetryPause, cancellationToken).ConfigureAwait(false);
+            }
+            catch (GameProcessException ex)
+            {
+                await GiveUpAsync(ex, process).ConfigureAwait(false);
                 return null;
             }
+        }
 
-            await process.SubscribeAsync(outputFrom, cancellationToken).ConfigureAwait(false);
-            LogReattached(process.ServerId, host.ProcessId, process.ProcessId);
-            return process;
-        }
-        catch (GameProcessException ex) when (ex.Code == "host.incompatible")
-        {
-            LogIncompatible(host.ProcessId, ex.Message);
-            throw;
-        }
-        catch (GameProcessException ex)
+        async Task GiveUpAsync(GameProcessException ex, HostedGameProcess? process)
         {
             LogReattachFailed(host.ProcessId, ex.Code, ex.Message);
             if (process is not null)
@@ -172,8 +201,6 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
                 // A host that does not answer and cannot be ended: its game may run on, so it is not "gone".
                 throw new GameProcessException(HostUnverifiable, $"The host process {host.ProcessId} does not answer and could not be ended.", ex);
             }
-
-            return null;
         }
     }
 
@@ -274,6 +301,9 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} of a server does not answer ({Code}: {Reason}); killing it")]
     private partial void LogReattachFailed(int hostProcessId, string code, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The host process {HostProcessId} of a server closed the connection at once ({Reason}); asking again")]
+    private partial void LogReattachRetried(int hostProcessId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} of a server could not be checked or ended ({Reason}): its record is kept")]
     private partial void LogUnverifiable(int hostProcessId, string reason);

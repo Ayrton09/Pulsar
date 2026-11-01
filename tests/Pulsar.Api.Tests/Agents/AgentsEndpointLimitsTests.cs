@@ -848,6 +848,7 @@ public sealed class AgentsEndpointConnectionLimitTests(AgentsEndpointConnectionL
     public async Task ATlsHandshakeWaitsForAConnectionToEnd()
     {
         factory.StartServer();
+        await NothingPendingAsync();
         var agents = new IPEndPoint(IPAddress.Loopback, factory.AgentsPort);
 
         // Two connections that never start their handshake hold the strangers' share; the third is closed at once, unread.
@@ -891,6 +892,8 @@ public sealed class AgentsEndpointConnectionLimitTests(AgentsEndpointConnectionL
     public async Task AConnectionThatNeverStartsItsHandshakeIsDroppedAfterFiveSeconds()
     {
         factory.StartServer();
+        // The other test's connections may still hold the two places of strangers: this one would be refused at once.
+        await NothingPendingAsync();
         using var tcp = new TcpClient();
         await tcp.ConnectAsync(new IPEndPoint(IPAddress.Loopback, factory.AgentsPort), Ct);
         var watch = Stopwatch.StartNew();
@@ -901,6 +904,10 @@ public sealed class AgentsEndpointConnectionLimitTests(AgentsEndpointConnectionL
         Assert.Equal(0, read);
         Assert.InRange(watch.Elapsed, AgentsEndpoint.HandshakeTimeout - TimeSpan.FromSeconds(1), AgentsEndpoint.HandshakeTimeout + TimeSpan.FromSeconds(4));
     }
+
+    /// <summary>Waits until the endpoint counts no connection that has not signed in (the tests of this class share it).</summary>
+    private Task NothingPendingAsync() =>
+        InProcessAgent.EventuallyAsync(() => Task.FromResult(factory.Limit.Pending == 0), "no connection of an earlier test still counted");
 
     /// <summary>What the panel sends on a connection within <paramref name="within"/> (2 s): 0 when it closed it, -1 when it is still open.</summary>
     internal static async Task<int> ReadAsync(Stream stream, TimeSpan? within = null)
