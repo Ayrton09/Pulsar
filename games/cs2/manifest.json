@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -54,7 +54,7 @@
       "description": "Players can use cheat commands." },
     { "key": "voice", "label": "Voice chat", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
     { "key": "workshopMap", "label": "Workshop map ID", "type": "string", "maxLength": 20, "pattern": "^[0-9]{1,20}$",
-      "description": "Starts on this Steam Workshop map instead of the starting map." },
+      "description": "Changes to this Steam Workshop map once the server is up on the starting map." },
     { "key": "workshopCollection", "label": "Workshop collection ID", "type": "string", "maxLength": 20, "pattern": "^[0-9]{1,20}$",
       "description": "Hosts the maps of this Steam Workshop collection." },
     { "key": "mapGroup", "label": "Map group", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
@@ -92,11 +92,12 @@
         "-maxplayers", "{{var.maxPlayers}}",
         "+game_type", "{{var.gameMode.gameType}}",
         "+game_mode", "{{var.gameMode.gameMode}}",
-        { "if": "var.workshopMap", "then": ["+host_workshop_map", "{{var.workshopMap}}"], "else": ["+map", "{{var.map}}"] },
-        { "if": "var.workshopCollection", "then": ["+host_workshop_collection", "{{var.workshopCollection}}"] },
         { "if": "var.mapGroup", "then": ["+mapgroup", "{{var.mapGroup}}"] },
+        "+map", "{{var.map}}",
         "+rcon_password", "{{rcon.password}}",
-        { "if": "var.gslt", "then": ["+sv_setsteamaccount", "{{var.gslt}}"] }
+        { "if": "var.gslt", "then": ["+sv_setsteamaccount", "{{var.gslt}}"] },
+        { "if": "var.workshopMap", "then": ["+host_workshop_map", "{{var.workshopMap}}"] },
+        { "if": "var.workshopCollection", "then": ["+host_workshop_collection", "{{var.workshopCollection}}"] }
       ],
       "allowExtraArguments": true,
       "console": {

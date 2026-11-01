@@ -545,6 +545,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 2 failed to start on a node whose server account has no Steam client ("Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory"): the game does not ship the Steam client's libraries. Its template now copies them beside `cs2.exe` from the server's SteamCMD after every install and update, checked as signed by Valve (`steamClient`, doc 04; T60, doc 08). It was not seen before because the game had only been run on a machine with Steam installed, as that machine's user.
 
+## 1.0.26 — Counter-Strike 2 Workshop maps
+
+- A Counter-Strike 2 server with a Workshop map did not load it: the template passed `+host_workshop_map` instead of `+map`, and the Workshop download needs a server already up on a map. It now starts on the starting map and changes to the Workshop map or collection after (template 1.5.1).
+- The agent asks a game host again when it closes the connection at once on reattach, instead of ending the host with its game (doc 06).
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).
