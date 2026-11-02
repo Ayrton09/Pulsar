@@ -1457,7 +1457,18 @@
       "command": "コマンド",
       "commandPlaceholder": "コマンドを入力してEnterを押します",
       "notRunning": "サーバーは稼働していません",
-      "send": "送信"
+      "send": "送信",
+      "pause": "一時停止",
+      "resume": "再開",
+      "copyAll": "すべてコピー",
+      "copied": "コピーしました",
+      "download": "ファイルとしてダウンロード",
+      "smaller": "文字を小さく",
+      "larger": "文字を大きく",
+      "fullScreen": "全画面",
+      "exitFullScreen": "全画面を終了",
+      "held": "一時停止中 · 待機中の出力: {{count}}",
+      "toEnd": "末尾へ移動"
     },
     "usage": {
       "label": "使用状況",

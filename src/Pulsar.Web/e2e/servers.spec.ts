@@ -133,6 +133,26 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expect(output).toContainText('Test server: hello from the browser', { timeout: 15_000 });
   await expect(commandField).toHaveValue('');
   await page.screenshot({ path: 'test-results/screens/server-console.png', fullPage: true });
+
+  // 1.0.29: the console's tools, on the real terminal: copy all, download, Tab, pause and resume.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Copy all' }).click();
+  expect(await page.evaluate('navigator.clipboard.readText()')).toContain('Test server: hello from the browser');
+  const consoleFile = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download as a file' }).click();
+  expect((await consoleFile).suggestedFilename()).toMatch(/^console-[A-Za-z0-9_-]+-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.txt$/);
+  await commandField.fill('say h');
+  await commandField.press('Tab');
+  await expect(commandField).toHaveValue('say hello from the browser');
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await commandField.fill('say while paused');
+  await commandField.press('Enter');
+  await expect(page.getByText(/Paused · output waiting: [1-9]/)).toBeVisible({ timeout: 15_000 });
+  await expect(output).not.toContainText('Test server: while paused');
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(output).toContainText('Test server: while paused');
+  await page.getByRole('button', { name: 'Larger text' }).click();
+  await page.screenshot({ path: 'test-results/screens/server-console-tools.png', fullPage: true });
   await page.getByRole('tab', { name: 'Overview' }).click();
 
   // Restart: a graceful stop (quit, exit code 0) and a new start, as one unit.

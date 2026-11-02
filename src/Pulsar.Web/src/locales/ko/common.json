@@ -1457,7 +1457,18 @@
       "command": "명령",
       "commandPlaceholder": "명령을 입력하고 Enter를 누르세요",
       "notRunning": "서버가 실행 중이 아닙니다",
-      "send": "보내기"
+      "send": "보내기",
+      "pause": "일시 정지",
+      "resume": "계속",
+      "copyAll": "모두 복사",
+      "copied": "복사됨",
+      "download": "파일로 다운로드",
+      "smaller": "글자 작게",
+      "larger": "글자 크게",
+      "fullScreen": "전체 화면",
+      "exitFullScreen": "전체 화면 종료",
+      "held": "일시 정지됨 · 대기 중인 출력: {{count}}",
+      "toEnd": "끝으로 이동"
     },
     "usage": {
       "label": "사용량",

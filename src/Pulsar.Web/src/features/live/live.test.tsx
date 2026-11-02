@@ -219,6 +219,74 @@ describe('server console', () => {
     expect(field).toHaveValue('say hello');
   });
 
+  it('keeps what was sent in this browser, completes it with Tab, and never keeps a secret', async () => {
+    localStorage.clear();
+    serverApi();
+    await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+    const field = await screen.findByRole('textbox', { name: 'Command' });
+
+    await user.type(field, 'mp_restartgame 1{Enter}');
+    await waitFor(() => expect(field).toHaveValue(''));
+    await user.type(field, 'mp_maxrounds 30{Enter}');
+    await waitFor(() => expect(field).toHaveValue(''));
+    await user.type(field, 'rcon_password hunter2{Enter}');
+    await waitFor(() => expect(field).toHaveValue(''));
+
+    // Tab: the newest that starts with what was typed, then the one before it.
+    await user.type(field, 'mp_');
+    await user.keyboard('{Tab}');
+    expect(field).toHaveValue('mp_maxrounds 30');
+    await user.keyboard('{Tab}');
+    expect(field).toHaveValue('mp_restartgame 1');
+    expect(field).toHaveFocus();
+
+    const kept = Object.keys(localStorage)
+      .filter((key) => key.startsWith('pulsar.console.history.'))
+      .map((key) => localStorage.getItem(key) ?? '');
+    expect(kept).toEqual([JSON.stringify(['mp_restartgame 1', 'mp_maxrounds 30'])]);
+  });
+
+  it('holds output while paused and writes it on resume', async () => {
+    serverApi();
+    answerNext({ WatchConsole: () => Promise.resolve({ entries: [entry(1, 'one\r\n')], nodeConnected: true }) });
+    const live = await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+    await waitFor(() => expect(consoleText()).toBe('one\r\n'));
+
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    live.emit('ConsoleOutput', { serverId: server.id, entries: [entry(2, 'two\r\n')] });
+    expect(consoleText()).toBe('one\r\n');
+    expect(await screen.findByText('Paused · output waiting: 1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Resume' }));
+    expect(consoleText()).toBe('one\r\ntwo\r\n');
+    expect(terminals.at(-1)?.scrolledToBottom).toBe(1);
+  });
+
+  it('copies or downloads all it holds, and keeps the text size the reader chose', async () => {
+    localStorage.clear();
+    serverApi();
+    answerNext({ WatchConsole: () => Promise.resolve({ entries: [entry(1, 'one\r\ntwo\r\n')], nodeConnected: true }) });
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => 'blob:console');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+    await waitFor(() => expect(consoleText()).toBe('one\r\ntwo\r\n'));
+
+    // userEvent's own clipboard stands in for the browser's.
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+    expect(await navigator.clipboard.readText()).toBe('one\ntwo\n');
+    await user.click(screen.getByRole('button', { name: 'Download as a file' }));
+    expect(await createObjectURL.mock.calls[0]?.[0].text()).toBe('one\ntwo\n');
+    expect(click).toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Larger text' }));
+    await waitFor(() => expect(terminals.at(-1)?.options.fontSize).toBe(14));
+    expect(localStorage.getItem('pulsar.console.fontSize')).toBe('14');
+  });
+
   it('says why the node refused a command, in the user language', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),

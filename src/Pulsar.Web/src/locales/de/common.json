@@ -1457,7 +1457,18 @@
       "command": "Befehl",
       "commandPlaceholder": "Befehl eingeben und Eingabetaste drücken",
       "notRunning": "Der Server läuft nicht",
-      "send": "Senden"
+      "send": "Senden",
+      "pause": "Anhalten",
+      "resume": "Fortsetzen",
+      "copyAll": "Alles kopieren",
+      "copied": "Kopiert",
+      "download": "Als Datei herunterladen",
+      "smaller": "Kleinere Schrift",
+      "larger": "Größere Schrift",
+      "fullScreen": "Vollbild",
+      "exitFullScreen": "Vollbild beenden",
+      "held": "Angehalten · wartende Ausgabe: {{count}}",
+      "toEnd": "Zum Ende"
     },
     "usage": {
       "label": "Auslastung",

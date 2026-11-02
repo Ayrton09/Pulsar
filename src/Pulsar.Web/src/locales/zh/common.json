@@ -1457,7 +1457,18 @@
       "command": "命令",
       "commandPlaceholder": "输入命令并按 Enter",
       "notRunning": "服务器未运行",
-      "send": "发送"
+      "send": "发送",
+      "pause": "暂停",
+      "resume": "继续",
+      "copyAll": "全部复制",
+      "copied": "已复制",
+      "download": "下载为文件",
+      "smaller": "缩小文字",
+      "larger": "放大文字",
+      "fullScreen": "全屏",
+      "exitFullScreen": "退出全屏",
+      "held": "已暂停 · 等待中的输出：{{count}}",
+      "toEnd": "转到末尾"
     },
     "usage": {
       "label": "使用情况",

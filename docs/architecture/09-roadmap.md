@@ -549,6 +549,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 2's "Max rounds" took 0 as no limit, as older Counter-Strike does; Counter-Strike 2 then never ends its warmup (stuck at 0:01). It takes 1 to 100 now (template 1.5.2).
 - The console copies its selection with Ctrl+C (Cmd+C); the terminal used to take the key.
+- The console can be paused (output held, then written), copied whole or downloaded as a file, shown full screen, its text made larger or smaller (kept in the browser), and is taller. Commands sent are kept in the browser per user and server (never one that may carry a password or token) and Tab completes from them.
 
 ## 1.0.28 — Audit fixes
 

@@ -1457,7 +1457,18 @@
       "command": "Comando",
       "commandPlaceholder": "Digita un comando e premi Invio",
       "notRunning": "Il server non è in esecuzione",
-      "send": "Invia"
+      "send": "Invia",
+      "pause": "Pausa",
+      "resume": "Riprendi",
+      "copyAll": "Copia tutto",
+      "copied": "Copiato",
+      "download": "Scarica come file",
+      "smaller": "Testo più piccolo",
+      "larger": "Testo più grande",
+      "fullScreen": "Schermo intero",
+      "exitFullScreen": "Esci da schermo intero",
+      "held": "In pausa · output in attesa: {{count}}",
+      "toEnd": "Vai alla fine"
     },
     "usage": {
       "label": "Utilizzo",

@@ -1457,7 +1457,18 @@
       "command": "Command",
       "commandPlaceholder": "Type a command and press Enter",
       "notRunning": "The server is not running",
-      "send": "Send"
+      "send": "Send",
+      "pause": "Pause",
+      "resume": "Resume",
+      "copyAll": "Copy all",
+      "copied": "Copied",
+      "download": "Download as a file",
+      "smaller": "Smaller text",
+      "larger": "Larger text",
+      "fullScreen": "Full screen",
+      "exitFullScreen": "Leave full screen",
+      "held": "Paused · output waiting: {{count}}",
+      "toEnd": "Go to the end"
     },
     "usage": {
       "label": "Usage",

@@ -1457,7 +1457,18 @@
       "command": "Comando",
       "commandPlaceholder": "Digite um comando e pressione Enter",
       "notRunning": "O servidor não está em execução",
-      "send": "Enviar"
+      "send": "Enviar",
+      "pause": "Pausar",
+      "resume": "Retomar",
+      "copyAll": "Copiar tudo",
+      "copied": "Copiado",
+      "download": "Baixar como arquivo",
+      "smaller": "Texto menor",
+      "larger": "Texto maior",
+      "fullScreen": "Tela cheia",
+      "exitFullScreen": "Sair da tela cheia",
+      "held": "Pausado · saída em espera: {{count}}",
+      "toEnd": "Ir para o fim"
     },
     "usage": {
       "label": "Uso",
