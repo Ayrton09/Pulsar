@@ -121,6 +121,27 @@ describe('server console', () => {
     expect(consoleText()).toBe('one\r\ntwo\r\nthree\r\nfour\r\nfive\r\n');
   });
 
+  it('copies the selected text with Ctrl+C, which the terminal does not take', async () => {
+    serverApi();
+    answerNext({ WatchConsole: () => Promise.resolve({ entries: [entry(1, 'status\r\n')], nodeConnected: true }) });
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    await renderAt(`/servers/${server.id}?tab=console`);
+    await waitFor(() => expect(consoleText()).toBe('status\r\n'));
+    const term = terminals.at(-1);
+    const key = (init: KeyboardEventInit) => term?.keyHandler?.(new KeyboardEvent('keydown', init));
+
+    // Nothing selected: the terminal keeps the key.
+    expect(key({ key: 'c', ctrlKey: true })).toBe(true);
+    if (term) {
+      term.selection = 'status';
+    }
+    expect(key({ key: 'c', ctrlKey: true })).toBe(false);
+    expect(key({ key: 'C', metaKey: true, shiftKey: true })).toBe(false);
+    expect(writeText).toHaveBeenCalledWith('status');
+    expect(key({ key: 'v', ctrlKey: true })).toBe(true);
+  });
+
   it('marks output the node no longer had', async () => {
     serverApi();
     answerNext({

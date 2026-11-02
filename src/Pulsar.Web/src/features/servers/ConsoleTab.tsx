@@ -16,6 +16,7 @@ import { useCurrentUser } from '../auth/api';
 import { useLiveStatus, useServerConsole } from '../live/hooks';
 import type { ConsoleEntry } from '../live/types';
 import { useConsoleCommand, type ServerDetails } from './api';
+import { copySelection } from './consoleCopy';
 import { ConsoleFilter } from './consoleFilter';
 import { commandRefusal } from './serverStatus';
 
@@ -56,7 +57,9 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
     term.loadAddon(fit);
     term.loadAddon(finder);
     term.loadAddon(new WebLinksAddon((_event, uri) => openWebLink(uri)));
-    // No clipboard addon: a game must not be able to write to the user's clipboard (OSC 52).
+    // No clipboard addon: a game must not be able to write to the user's clipboard (OSC 52). The reader copies what
+    // they selected with Ctrl+C (Cmd+C).
+    term.attachCustomKeyEventHandler((event) => !copySelection(event, term));
     const element = container.current;
     const observer = new ResizeObserver(() => fit.fit());
     if (element) {

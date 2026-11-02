@@ -14,9 +14,24 @@ export class Terminal {
     terminals.push(this);
   }
 
+  selection = '';
+  keyHandler: ((event: KeyboardEvent) => boolean) | null = null;
+
   open() {}
 
   loadAddon() {}
+
+  attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+    this.keyHandler = handler;
+  }
+
+  hasSelection() {
+    return this.selection.length > 0;
+  }
+
+  getSelection() {
+    return this.selection;
+  }
 
   write(data: string) {
     this.text += data;
