@@ -30,6 +30,47 @@ public sealed class ConfigFileWriterTests
     }
 
     [Fact]
+    public void PatchSetsEachCommandOfALineWithSeveral()
+    {
+        // The password Pulsar sets on the command line: one left after another command would replace it. Read as the
+        // engines read it: after "//" (GoldSrc splits first), up to a ' or a control byte.
+        const string existing = """
+            echo "loaded"; rcon_password "old"
+            rcon_password "first"; sv_cheats 0 // keep
+            exec "a;b.cfg"; hostname "Old"; sv_lan 0
+            echo "only"; sv_tags "x"
+            rcon_password "alone";
+            rcon_password'x'
+            rcon_password"k"
+            rcon_password "y" // off; quit
+            echo "a" // n; rcon_password "after a comment"
+
+            """ + "\u0001rcon_password \"after a control byte\"\n";
+        var file = Cfg(ConfigFileMode.Patch, ("rcon_password", ""), ("hostname", "New"));
+
+        var text = ConfigFileWriter.Apply(file, existing.Replace("\r\n", "\n", StringComparison.Ordinal));
+
+        Assert.Equal("""
+            echo "loaded"
+            sv_cheats 0 // keep
+            exec "a;b.cfg"; hostname "New"; sv_lan 0
+            echo "only"; sv_tags "x"
+            // off; quit
+            echo "a" // n
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), text);
+    }
+
+    [Fact]
+    public void APatchedCommandKeepsItsComment()
+    {
+        // On Source what follows "//" stays a comment, its ';' included: it must not become a command.
+        var file = Cfg(ConfigFileMode.Patch, ("hostname", "New"));
+
+        Assert.Equal("hostname \"New\" // my server; sv_lan 0\n", ConfigFileWriter.Apply(file, "hostname \"Old\" // my server; sv_lan 0\n"));
+    }
+
+    [Fact]
     public void PatchKeepsTheFilesLineEndingsAndCreatesMissingFiles()
     {
         var file = Cfg(ConfigFileMode.Patch, ("hostname", "x"));

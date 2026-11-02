@@ -152,9 +152,9 @@ public sealed class AccessRulesTests
             .Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global)
             .Build();
 
-        Assert.True(AccessRules.CanManageUser(s_actor, manager, s_target, viewer, s_serverNodes).IsSuccess);
-        Assert.Equal("access.escalation", AccessRules.CanManageUser(s_actor, manager, s_target, administrator, s_serverNodes).Error?.Code);
-        Assert.Equal(AccessErrors.SelfChange, AccessRules.CanManageUser(s_actor, administrator, s_actor, viewer, s_serverNodes).Error);
+        Assert.True(AccessRules.CanManageUser(s_actor, manager, s_target, viewer, s_serverNodes, []).IsSuccess);
+        Assert.Equal("access.escalation", AccessRules.CanManageUser(s_actor, manager, s_target, administrator, s_serverNodes, []).Error?.Code);
+        Assert.Equal(AccessErrors.SelfChange, AccessRules.CanManageUser(s_actor, administrator, s_actor, viewer, s_serverNodes, []).Error);
     }
 
     [Fact]
@@ -170,10 +170,10 @@ public sealed class AccessRulesTests
             .Add(Role("Files", PermissionScope.Server, Permissions.Server.FilesEdit), AccessTarget.ForServer(s_server, s_node))
             .Build();
 
-        var onNode = AccessRules.CanManageUser(s_actor, manager, s_target, nodeKeys, s_serverNodes);
+        var onNode = AccessRules.CanManageUser(s_actor, manager, s_target, nodeKeys, s_serverNodes, []);
         Assert.Equal("access.escalation", onNode.Error?.Code);
         Assert.Contains(Permissions.Node.CredentialsManage, onNode.Error!.Message, StringComparison.Ordinal);
-        Assert.Equal("access.escalation", AccessRules.CanManageUser(s_actor, manager, s_target, serverFiles, s_serverNodes).Error?.Code);
+        Assert.Equal("access.escalation", AccessRules.CanManageUser(s_actor, manager, s_target, serverFiles, s_serverNodes, []).Error?.Code);
 
         // Holding them there (or more widely) is enough: on the node for the server's, on another node it is not.
         var nodeManager = new EffectivePermissions.Builder()
@@ -183,13 +183,43 @@ public sealed class AccessRulesTests
         var elsewhere = new EffectivePermissions.Builder()
             .Add(Role("Node", PermissionScope.Node, Permissions.Node.CredentialsManage, Permissions.Server.FilesEdit), AccessTarget.ForNode(s_otherNode))
             .Build();
-        Assert.True(AccessRules.CanManageUser(s_actor, nodeManager, s_target, nodeKeys, s_serverNodes).IsSuccess);
-        Assert.True(AccessRules.CanManageUser(s_actor, nodeManager, s_target, serverFiles, s_serverNodes).IsSuccess);
-        Assert.False(AccessRules.CanManageUser(s_actor, elsewhere, s_target, nodeKeys, s_serverNodes).IsSuccess);
-        Assert.False(AccessRules.CanManageUser(s_actor, elsewhere, s_target, serverFiles, s_serverNodes).IsSuccess);
+        Assert.True(AccessRules.CanManageUser(s_actor, nodeManager, s_target, nodeKeys, s_serverNodes, []).IsSuccess);
+        Assert.True(AccessRules.CanManageUser(s_actor, nodeManager, s_target, serverFiles, s_serverNodes, []).IsSuccess);
+        Assert.False(AccessRules.CanManageUser(s_actor, elsewhere, s_target, nodeKeys, s_serverNodes, []).IsSuccess);
+        Assert.False(AccessRules.CanManageUser(s_actor, elsewhere, s_target, serverFiles, s_serverNodes, []).IsSuccess);
 
         // A server whose node is not known (deleted meanwhile) needs the permissions globally.
-        Assert.False(AccessRules.CanManageUser(s_actor, nodeManager, s_target, serverFiles, new Dictionary<ServerId, NodeId>()).IsSuccess);
+        Assert.False(AccessRules.CanManageUser(s_actor, nodeManager, s_target, serverFiles, new Dictionary<ServerId, NodeId>(), []).IsSuccess);
+    }
+
+    [Fact]
+    public void UserManagersCannotTouchUsersWithAQuotaOnANodeWhereTheyCannotCreateServers()
+    {
+        // A user with no role but a quota on a node creates servers there and owns them: managing them is as much as
+        // server.create and the owner permissions there.
+        var nobody = new EffectivePermissions.Builder().WithQuota().Build();
+        var manager = new EffectivePermissions.Builder()
+            .Add(Role("Users", PermissionScope.Global, Permissions.User.Manage), AccessTarget.Global)
+            .Build();
+        var createOnly = new EffectivePermissions.Builder()
+            .Add(Role("Users", PermissionScope.Global, Permissions.User.Manage), AccessTarget.Global)
+            .Add(Role("Create", PermissionScope.Node, Permissions.Server.Create), AccessTarget.ForNode(s_node))
+            .Build();
+        var nodeCreator = new EffectivePermissions.Builder()
+            .Add(Role("Users", PermissionScope.Global, Permissions.User.Manage), AccessTarget.Global)
+            .Add(Role("Host", PermissionScope.Node, [.. AccessRules.QuotaGrants]), AccessTarget.ForNode(s_node))
+            .Build();
+
+        var refused = AccessRules.CanManageUser(s_actor, manager, s_target, nobody, s_serverNodes, [s_node]);
+        Assert.Equal("access.escalation", refused.Error?.Code);
+        Assert.Contains(Permissions.Server.Create, refused.Error!.Message, StringComparison.Ordinal);
+        // Creating servers there is not enough: they own theirs, with files and console.
+        var owner = AccessRules.CanManageUser(s_actor, createOnly, s_target, nobody, s_serverNodes, [s_node]);
+        Assert.Equal("access.escalation", owner.Error?.Code);
+        Assert.DoesNotContain(Permissions.Server.Create, owner.Error!.Message, StringComparison.Ordinal);
+        Assert.True(AccessRules.CanManageUser(s_actor, nodeCreator, s_target, nobody, s_serverNodes, [s_node]).IsSuccess);
+        Assert.False(AccessRules.CanManageUser(s_actor, nodeCreator, s_target, nobody, s_serverNodes, [s_node, s_otherNode]).IsSuccess);
+        Assert.True(AccessRules.CanManageUser(s_actor, manager, s_target, nobody, s_serverNodes, []).IsSuccess);
     }
 
     private static Role Role(string name, PermissionScope scope, params string[] permissions) =>

@@ -102,5 +102,5 @@ public static class AccessErrors
 
     /// <summary>Giving a quota on a node is giving the right to create servers there: only who may do it there.</summary>
     public static DomainError QuotaEscalation { get; } =
-        new("access.escalation", "You can only let users create servers on nodes where you may create them yourself.");
+        new("access.escalation", "You can only let users create and own servers on nodes where you may create servers and hold every owner permission yourself.");
 }

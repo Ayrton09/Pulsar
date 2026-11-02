@@ -516,8 +516,9 @@ public sealed class UserManagement(
     }
 
     /// <summary>
-    /// Gives the user a quota, or changes it (1.0.24). Letting them create servers on a node is as much as giving them
-    /// <c>server.create</c> there: only on nodes where the actor holds it, for a user the actor may manage. Lowering it
+    /// Gives the user a quota, or changes it (1.0.24). Letting them create servers on a node, and own them, is as much as
+    /// giving them <c>server.create</c> and the owner permissions there: only on nodes where the actor holds them all
+    /// (<see cref="AccessRules.QuotaGrants"/>), for a user the actor may manage. Lowering it
     /// below what their servers use takes nothing away: it only stops them creating more.
     /// </summary>
     public async Task<Results<Ok<UserQuotaResponse>, ProblemHttpResult>> SetQuotaAsync(UserId id, SetUserQuotaRequest input, CancellationToken ct)
@@ -530,7 +531,7 @@ public sealed class UserManagement(
 
         var nodes = (input.NodeIds ?? []).Distinct().Select(n => new NodeId(n)).ToList();
         var actor = await evaluator.GetAsync(Actor, ct);
-        if (nodes.Any(n => !actor.Has(Permissions.Server.Create, AccessTarget.ForNode(n))))
+        if (nodes.Any(n => AccessRules.QuotaGrants.Any(p => !actor.Has(p, AccessTarget.ForNode(n)))))
         {
             return ApiProblems.FromDomainError(AccessErrors.QuotaEscalation);
         }
@@ -701,7 +702,8 @@ public sealed class UserManagement(
         var serverNodes = servers.Count == 0
             ? []
             : await db.Servers.Where(s => servers.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.NodeId, ct);
-        var allowed = AccessRules.CanManageUser(Actor, await evaluator.GetAsync(Actor, ct), id, target, serverNodes);
+        var quotaNodes = await db.UserQuotas.AsNoTracking().Where(q => q.UserId == id).Select(q => q.NodeIds).SingleOrDefaultAsync(ct) ?? [];
+        var allowed = AccessRules.CanManageUser(Actor, await evaluator.GetAsync(Actor, ct), id, target, serverNodes, [.. quotaNodes]);
         return allowed.IsSuccess ? (user, null) : (null, ApiProblems.FromDomainError(allowed.Error!));
     }
 

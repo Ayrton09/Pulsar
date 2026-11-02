@@ -429,6 +429,11 @@ public static partial class LaunchPlanRenderer
             arguments.Add(extra);
         }
 
+        if (commands && binding.ExtraArguments is { Count: > 0 } extras)
+        {
+            CheckCommandsAfterPlus(string.Join(' ', extras), runtime, reserved);
+        }
+
         var environment = (runtime.Environment ?? new Dictionary<string, string>())
             .ToDictionary(e => e.Key, e => Placeholders.Replace(e.Value, Placeholder), StringComparer.OrdinalIgnoreCase);
 
@@ -649,6 +654,34 @@ public static partial class LaunchPlanRenderer
             if (reserved.Contains($"?{key}") || IsSensitive(key, runtime, commands))
             {
                 throw new LaunchPlanException($"The extra argument option '?{key}' is set by Pulsar or by the game's settings.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// On a console of commands, the command after every '+' of the extra arguments, all of them read as one line: the
+    /// engine's command line may start one at a '+' inside a word ("x+rcon_password known") or before a space ("+ map x").
+    /// </summary>
+    private static void CheckCommandsAfterPlus(string extras, RuntimeDefinition runtime, HashSet<string> reserved)
+    {
+        var switches = reserved.Where(n => n is ['-' or '+', ..]).Select(SwitchName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var plus = extras.IndexOf('+', StringComparison.Ordinal); plus >= 0; plus = extras.IndexOf('+', plus + 1))
+        {
+            var start = plus + 1;
+            while (start < extras.Length && (char.IsWhiteSpace(extras[start]) || extras[start] == '+'))
+            {
+                start++;
+            }
+
+            var end = start;
+            while (end < extras.Length && !char.IsWhiteSpace(extras[end]) && extras[end] != '+')
+            {
+                end++;
+            }
+
+            if (end > start && "+" + extras[start..end] is var command && (switches.Contains(SwitchName(command)) || IsSensitive(SwitchName(command), runtime, true)))
+            {
+                throw new LaunchPlanException($"The extra argument '{ArgumentName(command)}' is set by Pulsar or by the game's settings.");
             }
         }
     }

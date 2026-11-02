@@ -545,6 +545,13 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 2 failed to start on a node whose server account has no Steam client ("Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory"): the game does not ship the Steam client's libraries. Its template now copies them beside `cs2.exe` from the server's SteamCMD after every install and update, checked as signed by Valve (`steamClient`, doc 04; T60, doc 08). It was not seen before because the game had only been run on a machine with Steam installed, as that machine's user.
 
+## 1.0.28 — Audit fixes
+
+- Quotas and user management: a quota counts as `server.create` and every owner permission on each of its nodes. Giving one needs them all there, and so does managing a user who has one (a new password, two-factor reset, the quota changed or taken away); before, a user manager without them could sign in as such a user and create servers they own (doc 02, rule 6).
+- The suspension pass reads each server again right before stopping it, so one unsuspended (and started) meanwhile is left alone.
+- A `rcon_password` left in a Source cfg is taken out wherever it is on a line with several commands, read as the engines read it; extra launch arguments may not hide a reserved command after a `+` inside a word (T18, doc 08).
+- Listing servers by external id finds only those whose id the caller may see.
+
 ## 1.0.27 — Metamod:Source between its two lines
 
 - Metamod:Source could not be installed on Counter-Strike 2: the project published a stable 1.12 release after the 2.0 builds the game needs, and an addon that takes pre-releases looked only at the newest release. It now takes the newest release that has the addon's file.

@@ -128,11 +128,15 @@ public sealed partial class ServerManagement
     {
         var running = await db.Servers.AsNoTracking()
             .Where(s => s.SuspendedAt != null && (s.RuntimeState == ServerRuntimeState.Starting || s.RuntimeState == ServerRuntimeState.Running))
+            .Select(s => s.Id)
             .ToListAsync(cancellationToken);
         var asked = 0;
-        foreach (var server in running)
+        foreach (var id in running)
         {
-            if (await StopForSuspensionAsync(server, cancellationToken))
+            // Read again right before its stop: while an earlier node took its time, this one may have been unsuspended
+            // (and started again), and is then left alone.
+            var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+            if (server is { SuspendedAt: not null } && await StopForSuspensionAsync(server, cancellationToken))
             {
                 // Its agent may still have the start options of before: they follow the suspension from now on.
                 await SyncSuspensionSpecAsync(server.Id);

@@ -47,15 +47,19 @@ public static class AccessRules
     /// Changing another user's account (disable, delete, reset the password or two-factor, revoke API keys, change
     /// roles): nobody does it to themselves through user management, and the target may not hold any permission the
     /// actor lacks where the target holds it (globally, on a node, on a server), so a <c>user.manage</c> holder can
-    /// neither lock out an administrator nor sign in as someone who can do more somewhere.
+    /// neither lock out an administrator nor sign in as someone who can do more somewhere. A quota counts as
+    /// <c>server.create</c> and every owner permission (<see cref="PermissionCatalog.OwnerKeys"/>) on each of its nodes
+    /// (1.0.24): the target creates servers there and owns them.
     /// </summary>
     /// <param name="serverNodes">The node of each server the target has a role on; a server missing here needs the permissions globally.</param>
+    /// <param name="quotaNodes">The nodes of the target's quota; none without one.</param>
     public static Result CanManageUser(UserId actor, EffectivePermissions actorPermissions, UserId targetUser, EffectivePermissions targetPermissions,
-        IReadOnlyDictionary<ServerId, NodeId> serverNodes)
+        IReadOnlyDictionary<ServerId, NodeId> serverNodes, IReadOnlyCollection<NodeId> quotaNodes)
     {
         ArgumentNullException.ThrowIfNull(actorPermissions);
         ArgumentNullException.ThrowIfNull(targetPermissions);
         ArgumentNullException.ThrowIfNull(serverNodes);
+        ArgumentNullException.ThrowIfNull(quotaNodes);
 
         if (actor == targetUser)
         {
@@ -66,9 +70,13 @@ public static class AccessRules
             .Concat(targetPermissions.Nodes.SelectMany(n => n.Value.Where(p => !actorPermissions.Has(p, AccessTarget.ForNode(n.Key)))))
             .Concat(targetPermissions.Servers.SelectMany(s => s.Value.Where(p => serverNodes.TryGetValue(s.Key, out var node)
                 ? !actorPermissions.Has(p, AccessTarget.ForServer(s.Key, node))
-                : !actorPermissions.HasGlobal(p))));
+                : !actorPermissions.HasGlobal(p))))
+            .Concat(quotaNodes.SelectMany(n => QuotaGrants.Where(p => !actorPermissions.Has(p, AccessTarget.ForNode(n)))));
         return Refuse(missing);
     }
+
+    /// <summary>What a quota gives its user on each of its nodes: creating servers there, and owning them.</summary>
+    public static IReadOnlyList<string> QuotaGrants { get; } = [Permissions.Server.Create, .. PermissionCatalog.OwnerKeys.Order(StringComparer.Ordinal)];
 
     private static Result EnsureHeld(IEnumerable<string> permissions, Func<string, bool> holds) => Refuse(permissions.Where(p => !holds(p)));
 

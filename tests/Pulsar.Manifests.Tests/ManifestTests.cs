@@ -125,6 +125,20 @@ public sealed class ManifestTests
         Assert.Contains(extra.Split(' ', ';')[0], error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    // A Source command line may start a command at any '+': inside a word, before a space, at the end of one argument.
+    [Theory]
+    [InlineData("x+rcon_password", "known")]
+    [InlineData("de_dust2+sv_setsteamaccount", "x")]
+    [InlineData("a+b+map", "de_nuke")]
+    [InlineData("+", "rcon_password")]
+    [InlineData("x+", "map")]
+    [InlineData("+ rcon_password known", "-tickrate")]
+    public void ExtraArgumentsCannotHideACommandAfterAPlus(string extra, string next)
+    {
+        Assert.Throws<LaunchPlanException>(() => RenderCs2([extra, next]));
+        RenderCs2(["-tickrate", "128", "+exec", "practice.cfg"]); // other commands are fine
+    }
+
     // Every word of an extra argument is checked, in every console mode: a game may split one argument at spaces.
     [Theory]
     [InlineData("-useperfthreads -AdminPassword=x")]

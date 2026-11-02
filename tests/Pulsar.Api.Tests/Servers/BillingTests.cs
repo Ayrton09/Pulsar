@@ -85,8 +85,10 @@ public sealed class BillingTests(PulsarApiFactory factory) : IClassFixture<Pulsa
         using var client = await scenario.SignInAsync("billing-customer");
         await ServerApi.CommandAsync(client, id, "start");
         await ServerApi.WaitForAsync(client, id, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
-        // The billing system's id of it is for whoever hosts it, not for the customer.
+        // The billing system's id of it is for whoever hosts it, not for the customer, who cannot find it out by trying.
         Assert.Null((await ServerApi.GetAsync(client, id))!.Server.ExternalId);
+        Assert.Empty((await client.Http.GetFromJsonAsync<List<ServerSummary>>(new Uri("/api/v1/servers?externalId=whmcs:service-7", UriKind.Relative),
+            AccessScenario.Json, Ct))!);
 
         // Unpaid, then paid: suspended and lifted; then cancelled.
         using (var suspended = await billing.PostAsJsonAsync($"/api/v1/servers/{id}/suspend", new SuspendServerRequest("Overdue invoice"), AccessScenario.Json, Ct))

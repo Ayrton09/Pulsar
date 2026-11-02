@@ -143,6 +143,12 @@ public sealed class ServerQuotaTests(PulsarApiFactory factory) : IClassFixture<P
 
         await ProblemAsync(await manager.PutAsync($"/api/v1/users/{player.Id}/quota", new SetUserQuotaRequest(5, 4096, 100, [node])),
             HttpStatusCode.Forbidden, "access.escalation");
+        // Creating servers there is not enough either: a quota's user owns theirs, with their files and console.
+        using (var creator = await scenario.SignedInWithAsync("quota-creator", Permissions.User.View, Permissions.User.Manage, Permissions.Server.Create))
+        {
+            await ProblemAsync(await creator.PutAsync($"/api/v1/users/{player.Id}/quota", new SetUserQuotaRequest(5, 4096, 100, [node])),
+                HttpStatusCode.Forbidden, "access.escalation");
+        }
         using (var noNodes = await manager.PutAsync($"/api/v1/users/{player.Id}/quota", new SetUserQuotaRequest(5, 4096, 100, [])))
         {
             await AccessScenario.EnsureSuccessAsync(noNodes);
@@ -155,6 +161,19 @@ public sealed class ServerQuotaTests(PulsarApiFactory factory) : IClassFixture<P
         }
 
         await ProblemAsync(await admin.GetAsync($"/api/v1/users/{player.Id}/quota"), HttpStatusCode.NotFound, AccessErrors.QuotaNotFound.Code);
+
+        // A user with a quota there creates servers there: signing in as them (a new password, two-factor reset) would
+        // give the manager what they lack, and so would taking the quota away and giving another.
+        using (var given = await admin.PutAsync($"/api/v1/users/{player.Id}/quota", new SetUserQuotaRequest(5, 4096, 100, [node])))
+        {
+            await AccessScenario.EnsureSuccessAsync(given);
+        }
+
+        await ProblemAsync(await manager.PostAsync($"/api/v1/users/{player.Id}/password", new ResetPasswordRequest("A-new-password-1234")),
+            HttpStatusCode.Forbidden, "access.escalation");
+        await ProblemAsync(await manager.PostAsync($"/api/v1/users/{player.Id}/two-factor/reset"), HttpStatusCode.Forbidden, "access.escalation");
+        await ProblemAsync(await manager.DeleteAsync($"/api/v1/users/{player.Id}/quota"), HttpStatusCode.Forbidden, "access.escalation");
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync($"/api/v1/users/{player.Id}/quota")).StatusCode);
     }
 
     private static async Task<ServerDetails> CreatedAsync(PanelClient client, CreateOwnedServerRequest request)

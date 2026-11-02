@@ -146,7 +146,10 @@ public sealed partial class ServerManagement(
     /// <summary>The manifest port players connect to, by the manifests' convention.</summary>
     private const string GamePortName = "game";
 
-    /// <param name="externalId">Only the server another system calls so (1.0.24).</param>
+    /// <param name="externalId">
+    /// Only the server another system calls so (1.0.24), among those whose id the caller sees: one who does not would
+    /// otherwise learn it by trying.
+    /// </param>
     public async Task<IReadOnlyList<ServerSummary>> ListAsync(Guid? nodeId, CancellationToken cancellationToken, string? externalId = null)
     {
         var query = db.Servers.AsNoTracking();
@@ -164,6 +167,12 @@ public sealed partial class ServerManagement(
         if (await visible.ServersAsync(cancellationToken) is { } sees)
         {
             servers = [.. servers.Where(s => sees(s.Id, s.NodeId))];
+        }
+
+        if (externalId is not null)
+        {
+            var hosts = await HostsAsync(cancellationToken);
+            servers = [.. servers.Where(hosts)];
         }
 
         return await SummariesAsync(servers, cancellationToken);
@@ -1276,6 +1285,17 @@ public sealed partial class ServerManagement(
         return new ServerCopyView(name is null ? null : sourceId, name, copy.Status, copy.ErrorCode, copy.Message);
     }
 
+    /// <summary>
+    /// Whether the caller sees a server's external id: a billing system's id of a server (a customer's order) is for
+    /// whoever hosts it, not its players (1.0.24).
+    /// </summary>
+    private async Task<Func<Server, bool>> HostsAsync(CancellationToken cancellationToken)
+    {
+        var granted = request.UserId is { } viewer ? await permissions.GetAsync(viewer, cancellationToken) : null;
+        return s => granted is null || granted.HasGlobal(Permissions.User.Manage)
+            || granted.Has(Permissions.Server.LimitsEdit, AccessTarget.ForServer(s.Id, s.NodeId));
+    }
+
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)
     {
         var nodeIds = servers.Select(s => s.NodeId).Distinct().ToList();
@@ -1285,10 +1305,7 @@ public sealed partial class ServerManagement(
         var templates = await db.GameTemplates.AsNoTracking().Where(t => templateIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => new { t.Name, t.Key }, cancellationToken);
         var serverIds = servers.Select(s => s.Id).ToList();
-        // A billing system's id of a server (a customer's order) is for whoever hosts it, not its players (1.0.24).
-        var granted = request.UserId is { } viewer ? await permissions.GetAsync(viewer, cancellationToken) : null;
-        bool Hosts(Server s) => granted is null || granted.HasGlobal(Permissions.User.Manage)
-            || granted.Has(Permissions.Server.LimitsEdit, AccessTarget.ForServer(s.Id, s.NodeId));
+        var hosts = await HostsAsync(cancellationToken);
         // On its own node only: a server being transferred holds the ports of the node it leaves until it is done.
         var nodeOf = servers.ToDictionary(s => s.Id, s => s.NodeId);
         var gamePorts = (await db.NodeAllocations.AsNoTracking()
@@ -1308,7 +1325,7 @@ public sealed partial class ServerManagement(
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
             templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id), updatable.Contains(s.Id),
-            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null, s.OwnerId?.Value, Hosts(s) ? s.ExternalId : null))];
+            s.SuspendedAt is { } suspendedAt ? new ServerSuspensionView(suspendedAt, s.SuspensionReason) : null, s.OwnerId?.Value, hosts(s) ? s.ExternalId : null))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

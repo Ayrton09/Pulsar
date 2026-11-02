@@ -105,6 +105,18 @@ public static partial class ConfigFileWriter
 
             foreach (var line in lines)
             {
+                if (file.Format == ConfigFileFormat.SourceCfg && SourceCommands(line) is { Count: > 1 } split)
+                {
+                    // Several commands on one line ("echo loaded; rcon_password x"): each is patched like a line of its own,
+                    // the others stay.
+                    if (PatchSourceCommands(split, pending, written) is { } patched)
+                    {
+                        output.Add(patched);
+                    }
+
+                    continue;
+                }
+
                 var key = KeyOf(file.Format, line);
                 if (key is null || !pending.TryGetValue(key, out var entry) || Keeps(entry, line, e => Line(file.Format, e)))
                 {
@@ -738,6 +750,98 @@ public static partial class ConfigFileWriter
         _ => $"{entry.Key}={entry.Value.Replace("\\", "\\\\", StringComparison.Ordinal)}",
     };
 
+    /// <summary>
+    /// A Source cfg line's commands, split at every semicolon outside quotes: after a <c>//</c> too, since GoldSrc splits
+    /// a line before it reads its comments (a comment's piece starts with <c>//</c> and sets nothing).
+    /// </summary>
+    private static List<string> SourceCommands(string line)
+    {
+        var commands = new List<string>();
+        var quoted = false;
+        var start = 0;
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (c == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (!quoted && c == ';')
+            {
+                commands.Add(line[start..i]);
+                start = i + 1;
+            }
+        }
+
+        commands.Add(line[start..]);
+        return commands;
+    }
+
+    /// <summary>The line with its declared commands set or taken out; null when nothing is left of it.</summary>
+    private static string? PatchSourceCommands(List<string> commands, Dictionary<string, ConfigEntry> pending,
+        HashSet<string> written)
+    {
+        var kept = new List<string>();
+        var changed = false;
+        foreach (var command in commands)
+        {
+            var key = KeyOf(ConfigFileFormat.SourceCfg, command);
+            if (key is null || !pending.TryGetValue(key, out var entry) || Keeps(entry, command, e => Line(ConfigFileFormat.SourceCfg, e)))
+            {
+                kept.Add(command);
+                continue;
+            }
+
+            // Its comment stays with it: on Source what follows it on the line ("// off; quit") stays a comment.
+            changed = true;
+            var comment = SourceComment(command);
+            if (entry.Value.Length > 0 && written.Add(entry.Key))
+            {
+                kept.Add((kept.Count > 0 ? " " : "") + Line(ConfigFileFormat.SourceCfg, entry) + comment);
+            }
+            else if (comment.Length > 0)
+            {
+                kept.Add((kept.Count > 0 ? " " : "") + comment.TrimStart());
+            }
+        }
+
+        if (!changed)
+        {
+            return string.Join(';', commands);
+        }
+
+        return kept.All(c => c.Trim().Length == 0) ? null : string.Join(';', kept.Where(c => c.Trim().Length > 0)).TrimStart();
+    }
+
+    /// <summary>A command's comment: from the spaces before its <c>//</c> outside quotes, empty when it has none.</summary>
+    private static string SourceComment(string command)
+    {
+        var quoted = false;
+        for (var i = 0; i + 1 < command.Length; i++)
+        {
+            if (command[i] == '"')
+            {
+                quoted = !quoted;
+            }
+            else if (!quoted && command[i] == '/' && command[i + 1] == '/')
+            {
+                var start = i;
+                while (start > 0 && char.IsWhiteSpace(command[start - 1]))
+                {
+                    start--;
+                }
+
+                return command[start..];
+            }
+        }
+
+        return "";
+    }
+
+    private const string SourceBreaks = "{}()':\"";
+
+    private static readonly char[] s_sourceSpaces = [.. Enumerable.Range(0, 33).Select(c => (char)c)];
+
     /// <summary>The key a line sets, or null for comments, blank lines and anything else.</summary>
     public static string? KeyOf(ConfigFileFormat format, string line)
     {
@@ -752,7 +856,10 @@ public static partial class ConfigFileWriter
             case ConfigFileFormat.Space:
                 return text.StartsWith("//", StringComparison.Ordinal) ? null : text.Split([' ', '\t'], 2)[0];
             case ConfigFileFormat.SourceCfg:
-                if (text.StartsWith("//", StringComparison.Ordinal))
+                // As the engines read it: any byte up to a space is a space, and the name ends at one, at ';' or at the
+                // characters their tokenizer breaks at ("rcon_password'x" sets rcon_password).
+                text = text.TrimStart(s_sourceSpaces);
+                if (text.Length == 0 || text.StartsWith("//", StringComparison.Ordinal))
                 {
                     return null;
                 }
@@ -760,7 +867,7 @@ public static partial class ConfigFileWriter
                 var quoted = text[0] == '"';
                 var start = quoted ? 1 : 0;
                 var end = start;
-                while (end < text.Length && (quoted ? text[end] != '"' : !char.IsWhiteSpace(text[end]) && text[end] != ';'))
+                while (end < text.Length && (quoted ? text[end] != '"' : text[end] > ' ' && text[end] != ';' && !SourceBreaks.Contains(text[end])))
                 {
                     end++;
                 }
