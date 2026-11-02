@@ -267,7 +267,7 @@ public sealed partial class PanelUpdates(
         var update = await db.NodeUpdates.SingleOrDefaultAsync(u => u.NodeId == nodeId, cancellationToken);
         // Only the end of an update under way is audited (or a node's first report): a node cannot fill the audit log by
         // reporting ends over and over.
-        var ended = update is null || !NodeUpdate.IsFinal(update.Status);
+        var ended = update is null || !NodeUpdate.IsFinal(update.Status) || (update.EndedWithoutTheNode && report.Attempt == update.AttemptId);
         bool changed;
         if (update is null)
         {

@@ -7933,6 +7933,7 @@
   "quotas": {
     "title": "할당량",
     "create": "새 서버",
+    "createOwn": "할당량으로 새 서버",
     "createAction": "서버 만들기",
     "servers": "서버",
     "memory": "메모리 (MB)",

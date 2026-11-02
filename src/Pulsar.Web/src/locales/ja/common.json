@@ -7933,6 +7933,7 @@
   "quotas": {
     "title": "クォータ",
     "create": "新しいサーバー",
+    "createOwn": "クォータで新しいサーバー",
     "createAction": "サーバーを作成",
     "servers": "サーバー",
     "memory": "メモリ (MB)",

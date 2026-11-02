@@ -59,6 +59,12 @@ public sealed class NodeUpdate
 
     public static bool IsFinal(string status) => status is Succeeded or RolledBack or Failed;
 
+    /// <summary>
+    /// Ended by the panel without a word from the node about it (<see cref="Refused"/>; an answer lost on the way): the
+    /// node may have started it all the same, so its own reports of this request still count.
+    /// </summary>
+    public bool EndedWithoutTheNode => Status == Failed && AttemptId is not null && !AttemptReported;
+
     public static NodeUpdate Request(NodeId node, string from, string to, UserId? requestedBy, DateTimeOffset now) => new()
     {
         NodeId = node,
@@ -145,7 +151,7 @@ public sealed class NodeUpdate
 
         if (attempt is { } reported)
         {
-            return reported == current && !IsFinal(Status) && Rank(status) >= Rank(Status);
+            return reported == current && (EndedWithoutTheNode || (!IsFinal(Status) && Rank(status) >= Rank(Status)));
         }
 
         if (AttemptReported)

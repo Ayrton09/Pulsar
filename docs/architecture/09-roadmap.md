@@ -551,6 +551,10 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - The suspension pass reads each server again right before stopping it, so one unsuspended (and started) meanwhile is left alone.
 - A `rcon_password` left in a Source cfg is taken out wherever it is on a line with several commands, read as the engines read it; extra launch arguments may not hide a reserved command after a `+` inside a word (T18, doc 08).
 - Listing servers by external id finds only those whose id the caller may see.
+- A Source cfg line's commands after a `//` (a comment on Source, commands on GoldSrc) are never given a value: one the panel sets there is taken out and set where the key is set for every engine, so a commented example no longer takes the new value from the active line below it.
+- A node update whose answer was lost on the way (the panel ended it as failed) still takes the node's own reports of that request, so one that went on and succeeded shows as succeeded.
+- Giving or taking away a quota ends the user's live connections, as a role change does: their pages read the session again and the Servers page follows at once.
+- The Servers page shows a quota beside creating servers elsewhere (server.create on another node no longer hides it), and says when the quota could not be read, with a retry, instead of showing none.
 
 ## 1.0.27 — Metamod:Source between its two lines
 

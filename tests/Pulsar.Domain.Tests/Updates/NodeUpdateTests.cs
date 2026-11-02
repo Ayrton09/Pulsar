@@ -142,6 +142,25 @@ public sealed class NodeUpdateTests
     }
 
     [Fact]
+    public void ARequestWhoseAnswerWasLostStillTakesTheNodesReports()
+    {
+        // The agent started it, then its answer was lost: the panel ended it, the node's own reports of it still count.
+        var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
+        var attempt = update.AttemptId;
+        update.Refused("node.not_connected", s_now);
+        Assert.True(update.EndedWithoutTheNode);
+        Assert.False(Report(update, NodeUpdate.Succeeded, Guid.NewGuid())); // not this request's
+
+        Assert.True(Report(update, NodeUpdate.Installing, attempt));
+        Assert.False(update.EndedWithoutTheNode);
+        Assert.True(Report(update, NodeUpdate.Succeeded, attempt));
+        Assert.Equal((NodeUpdate.Succeeded, null), (update.Status, update.Error));
+
+        // Once the node reported its end, it is final as any other.
+        Assert.False(Report(update, NodeUpdate.Failed, attempt));
+    }
+
+    [Fact]
     public void ARowThisPanelDidNotAskForTakesWhatComes()
     {
         // The setups' update, or one an earlier panel asked for.

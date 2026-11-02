@@ -7933,6 +7933,7 @@
   "quotas": {
     "title": "Kontingent",
     "create": "Neuer Server",
+    "createOwn": "Neuer Server aus meinem Kontingent",
     "createAction": "Server erstellen",
     "servers": "Server",
     "memory": "Arbeitsspeicher (MB)",

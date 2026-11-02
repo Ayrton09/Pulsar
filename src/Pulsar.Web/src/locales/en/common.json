@@ -2815,6 +2815,7 @@
   "quotas": {
     "title": "Quota",
     "create": "New server",
+    "createOwn": "New server in my quota",
     "createAction": "Create server",
     "servers": "Servers",
     "memory": "Memory (MB)",

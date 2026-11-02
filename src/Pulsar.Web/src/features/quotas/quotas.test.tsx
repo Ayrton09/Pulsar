@@ -119,6 +119,34 @@ describe('a quota', () => {
     expect(await within(dialog).findByText('That much memory would go over your quota.')).toBeInTheDocument();
   });
 
+  it('is offered beside creating servers elsewhere', async () => {
+    // server.create on another node does not hide it: its nodes are only its own.
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...player, permissions: ['server.create'] }),
+      'GET /api/v1/account/quota': () => json(quota),
+    });
+    renderAt('/servers');
+
+    expect(await screen.findByRole('button', { name: 'New server in my quota' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create server' })).toBeInTheDocument();
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+  });
+
+  it('that cannot be read is said so, and read again on request', async () => {
+    let calls = 0;
+    fakeApi({
+      'GET /api/v1/auth/session': session(player),
+      'GET /api/v1/account/quota': () => (++calls === 1 ? problem(500, 'internal') : json(quota)),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New server' })).toBeInTheDocument();
+  });
+
   it('offers nothing to create to a user without one', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session({ ...player, hasQuota: false }),

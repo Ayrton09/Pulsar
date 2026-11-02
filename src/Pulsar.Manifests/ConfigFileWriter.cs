@@ -783,12 +783,22 @@ public static partial class ConfigFileWriter
     {
         var kept = new List<string>();
         var changed = false;
+        var commented = false;
         foreach (var command in commands)
         {
             var key = KeyOf(ConfigFileFormat.SourceCfg, command);
             if (key is null || !pending.TryGetValue(key, out var entry) || Keeps(entry, command, e => Line(ConfigFileFormat.SourceCfg, e)))
             {
                 kept.Add(command);
+                commented |= SourceComment(command).Length > 0;
+                continue;
+            }
+
+            if (commented)
+            {
+                // After a "//": a comment on Source, a command on GoldSrc. Taken out, never set there: the value goes where
+                // the key is set for every engine (a later line of it, or the end of the file).
+                changed = true;
                 continue;
             }
 
@@ -803,6 +813,8 @@ public static partial class ConfigFileWriter
             {
                 kept.Add((kept.Count > 0 ? " " : "") + comment.TrimStart());
             }
+
+            commented |= comment.Length > 0;
         }
 
         if (!changed)

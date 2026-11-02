@@ -7933,6 +7933,7 @@
   "quotas": {
     "title": "Cuota",
     "create": "Nuevo servidor",
+    "createOwn": "Nuevo servidor de mi cuota",
     "createAction": "Crear servidor",
     "servers": "Servidores",
     "memory": "Memoria (MB)",

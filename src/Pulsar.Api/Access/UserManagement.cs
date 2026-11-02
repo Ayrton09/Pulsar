@@ -578,6 +578,7 @@ public sealed class UserManagement(
         }
 
         evaluator.Invalidate(id);
+        connections.EndUser(id); // their live pages reconnect and read the session again (hasQuota): the Servers page is theirs
         return TypedResults.Ok(await QuotaResponseAsync(quota, ct));
     }
 
@@ -599,6 +600,7 @@ public sealed class UserManagement(
         audit.Record(AuditActions.User.QuotaRemoved, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
         await db.SaveChangesAsync(ct);
         evaluator.Invalidate(id);
+        connections.EndUser(id); // as when it is given
         return TypedResults.NoContent();
     }
 

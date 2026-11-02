@@ -7933,6 +7933,7 @@
   "quotas": {
     "title": "配额",
     "create": "新建服务器",
+    "createOwn": "用我的配额新建服务器",
     "createAction": "创建服务器",
     "servers": "服务器",
     "memory": "内存 (MB)",

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card, PageHeader } from '../../components/ui/Display';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
@@ -30,8 +31,9 @@ export function ServersPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const canCreate = canAnywhere(me, Permission.ServerCreate);
-  // 1.0.24: a user with a quota creates their own servers within it.
-  const quota = useMyQuota(!canCreate && me.hasQuota === true).data ?? null;
+  // 1.0.24: a user with a quota creates their own servers within it, on its nodes, whatever they may create elsewhere.
+  const myQuota = useMyQuota(me.hasQuota === true);
+  const quota = myQuota.data ?? null;
   const [creatingOwned, setCreatingOwned] = useState(false);
   // Picking servers for an action on all of them, for whoever may do one of those somewhere.
   const canBulk = canAnywhere(
@@ -88,19 +90,38 @@ export function ServersPage() {
         title={t('servers.title')}
         description={t('servers.description')}
         actions={
-          canCreate ? (
-            <Button icon={Plus} onClick={() => setCreating(true)}>
-              {t('servers.create')}
-            </Button>
-          ) : (
-            quota && (
-              <Button icon={Plus} onClick={() => setCreatingOwned(true)}>
-                {t('quotas.create')}
-              </Button>
-            )
+          (canCreate || quota) && (
+            <div className="flex flex-wrap gap-2">
+              {canCreate && (
+                <Button icon={Plus} onClick={() => setCreating(true)}>
+                  {t('servers.create')}
+                </Button>
+              )}
+              {quota && (
+                <Button
+                  icon={Plus}
+                  variant={canCreate ? 'secondary' : 'primary'}
+                  onClick={() => setCreatingOwned(true)}
+                >
+                  {canCreate ? t('quotas.createOwn') : t('quotas.create')}
+                </Button>
+              )}
+            </div>
           )
         }
       />
+      {/* Never taken for no quota: the page says it could not be read, and reads it again on request. */}
+      {myQuota.isError &&
+        (quota ? (
+          <RefreshFailed error={myQuota.error} retry={() => void myQuota.refetch()} />
+        ) : (
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <Alert>{errorMessage(t, myQuota.error)}</Alert>
+            <Button variant="secondary" size="sm" busy={myQuota.isFetching} onClick={() => void myQuota.refetch()}>
+              {t('actions.retry')}
+            </Button>
+          </div>
+        ))}
       {quota && (
         <section aria-label={t('quotas.title')} className="mb-6">
           <QuotaSummary quota={quota} />

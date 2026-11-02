@@ -71,6 +71,17 @@ public sealed class ConfigFileWriterTests
     }
 
     [Fact]
+    public void AValueIsNeverSetAfterACommentButWhereTheKeyIsSet()
+    {
+        // "// Example; sv_password ..." is a comment on Source: the active line below keeps the new value.
+        var file = Cfg(ConfigFileMode.Patch, ("sv_password", "new"));
+
+        Assert.Equal("// Example\nsv_password \"new\"\n",
+            ConfigFileWriter.Apply(file, "// Example; sv_password \"old\"\nsv_password \"active\"\n"));
+        Assert.Equal("echo \"a\" // n\nsv_password \"new\"\n", ConfigFileWriter.Apply(file, "echo \"a\" // n; sv_password \"old\"\n"));
+    }
+
+    [Fact]
     public void PatchKeepsTheFilesLineEndingsAndCreatesMissingFiles()
     {
         var file = Cfg(ConfigFileMode.Patch, ("hostname", "x"));
