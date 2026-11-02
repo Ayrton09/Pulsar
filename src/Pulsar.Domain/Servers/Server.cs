@@ -159,6 +159,12 @@ public sealed class Server
     /// </summary>
     public string? SteamBranch { get; private set; }
 
+    /// <summary>
+    /// The RCON password chosen for it (Pulsar 1.0.29), encrypted with the panel's Data Protection; null: its agent
+    /// makes one. Never returned by the API: whoever chose it knows it.
+    /// </summary>
+    public byte[]? RconPasswordProtected { get; private set; }
+
     /// <summary>How many MySQL/MariaDB databases the server may have (Phase 13); 0: none.</summary>
     public int DatabaseLimit { get; private set; } = DefaultDatabaseLimit;
 
@@ -565,6 +571,27 @@ public sealed class Server
         }
 
         ExternalId = externalId;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// The RCON password chosen for it (encrypted by the caller), or none (null: its agent makes one). Only while it is
+    /// stopped and nothing runs on it: a running game keeps the password it started with.
+    /// </summary>
+    public Result SetRconPassword(byte[]? passwordProtected, DateTimeOffset now)
+    {
+        if (ActiveOperationId is not null)
+        {
+            return ServerErrors.Busy;
+        }
+
+        if (RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        RconPasswordProtected = passwordProtected;
         UpdatedAt = now;
         return Result.Success();
     }

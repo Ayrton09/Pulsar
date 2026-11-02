@@ -77,6 +77,8 @@ const settings: Schemas['ServerSettings'] = {
   allowExtraArguments: false,
   autoStart: false,
   restartOnCrash: true,
+  hasRcon: false,
+  rconPasswordChosen: false,
 };
 
 const account: Schemas['SteamAccountView'] = {

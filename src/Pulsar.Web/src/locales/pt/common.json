@@ -693,7 +693,12 @@
       "old_copy_left": "O servidor foi movido para o novo nó, mas não foi possível apagar sua cópia no nó antigo: apague a pasta dele lá manualmente.",
       "copy_unsupported": "Um nó tem um agente antigo demais para copiar os arquivos de um servidor para outro nó: atualize-o.",
       "copy_incomplete": "Arquivos do servidor ficaram fora da cópia (o jogo em execução os mantinha abertos): pare-o e tente de novo.",
-      "backup_corrupt": "O nó enviou um arquivo de tamanho diferente do backup que fez."
+      "backup_corrupt": "O nó enviou um arquivo de tamanho diferente do backup que fez.",
+      "rcon_password_invalid": "Uma senha RCON tem de 12 a 64 letras, números e _.!@#$%^&*=?~ (sem espaços, aspas, ;, + ou -).",
+      "rcon_unsupported": "Este jogo não tem console RCON, então não tem senha RCON.",
+      "rcon_password_unsupported": "O agente do nó não pode usar uma senha RCON escolhida: atualize o agente.",
+      "rcon_password_reused": "Essa senha RCON já está escolhida em outro de seus servidores: um plugin de um entraria no console do outro. Use uma por servidor.",
+      "rcon_password_pending": "Salva, mas o nó ainda não a recebeu: ela vale a partir da próxima inicialização pelo painel."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -1614,6 +1619,19 @@
         "busy": "Está ocupado, não instalado ou seu nó está offline.",
         "mustBeStopped": "Precisa estar parado e instalado, com o nó conectado."
       }
+    },
+    "rcon": {
+      "title": "Senha RCON",
+      "hint": "Para outros programas que usam o RCON do jogo (um bot, uma ferramenta de administração). Sem uma escolhida, o Pulsar cria uma longa e aleatória que ninguém vê; ao escolher uma, o console do painel também a usa. Ela não é mostrada de novo: guarde-a em um lugar seguro. O RCON escuta na porta TCP do jogo, que o Pulsar não abre no firewall. O código do próprio jogo (seus plugins) pode lê-la: use uma por servidor, nunca uma que você usa em outro lugar.",
+      "chosen": "Uma senha foi escolhida para este servidor.",
+      "generated": "A senha é criada pelo Pulsar: nenhum programa além do painel a conhece.",
+      "saved": "Salva. O jogo a usa a partir da próxima inicialização.",
+      "stopFirst": "Pare o servidor para mudar a senha RCON.",
+      "password": "Escolha uma senha RCON",
+      "newPassword": "Nova senha RCON",
+      "rules": "De 12 a 64 letras, números e _.!@#$%^&*=?~ (sem espaços, aspas, ;, + ou -). Em alguns jogos o RCON não freia tentativas: faça-a longa.",
+      "invalid": "Use de 12 a 64 letras, números e _.!@#$%^&*=?~",
+      "useGenerated": "Voltar à do Pulsar"
     }
   },
   "panelKeys": {

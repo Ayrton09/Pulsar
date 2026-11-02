@@ -296,6 +296,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     public Task UpdateAsync(ServerDefinition definition) => Ask(tcs => new Update(tcs, definition));
 
     /// <summary>
+    /// Uses a new definition only while the game is stopped, checked and applied in one step of the loop (a start or a
+    /// restart after a crash cannot come in between): <see cref="AckStatus.Rejected"/> otherwise, and nothing changes.
+    /// For what a running game must keep, such as its RCON password.
+    /// </summary>
+    public Task<AckStatus> UpdateWhileStoppedAsync(ServerDefinition definition) => Ask(tcs => new UpdateWhileStopped(tcs, definition));
+
+    /// <summary>
     /// The agent is stopping: a graceful stop within <paramref name="budget"/>, then the tree is killed. Completes when the
     /// server is no longer running. Returns whether it was running (so the agent can start it again next time). A start
     /// still creating its process is not waited for (that can take up to <see cref="SupervisorOptions.StartTimeout"/>):
@@ -434,6 +441,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 ApplyLimits(update.Definition.Limits);
                 _definition = update.Definition;
                 update.Done.TrySetResult();
+                break;
+            case UpdateWhileStopped update when _process is not null || _lingering is not null
+                                                 || _state is not (RuntimeState.Offline or RuntimeState.Crashed):
+                update.Answer(AckStatus.Rejected);
+                break;
+            case UpdateWhileStopped update:
+                _definition = update.Definition;
+                update.Answer(AckStatus.Accepted);
                 break;
             case Shutdown shutdown:
                 shutdown.Answer(HandleShutdown(shutdown.Budget));
@@ -1929,6 +1944,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private sealed record Kill(TaskCompletionSource<AckStatus> Result) : Request(Result);
 
     private sealed record Shutdown(TaskCompletionSource<AckStatus> Result, TimeSpan Budget) : Request(Result);
+
+    private sealed record UpdateWhileStopped(TaskCompletionSource<AckStatus> Result, ServerDefinition Definition) : Request(Result);
 
     private sealed record Update(TaskCompletionSource Done, ServerDefinition Definition) : Command
     {

@@ -280,6 +280,19 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task WhatARunningGameMustKeepIsTakenOnlyOnceItStopped()
+    {
+        // A new RCON password: refused while the game runs (nothing changes), taken once it stopped.
+        var supervisor = await Running();
+        var changed = _definition! with { AutoStart = !_definition.AutoStart };
+
+        Assert.Equal(AckStatus.Rejected, await supervisor.UpdateWhileStoppedAsync(changed));
+        Assert.Equal(AckStatus.Accepted, await supervisor.StopAsync());
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Requested);
+        Assert.Equal(AckStatus.Accepted, await supervisor.UpdateWhileStoppedAsync(changed));
+    }
+
+    [Fact]
     public async Task ACrashedServerIsNotRestartedWhenItsPolicySaysSo()
     {
         var supervisor = await Running(restartOnCrash: false);

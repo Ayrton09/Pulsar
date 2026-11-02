@@ -76,7 +76,7 @@ public sealed class Server
 | `server.schedules.view` `server.schedules.edit` | server, node, global |
 | `server.databases.view` `server.databases.manage` (create, delete, rotate and read passwords; Phase 13) | server, node, global |
 | `server.startup.edit` (startup variables and arguments) | server, node, global |
-| `server.settings.edit` (name, auto-restart, …) | server, node, global |
+| `server.settings.edit` (name, auto-restart, the RCON password chosen for it, …) | server, node, global |
 | `server.install` (install/update/reinstall) | server, node, global |
 | `server.limits.edit` (CPU and memory caps, Phase 12; the database limit and the Steam account, Phase 13) | node, global |
 | `server.create` `server.delete` `server.transfer` (future) | node, global |

@@ -693,7 +693,12 @@
       "old_copy_left": "Le serveur a été déplacé vers le nouveau nœud, mais sa copie sur l'ancien nœud n'a pas pu être supprimée : supprimez son dossier à la main.",
       "copy_unsupported": "Un nœud a un agent trop ancien pour copier les fichiers d'un serveur vers un autre nœud : mettez-le à jour.",
       "copy_incomplete": "Des fichiers du serveur manquent dans la copie (le jeu en cours les tenait ouverts) : arrêtez-le et réessayez.",
-      "backup_corrupt": "Le nœud a envoyé une archive d'une autre taille que la sauvegarde qu'il a faite."
+      "backup_corrupt": "Le nœud a envoyé une archive d'une autre taille que la sauvegarde qu'il a faite.",
+      "rcon_password_invalid": "Un mot de passe RCON a 12 à 64 lettres, chiffres et _.!@#$%^&*=?~ (pas d'espaces, de guillemets, de ;, de + ni de -).",
+      "rcon_unsupported": "Ce jeu n'a pas de console RCON, donc pas de mot de passe RCON.",
+      "rcon_password_unsupported": "L'agent du nœud ne peut pas utiliser un mot de passe RCON choisi : mettez l'agent à jour.",
+      "rcon_password_reused": "Ce mot de passe RCON est déjà choisi pour un autre de vos serveurs : un plugin de l'un entrerait dans la console de l'autre. Utilisez-en un par serveur.",
+      "rcon_password_pending": "Enregistré, mais le nœud ne l'a pas encore pris : il s'applique au prochain démarrage depuis le panel."
     },
     "console": {
       "invalid_input": "Une commande tient sur une seule ligne, sans caractères de contrôle (comme les tabulations).",
@@ -1614,6 +1619,19 @@
         "busy": "Il est occupé, pas installé ou son nœud est hors ligne.",
         "mustBeStopped": "Il doit être arrêté et installé, avec son nœud connecté."
       }
+    },
+    "rcon": {
+      "title": "Mot de passe RCON",
+      "hint": "Pour d'autres programmes qui utilisent le RCON du jeu (un bot, un outil d'administration). Sans mot de passe choisi, Pulsar en crée un long et aléatoire que personne ne voit ; une fois choisi, la console du panel l'utilise aussi. Il n'est plus jamais affiché : gardez-le en lieu sûr. Le RCON écoute sur le port TCP du jeu, que Pulsar n'ouvre pas dans le pare-feu. Le code du jeu lui-même (ses plugins) peut le lire : utilisez-en un par serveur, jamais un que vous utilisez ailleurs.",
+      "chosen": "Un mot de passe a été choisi pour ce serveur.",
+      "generated": "Pulsar crée le mot de passe : aucun programme à part le panel ne le connaît.",
+      "saved": "Enregistré. Le jeu l’utilise dès son prochain démarrage.",
+      "stopFirst": "Arrêtez le serveur pour changer son mot de passe RCON.",
+      "password": "Choisir un mot de passe RCON",
+      "newPassword": "Nouveau mot de passe RCON",
+      "rules": "12 à 64 lettres, chiffres et _.!@#$%^&*=?~ (pas d'espaces, de guillemets, de ;, de + ni de -). Dans certains jeux, le RCON ne freine pas les essais : faites-le long.",
+      "invalid": "Utilisez 12 à 64 lettres, chiffres et _.!@#$%^&*=?~",
+      "useGenerated": "Revenir à celui de Pulsar"
     }
   },
   "panelKeys": {

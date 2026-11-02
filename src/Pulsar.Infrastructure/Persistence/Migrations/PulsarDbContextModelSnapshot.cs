@@ -2700,6 +2700,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
+                    b.Property<byte[]>("RconPasswordProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("rcon_password_protected");
+
                     b.Property<bool>("RestartOnCrash")
                         .HasColumnType("boolean")
                         .HasColumnName("restart_on_crash");

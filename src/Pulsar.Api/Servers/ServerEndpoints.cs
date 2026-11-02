@@ -8,6 +8,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
+using Pulsar.Contracts;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
@@ -38,6 +39,9 @@ public sealed record UpdateServerSettingsRequest(
     [property: Required] List<string> ExtraArguments,
     bool AutoStart,
     bool RestartOnCrash);
+
+/// <param name="Password">The RCON password chosen for the server (<see cref="RconPasswords"/>); null goes back to one its agent makes.</param>
+public sealed record SetRconPasswordRequest([property: StringLength(RconPasswords.MaxLength)] string? Password);
 
 /// <param name="Ports">Allocation per template port; null leaves an optional port without one, a port left out keeps its own.</param>
 /// <param name="PortNumbers">Port number per template port, instead of an allocation (as when creating a server).</param>
@@ -160,6 +164,10 @@ public static class ServerEndpoints
         servers.MapPut("/{id:guid}/settings", async (Guid id, UpdateServerSettingsRequest request, ServerManagement m, CancellationToken ct) =>
                 (await m.UpdateSettingsAsync(new ServerId(id), request.Variables, request.ExtraArguments, request.AutoStart, request.RestartOnCrash, ct)).ToHttp())
             .RequirePermission(Permissions.Server.StartupEdit);
+        // 1.0.29: for programs other than the panel that use RCON; what the game's protected settings need.
+        servers.MapPut("/{id:guid}/rcon-password", async (Guid id, SetRconPasswordRequest request, ServerManagement m, CancellationToken ct) =>
+                (await m.SetRconPasswordAsync(new ServerId(id), request.Password, ct)).ToHttp())
+            .RequirePermission(Permissions.Server.SettingsEdit);
         servers.MapPut("/{id:guid}/ports", (Guid id, UpdateServerPortsRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpdatePortsAsync(new ServerId(id), request.Ports ?? [], ct, request.PortNumbers)))
             .RequirePermission(Permissions.Server.SettingsEdit);

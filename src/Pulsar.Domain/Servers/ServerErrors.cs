@@ -188,6 +188,21 @@ public static class ServerErrors
     public static DomainError LimitsInvalid { get; } =
         new("server.limits_invalid", $"A CPU limit is 1 to 100 %, a memory limit {Server.MinMemoryLimitMb} MiB to {Server.MaxMemoryLimitMb} MiB.");
 
+    public static DomainError RconPasswordInvalid { get; } = new("server.rcon_password_invalid",
+        "An RCON password is 12 to 64 letters, digits and _.!@#$%^&*=?~ (no spaces, quotes, ;, + or -).");
+
+    public static DomainError RconPasswordReused { get; } = new("server.rcon_password_reused",
+        "That RCON password is chosen for another of your servers: a plugin of one would get into the other's console. Use one per server.");
+
+    public static DomainError RconPasswordPending { get; } = new("server.rcon_password_pending",
+        "Saved, but the node did not take it yet: it applies when the server is next started from the panel.");
+
+    public static DomainError RconUnsupported { get; } =
+        new("server.rcon_unsupported", "This game has no RCON console, so it has no RCON password.");
+
+    public static DomainError RconPasswordUnsupported { get; } =
+        new("server.rcon_password_unsupported", "The node's agent cannot run a server with a chosen RCON password (update the agent).");
+
     public static DomainError LimitsUnsupported { get; } =
         new("server.limits_unsupported", "The node's agent cannot limit a server's CPU and memory (update the agent).");
 

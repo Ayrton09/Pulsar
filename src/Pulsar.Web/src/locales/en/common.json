@@ -693,7 +693,12 @@
       "old_copy_left": "The server moved to the new node, but its copy on the old node could not be deleted: delete its folder there by hand.",
       "copy_unsupported": "A node has an agent too old to copy a server's files to another node: update it.",
       "copy_incomplete": "Files of the server were left out of the copy (held open by the running game): stop it and try again.",
-      "backup_corrupt": "The node sent an archive of another size than the backup it made."
+      "backup_corrupt": "The node sent an archive of another size than the backup it made.",
+      "rcon_password_invalid": "An RCON password is 12 to 64 letters, digits and _.!@#$%^&*=?~ (no spaces, quotes, ;, + or -).",
+      "rcon_unsupported": "This game has no RCON console, so it has no RCON password.",
+      "rcon_password_unsupported": "The node's agent cannot run a server with a chosen RCON password: update the agent.",
+      "rcon_password_reused": "That RCON password is chosen for another of your servers: a plugin of one would get into the other's console. Use one per server.",
+      "rcon_password_pending": "Saved, but the node did not take it yet: it applies when the server is next started from the panel."
     },
     "console": {
       "invalid_input": "A command is one line without control characters (such as tabs).",
@@ -1614,6 +1619,19 @@
         "busy": "It is busy, not installed or its node is offline.",
         "mustBeStopped": "It must be stopped and installed, with its node online."
       }
+    },
+    "rcon": {
+      "title": "RCON password",
+      "hint": "For other programs that use the game's RCON (a bot, an admin tool). Without one chosen, Pulsar makes a long random one nobody sees; once chosen, the panel's console uses it too. It is never shown again: keep it somewhere safe. RCON listens on the game's TCP port, which Pulsar does not open in the firewall. The game's own code (its plugins) can read it: use one per server, never one you use elsewhere.",
+      "chosen": "A password was chosen for this server.",
+      "generated": "Pulsar makes the password: no program but the panel knows it.",
+      "saved": "Saved. The game uses it from its next start.",
+      "stopFirst": "Stop the server to change its RCON password.",
+      "password": "Choose an RCON password",
+      "newPassword": "New RCON password",
+      "rules": "12 to 64 letters, digits and _.!@#$%^&*=?~ (no spaces, quotes, ;, + or -). RCON has no protection against guessing in some games: make it long.",
+      "invalid": "Use 12 to 64 letters, digits and _.!@#$%^&*=?~",
+      "useGenerated": "Go back to Pulsar's own"
     }
   },
   "panelKeys": {

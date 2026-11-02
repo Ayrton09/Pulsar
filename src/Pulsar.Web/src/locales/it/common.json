@@ -693,7 +693,12 @@
       "old_copy_left": "Il server è stato spostato sul nuovo nodo, ma non è stato possibile eliminarne la copia sul vecchio nodo: elimina la sua cartella a mano.",
       "copy_unsupported": "Un nodo ha un agent troppo vecchio per copiare i file di un server su un altro nodo: aggiornalo.",
       "copy_incomplete": "Alcuni file del server sono rimasti fuori dalla copia (il gioco in esecuzione li teneva aperti): fermalo e riprova.",
-      "backup_corrupt": "Il nodo ha inviato un archivio di dimensione diversa dal backup che ha fatto."
+      "backup_corrupt": "Il nodo ha inviato un archivio di dimensione diversa dal backup che ha fatto.",
+      "rcon_password_invalid": "Una password RCON ha da 12 a 64 lettere, cifre e _.!@#$%^&*=?~ (niente spazi, virgolette, ;, + o -).",
+      "rcon_unsupported": "Questo gioco non ha una console RCON, quindi non ha una password RCON.",
+      "rcon_password_unsupported": "L'agente del nodo non può usare una password RCON scelta: aggiorna l'agente.",
+      "rcon_password_reused": "Questa password RCON è già scelta per un altro dei tuoi server: un plugin dell'uno entrerebbe nella console dell'altro. Usane una per server.",
+      "rcon_password_pending": "Salvata, ma il nodo non l’ha ancora presa: si applica al prossimo avvio dal pannello."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -1614,6 +1619,19 @@
         "busy": "È occupato, non installato o il suo nodo è offline.",
         "mustBeStopped": "Deve essere arrestato e installato, con il nodo connesso."
       }
+    },
+    "rcon": {
+      "title": "Password RCON",
+      "hint": "Per altri programmi che usano l'RCON del gioco (un bot, uno strumento di amministrazione). Senza una scelta, Pulsar ne crea una lunga e casuale che nessuno vede; una volta scelta, la usa anche la console del pannello. Non viene più mostrata: conservala in un posto sicuro. L'RCON ascolta sulla porta TCP del gioco, che Pulsar non apre nel firewall. Il codice del gioco stesso (i suoi plugin) può leggerla: usane una per server, mai una che usi altrove.",
+      "chosen": "Per questo server è stata scelta una password.",
+      "generated": "La password la crea Pulsar: nessun programma oltre al pannello la conosce.",
+      "saved": "Salvata. Il gioco la usa dal prossimo avvio.",
+      "stopFirst": "Ferma il server per cambiarne la password RCON.",
+      "password": "Scegli una password RCON",
+      "newPassword": "Nuova password RCON",
+      "rules": "Da 12 a 64 lettere, cifre e _.!@#$%^&*=?~ (niente spazi, virgolette, ;, + o -). In alcuni giochi l'RCON non frena i tentativi: falla lunga.",
+      "invalid": "Usa da 12 a 64 lettere, cifre e _.!@#$%^&*=?~",
+      "useGenerated": "Torna a quella di Pulsar"
     }
   },
   "panelKeys": {

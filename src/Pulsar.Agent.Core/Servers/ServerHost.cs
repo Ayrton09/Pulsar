@@ -185,6 +185,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.WholeBackup;
             yield return AgentCapabilities.PartialRestore;
             yield return AgentCapabilities.ListBackupFiles;
+            yield return AgentCapabilities.ChosenRconPassword;
             if (archives is not null)
             {
                 yield return AgentCapabilities.CompressFiles;
@@ -812,7 +813,8 @@ public sealed partial class ServerHost(
         try
         {
             manifest = Parse(spec);
-            if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, rconPassword: null)) is { } error)
+            // With the chosen RCON password, if any (a stand-in otherwise): refused here, before the record is saved.
+            if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, spec.RconPassword)) is { } error)
             {
                 return Rejected(envelope, "server.invalid_spec", error);
             }
@@ -827,6 +829,11 @@ public sealed partial class ServerHost(
                 return Rejected(envelope, "server.invalid_spec", "The server's Steam branch is not a branch name.");
             }
 
+            if (spec.RconPassword is not null && !RconPasswords.IsValid(spec.RconPassword))
+            {
+                return Rejected(envelope, "server.invalid_spec", "The server's RCON password is not one Pulsar uses.");
+            }
+
             if (manifest.Install?.Steps.OfType<TestGameServerStep>().Any() == true && !installOptions.TestGameAvailable)
             {
                 return Rejected(envelope, "install.test_game_unavailable", "This agent was not started with the test game server.");
@@ -837,10 +844,10 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.invalid_spec", ex.Message);
         }
 
-        // A new RCON password at every provisioning (a reinstall rotates it): generated here, never chosen by anyone. So the
-        // server must be stopped, as for an install: a running game (or one taken over after the agent restarts) keeps
-        // the password it was started with.
-        var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : NewRconPassword();
+        // The RCON password chosen for the server, or a new one at every provisioning (a reinstall rotates it), generated
+        // here. So the server must be stopped, as for an install: a running game (or one taken over after the agent
+        // restarts) keeps the password it was started with.
+        var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : spec.RconPassword ?? NewRconPassword();
         const string stopFirst = "Stop the server before provisioning it again.";
         if (_servers.TryGetValue(command.ServerId, out var current) && current.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
@@ -1323,24 +1330,47 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.spec_mismatch", "A spec can change values, not the server's short id or manifest.");
         }
 
+        if (spec.RconPassword is not null && !RconPasswords.IsValid(spec.RconPassword))
+        {
+            return Rejected(envelope, "server.invalid_spec", "The server's RCON password is not one Pulsar uses.");
+        }
+
+        // The chosen RCON password, or the one made here: kept while none is chosen, a new one when a chosen one is taken away
+        // (whoever knew it no longer gets in). Changed only while the game is stopped: a running game, or one taken over
+        // after the agent restarts, keeps the password it was started with.
+        var rconPassword = server.RconPassword is null ? null
+            : spec.RconPassword ?? (server.Spec.RconPassword is null ? server.RconPassword : NewRconPassword());
         ServerDefinition definition;
         try
         {
-            definition = Definition(command.ServerId, spec, server.RconPassword);
+            definition = Definition(command.ServerId, spec, rconPassword);
         }
         catch (LaunchPlanException ex)
         {
             return Rejected(envelope, "server.invalid_spec", ex.Message);
         }
 
+        // A new password only while the game is stopped, checked and applied in one step of its supervisor (a restart after a
+        // crash cannot start the game with the old one in between); then kept.
+        if (rconPassword != server.RconPassword)
+        {
+            if (await server.Supervisor.UpdateWhileStoppedAsync(definition) != AckStatus.Accepted)
+            {
+                return Rejected(envelope, "server.running", "Stop the server before changing its RCON password.");
+            }
+        }
+        else
+        {
+            await server.Supervisor.UpdateAsync(definition);
+        }
+
         lock (_recordLock)
         {
             var record = store.Load(command.ServerId);
-            store.Save(new ServerRecord(command.ServerId, spec, record?.DesiredRunning ?? false, record?.ResumeOnStart ?? false, server.RconPassword));
+            store.Save(new ServerRecord(command.ServerId, spec, record?.DesiredRunning ?? false, record?.ResumeOnStart ?? false, rconPassword));
         }
 
-        await server.Supervisor.UpdateAsync(definition);
-        _servers[command.ServerId] = server with { Spec = spec };
+        _servers[command.ServerId] = server with { Spec = spec, RconPassword = rconPassword };
         LogSpecApplied(command.ServerId);
         return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
     }

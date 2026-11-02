@@ -69,6 +69,10 @@ public enum StateChangeReason
 /// <c>-beta</c> for the game's app whenever it installs, updates or checks it; null keeps the template's own. SteamCMD
 /// stays on a branch it installed until told another, so going back is <c>public</c>, never null.
 /// </param>
+/// <param name="RconPassword">
+/// The RCON password chosen for the server (Pulsar 1.0.29, <see cref="RconPasswords"/>), used by the game and by the
+/// agent's own RCON; null for the one the agent makes (a new one at each provisioning). Only a stopped server's changes.
+/// </param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
@@ -79,9 +83,10 @@ public sealed record ServerRuntimeSpec(
     IReadOnlyDictionary<string, ServerPort>? Ports = null,
     ServerLimits? Limits = null,
     IReadOnlyList<string>? Addons = null,
-    string? SteamBranch = null)
+    string? SteamBranch = null,
+    string? RconPassword = null)
 {
-    // Variables may hold secrets: never print them.
+    // Variables and the RCON password are secrets: never print them.
     public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";
 }
 
@@ -170,4 +175,21 @@ public sealed record SteamBranch(string Name, string? Build, string? Description
     public static bool IsName(string? name) =>
         name is { Length: > 0 and <= MaxNameLength } && char.IsAsciiLetterOrDigit(name[0])
         && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+}
+
+/// <summary>
+/// An RCON password chosen for a server (Pulsar 1.0.29): 12 to 64 characters, letters, digits and
+/// <c>_.!@#$%^&amp;*=?~</c>. Nothing a game's command line or console reads as more than one word: no spaces, quotes,
+/// <c>;</c>, <c>+</c> or <c>-</c> (a new command or switch), nor <c>{}()':</c> (Source's tokenizer ends a word there).
+/// At least 12, since CS2's RCON has no ban for wrong passwords (docs/architecture/08, T18).
+/// </summary>
+public static partial class RconPasswords
+{
+    public const int MinLength = 12;
+    public const int MaxLength = 64;
+
+    public static bool IsValid(string? password) => password is not null && Pattern().IsMatch(password);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9_.!@#$%^&*=?~]{12,64}\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex Pattern();
 }

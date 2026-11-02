@@ -891,6 +891,9 @@ public static class AgentCapabilities
     /// </summary>
     public const string SteamClient = "manifest.steam_client";
 
+    /// <summary>The agent runs a server with the RCON password its spec chooses (<see cref="ServerRuntimeSpec.RconPassword"/>, Pulsar 1.0.29).</summary>
+    public const string ChosenRconPassword = "server.rcon_password";
+
     /// <summary>The agent provisions a server clean (<see cref="ProvisionServerCommand.Clean"/>, Pulsar 1.0.16): it becomes another game.</summary>
     public const string ChangeGame = "server.change_game";
 

@@ -321,6 +321,13 @@ public sealed class ScriptedRcon(ScriptedProcessManager processes) : Pulsar.Agen
     {
         var game = processes.Started.LastOrDefault(p => p.IsAlive && !p.IsSteamCmd && p.GamePort == endpoint.Port)
             ?? throw new Pulsar.Agent.Core.Servers.RconException("Not listening.");
+        // As a game does: only the password it was started with (+rcon_password) gets in.
+        var started = game.Arguments.SkipWhile(a => a != "+rcon_password").Skip(1).FirstOrDefault();
+        if (started is not null && started != endpoint.Password)
+        {
+            throw new Pulsar.Agent.Core.Servers.RconException("The RCON password was refused.") { AuthenticationFailed = true };
+        }
+
         return Task.FromResult<Pulsar.Agent.Core.Servers.IRconSession>(new Session(game, this));
     }
 

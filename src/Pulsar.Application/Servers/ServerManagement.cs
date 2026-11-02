@@ -115,12 +115,16 @@ public sealed record ServerLimitsView(int? CpuPercent, int? MemoryMb, int Databa
 public sealed record ServerVariableView(TemplateVariable Definition, string? Value, bool HasValue);
 
 /// <summary>The server's startup settings (docs/architecture/05): variables, extra arguments and restart policy.</summary>
+/// <param name="HasRcon">The game has an RCON console, so an RCON password (1.0.29).</param>
+/// <param name="RconPasswordChosen">An RCON password was chosen for it (never returned); otherwise its agent makes one.</param>
 public sealed record ServerSettings(
     IReadOnlyList<ServerVariableView> Variables,
     IReadOnlyList<string> ExtraArguments,
     bool AllowExtraArguments,
     bool AutoStart,
-    bool RestartOnCrash);
+    bool RestartOnCrash,
+    bool HasRcon = false,
+    bool RconPasswordChosen = false);
 
 /// <summary>Servers for the REST API (docs/architecture/05): queries, lifecycle commands and their operations.</summary>
 public sealed partial class ServerManagement(
@@ -1075,6 +1079,12 @@ public sealed partial class ServerManagement(
             return ServerErrors.LimitsUnsupported;
         }
 
+        // Nor with a password of its own while the one chosen for it is what other programs use.
+        if (server.RconPasswordProtected is not null && !agent.Capabilities.Contains(AgentCapabilities.ChosenRconPassword))
+        {
+            return ServerErrors.RconPasswordUnsupported;
+        }
+
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var ack = await connections.SendAsync(server.NodeId,
             new ApplyServerSpecCommand(server.Id.Value, await specs.BuildAsync(server, template, cancellationToken)), request.UserId, cancellationToken);
@@ -1104,7 +1114,107 @@ public sealed partial class ServerManagement(
                 }),
             ],
             server.ExtraArguments, manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.AllowExtraArguments == true, server.AutoStart,
-            server.RestartOnCrash);
+            server.RestartOnCrash, HasRcon(manifest), server.RconPasswordProtected is not null);
+    }
+
+    private static bool HasRcon(GameManifest manifest) => manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.Rcon is not null;
+
+    /// <summary>
+    /// Chooses the server's RCON password (1.0.29), or goes back to one its agent makes (null): for programs other than
+    /// the panel that use RCON. Only while the server is stopped, on a node whose agent takes it; the new password goes
+    /// to the agent (the game and the agent's RCON use it from the next start). Audited, never with the password.
+    /// </summary>
+    public async Task<Result<ServerSettings>> SetRconPasswordAsync(ServerId id, string? password, CancellationToken cancellationToken)
+    {
+        if (password is not null && !RconPasswords.IsValid(password))
+        {
+            return ServerErrors.RconPasswordInvalid;
+        }
+
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
+        if (!HasRcon(manifest))
+        {
+            return ServerErrors.RconUnsupported;
+        }
+
+        if (Connection(server.NodeId) is not { } agent)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        if (!agent.Capabilities.Contains(AgentCapabilities.ChosenRconPassword))
+        {
+            return ServerErrors.RconPasswordUnsupported;
+        }
+
+        // Never one already chosen for another server the actor may change: the game's code (a plugin) reads its own
+        // server's password, and would get into the others' RCON. Only those: a refusal must not tell whether someone
+        // else's server uses it.
+        if (password is not null && await ChosenElsewhereAsync(server, password, cancellationToken))
+        {
+            return ServerErrors.RconPasswordReused;
+        }
+
+        // Written as the game's files and command line take it (an imported template may put it in a file that cannot hold
+        // every character a password may have): refused before it is saved, rather than at every start.
+        if (password is not null)
+        {
+            var allocations = await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)
+                .ToListAsync(cancellationToken);
+            if (specs.Check(server, manifest, allocations, password) is { IsSuccess: false } unreadable)
+            {
+                return unreadable.Error!;
+            }
+        }
+
+        var set = server.SetRconPassword(password is null ? null : specs.Protect(password), clock.GetUtcNow());
+        if (!set.IsSuccess)
+        {
+            return set.Error!;
+        }
+
+        audit.Record(password is null ? AuditActions.Server.RconPasswordCleared : AuditActions.Server.RconPasswordChosen)
+            .WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ServerErrors.Busy; // started or changed meanwhile: asked again
+        }
+
+        // Sent now, and again before every start from the panel. Said when the agent did not take it (the game started
+        // meanwhile): until then it keeps the old one, its restarts after a crash too.
+        if (await SyncSpecAsync(id, cancellationToken) is { IsSuccess: false })
+        {
+            return ServerErrors.RconPasswordPending;
+        }
+
+        return Settings(server, manifest);
+    }
+
+    /// <summary>Whether <paramref name="password"/> is the one chosen for another server the requesting user may change.</summary>
+    private async Task<bool> ChosenElsewhereAsync(Server server, string password, CancellationToken cancellationToken)
+    {
+        var others = await db.Servers.AsNoTracking().Where(s => s.Id != server.Id && s.RconPasswordProtected != null)
+            .Select(s => new { s.Id, s.NodeId, s.RconPasswordProtected }).ToListAsync(cancellationToken);
+        if (others.Count == 0)
+        {
+            return false;
+        }
+
+        var granted = request.UserId is { } user ? await permissions.GetAsync(user, cancellationToken) : null;
+        var typed = System.Text.Encoding.UTF8.GetBytes(password);
+        return others.Any(other => (granted is null || granted.Has(Permissions.Server.SettingsEdit, AccessTarget.ForServer(other.Id, other.NodeId)))
+            && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(specs.Unprotect(other.RconPasswordProtected!)),
+                typed));
     }
 
     public Task<Result<AgentCommandResult>> StopAsync(ServerId id, CancellationToken cancellationToken) =>

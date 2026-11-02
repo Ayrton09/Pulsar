@@ -13,6 +13,7 @@ import { useAllocations, useNodePortsInUse } from '../nodes/api';
 import {
   useCancelOperation,
   useServerSettings,
+  useSetRconPassword,
   useSetServerLimits,
   useUpdateServerPorts,
   useUpdateServerSettings,
@@ -132,7 +133,14 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
   return (
     <div className="space-y-6">
       {settings.isError && <Alert>{t('servers.stale', { error: errorMessage(t, settings.error) })}</Alert>}
-      <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
+      {/* Not keyed on the RCON password: choosing one keeps what is typed in the form. */}
+      <SettingsForm
+        key={JSON.stringify({ ...settings.data, rconPasswordChosen: undefined })}
+        server={details.server}
+        settings={settings.data}
+        save={save}
+      />
+      {settings.data.hasRcon && <RconPasswordCard details={details} chosen={settings.data.rconPasswordChosen} />}
       <GameUpdateSettingsCard details={details} />
       <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
       <SteamAccountCard key={details.steam?.accountId ?? 'anonymous'} details={details} />
@@ -144,6 +152,102 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
  * CPU and memory caps (docs/architecture/06, "Resource limits") and how many databases the server may have. Everyone who sees the server sees them; changing them
  * takes server.limits.edit, which is given on a node or globally only (a server's owner does not raise their own).
  */
+/** What an RCON password chosen in the panel may hold (RconPasswords on the panel and the agent). */
+const RCON_PASSWORD = /^[A-Za-z0-9_.!@#$%^&*=?~]{12,64}$/;
+
+/**
+ * The RCON password (1.0.29): one its agent makes, which nobody sees, or one chosen here for other programs that use
+ * RCON (the panel then uses it too). Chosen only while the server is stopped; never shown again.
+ */
+function RconPasswordCard({ details, chosen }: { details: ServerDetails; chosen: boolean }) {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const { server } = details;
+  const canEdit = canOnServer(me, server, Permission.ServerSettingsEdit);
+  const save = useSetRconPassword();
+  const [password, setPassword] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
+
+  return (
+    <Card className="p-6">
+      <div role="region" aria-labelledby="server-rcon" className="space-y-4">
+        <div>
+          <h2 id="server-rcon" className="text-lg font-semibold">
+            {t('servers.rcon.title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted">{t('servers.rcon.hint')}</p>
+        </div>
+        <p role="status" className="text-sm">
+          {chosen ? t('servers.rcon.chosen') : t('servers.rcon.generated')}
+        </p>
+        {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
+        {save.isSuccess && (
+          <p role="status" className="text-sm text-success">
+            {t('servers.rcon.saved')}
+          </p>
+        )}
+        {canEdit && (
+          <form
+            className="space-y-4"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              const bad = !RCON_PASSWORD.test(password);
+              setInvalid(bad);
+              if (!bad) {
+                save.mutate({ id: server.id, password }, { onSuccess: () => setPassword('') });
+              }
+            }}
+          >
+            {!stopped && <p className="text-sm text-muted">{t('servers.rcon.stopFirst')}</p>}
+            <Field
+              label={chosen ? t('servers.rcon.newPassword') : t('servers.rcon.password')}
+              hint={t('servers.rcon.rules')}
+              error={invalid ? t('servers.rcon.invalid') : undefined}
+            >
+              {(ids) => (
+                <Input
+                  {...ids}
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={64}
+                  value={password}
+                  disabled={!stopped}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setInvalid(false);
+                    save.reset();
+                  }}
+                />
+              )}
+            </Field>
+            <div className="flex flex-wrap justify-end gap-2">
+              {chosen && (
+                <Button
+                  variant="secondary"
+                  disabled={!stopped}
+                  busy={save.isPending && save.variables.password === null}
+                  onClick={() => save.mutate({ id: server.id, password: null })}
+                >
+                  {t('servers.rcon.useGenerated')}
+                </Button>
+              )}
+              <Button
+                type="submit"
+                disabled={!stopped || password === ''}
+                busy={save.isPending && save.variables.password !== null}
+              >
+                {t('actions.save')}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnType<typeof useSetServerLimits> }) {
   const { t } = useTranslation();
   const me = useCurrentUser();

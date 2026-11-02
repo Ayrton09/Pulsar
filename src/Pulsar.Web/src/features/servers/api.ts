@@ -161,6 +161,16 @@ export function useUpdateServerSettings() {
   });
 }
 
+/** Chooses the server's RCON password (1.0.29), or goes back to one its agent makes (null). */
+export function useSetRconPassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string | null }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/rcon-password', { params: { path: { id } }, body: { password } })),
+    onSuccess: (settings, { id }) => queryClient.setQueryData(serverKeys.settings(id), settings),
+  });
+}
+
 /** Moves a stopped server to a newer version of its game's template; it is installed again with it. */
 export function useUpgradeTemplate() {
   const changed = useServersChanged();

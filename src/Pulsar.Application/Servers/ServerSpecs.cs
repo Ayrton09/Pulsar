@@ -46,7 +46,7 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
             server.RestartOnCrash && !server.IsSuspended,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
-            server.SteamBranch);
+            server.SteamBranch, server.RconPasswordProtected is { } rcon ? protector.Unprotect(rcon) : null);
     }
 
     /// <summary>The server's caps for its agent; null without any (older agents never see the field then).</summary>
@@ -57,6 +57,11 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
             ? null
             : new ServerLimits(server.CpuLimitPercent, server.MemoryLimitMb * 1024L * 1024);
     }
+
+    /// <summary>A secret of the server (a chosen RCON password) encrypted as its secret values are.</summary>
+    public byte[] Protect(string secret) => protector.Protect(secret);
+
+    public string Unprotect(byte[] secret) => protector.Unprotect(secret);
 
     /// <summary>The server's stored values, secret ones decrypted.</summary>
     public Dictionary<string, string?> Values(Server server)
@@ -365,7 +370,8 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
     }
 
     /// <summary>The whole server renders: values, ports and extra arguments together (the agent checks again).</summary>
-    public Result Check(Server server, GameManifest manifest, IReadOnlyCollection<NodeAllocation> allocations)
+    /// <param name="rconPassword">An RCON password about to be chosen; otherwise the one chosen for it, if any (a stand-in for none).</param>
+    public Result Check(Server server, GameManifest manifest, IReadOnlyCollection<NodeAllocation> allocations, string? rconPassword = null)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(manifest);
@@ -375,8 +381,10 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
             return ServerErrors.ExtraArgumentsNotAllowed;
         }
 
+        // With the RCON password chosen for it: a file format of the game may not take every character it may hold.
         var binding = new ServerBinding(server.ShortId, Values(server),
-            allocations.ToDictionary(a => a.PortName!, a => new PortAssignment(a.IpAddress, a.Port)), server.ExtraArguments);
+            allocations.ToDictionary(a => a.PortName!, a => new PortAssignment(a.IpAddress, a.Port)), server.ExtraArguments,
+            rconPassword ?? (server.RconPasswordProtected is { } chosen ? protector.Unprotect(chosen) : null));
         return LaunchPlanRenderer.Check(manifest, Platform, binding) is { } error
             ? ServerErrors.InvalidSettings(Describe(manifest, error))
             : Result.Success();

@@ -94,6 +94,12 @@ public static class AuditActions
         public const string Suspended = "server.suspended";
         public const string Unsuspended = "server.unsuspended";
         public const string OwnerChanged = "server.owner_changed";
+
+        /// <summary>An RCON password was chosen for the server (1.0.29); never with the password.</summary>
+        public const string RconPasswordChosen = "server.rcon_password_chosen";
+
+        /// <summary>The server went back to an RCON password its agent makes.</summary>
+        public const string RconPasswordCleared = "server.rcon_password_cleared";
         public const string ExternalIdChanged = "server.external_id_changed";
         public const string AddonInstallRequested = "server.addon_install_requested";
         public const string AddonRemoveRequested = "server.addon_remove_requested";

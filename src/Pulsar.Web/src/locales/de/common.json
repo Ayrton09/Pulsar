@@ -693,7 +693,12 @@
       "old_copy_left": "Der Server wurde auf den neuen Node verschoben, aber seine Kopie auf dem alten Node konnte nicht gelöscht werden: Lösche seinen Ordner dort von Hand.",
       "copy_unsupported": "Ein Node hat einen zu alten Agent, um die Dateien eines Servers auf einen anderen Node zu kopieren: Aktualisiere ihn.",
       "copy_incomplete": "Dateien des Servers fehlen in der Kopie (das laufende Spiel hielt sie geöffnet): Stoppe ihn und versuche es erneut.",
-      "backup_corrupt": "Der Node hat ein Archiv anderer Größe als das von ihm erstellte Backup gesendet."
+      "backup_corrupt": "Der Node hat ein Archiv anderer Größe als das von ihm erstellte Backup gesendet.",
+      "rcon_password_invalid": "Ein RCON-Passwort hat 12 bis 64 Buchstaben, Ziffern und _.!@#$%^&*=?~ (keine Leerzeichen, Anführungszeichen, ;, + oder -).",
+      "rcon_unsupported": "Dieses Spiel hat keine RCON-Konsole und daher kein RCON-Passwort.",
+      "rcon_password_unsupported": "Der Agent des Knotens kann kein gewähltes RCON-Passwort verwenden: Aktualisiere den Agenten.",
+      "rcon_password_reused": "Dieses RCON-Passwort ist für einen anderen deiner Server gewählt: Ein Plugin des einen käme in die Konsole des anderen. Verwende eines pro Server.",
+      "rcon_password_pending": "Gespeichert, aber der Knoten hat es noch nicht übernommen: Es gilt ab dem nächsten Start aus dem Panel."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -1614,6 +1619,19 @@
         "busy": "Er ist beschäftigt, nicht installiert oder sein Node ist offline.",
         "mustBeStopped": "Er muss gestoppt und installiert sein, mit verbundenem Node."
       }
+    },
+    "rcon": {
+      "title": "RCON-Passwort",
+      "hint": "Für andere Programme, die das RCON des Spiels nutzen (ein Bot, ein Admin-Werkzeug). Ohne gewähltes Passwort erzeugt Pulsar ein langes zufälliges, das niemand sieht; ist eines gewählt, nutzt auch die Konsole des Panels es. Es wird nie wieder angezeigt: Bewahre es sicher auf. RCON lauscht auf dem TCP-Port des Spiels, den Pulsar nicht in der Firewall öffnet. Der Code des Spiels selbst (seine Plugins) kann es lesen: Verwende eines pro Server, nie eines, das du anderswo nutzt.",
+      "chosen": "Für diesen Server wurde ein Passwort gewählt.",
+      "generated": "Pulsar erzeugt das Passwort: Kein Programm außer dem Panel kennt es.",
+      "saved": "Gespeichert. Das Spiel nutzt es ab dem nächsten Start.",
+      "stopFirst": "Halte den Server an, um sein RCON-Passwort zu ändern.",
+      "password": "RCON-Passwort wählen",
+      "newPassword": "Neues RCON-Passwort",
+      "rules": "12 bis 64 Buchstaben, Ziffern und _.!@#$%^&*=?~ (keine Leerzeichen, Anführungszeichen, ;, + oder -). In manchen Spielen bremst RCON das Raten nicht: Mach es lang.",
+      "invalid": "Verwende 12 bis 64 Buchstaben, Ziffern und _.!@#$%^&*=?~",
+      "useGenerated": "Zurück zu dem von Pulsar"
     }
   },
   "panelKeys": {

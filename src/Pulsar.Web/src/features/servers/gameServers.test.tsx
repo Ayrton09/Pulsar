@@ -575,6 +575,46 @@ describe("a game's options", () => {
     expect(screen.getByText(/Pulsar does not change them in the game's files/)).toBeInTheDocument();
   });
 
+  it('lets the RCON password be chosen while the server is stopped, and never shows it', async () => {
+    let body: unknown;
+    const settings = {
+      variables: [],
+      extraArguments: [],
+      allowExtraArguments: false,
+      autoStart: false,
+      restartOnCrash: true,
+      hasRcon: true,
+      rconPasswordChosen: false,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      [`PUT /api/v1/servers/${serverId}/rcon-password`]: async (request) => {
+        body = await request.json();
+        return json({ ...settings, rconPasswordChosen: true });
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+    const user = userEvent.setup();
+    const card = await screen.findByRole('region', { name: 'RCON password' });
+    expect(within(card).getByText(/Pulsar makes the password/)).toBeInTheDocument();
+
+    const field = within(card).getByLabelText('Choose an RCON password');
+    await user.type(field, 'short;quit');
+    await user.click(within(card).getByRole('button', { name: 'Save' }));
+    expect(within(card).getByText(/Use 12 to 64 letters/)).toBeInTheDocument();
+    expect(body).toBeUndefined();
+
+    await user.clear(field);
+    await user.type(field, 'Chosen_Pass.word1');
+    await user.click(within(card).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(body).toEqual({ password: 'Chosen_Pass.word1' }));
+    expect(await within(card).findByText('A password was chosen for this server.')).toBeInTheDocument();
+    expect(within(card).getByLabelText('New RCON password')).toHaveValue('');
+    expect(within(card).getByRole('button', { name: "Go back to Pulsar's own" })).toBeEnabled();
+  });
+
   it('puts the settings of a template no section names, an imported one, in Advanced', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -696,6 +736,8 @@ describe('a game server page', () => {
       allowExtraArguments: false,
       autoStart: false,
       restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: false,
     };
     const saved: string[] = [];
     fakeApi({
@@ -743,6 +785,8 @@ describe('a game server page', () => {
       allowExtraArguments: true,
       autoStart: false,
       restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: false,
     };
     let stored = settings;
     fakeApi({
@@ -800,6 +844,8 @@ describe('a game server page', () => {
       allowExtraArguments: false,
       autoStart: false,
       restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: false,
     };
     fakeApi({
       'GET /api/v1/auth/session': session({
@@ -898,6 +944,8 @@ describe('a game server page', () => {
       allowExtraArguments: false,
       autoStart: false,
       restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: false,
     };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -932,6 +980,8 @@ describe('a game server page', () => {
       allowExtraArguments: false,
       autoStart: false,
       restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: false,
     };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
