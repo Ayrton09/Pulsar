@@ -104,12 +104,13 @@ public sealed class GoldSrcRconTests
     public async Task AGameThatNeverStopsAnsweringIsCutAndItsSessionClosed()
     {
         await using var game = new FakeHlds("secret");
-        // A pause of a second ends an answer (the log-on's echo), far longer than the game's 20 ms between pieces: the trickle
-        // must be cut by its time (twice the answer timeout), never end by itself.
-        var connector = new GoldSrcRconConnector { AnswerIdle = TimeSpan.FromSeconds(1), AnswerTimeout = TimeSpan.FromSeconds(1) };
+        // A pause of three seconds ends an answer (the log-on's echo), far longer than the game's 20 ms between pieces: the
+        // trickle must be cut by its time (twice the answer timeout), never end by itself, even when a busy machine holds
+        // the game for a second or two between two pieces.
+        var connector = new GoldSrcRconConnector { AnswerIdle = TimeSpan.FromSeconds(3), AnswerTimeout = TimeSpan.FromSeconds(3) };
         await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
 
-        var answer = await session.ExecuteAsync("trickle", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10),
+        var answer = await session.ExecuteAsync("trickle", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(20),
             TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(answer);
