@@ -110,12 +110,17 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
             await AccessScenario.EnsureSuccessAsync(moving);
         }
 
-        // The server switches to the new node, whose install reports another version; then the new node goes away.
+        // The server switches to the new node and is installed there, whose install reports another version; then the
+        // new node goes away. (Not before its install ends: an operation on a node that is gone stays active until the
+        // node is back, and the move with it.)
         await InProcessAgent.EventuallyAsync(async () =>
         {
             await SequenceDriver.DriveAsync(factory);
             return (await ServerApi.GetAsync(admin, server))!.Server.NodeId == second.Config.NodeId;
         }, "the server switched to the new node");
+        // Without driving the move: the pass after the install would restore the backup there.
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
+            "installed on the new node");
         await SetGameVersionAsync(server, "new-node-build");
         await second.DisposeAsync();
         var transfer = await EndedAsync(server);
