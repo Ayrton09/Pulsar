@@ -77,7 +77,9 @@ public sealed class ServerQuotaTests(PulsarApiFactory factory) : IClassFixture<P
             HttpStatusCode.Forbidden, AccessErrors.QuotaNodeNotAllowed.Code);
 
         // Deleting one of theirs makes room again.
-        await ServerApi.WaitForAsync(client, second.Server.Id, s => s.Server.ActiveOperation is null, "second installed");
+        // Installed, not only between its provisioning and its install (no operation active then either).
+        await ServerApi.WaitForAsync(client, second.Server.Id, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
+            "second installed");
         using (var deleted = await client.DeleteAsync($"/api/v1/servers/{second.Server.Id}"))
         {
             await AccessScenario.EnsureSuccessAsync(deleted);
