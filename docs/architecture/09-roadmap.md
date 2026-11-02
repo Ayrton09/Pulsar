@@ -545,6 +545,11 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - Counter-Strike 2 failed to start on a node whose server account has no Steam client ("Failed to initialize Steamworks SDK for gameserver. Could not determine Steam client install directory"): the game does not ship the Steam client's libraries. Its template now copies them beside `cs2.exe` from the server's SteamCMD after every install and update, checked as signed by Valve (`steamClient`, doc 04; T60, doc 08). It was not seen before because the game had only been run on a machine with Steam installed, as that machine's user.
 
+## 1.0.29 — Counter-Strike 2 max rounds, console copy
+
+- Counter-Strike 2's "Max rounds" took 0 as no limit, as older Counter-Strike does; Counter-Strike 2 then never ends its warmup (stuck at 0:01). It takes 1 to 100 now (template 1.5.2).
+- The console copies its selection with Ctrl+C (Cmd+C); the terminal used to take the key.
+
 ## 1.0.28 — Audit fixes
 
 - Quotas and user management: a quota counts as `server.create` and every owner permission on each of its nodes. Giving one needs them all there, and so does managing a user who has one (a new password, two-factor reset, the quota changed or taken away); before, a user manager without them could sign in as such a user and create servers they own (doc 02, rule 6).

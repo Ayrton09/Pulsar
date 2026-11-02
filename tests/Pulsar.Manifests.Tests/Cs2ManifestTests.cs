@@ -45,6 +45,19 @@ public sealed class Cs2ManifestTests
     }
 
     [Fact]
+    public void MaxRoundsHasNoZero()
+    {
+        // 0 is no limit on older Counter-Strike; on Counter-Strike 2 its warmup never ends.
+        var manifest = TestManifests.Load("cs2");
+        var ports = new Dictionary<string, PortAssignment> { ["game"] = new("0.0.0.0", 27015) };
+
+        Assert.Throws<LaunchPlanException>(() => LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64,
+            new ServerBinding("abcd1234", new Dictionary<string, string?> { ["maxRounds"] = "0" }, ports, RconPassword: "r")));
+        LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64,
+            new ServerBinding("abcd1234", new Dictionary<string, string?> { ["maxRounds"] = "30" }, ports, RconPassword: "r"));
+    }
+
+    [Fact]
     public void InstallsAndUpdatesWithSteamsClientLibrariesBesideTheGame()
     {
         // Its account has no Steam client: without them SteamGameServer_Init fails ("Could not determine Steam client install directory").

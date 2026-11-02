@@ -1,5 +1,9 @@
 # Counter-Strike 2 (cs2)
 
+## Max rounds (1.0.29)
+
+`mp_maxrounds 0` is no limit on older Counter-Strike, not on Counter-Strike 2: the warmup counts down to 0:01 and stays there, with no round ever starting, on any map (seen on a user's server, fixed by `mp_maxrounds 30` and `mp_restartgame 1`). The option takes 1 to 100 from template 1.5.2; a server with 0 stored is asked for another value when it moves to that version.
+
 ## Workshop maps (1.0.26)
 
 A server started with only `+host_workshop_map` (no `+map`) never loaded the map: the Workshop download needs a running server, so the game has to be up on a map first. The template now always starts on the starting map (`+map`) and asks for the Workshop map or collection last, after the token (template 1.5.1). From a user's server; the change itself was not run on a real server.
