@@ -1403,7 +1403,17 @@
       "clearSecret": "Effacer la valeur de {{label}}",
       "extraArguments": "Arguments supplémentaires",
       "extraArgumentsHint": "Un par ligne ; chaque ligne est un argument, ajouté après ceux du jeu.",
-      "autoStart": "Démarrer au démarrage de l'agent du nœud"
+      "autoStart": "Démarrer au démarrage de l'agent du nœud",
+      "groups": {
+        "server": "Serveur",
+        "gameplay": "Jeu",
+        "match": "Partie et manches",
+        "maps": "Cartes et monde",
+        "players": "Joueurs et discussion",
+        "mods": "Mods et Workshop",
+        "advanced": "Avancé",
+        "startup": "Démarrage"
+      }
     },
     "limits": {
       "title": "Ressources",
@@ -3192,7 +3202,7 @@
         },
         "maxRounds": {
           "label": "Manches max.",
-          "description": "Nombre de manches d'une partie. 0 : sans limite."
+          "description": "Manches que dure une partie. Counter-Strike 2 ne prend pas 0 pour sans limite : avec 0, l'échauffement ne finit jamais."
         },
         "roundTime": {
           "label": "Durée de la manche (min)",

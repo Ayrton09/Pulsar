@@ -3,6 +3,7 @@ import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import type { TemplateVariable } from './api';
 import { CatalogListField } from './CatalogListField';
 import { curseForgeCatalog, reforgerCatalog } from './catalogs';
+import { gameGroups, type SettingsGroup } from './gameGroups';
 import { isGameOption, type VariableValues } from './variables';
 import { WorkshopField } from './WorkshopField';
 
@@ -55,6 +56,50 @@ export function VariableFields(props: VariableFieldsProps) {
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+/** The order of the Settings tab's sections; a variable no section names (an imported template's) is "advanced". */
+const GROUPS: readonly SettingsGroup[] = ['server', 'gameplay', 'match', 'maps', 'players', 'mods', 'advanced'];
+
+/** A field that takes a list: given the whole width of its section. */
+const wide = (variable: TemplateVariable) =>
+  !!variable.workshop || !!variable.curseForge || !!variable.reforgerWorkshop;
+
+/**
+ * The Settings tab's fields, in sections by topic (gameGroups.ts), each a grid of one to three columns as its width
+ * allows, in the template's order within a section.
+ */
+export function GroupedVariableFields(props: VariableFieldsProps & { templateKey: string }) {
+  const { t } = useTranslation();
+  const { variables, templateKey } = props;
+  if (variables.length === 0) {
+    return <p className="text-sm text-muted">{t('servers.variables.none')}</p>;
+  }
+
+  const groups = gameGroups[templateKey] ?? {};
+  const sections = GROUPS.map((group) => ({
+    group,
+    fields: variables.filter((variable) => (groups[variable.key] ?? 'advanced') === group),
+  })).filter((section) => section.fields.length > 0);
+  return (
+    <div className="space-y-8">
+      {variables.some(isGameOption) && <p className="text-sm text-muted">{t('servers.variables.optionsHint')}</p>}
+      {sections.map(({ group, fields }) => (
+        <section key={group} aria-labelledby={`settings-${group}`} className="@container space-y-4">
+          <h3 id={`settings-${group}`} className="border-b border-border pb-2 text-base font-semibold">
+            {t(`servers.settings.groups.${group}`)}
+          </h3>
+          <div className="grid gap-x-6 gap-y-5 @2xl:grid-cols-2 @5xl:grid-cols-3">
+            {fields.map((variable) => (
+              <div key={variable.key} className={wide(variable) ? 'col-span-full' : 'min-w-0'}>
+                <VariableField variable={variable} {...props} />
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

@@ -1403,7 +1403,17 @@
       "clearSecret": "Clear the value of {{label}}",
       "extraArguments": "Extra arguments",
       "extraArgumentsHint": "One per line; each line is one argument, added after the game's own.",
-      "autoStart": "Start when the node's agent starts"
+      "autoStart": "Start when the node's agent starts",
+      "groups": {
+        "server": "Server",
+        "gameplay": "Gameplay",
+        "match": "Match and rounds",
+        "maps": "Maps and world",
+        "players": "Players and chat",
+        "mods": "Mods and Workshop",
+        "advanced": "Advanced",
+        "startup": "Startup"
+      }
     },
     "limits": {
       "title": "Resources",

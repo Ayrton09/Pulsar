@@ -1403,7 +1403,17 @@
       "clearSecret": "{{label}} 값 지우기",
       "extraArguments": "추가 인수",
       "extraArgumentsHint": "한 줄에 하나씩 입력하며, 각 줄이 인수 하나로 게임 고유의 인수 뒤에 추가됩니다.",
-      "autoStart": "노드의 에이전트가 시작될 때 함께 시작"
+      "autoStart": "노드의 에이전트가 시작될 때 함께 시작",
+      "groups": {
+        "server": "서버",
+        "gameplay": "게임플레이",
+        "match": "경기와 라운드",
+        "maps": "맵과 월드",
+        "players": "플레이어와 채팅",
+        "mods": "모드와 Workshop",
+        "advanced": "고급",
+        "startup": "시작"
+      }
     },
     "limits": {
       "title": "리소스",
@@ -3192,7 +3202,7 @@
         },
         "maxRounds": {
           "label": "최대 라운드 수",
-          "description": "한 경기의 라운드 수입니다. 0은 제한 없음입니다."
+          "description": "한 경기의 라운드 수. Counter-Strike 2에서는 0이 무제한이 아닙니다. 0이면 워밍업이 끝나지 않습니다."
         },
         "roundTime": {
           "label": "라운드 시간(분)",

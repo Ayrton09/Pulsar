@@ -140,7 +140,9 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   expect(await page.evaluate('navigator.clipboard.readText()')).toContain('Test server: hello from the browser');
   const consoleFile = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download as a file' }).click();
-  expect((await consoleFile).suggestedFilename()).toMatch(/^console-[A-Za-z0-9_-]+-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.txt$/);
+  expect((await consoleFile).suggestedFilename()).toMatch(
+    /^console-[A-Za-z0-9_-]+-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.txt$/,
+  );
   await commandField.fill('say h');
   await commandField.press('Tab');
   await expect(commandField).toHaveValue('say hello from the browser');

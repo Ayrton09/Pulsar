@@ -23,7 +23,7 @@ import {
 import { useGameText } from './gameText';
 import { PortNumberFields } from './PortFields';
 import { checkPorts, chosenPorts, parsePort, portsReady, type TemplatePort } from './portChoices';
-import { VariableFields } from './VariableFields';
+import { GroupedVariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
 import { GameUpdateSettingsCard } from '../gameUpdates/GameUpdates';
@@ -395,14 +395,14 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
           <h2 className="text-lg font-semibold">{t('servers.settings.title')}</h2>
           <p className="mt-1 text-sm text-muted">{t('servers.settings.hint')}</p>
         </div>
-        <VariableFields
+        <GroupedVariableFields
+          templateKey={server.templateKey ?? ''}
           variables={definitions}
           values={values}
           onChange={(key, value) => {
             edited();
             setValues((current) => ({ ...current, [key]: value }));
           }}
-          optionsOpen
           secretsSet={secretsSet}
           errors={showErrors ? errors : undefined}
           onUnreadable={unreadable.mark}
@@ -433,43 +433,48 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
               ))}
           </div>
         )}
-        {settings.allowExtraArguments && (
-          <Field label={t('servers.settings.extraArguments')} hint={t('servers.settings.extraArgumentsHint')}>
-            {(ids) => (
-              <textarea
-                {...ids}
-                rows={3}
-                value={extra}
-                disabled={!canEdit}
-                onChange={(e) => {
-                  edited();
-                  setExtra(e.target.value);
-                }}
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm disabled:opacity-60"
-              />
-            )}
-          </Field>
-        )}
-        <div className="space-y-2">
-          <Checkbox
-            label={t('servers.settings.autoStart')}
-            checked={autoStart}
-            disabled={!canEdit}
-            onChange={(e) => {
-              edited();
-              setAutoStart(e.target.checked);
-            }}
-          />
-          <Checkbox
-            label={t('servers.restartOnCrash')}
-            checked={restartOnCrash}
-            disabled={!canEdit}
-            onChange={(e) => {
-              edited();
-              setRestartOnCrash(e.target.checked);
-            }}
-          />
-        </div>
+        <section aria-labelledby="settings-startup" className="space-y-4">
+          <h3 id="settings-startup" className="border-b border-border pb-2 text-base font-semibold">
+            {t('servers.settings.groups.startup')}
+          </h3>
+          {settings.allowExtraArguments && (
+            <Field label={t('servers.settings.extraArguments')} hint={t('servers.settings.extraArgumentsHint')}>
+              {(ids) => (
+                <textarea
+                  {...ids}
+                  rows={3}
+                  value={extra}
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    edited();
+                    setExtra(e.target.value);
+                  }}
+                  className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm disabled:opacity-60"
+                />
+              )}
+            </Field>
+          )}
+          <div className="space-y-2">
+            <Checkbox
+              label={t('servers.settings.autoStart')}
+              checked={autoStart}
+              disabled={!canEdit}
+              onChange={(e) => {
+                edited();
+                setAutoStart(e.target.checked);
+              }}
+            />
+            <Checkbox
+              label={t('servers.restartOnCrash')}
+              checked={restartOnCrash}
+              disabled={!canEdit}
+              onChange={(e) => {
+                edited();
+                setRestartOnCrash(e.target.checked);
+              }}
+            />
+          </div>
+        </section>
       </div>
       {canEdit && (
         // Stays in view at the bottom while the form scrolls, with what became of the last save beside its button.

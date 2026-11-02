@@ -1403,7 +1403,17 @@
       "clearSecret": "Wert von {{label}} löschen",
       "extraArguments": "Zusätzliche Argumente",
       "extraArgumentsHint": "Eines pro Zeile; jede Zeile ist ein Argument, das nach denen des Spiels selbst angehängt wird.",
-      "autoStart": "Starten, wenn der Agent des Nodes startet"
+      "autoStart": "Starten, wenn der Agent des Nodes startet",
+      "groups": {
+        "server": "Server",
+        "gameplay": "Spielablauf",
+        "match": "Match und Runden",
+        "maps": "Karten und Welt",
+        "players": "Spieler und Chat",
+        "mods": "Mods und Workshop",
+        "advanced": "Erweitert",
+        "startup": "Start"
+      }
     },
     "limits": {
       "title": "Ressourcen",
@@ -3192,7 +3202,7 @@
         },
         "maxRounds": {
           "label": "Max. Runden",
-          "description": "Runden, die ein Match dauert. 0: keine Begrenzung."
+          "description": "Runden pro Match. Counter-Strike 2 versteht 0 nicht als unbegrenzt: mit 0 endet das Aufwärmen nie."
         },
         "roundTime": {
           "label": "Rundenzeit (Min.)",

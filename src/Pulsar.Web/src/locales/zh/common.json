@@ -1403,7 +1403,17 @@
       "clearSecret": "清除 {{label}} 的值",
       "extraArguments": "额外参数",
       "extraArgumentsHint": "每行一个；每行是一个参数，添加在游戏自身参数之后。",
-      "autoStart": "节点的代理启动时一并启动"
+      "autoStart": "节点的代理启动时一并启动",
+      "groups": {
+        "server": "服务器",
+        "gameplay": "玩法",
+        "match": "比赛与回合",
+        "maps": "地图与世界",
+        "players": "玩家与聊天",
+        "mods": "模组与 Workshop",
+        "advanced": "高级",
+        "startup": "启动"
+      }
     },
     "limits": {
       "title": "资源",
@@ -3192,7 +3202,7 @@
         },
         "maxRounds": {
           "label": "最大回合数",
-          "description": "一场比赛的回合数。0 表示不限制。"
+          "description": "一场比赛的回合数。Counter-Strike 2 不把 0 当作无限制：设为 0 时热身永远不会结束。"
         },
         "roundTime": {
           "label": "回合时间（分钟）",

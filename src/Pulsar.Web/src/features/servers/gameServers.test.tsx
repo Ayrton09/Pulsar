@@ -489,14 +489,6 @@ describe('changing the node of a server being created', () => {
 });
 
 /** The folded section a game's options are in. */
-function optionsSection(summary: HTMLElement): HTMLElement {
-  const section = summary.closest('details');
-  if (!section) {
-    throw new Error('The options are not in a section of their own.');
-  }
-  return section;
-}
-
 describe("a game's options", () => {
   const friendlyFire = variable({
     key: 'friendlyFire',
@@ -572,10 +564,37 @@ describe("a game's options", () => {
     });
     renderAt(`/servers/${serverId}?tab=settings`);
 
-    const section = optionsSection(await screen.findByText('More game options (2)'));
-    expect(section).toHaveAttribute('open');
-    expect(within(section).getByLabelText('Friendly fire')).toHaveDisplayValue('Off');
+    // In sections by topic, all shown: the game's own options among the others.
+    const gameplay = await screen.findByRole('region', { name: 'Gameplay' });
+    expect(within(gameplay).getByLabelText('Friendly fire')).toHaveDisplayValue('Off');
+    expect(
+      within(screen.getByRole('region', { name: 'Match and rounds' })).getByLabelText('Round time (min)'),
+    ).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Startup' })).toBeInTheDocument();
+    expect(screen.queryByText(/More game options/)).not.toBeInTheDocument();
     expect(screen.getByText(/Pulsar does not change them in the game's files/)).toBeInTheDocument();
+  });
+
+  it('puts the settings of a template no section names, an imported one, in Advanced', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details({ ...summary, templateKey: 'imported-game' })),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({
+          variables: [
+            { definition: variable({ key: 'custom', label: 'Custom setting' }), value: null, hasValue: false },
+          ],
+          extraArguments: [],
+          allowExtraArguments: false,
+          autoStart: false,
+          restartOnCrash: true,
+        }),
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+
+    expect(
+      within(await screen.findByRole('region', { name: 'Advanced' })).getByLabelText('Custom setting'),
+    ).toBeVisible();
   });
 
   it("are named in the reader's language, the template's English being the fallback", async () => {

@@ -1403,7 +1403,17 @@
       "clearSecret": "{{label}}の値をクリア",
       "extraArguments": "追加引数",
       "extraArgumentsHint": "1行に1つ。各行が1つの引数として、ゲーム自身の引数の後に追加されます。",
-      "autoStart": "ノードのエージェントの起動時に起動"
+      "autoStart": "ノードのエージェントの起動時に起動",
+      "groups": {
+        "server": "サーバー",
+        "gameplay": "ゲームプレイ",
+        "match": "試合とラウンド",
+        "maps": "マップとワールド",
+        "players": "プレイヤーとチャット",
+        "mods": "MOD と Workshop",
+        "advanced": "詳細設定",
+        "startup": "起動"
+      }
     },
     "limits": {
       "title": "リソース",
@@ -3192,7 +3202,7 @@
         },
         "maxRounds": {
           "label": "最大ラウンド数",
-          "description": "1試合のラウンド数です。0は無制限です。"
+          "description": "1 試合のラウンド数。Counter-Strike 2 では 0 は無制限になりません。0 にするとウォームアップが終わりません。"
         },
         "roundTime": {
           "label": "ラウンド時間(分)",
