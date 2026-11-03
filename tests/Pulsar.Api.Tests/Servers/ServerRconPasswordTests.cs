@@ -67,7 +67,7 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
             var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
             var stored = await db.Servers.AsNoTracking().SingleAsync(s => s.Id == new ServerId(server), Ct);
             Assert.DoesNotContain(Chosen, System.Text.Encoding.UTF8.GetString(stored.RconPasswordProtected!), StringComparison.Ordinal);
-            var audited = await db.AuditLog.AsNoTracking().SingleAsync(a => a.Action == AuditActions.Server.RconPasswordChosen, Ct);
+            var audited = await db.AuditLog.AsNoTracking().SingleAsync(a => a.ServerId == new ServerId(server) && a.Action == AuditActions.Server.RconPasswordChosen, Ct);
             Assert.DoesNotContain(Chosen, audited.Metadata ?? "", StringComparison.Ordinal);
         }
 
