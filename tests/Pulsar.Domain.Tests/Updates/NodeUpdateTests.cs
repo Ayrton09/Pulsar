@@ -132,11 +132,13 @@ public sealed class NodeUpdateTests
     {
         var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
         var refused = update.AttemptId!.Value;
-        update.Refused("update.in_progress", s_now);
+        update.Refused("update.in_progress", answered: true, s_now);
         Assert.Equal((NodeUpdate.Failed, "update.in_progress"), (update.Status, update.Error));
         Assert.False(update.IsUnderWay(s_now));
+        Assert.False(update.EndedWithoutTheNode);
 
-        update.RequestAgain("1.0.2", "1.0.3", null, s_now);
+        Assert.False(update.RequestAgain("1.0.2", "1.0.3", null, s_now));
+        Assert.NotEqual(refused, update.AttemptId);
         Assert.False(Report(update, NodeUpdate.Downloading, refused));
         Assert.True(Report(update, NodeUpdate.Downloading, update.AttemptId));
     }
@@ -147,7 +149,7 @@ public sealed class NodeUpdateTests
         // The agent started it, then its answer was lost: the panel ended it, the node's own reports of it still count.
         var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
         var attempt = update.AttemptId;
-        update.Refused("node.not_connected", s_now);
+        update.Refused("node.not_connected", answered: false, s_now);
         Assert.True(update.EndedWithoutTheNode);
         Assert.False(Report(update, NodeUpdate.Succeeded, Guid.NewGuid())); // not this request's
 
@@ -158,6 +160,27 @@ public sealed class NodeUpdateTests
 
         // Once the node reported its end, it is final as any other.
         Assert.False(Report(update, NodeUpdate.Failed, attempt));
+    }
+
+    [Fact]
+    public void ARequestAgainAfterALostAnswerKeepsItsIdSoTheRunStillUnderWayEndsIt()
+    {
+        // The agent is still downloading the first one when it is asked again: it refuses the second as under way, and
+        // the first one's end is this request's.
+        var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
+        var attempt = update.AttemptId;
+        update.Refused("node.not_connected", answered: false, s_now);
+
+        Assert.True(update.RequestAgain("1.0.2", "1.0.3", null, s_now.AddMinutes(5)));
+        Assert.Equal(attempt, update.AttemptId);
+        Assert.True(update.IsUnderWay(s_now.AddMinutes(5)));
+        Assert.True(Report(update, NodeUpdate.Installing, attempt));
+        Assert.True(Report(update, NodeUpdate.Succeeded, attempt));
+        Assert.Equal(NodeUpdate.Succeeded, update.Status);
+
+        // Once the node answered about it, the next request has an id of its own.
+        Assert.False(update.RequestAgain("1.0.3", "1.0.4", null, s_now.AddMinutes(10)));
+        Assert.NotEqual(attempt, update.AttemptId);
     }
 
     [Fact]

@@ -1483,6 +1483,7 @@
       "fullScreen": "Vollbild",
       "exitFullScreen": "Vollbild beenden",
       "held": "Angehalten · wartende Ausgabe: {{count}}",
+      "heldDropped": "hier wurde während der Pause ältere Ausgabe ausgelassen",
       "toEnd": "Zum Ende"
     },
     "usage": {

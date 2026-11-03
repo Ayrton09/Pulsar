@@ -1483,6 +1483,7 @@
       "fullScreen": "Schermo intero",
       "exitFullScreen": "Esci da schermo intero",
       "held": "In pausa · output in attesa: {{count}}",
+      "heldDropped": "qui è stato omesso output più vecchio durante la pausa",
       "toEnd": "Vai alla fine"
     },
     "usage": {

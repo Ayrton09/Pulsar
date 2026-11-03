@@ -77,26 +77,36 @@ public sealed class NodeUpdate
         UpdatedAt = now,
     };
 
-    /// <summary>A new request on the same node replaces the previous one, with an id of its own.</summary>
-    public void RequestAgain(string from, string to, UserId? requestedBy, DateTimeOffset now)
+    /// <summary>
+    /// A new request on the same node replaces the previous one, with an id of its own; except after one that ended without
+    /// a word from the node (<see cref="EndedWithoutTheNode"/>): the node may be running that one still (it refuses the new
+    /// one as under way), so the new request keeps its id and that run's reports are its own. True when it kept it.
+    /// </summary>
+    public bool RequestAgain(string from, string to, UserId? requestedBy, DateTimeOffset now)
     {
+        var resumed = EndedWithoutTheNode;
         Status = Requested;
         FromVersion = Bounded(from, MaxVersionLength);
         ToVersion = Bounded(to, MaxVersionLength);
         Error = null;
-        AttemptId = Guid.NewGuid();
+        AttemptId = resumed ? AttemptId : Guid.NewGuid();
         AttemptReported = false;
         RequestedBy = requestedBy;
         RequestedAt = now;
         UpdatedAt = now;
+        return resumed;
     }
 
-    /// <summary>The node refused this request, or did not answer it: the panel ends it with why.</summary>
-    public void Refused(string error, DateTimeOffset now)
+    /// <summary>
+    /// The node refused this request (<paramref name="answered"/>: its word about it, so it never runs it), or did not
+    /// answer it (it may have started it all the same): the panel ends it with why.
+    /// </summary>
+    public void Refused(string error, bool answered, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrEmpty(error);
         Status = Failed;
         Error = Bounded(error, MaxErrorLength);
+        AttemptReported |= answered;
         UpdatedAt = now;
     }
 

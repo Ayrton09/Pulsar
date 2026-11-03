@@ -1483,6 +1483,7 @@
       "fullScreen": "전체 화면",
       "exitFullScreen": "전체 화면 종료",
       "held": "일시 정지됨 · 대기 중인 출력: {{count}}",
+      "heldDropped": "일시 정지 중 이전 출력이 여기서 생략되었습니다",
       "toEnd": "끝으로 이동"
     },
     "usage": {

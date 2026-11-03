@@ -78,10 +78,12 @@ export function GroupedVariableFields(props: VariableFieldsProps & { templateKey
     return <p className="text-sm text-muted">{t('servers.variables.none')}</p>;
   }
 
-  const groups = gameGroups[templateKey] ?? {};
+  // Own keys only: a template's or a variable's key may be one an object inherits ("constructor", "toString").
+  const groups = (Object.hasOwn(gameGroups, templateKey) ? gameGroups[templateKey] : undefined) ?? {};
+  const groupOf = (key: string) => (Object.hasOwn(groups, key) ? groups[key] : undefined) ?? 'advanced';
   const sections = GROUPS.map((group) => ({
     group,
-    fields: variables.filter((variable) => (groups[variable.key] ?? 'advanced') === group),
+    fields: variables.filter((variable) => groupOf(variable.key) === group),
   })).filter((section) => section.fields.length > 0);
   return (
     <div className="space-y-8">

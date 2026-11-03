@@ -131,6 +131,32 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
             ServerErrors.RconUnsupported.Code);
     }
 
+    [DatabaseFact]
+    public async Task TwoServersChoosingTheSamePasswordAtOnceDoNotBothGetIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "rcon-at-once");
+        await GameServerTests.AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27030");
+        var first = await GameServerTests.InstalledAsync(admin, agent, "css");
+        var second = await GameServerTests.InstalledAsync(admin, agent, "css");
+
+        var answers = await Task.WhenAll(
+            admin.PutAsync($"/api/v1/servers/{first}/rcon-password", new SetRconPasswordRequest(Chosen)),
+            admin.PutAsync($"/api/v1/servers/{second}/rcon-password", new SetRconPasswordRequest(Chosen)));
+        try
+        {
+            Assert.Single(answers, a => a.IsSuccessStatusCode);
+            await ProblemAsync(Assert.Single(answers, a => !a.IsSuccessStatusCode), HttpStatusCode.Conflict, ServerErrors.RconPasswordReused.Code);
+        }
+        finally
+        {
+            foreach (var answer in answers)
+            {
+                answer.Dispose();
+            }
+        }
+    }
+
     private static string? RconArgument(InProcessAgent agent) =>
         agent.Processes.Started.Last(p => !p.IsSteamCmd).Arguments.SkipWhile(a => a != "+rcon_password").Skip(1).FirstOrDefault();
 
@@ -147,7 +173,7 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
         return agent;
     }
 
-    private static async Task ProblemAsync(HttpResponseMessage response, HttpStatusCode status, string? code)
+    internal static async Task ProblemAsync(HttpResponseMessage response, HttpStatusCode status, string? code)
     {
         using (response)
         {
@@ -159,5 +185,59 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
                 Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
             }
         }
+    }
+}
+
+/// <summary>A server whose RCON password was chosen, and a node whose agent cannot take one (older than 1.0.29).</summary>
+public sealed class ServerRconPasswordOlderAgentTests(OlderAgentApiFactory factory) : IClassFixture<OlderAgentApiFactory>
+{
+    [DatabaseFact]
+    public async Task ItIsNotMovedToAnAgentThatCannotTakeItAndGoesBackToTheAgentsOwnThere()
+    {
+        factory.HiddenCapability = null;
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var first = await ConnectedAgentAsync(admin, "rcon-moves-from");
+        await using var second = await ConnectedAgentAsync(admin, "rcon-moves-to");
+        await GameServerTests.AllocateAsync(admin, first.Config!.NodeId, "0.0.0.0", "27015-27020");
+        await GameServerTests.AllocateAsync(admin, second.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await GameServerTests.InstalledAsync(admin, first, "css");
+        using (var chosen = await admin.PutAsync($"/api/v1/servers/{server}/rcon-password", new SetRconPasswordRequest("Chosen_Pass.word1")))
+        {
+            await AccessScenario.EnsureSuccessAsync(chosen);
+        }
+
+        factory.HiddenCapability = AgentCapabilities.ChosenRconPassword;
+        try
+        {
+            // Moved there, it would never start again.
+            await ServerRconPasswordTests.ProblemAsync(
+                await admin.PostAsync($"/api/v1/servers/{server}/transfer", new TransferServerRequest(second.Config.NodeId)), HttpStatusCode.Conflict,
+                ServerErrors.RconPasswordUnsupported.Code);
+
+            // A chosen one cannot be set there; going back to the agent's own needs nothing of it.
+            await ServerRconPasswordTests.ProblemAsync(
+                await admin.PutAsync($"/api/v1/servers/{server}/rcon-password", new SetRconPasswordRequest("Another_Pass.word2")), HttpStatusCode.Conflict,
+                ServerErrors.RconPasswordUnsupported.Code);
+            using (var cleared = await admin.PutAsync($"/api/v1/servers/{server}/rcon-password", new SetRconPasswordRequest(null)))
+            {
+                await AccessScenario.EnsureSuccessAsync(cleared);
+                Assert.False(JsonSerializer.Deserialize<ServerSettings>(await cleared.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+                    AccessScenario.Json)!.RconPasswordChosen);
+            }
+        }
+        finally
+        {
+            factory.HiddenCapability = null;
+        }
+    }
+
+    private async Task<InProcessAgent> ConnectedAgentAsync(PanelClient admin, string name)
+    {
+        var created = await NodeApi.CreateAsync(admin, name);
+        var agent = new InProcessAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, created.Node.Id)).Node.Connected, "agent connected");
+        return agent;
     }
 }

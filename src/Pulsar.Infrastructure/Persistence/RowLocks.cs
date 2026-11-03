@@ -29,6 +29,12 @@ internal sealed class RowLocks(PulsarDbContext db) : IRowLocks
         return LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken));
     }
 
+    public Task LockRconPasswordsAsync(CancellationToken cancellationToken)
+    {
+        const string key = "pulsar.rcon_passwords";
+        return LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken));
+    }
+
     public Task LockCreationsAsync<TEntity>(CancellationToken cancellationToken)
         where TEntity : class
     {

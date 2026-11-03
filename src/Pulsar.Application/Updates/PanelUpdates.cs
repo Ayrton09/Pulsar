@@ -200,6 +200,7 @@ public sealed partial class PanelUpdates(
             }
 
             var from = version!;
+            var resumed = false;
             if (update is null)
             {
                 update = NodeUpdate.Request(nodeId, from, latest.Manifest.Version, request.UserId, now);
@@ -207,7 +208,7 @@ public sealed partial class PanelUpdates(
             }
             else
             {
-                update.RequestAgain(from, latest.Manifest.Version, request.UserId, now);
+                resumed = update.RequestAgain(from, latest.Manifest.Version, request.UserId, now);
             }
 
             // Sent with the command, and back with every report about this request (NodeUpdate.Reported).
@@ -229,7 +230,9 @@ public sealed partial class PanelUpdates(
 
             var ack = await connections.SendAsync(nodeId, new UpdatePulsarCommand(latest.Manifest.Version, state.LatestManifestSha256!, attempt),
                 request.UserId, CancellationToken.None);
-            if (ack?.Status is AckStatus.Accepted)
+            // Under way on the node, after a request whose answer was lost: that one, whose id this request kept, so its
+            // reports are this request's.
+            if (ack?.Status is AckStatus.Accepted || (resumed && ack?.ErrorCode == "update.in_progress"))
             {
                 results.Add(new UpdateRequestResult(nodeId.Value, true, null, null));
                 continue;
@@ -239,7 +242,7 @@ public sealed partial class PanelUpdates(
             var code = ack is null ? NodeErrors.NotConnected.Code : AgentInput.ErrorCode(ack.ErrorCode) ?? "update.refused";
             var message = ack?.Message is { } said ? AgentInput.Text(said, NodeUpdate.MaxErrorLength) : null;
             var record = await db.NodeUpdates.SingleAsync(u => u.NodeId == nodeId, CancellationToken.None);
-            record.Refused(message ?? code, clock.GetUtcNow());
+            record.Refused(message ?? code, answered: ack is not null, clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
             results.Add(new UpdateRequestResult(nodeId.Value, false, code, message));
         }

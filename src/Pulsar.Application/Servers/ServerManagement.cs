@@ -1148,17 +1148,11 @@ public sealed partial class ServerManagement(
             return NodeErrors.NotConnected;
         }
 
-        if (!agent.Capabilities.Contains(AgentCapabilities.ChosenRconPassword))
+        // Going back to one the agent makes needs nothing of it: an agent without the capability (a node the server was
+        // moved to) never had the chosen one, and keeps its own.
+        if (password is not null && !agent.Capabilities.Contains(AgentCapabilities.ChosenRconPassword))
         {
             return ServerErrors.RconPasswordUnsupported;
-        }
-
-        // Never one already chosen for another server the actor may change: the game's code (a plugin) reads its own
-        // server's password, and would get into the others' RCON. Only those: a refusal must not tell whether someone
-        // else's server uses it.
-        if (password is not null && await ChosenElsewhereAsync(server, password, cancellationToken))
-        {
-            return ServerErrors.RconPasswordReused;
         }
 
         // Written as the game's files and command line take it (an imported template may put it in a file that cannot hold
@@ -1173,21 +1167,35 @@ public sealed partial class ServerManagement(
             }
         }
 
-        var set = server.SetRconPassword(password is null ? null : specs.Protect(password), clock.GetUtcNow());
-        if (!set.IsSuccess)
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
-            return set.Error!;
-        }
+            // Never one already chosen for another server the actor may change: the game's code (a plugin) reads its own
+            // server's password, and would get into the others' RCON. Only those: a refusal must not tell whether someone
+            // else's server uses it. Checked and saved in turns, so two choices at once cannot both take it.
+            await locks.LockRconPasswordsAsync(cancellationToken);
+            if (password is not null && await ChosenElsewhereAsync(server, password, cancellationToken))
+            {
+                return ServerErrors.RconPasswordReused;
+            }
 
-        audit.Record(password is null ? AuditActions.Server.RconPasswordCleared : AuditActions.Server.RconPasswordChosen)
-            .WithServer(server.Id, server.NodeId);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return ServerErrors.Busy; // started or changed meanwhile: asked again
+            var set = server.SetRconPassword(password is null ? null : specs.Protect(password), clock.GetUtcNow());
+            if (!set.IsSuccess)
+            {
+                return set.Error!;
+            }
+
+            audit.Record(password is null ? AuditActions.Server.RconPasswordCleared : AuditActions.Server.RconPasswordChosen)
+                .WithServer(server.Id, server.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return ServerErrors.Busy; // started or changed meanwhile: asked again
+            }
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
         // Sent now, and again before every start from the panel. Said when the agent did not take it (the game started

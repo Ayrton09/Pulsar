@@ -264,6 +264,31 @@ describe('server console', () => {
     expect(terminals.at(-1)?.scrolledToBottom).toBe(1);
   });
 
+  it('says where it left out the oldest output it held, on a line of its own', async () => {
+    serverApi();
+    answerNext({ WatchConsole: () => Promise.resolve({ entries: [entry(1, 'one\r\nhal')], nodeConnected: true }) });
+    const live = await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+    await waitFor(() => expect(consoleText()).toBe('one\r\nhal'));
+
+    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    live.emit('ConsoleOutput', {
+      serverId: server.id,
+      entries: Array.from({ length: 2_001 }, (_, i) => entry(i + 2, i === 0 ? 'f\r\n' : `line ${i}\r\n`)),
+    });
+    expect(await screen.findByText('Paused · output waiting: 2000')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Resume' }));
+    // Not "half": the piece that ended that line was left out, and what is left starts on a line of its own.
+    const text = consoleText();
+    expect(
+      text.startsWith(
+        'one\r\nhal\x1b[0m\r\n\x1b[2m—— older output was left out here while paused ——\x1b[0m\r\nline 1\r\n',
+      ),
+    ).toBe(true);
+    expect(text.endsWith('line 2000\r\n')).toBe(true);
+  });
+
   it('copies or downloads all it holds, and keeps the text size the reader chose', async () => {
     localStorage.clear();
     serverApi();

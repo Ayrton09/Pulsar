@@ -1483,6 +1483,7 @@
       "fullScreen": "Pantalla completa",
       "exitFullScreen": "Salir de pantalla completa",
       "held": "En pausa · salida en espera: {{count}}",
+      "heldDropped": "acá se dejó afuera salida más vieja mientras estaba en pausa",
       "toEnd": "Ir al final"
     },
     "usage": {

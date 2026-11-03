@@ -1483,6 +1483,7 @@
       "fullScreen": "Tela cheia",
       "exitFullScreen": "Sair da tela cheia",
       "held": "Pausado · saída em espera: {{count}}",
+      "heldDropped": "aqui foi deixada de fora uma saída mais antiga durante a pausa",
       "toEnd": "Ir para o fim"
     },
     "usage": {

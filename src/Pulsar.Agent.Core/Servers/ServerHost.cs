@@ -113,6 +113,7 @@ public sealed partial class ServerHost(
     private readonly ConcurrentDictionary<Guid, Func<ServerRecord, ServerRecord>> _unsavedRecords = new(); // changes a failed write left
     private readonly ConcurrentDictionary<Guid, OperationCompleted> _unsavedResults = new(); // operation → result a failed write left in memory
     private readonly Lock _hostLock = new();
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _specTurns = new(); // server → specs applied one at a time
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
     private readonly ConcurrentDictionary<Guid, StrandedHost> _strandedHosts = new(); // hosts left running that this agent cannot drive
     private readonly ConsoleRelay _relay = new(panel, clock);
@@ -1318,6 +1319,22 @@ public sealed partial class ServerHost(
 
     /// <summary>New variables, ports, arguments or restart policy for the next start; never a different manifest.</summary>
     private async Task<CommandAck> ApplySpecAsync(CommandEnvelope envelope, ApplyServerSpecCommand command)
+    {
+        // One at a time per server, from what the last one left: two at once would give the supervisor one password and the
+        // record the other.
+        var turn = _specTurns.GetOrAdd(command.ServerId, _ => new SemaphoreSlim(1, 1));
+        await turn.WaitAsync();
+        try
+        {
+            return await ApplySpecInTurnAsync(envelope, command);
+        }
+        finally
+        {
+            turn.Release();
+        }
+    }
+
+    private async Task<CommandAck> ApplySpecInTurnAsync(CommandEnvelope envelope, ApplyServerSpecCommand command)
     {
         if (!_servers.TryGetValue(command.ServerId, out var server))
         {

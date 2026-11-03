@@ -1483,6 +1483,7 @@
       "fullScreen": "Full screen",
       "exitFullScreen": "Leave full screen",
       "held": "Paused · output waiting: {{count}}",
+      "heldDropped": "older output was left out here while paused",
       "toEnd": "Go to the end"
     },
     "usage": {

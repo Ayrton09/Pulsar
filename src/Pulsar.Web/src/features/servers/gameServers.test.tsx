@@ -623,6 +623,9 @@ describe("a game's options", () => {
         json({
           variables: [
             { definition: variable({ key: 'custom', label: 'Custom setting' }), value: null, hasValue: false },
+            // Keys an object inherits: never taken for a section.
+            { definition: variable({ key: 'constructor', label: 'Builder' }), value: null, hasValue: false },
+            { definition: variable({ key: 'toString', label: 'As text' }), value: null, hasValue: false },
           ],
           extraArguments: [],
           allowExtraArguments: false,
@@ -632,9 +635,10 @@ describe("a game's options", () => {
     });
     renderAt(`/servers/${serverId}?tab=settings`);
 
-    expect(
-      within(await screen.findByRole('region', { name: 'Advanced' })).getByLabelText('Custom setting'),
-    ).toBeVisible();
+    const advanced = await screen.findByRole('region', { name: 'Advanced' });
+    expect(within(advanced).getByLabelText('Custom setting')).toBeVisible();
+    expect(within(advanced).getByLabelText('Builder')).toBeVisible();
+    expect(within(advanced).getByLabelText('As text')).toBeVisible();
   });
 
   it("are named in the reader's language, the template's English being the fallback", async () => {

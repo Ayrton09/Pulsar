@@ -72,6 +72,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const [copied, setCopied] = useState(false);
   // While paused, what comes is held here and written on resume.
   const held = useRef<string[]>([]);
+  const heldDropped = useRef(false); // the oldest waiting output was left out (more than HELD pieces)
   const pausedRef = useRef(false);
   const [paused, setPaused] = useState(false);
   const [heldCount, setHeldCount] = useState(0);
@@ -144,6 +145,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
     held.current.push(text);
     if (held.current.length > HELD) {
       held.current.splice(0, held.current.length - HELD);
+      heldDropped.current = true;
     }
     setHeldCount(held.current.length);
   }, []);
@@ -151,8 +153,12 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const togglePause = () => {
     if (pausedRef.current) {
       pausedRef.current = false;
-      const waiting = held.current.join('');
+      // Where the oldest waiting output was left out: said on a line of its own, so what is left never joins the line
+      // shown before the pause.
+      const left = heldDropped.current ? `\x1b[0m\r\n\x1b[2m—— ${t('servers.console.heldDropped')} ——\x1b[0m\r\n` : '';
+      const waiting = left + held.current.join('');
       held.current = [];
+      heldDropped.current = false;
       setHeldCount(0);
       terminal.current?.write(waiting);
       terminal.current?.scrollToBottom();

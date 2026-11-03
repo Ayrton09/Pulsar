@@ -91,6 +91,12 @@ public sealed partial class ServerManagement
             return ServerErrors.CopyUnsupported;
         }
 
+        // A chosen RCON password needs an agent that takes it: on another, the server would never start again.
+        if (server.RconPasswordProtected is not null && !Announces(target, AgentCapabilities.ChosenRconPassword))
+        {
+            return ServerErrors.RconPasswordUnsupported;
+        }
+
         if (await steamAccounts.LoginForAsync(server, manifest, target, null, cancellationToken) is { IsSuccess: false } login)
         {
             return login.Error!;

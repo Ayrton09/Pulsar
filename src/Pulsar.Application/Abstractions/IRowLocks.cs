@@ -34,6 +34,12 @@ public interface IRowLocks
     Task LockSsoProviderAsync(SsoKind kind, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Choices of servers' RCON passwords take turns: one is checked against those chosen for the other servers as they
+    /// are now, and saved before the next is checked.
+    /// </summary>
+    Task LockRconPasswordsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Creations of <typeparamref name="TEntity"/> rows that take this lock take turns until the transaction ends (nothing
     /// else waits): a panel-wide cap is counted against what is there now.
     /// </summary>
