@@ -6,6 +6,7 @@ import { curseForgeCatalog, reforgerCatalog } from './catalogs';
 import { gameGroups, type SettingsGroup } from './gameGroups';
 import { isGameOption, type VariableValues } from './variables';
 import { WorkshopField } from './WorkshopField';
+import { own } from '../../lib/own';
 
 interface VariableFieldsProps {
   variables: TemplateVariable[];
@@ -37,7 +38,7 @@ export function VariableFields(props: VariableFieldsProps) {
   const options = variables.filter(isGameOption);
   const main = variables.filter((variable) => !isGameOption(variable));
   // A wrong value is never hidden in a folded section.
-  const optionError = options.some((variable) => !!errors?.[variable.key]);
+  const optionError = options.some((variable) => !!own(errors, variable.key));
   return (
     <div className="space-y-4">
       {main.map((variable) => (
@@ -116,9 +117,9 @@ function VariableField({
   readOnly,
 }: VariableFieldsProps & { variable: TemplateVariable }) {
   const { t } = useTranslation();
-  const value = values[variable.key] ?? '';
+  const value = own(values, variable.key) ?? '';
   const disabled = readOnly?.(variable) ?? false;
-  const error = errors?.[variable.key];
+  const error = own(errors, variable.key);
   const name = variable.label;
   const label = variable.required ? `${name} *` : name;
   const numeric = variable.type === 'integer' || variable.type === 'number';

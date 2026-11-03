@@ -419,8 +419,8 @@ public sealed class Server
     /// <summary>
     /// Makes the stopped server another game's, or its own again from nothing (Pulsar 1.0.16): its template becomes
     /// <paramref name="next"/>, and what belonged to the old game goes: its values (the new game's are set next), extra arguments,
-    /// game version and Steam branch. Its name, access, limits, backups and Steam account stay. Its files go with the
-    /// provisioning that follows.
+    /// game version, Steam branch and chosen RCON password (another game's only). Its name, access, limits, backups and
+    /// Steam account stay. Its files go with the provisioning that follows.
     /// </summary>
     public Result ChangeGame(GameTemplate current, GameTemplate next, DateTimeOffset now)
     {
@@ -445,6 +445,13 @@ public sealed class Server
         ExtraArguments = [];
         GameVersion = null;
         SteamBranch = null;
+        // A chosen RCON password was the old game's (the new one may have no RCON, or keep it elsewhere); a reinstall of
+        // the same game keeps it.
+        if (next.Id != TemplateId)
+        {
+            RconPasswordProtected = null;
+        }
+
         TemplateId = next.Id;
         UpdatedAt = now;
         return Result.Success();

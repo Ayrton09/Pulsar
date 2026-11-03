@@ -271,6 +271,68 @@ describe('creating a game server', () => {
     });
   });
 
+  it('takes a variable and a port named as what an object inherits (constructor) as any other', async () => {
+    let body: unknown;
+    const builder = variable({
+      key: 'constructor',
+      label: 'Builder',
+      type: 'enum',
+      default: null,
+      required: true,
+      options: [
+        { value: 'wood', label: 'Wood' },
+        { value: 'stone', label: 'Stone' },
+      ],
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${templateId}`]: () =>
+        json({
+          ...templateDetails,
+          variables: [builder],
+          ports: [
+            templateDetails.ports[0],
+            {
+              name: 'constructor',
+              label: 'Builder port',
+              protocols: ['udp'],
+              default: 27030,
+              required: false,
+              description: null,
+            },
+          ],
+        }),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details({ ...summary, installState: 'installing' }), 201);
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Retakes');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+
+    // Nothing chosen for it yet: required, so asked for.
+    const field = await screen.findByLabelText('Builder *');
+    expect(field).toHaveValue('');
+    await user.selectOptions(field, 'Stone');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByLabelText('Builder port')).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByRole('heading', { name: 'Retakes' })).toBeInTheDocument();
+    expect(body).toMatchObject({ variables: { constructor: 'stone' }, portNumbers: { game: 27015 } });
+  });
+
   it("offers the node's free allocations to whoever cannot add ports to it, the game's own first", async () => {
     let body: unknown;
     fakeApi({
@@ -573,6 +635,37 @@ describe("a game's options", () => {
     expect(screen.getByRole('region', { name: 'Startup' })).toBeInTheDocument();
     expect(screen.queryByText(/More game options/)).not.toBeInTheDocument();
     expect(screen.getByText(/Pulsar does not change them in the game's files/)).toBeInTheDocument();
+  });
+
+  it('only lets a password chosen for a game without RCON be taken away', async () => {
+    let body: unknown;
+    const settings = {
+      variables: [],
+      extraArguments: [],
+      allowExtraArguments: false,
+      autoStart: false,
+      restartOnCrash: true,
+      hasRcon: false,
+      rconPasswordChosen: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      [`PUT /api/v1/servers/${serverId}/rcon-password`]: async (request) => {
+        body = await request.json();
+        return json({ ...settings, rconPasswordChosen: false });
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+    const user = userEvent.setup();
+    const card = await screen.findByRole('region', { name: 'RCON password' });
+    expect(within(card).queryByLabelText('New RCON password')).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+
+    await user.click(within(card).getByRole('button', { name: "Go back to Pulsar's own" }));
+    await vi.waitFor(() => expect(body).toEqual({ password: null }));
+    await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'RCON password' })).not.toBeInTheDocument());
   });
 
   it('lets the RCON password be chosen while the server is stopped, and never shows it', async () => {

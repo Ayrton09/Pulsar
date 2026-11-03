@@ -78,23 +78,37 @@ public sealed class NodeUpdate
     };
 
     /// <summary>
-    /// A new request on the same node replaces the previous one, with an id of its own; except after one that ended without
-    /// a word from the node (<see cref="EndedWithoutTheNode"/>): the node may be running that one still (it refuses the new
-    /// one as under way), so the new request keeps its id and that run's reports are its own. True when it kept it.
+    /// A new request on the same node replaces the previous one, with an id of its own: an earlier run's result (kept by
+    /// the node, sent after a Hello) never ends it. Returns the previous request's id when it ended without a word from the
+    /// node (<see cref="EndedWithoutTheNode"/>): the node may be running that one still, and refuse this one as under way
+    /// (<see cref="Resume"/>).
     /// </summary>
-    public bool RequestAgain(string from, string to, UserId? requestedBy, DateTimeOffset now)
+    public Guid? RequestAgain(string from, string to, UserId? requestedBy, DateTimeOffset now)
     {
-        var resumed = EndedWithoutTheNode;
+        var earlier = EndedWithoutTheNode ? AttemptId : null;
         Status = Requested;
         FromVersion = Bounded(from, MaxVersionLength);
         ToVersion = Bounded(to, MaxVersionLength);
         Error = null;
-        AttemptId = resumed ? AttemptId : Guid.NewGuid();
+        AttemptId = Guid.NewGuid();
         AttemptReported = false;
         RequestedBy = requestedBy;
         RequestedAt = now;
         UpdatedAt = now;
-        return resumed;
+        return earlier;
+    }
+
+    /// <summary>
+    /// The node refused this request as under way, and the one under way is <paramref name="earlier"/> (what
+    /// <see cref="RequestAgain"/> returned): this request becomes that one, whose reports end it.
+    /// </summary>
+    public void Resume(Guid earlier, DateTimeOffset now)
+    {
+        Status = Requested;
+        Error = null;
+        AttemptId = earlier;
+        AttemptReported = false;
+        UpdatedAt = now;
     }
 
     /// <summary>

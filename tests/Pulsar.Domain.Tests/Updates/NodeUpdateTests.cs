@@ -137,7 +137,7 @@ public sealed class NodeUpdateTests
         Assert.False(update.IsUnderWay(s_now));
         Assert.False(update.EndedWithoutTheNode);
 
-        Assert.False(update.RequestAgain("1.0.2", "1.0.3", null, s_now));
+        Assert.Null(update.RequestAgain("1.0.2", "1.0.3", null, s_now));
         Assert.NotEqual(refused, update.AttemptId);
         Assert.False(Report(update, NodeUpdate.Downloading, refused));
         Assert.True(Report(update, NodeUpdate.Downloading, update.AttemptId));
@@ -163,24 +163,44 @@ public sealed class NodeUpdateTests
     }
 
     [Fact]
-    public void ARequestAgainAfterALostAnswerKeepsItsIdSoTheRunStillUnderWayEndsIt()
+    public void ARequestAgainAfterALostAnswerBecomesTheRunStillUnderWayOnlyWhenTheNodeSaysSo()
     {
         // The agent is still downloading the first one when it is asked again: it refuses the second as under way, and
         // the first one's end is this request's.
         var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
-        var attempt = update.AttemptId;
+        var attempt = update.AttemptId!.Value;
         update.Refused("node.not_connected", answered: false, s_now);
 
-        Assert.True(update.RequestAgain("1.0.2", "1.0.3", null, s_now.AddMinutes(5)));
+        Assert.Equal(attempt, update.RequestAgain("1.0.2", "1.0.3", null, s_now.AddMinutes(5)));
+        Assert.NotEqual(attempt, update.AttemptId);
+        update.Resume(attempt, s_now.AddMinutes(5));
         Assert.Equal(attempt, update.AttemptId);
         Assert.True(update.IsUnderWay(s_now.AddMinutes(5)));
         Assert.True(Report(update, NodeUpdate.Installing, attempt));
         Assert.True(Report(update, NodeUpdate.Succeeded, attempt));
         Assert.Equal(NodeUpdate.Succeeded, update.Status);
 
-        // Once the node answered about it, the next request has an id of its own.
-        Assert.False(update.RequestAgain("1.0.3", "1.0.4", null, s_now.AddMinutes(10)));
+        // Once the node answered about it, the next request has nothing to resume.
+        Assert.Null(update.RequestAgain("1.0.3", "1.0.4", null, s_now.AddMinutes(10)));
         Assert.NotEqual(attempt, update.AttemptId);
+    }
+
+    [Fact]
+    public void AnEarlierRunsResultSentLateNeverEndsTheRequestThatTookTheNode()
+    {
+        // The first ended (rolled back) while the panel was away; the agent took the second one; the first's kept result
+        // comes after it.
+        var update = NodeUpdate.Request(NodeId.New(), "1.0.2", "1.0.3", null, s_now);
+        var first = update.AttemptId;
+        update.Refused("node.not_connected", answered: false, s_now);
+        Assert.NotNull(update.RequestAgain("1.0.2", "1.0.3", null, s_now.AddMinutes(5)));
+        var second = update.AttemptId;
+
+        Assert.False(Report(update, NodeUpdate.RolledBack, first, "The panel did not start."));
+        Assert.True(Report(update, NodeUpdate.Downloading, second));
+        Assert.True(Report(update, NodeUpdate.Installing, second));
+        Assert.True(Report(update, NodeUpdate.Succeeded, second));
+        Assert.Equal((NodeUpdate.Succeeded, null), (update.Status, update.Error));
     }
 
     [Fact]

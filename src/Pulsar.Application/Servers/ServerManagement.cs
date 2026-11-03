@@ -1067,6 +1067,23 @@ public sealed partial class ServerManagement(
     /// <summary>Sends the server's spec to its agent now (a running game gets it at its next start); nothing when it is not installed or its node is away.</summary>
     public async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
     {
+        // In turns per server, each reading the server once it has its turn: two sends at once (two changes of its RCON
+        // password, a setting beside one) never leave the agent with the earlier read.
+        if (db.Database.CurrentTransaction is not null)
+        {
+            await locks.LockServerSpecAsync(id, cancellationToken);
+            return await SyncSpecInTurnAsync(id, cancellationToken);
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockServerSpecAsync(id, cancellationToken);
+        var synced = await SyncSpecInTurnAsync(id, cancellationToken);
+        await transaction.CommitAsync(CancellationToken.None);
+        return synced;
+    }
+
+    private async Task<Result> SyncSpecInTurnAsync(ServerId id, CancellationToken cancellationToken)
+    {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null || server.InstallState == InstallState.NotInstalled || Connection(server.NodeId) is not { } agent)
         {
@@ -1138,9 +1155,16 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
-        if (!HasRcon(manifest))
+        // Taking it away is always possible: a game without RCON (one the server was changed to) keeps no use for it.
+        if (password is not null && !HasRcon(manifest))
         {
             return ServerErrors.RconUnsupported;
+        }
+
+        // Between the steps of a transfer the server is stopped and free, but on its way to a node that may not take it.
+        if (await TransferringAsync(server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
         }
 
         if (Connection(server.NodeId) is not { } agent)

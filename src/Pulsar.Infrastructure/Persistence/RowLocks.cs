@@ -35,6 +35,13 @@ internal sealed class RowLocks(PulsarDbContext db) : IRowLocks
         return LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken));
     }
 
+    public Task LockServerSpecAsync(ServerId server, CancellationToken cancellationToken)
+    {
+        // Advisory: the server's row stays free for everything else (its agent's state, the settings) meanwhile.
+        var key = "pulsar.server_spec." + server.Value.ToString("N");
+        return LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", cancellationToken));
+    }
+
     public Task LockCreationsAsync<TEntity>(CancellationToken cancellationToken)
         where TEntity : class
     {

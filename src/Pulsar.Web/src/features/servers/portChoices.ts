@@ -1,4 +1,5 @@
 import type { Schemas } from '../../api/client';
+import { own } from '../../lib/own';
 
 export type TemplatePort = Schemas['TemplatePort'];
 export type NodeAllocation = Pick<
@@ -107,7 +108,7 @@ export function checkPorts(
   inUse: PortInUse[] = [],
 ): PortChoice[] {
   const choices = chosenPorts(ports).map((port): PortChoice => {
-    const value = values[port.name] ?? '';
+    const value = own(values, port.name) ?? '';
     const number = parsePort(value);
     const followers = followersOf(ports, port.name).map((follower) => ({
       port: follower,

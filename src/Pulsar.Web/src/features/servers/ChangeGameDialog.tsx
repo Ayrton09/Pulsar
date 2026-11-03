@@ -11,6 +11,7 @@ import { useGameText } from './gameText';
 import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
+import { own } from '../../lib/own';
 
 /** As at a server's creation: only what the game cannot do without. */
 const needed = (variable: TemplateVariable) => variable.required && variable.default == null;
@@ -36,7 +37,7 @@ export function ChangeGameDialog({ details, onClose }: { details: ServerDetails;
     () => (template.data ? gameText.variables(template.data.variables).filter(needed) : []),
     [template.data, gameText],
   );
-  const valueOf = (variable: TemplateVariable) => values[variable.key] ?? initialValue(variable);
+  const valueOf = (variable: TemplateVariable) => own(values, variable.key) ?? initialValue(variable);
   const errors = Object.fromEntries(
     variables.map((v) => [v.key, variableError(v, valueOf(v), false, unreadable.keys.has(v.key))]),
   ) as Record<string, string | null>;

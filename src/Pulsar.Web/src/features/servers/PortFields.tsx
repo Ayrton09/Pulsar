@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Field, Input } from '../../components/ui/Form';
 import { checkPorts, type NodeAllocation, type PortCheck, type PortInUse, type TemplatePort } from './portChoices';
+import { own } from '../../lib/own';
 
 /** What a port's check says: where it lands (a note) or why it cannot (an error). */
 function usePortCheckText() {
@@ -85,7 +86,7 @@ export function PortNumberFields({
                   inputMode="numeric"
                   autoComplete="off"
                   className="max-w-40"
-                  value={values[port.name] ?? ''}
+                  value={own(values, port.name) ?? ''}
                   placeholder={String(port.default)}
                   disabled={disabled}
                   onChange={(e) => onChange(port.name, e.target.value)}

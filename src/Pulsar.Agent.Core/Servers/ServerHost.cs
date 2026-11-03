@@ -855,7 +855,9 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.running", stopFirst);
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, stoppedMessage: stopFirst, work: async _ignored =>
+        // In the server's spec turn (ApplySpecAsync) from the record to the server in memory: a spec of the old game that
+        // arrives meanwhile is refused as another manifest's, never saved over the new one.
+        return RunOperation(envelope, command.ServerId, operationId, stoppedMessage: stopFirst, work: _ignored => InSpecTurnAsync(command.ServerId, async () =>
         {
             var root = _config!.ServersRootOrDefault(configs.Paths);
             // The record first: should creating the folder or the account fail midway, a delete still finds what to remove.
@@ -888,7 +890,8 @@ public sealed partial class ServerHost(
             }
 
             LogProvisioned(command.ServerId, spec.ShortId);
-        });
+            return true;
+        }));
     }
 
     private CommandAck Install(CommandEnvelope envelope, InstallServerCommand command) =>
@@ -1322,11 +1325,17 @@ public sealed partial class ServerHost(
     {
         // One at a time per server, from what the last one left: two at once would give the supervisor one password and the
         // record the other.
-        var turn = _specTurns.GetOrAdd(command.ServerId, _ => new SemaphoreSlim(1, 1));
+        return await InSpecTurnAsync(command.ServerId, () => ApplySpecInTurnAsync(envelope, command));
+    }
+
+    /// <summary>Runs <paramref name="work"/> in the server's spec turn: what changes its spec and record, one at a time.</summary>
+    private async Task<T> InSpecTurnAsync<T>(Guid serverId, Func<Task<T>> work)
+    {
+        var turn = _specTurns.GetOrAdd(serverId, _ => new SemaphoreSlim(1, 1));
         await turn.WaitAsync();
         try
         {
-            return await ApplySpecInTurnAsync(envelope, command);
+            return await work();
         }
         finally
         {

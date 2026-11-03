@@ -9,6 +9,7 @@ import { errorMessage } from '../../lib/errors';
 import { VariableFields } from '../servers/VariableFields';
 import { initialValue, useUnreadableNumbers, variableError } from '../servers/variables';
 import { useCreateOwnedServer, type QuotaView } from './api';
+import { own } from '../../lib/own';
 
 /** Smallest memory cap a server can have (the API's Server.MinMemoryLimitMb). */
 const minMemoryMb = 128;
@@ -57,7 +58,7 @@ export function OwnedServerDialog({ quota, onClose }: { quota: QuotaView; onClos
   const needed = game?.variables ?? [];
   const valueOf = (key: string) => {
     const variable = needed.find((v) => v.key === key);
-    return values[key] ?? (variable ? initialValue(variable) : '');
+    return own(values, key) ?? (variable ? initialValue(variable) : '');
   };
   const full = quota.used.servers >= quota.maxServers;
 

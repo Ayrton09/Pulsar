@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { own } from '../../lib/own';
 
 interface GameTexts {
   description?: string;
@@ -36,21 +37,21 @@ export function useGameText(templateKey: string | undefined) {
       /** The variables with their labels, descriptions and choices in the reader's language. */
       variables: <T extends VariableText>(variables: T[]): T[] =>
         variables.map((variable) => {
-          const text = texts?.variables?.[variable.key];
+          const text = own(texts?.variables, variable.key);
           return {
             ...variable,
             label: text?.label ?? variable.label,
             description: text?.description ?? variable.description,
             options: variable.options.map((option) => ({
               ...option,
-              label: text?.options?.[option.value] ?? option.label,
+              label: own(text?.options, option.value) ?? option.label,
             })),
           };
         }),
       /** The ports with their labels and descriptions in the reader's language. */
       ports: <T extends PortText>(ports: T[]): T[] =>
         ports.map((port) => {
-          const text = texts?.ports?.[port.name];
+          const text = own(texts?.ports, port.name);
           return {
             ...port,
             label: text?.label ?? port.label,

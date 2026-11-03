@@ -26,6 +26,7 @@ import {
 import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
+import { own } from '../../lib/own';
 
 const allSteps = ['basics', 'settings', 'ports'] as const;
 type Step = (typeof allSteps)[number];
@@ -109,7 +110,7 @@ export function CreateServerDialog({
     setPorts(null);
   };
 
-  const valueOf = (variable: TemplateVariable) => values[variable.key] ?? initialValue(variable);
+  const valueOf = (variable: TemplateVariable) => own(values, variable.key) ?? initialValue(variable);
   const needed = useMemo(() => (details?.variables ?? []).filter(neededToCreate), [details]);
   const steps = allSteps.filter((s) => s !== 'settings' || needed.length > 0);
   const basicsErrors = {
@@ -125,7 +126,7 @@ export function CreateServerDialog({
     !!details &&
     (canAddPorts
       ? portsReady(checkPorts(details.ports, portValues, nodeAllocations, true, undefined, inUse))
-      : chosenPorts(details.ports).every((port) => !port.required || (portValues[port.name] ?? '') !== ''));
+      : chosenPorts(details.ports).every((port) => !port.required || (own(portValues, port.name) ?? '') !== ''));
   const stepValid = (current: Step) =>
     current === 'basics'
       ? Object.values(basicsErrors).every((e) => e === null) && !!details
@@ -155,13 +156,13 @@ export function CreateServerDialog({
     const portChoice = canAddPorts
       ? {
           portNumbers: Object.fromEntries(
-            chosenPorts(details.ports).map((port) => [port.name, parsePort(portValues[port.name] ?? '')]),
+            chosenPorts(details.ports).map((port) => [port.name, parsePort(own(portValues, port.name) ?? '')]),
           ),
         }
       : {
           ports: Object.fromEntries(
             chosenPorts(details.ports)
-              .map((port) => [port.name, portValues[port.name] ?? ''] as const)
+              .map((port) => [port.name, own(portValues, port.name) ?? ''] as const)
               .filter(([, value]) => value !== ''),
           ),
         };
@@ -406,7 +407,7 @@ function PortsStep({
             key={port.name}
             label={port.required ? `${port.label} *` : port.label}
             error={
-              showErrors && port.required && (ports[port.name] ?? '') === '' ? t('validation.required') : undefined
+              showErrors && port.required && (own(ports, port.name) ?? '') === '' ? t('validation.required') : undefined
             }
             hint={[
               port.description,
@@ -419,7 +420,11 @@ function PortsStep({
               .join(' ')}
           >
             {(ids) => (
-              <Select {...ids} value={ports[port.name] ?? ''} onChange={(e) => onChange(port.name, e.target.value)}>
+              <Select
+                {...ids}
+                value={own(ports, port.name) ?? ''}
+                onChange={(e) => onChange(port.name, e.target.value)}
+              >
                 <option value="">{port.required ? '—' : t('servers.wizard.noPort')}</option>
                 {free.map((allocation) => (
                   <option key={allocation.id} value={allocation.id}>

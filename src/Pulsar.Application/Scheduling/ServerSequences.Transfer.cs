@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
@@ -112,6 +113,14 @@ public sealed partial class ServerSequences
         var server = await db.Servers.Include(s => s.Variables).SingleAsync(s => s.Id == id, cancellationToken);
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
+        // Checked when the transfer was asked for, and again here: a password chosen since then needs an agent that takes it.
+        if (server.RconPasswordProtected is not null
+            && services.GetRequiredService<IAgentConnections>().Find(to)?.Capabilities.Contains(AgentCapabilities.ChosenRconPassword) != true)
+        {
+            sequence.StepFailed(ServerErrors.RconPasswordUnsupported.Code, ServerErrors.RconPasswordUnsupported.Message, now);
+            return;
+        }
+
         var moved = server.MoveTo(to, now);
         if (!moved.IsSuccess)
         {

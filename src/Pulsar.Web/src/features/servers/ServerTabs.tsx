@@ -28,6 +28,7 @@ import { GroupedVariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
 import { GameUpdateSettingsCard } from '../gameUpdates/GameUpdates';
+import { own } from '../../lib/own';
 
 /** Operations whose work the server's console shows as it runs (what SteamCMD prints, among others). */
 const shownInConsole = new Set([
@@ -140,7 +141,9 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
         settings={settings.data}
         save={save}
       />
-      {settings.data.hasRcon && <RconPasswordCard details={details} chosen={settings.data.rconPasswordChosen} />}
+      {(settings.data.hasRcon || settings.data.rconPasswordChosen) && (
+        <RconPasswordCard details={details} chosen={settings.data.rconPasswordChosen} hasRcon={settings.data.hasRcon} />
+      )}
       <GameUpdateSettingsCard details={details} />
       <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
       <SteamAccountCard key={details.steam?.accountId ?? 'anonymous'} details={details} />
@@ -157,9 +160,10 @@ const RCON_PASSWORD = /^[A-Za-z0-9_.!@#$%^&*=?~]{12,64}$/;
 
 /**
  * The RCON password (1.0.29): one its agent makes, which nobody sees, or one chosen here for other programs that use
- * RCON (the panel then uses it too). Chosen only while the server is stopped; never shown again.
+ * RCON (the panel then uses it too). Chosen only while the server is stopped; never shown again. A game without RCON
+ * (one kept from before its game changed) only lets it be taken away.
  */
-function RconPasswordCard({ details, chosen }: { details: ServerDetails; chosen: boolean }) {
+function RconPasswordCard({ details, chosen, hasRcon }: { details: ServerDetails; chosen: boolean; hasRcon: boolean }) {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const { server } = details;
@@ -201,27 +205,29 @@ function RconPasswordCard({ details, chosen }: { details: ServerDetails; chosen:
             }}
           >
             {!stopped && <p className="text-sm text-muted">{t('servers.rcon.stopFirst')}</p>}
-            <Field
-              label={chosen ? t('servers.rcon.newPassword') : t('servers.rcon.password')}
-              hint={t('servers.rcon.rules')}
-              error={invalid ? t('servers.rcon.invalid') : undefined}
-            >
-              {(ids) => (
-                <Input
-                  {...ids}
-                  type="password"
-                  autoComplete="new-password"
-                  maxLength={64}
-                  value={password}
-                  disabled={!stopped}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setInvalid(false);
-                    save.reset();
-                  }}
-                />
-              )}
-            </Field>
+            {hasRcon && (
+              <Field
+                label={chosen ? t('servers.rcon.newPassword') : t('servers.rcon.password')}
+                hint={t('servers.rcon.rules')}
+                error={invalid ? t('servers.rcon.invalid') : undefined}
+              >
+                {(ids) => (
+                  <Input
+                    {...ids}
+                    type="password"
+                    autoComplete="new-password"
+                    maxLength={64}
+                    value={password}
+                    disabled={!stopped}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setInvalid(false);
+                      save.reset();
+                    }}
+                  />
+                )}
+              </Field>
+            )}
             <div className="flex flex-wrap justify-end gap-2">
               {chosen && (
                 <Button
@@ -233,13 +239,15 @@ function RconPasswordCard({ details, chosen }: { details: ServerDetails; chosen:
                   {t('servers.rcon.useGenerated')}
                 </Button>
               )}
-              <Button
-                type="submit"
-                disabled={!stopped || password === ''}
-                busy={save.isPending && save.variables.password !== null}
-              >
-                {t('actions.save')}
-              </Button>
+              {hasRcon && (
+                <Button
+                  type="submit"
+                  disabled={!stopped || password === ''}
+                  busy={save.isPending && save.variables.password !== null}
+                >
+                  {t('actions.save')}
+                </Button>
+              )}
             </div>
           </form>
         )}
@@ -448,7 +456,7 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
       v.key,
       variableError(
         v,
-        values[v.key] ?? '',
+        own(values, v.key) ?? '',
         secretsSet.has(v.key) && !clearSecrets.has(v.key),
         unreadable.keys.has(v.key),
       ),
@@ -465,14 +473,14 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
     // empty value puts the default back (or clears a secret).
     const changed: Record<string, string> = {};
     for (const variable of definitions) {
-      const value = values[variable.key] ?? '';
+      const value = own(values, variable.key) ?? '';
       if (variable.secret) {
         if (clearSecrets.has(variable.key)) {
           changed[variable.key] = '';
         } else if (value !== '') {
           changed[variable.key] = value;
         }
-      } else if (value !== stored[variable.key]) {
+      } else if (value !== own(stored, variable.key)) {
         changed[variable.key] = value;
       }
     }
@@ -712,7 +720,7 @@ export function NetworkTab(props: { details: ServerDetails }) {
               {(ids) => (
                 <Select
                   {...ids}
-                  value={chosen[port.name] ?? current}
+                  value={own(chosen, port.name) ?? current}
                   disabled={!canEdit}
                   onChange={(e) => setChosen((c) => ({ ...c, [port.name]: e.target.value }))}
                 >
@@ -745,7 +753,7 @@ export function NetworkTab(props: { details: ServerDetails }) {
                   ? {
                       id: server.id,
                       portNumbers: Object.fromEntries(
-                        chosenPorts(templatePorts).map((p) => [p.name, parsePort(numbers[p.name] ?? '')]),
+                        chosenPorts(templatePorts).map((p) => [p.name, parsePort(own(numbers, p.name) ?? '')]),
                       ),
                     }
                   : {
@@ -753,7 +761,7 @@ export function NetworkTab(props: { details: ServerDetails }) {
                       ports: Object.fromEntries(
                         details.ports
                           .filter((p) => !p.follows)
-                          .map((p) => [p.name, (chosen[p.name] ?? p.allocationId ?? '') || null]),
+                          .map((p) => [p.name, (own(chosen, p.name) ?? p.allocationId ?? '') || null]),
                       ),
                     },
                 { onSuccess: () => setChosen({}) },

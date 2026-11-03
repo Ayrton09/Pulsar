@@ -159,6 +159,31 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
         }
     }
 
+    [DatabaseFact]
+    public async Task AnotherGameDoesNotKeepThePasswordChosenForTheOldOne()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "rcon-change-game");
+        await GameServerTests.AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await GameServerTests.InstalledAsync(admin, agent, "css");
+        const string old = "Old_Game.Pass1";
+        using (var chosen = await admin.PutAsync($"/api/v1/servers/{server}/rcon-password", new SetRconPasswordRequest(old)))
+        {
+            await AccessScenario.EnsureSuccessAsync(chosen);
+        }
+
+        var hl2dm = await GameServerTests.TemplateAsync(admin, "hl2dm");
+        using (var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
+        {
+            await AccessScenario.EnsureSuccessAsync(changed);
+        }
+
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null
+            && s.Server.TemplateKey == "hl2dm", "installed as the new game");
+        Assert.False((await SettingsAsync(admin, server)).RconPasswordChosen);
+        Assert.Null(agent.StoredSpec(server).RconPassword);
+    }
+
     private static string? RconArgument(InProcessAgent agent) =>
         agent.Processes.Started.Last(p => !p.IsSteamCmd).Arguments.SkipWhile(a => a != "+rcon_password").Skip(1).FirstOrDefault();
 
