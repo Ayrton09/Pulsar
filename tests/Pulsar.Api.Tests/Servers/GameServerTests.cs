@@ -269,9 +269,20 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
                     && q.WakeAt > DateTimeOffset.UtcNow.AddMinutes(30), Ct);
         }, "the task waiting");
 
-        using (var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id)))
+        // Asked again when refused as busy: the agent's report of the stop, or the panel's pass, may change the server just
+        // then (as a user would ask again).
+        for (var attempt = 1; ; attempt++)
         {
+            using var changed = await admin.PostAsync($"/api/v1/servers/{server}/game", new ChangeGameRequest(hl2dm.Template.Id));
+            if (attempt < 5 && changed.StatusCode == HttpStatusCode.Conflict
+                && (await changed.Content.ReadAsStringAsync(Ct)).Contains(ServerErrors.Busy.Code, StringComparison.Ordinal))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), Ct);
+                continue;
+            }
+
             await AccessScenario.EnsureSuccessAsync(changed);
+            break;
         }
 
         var after = await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null

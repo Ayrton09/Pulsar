@@ -266,7 +266,18 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
 
         // Any other node at its next Hello, which names the accounts the panel still has.
         factory.Services.GetRequiredService<Pulsar.Application.Nodes.IAgentConnections>().Disconnect(new NodeId(agent.Config!.NodeId));
-        await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.SteamLogins.Load(gone) is null), "the login of an account the panel no longer has forgotten");
+        // On Windows a file being deleted cannot be opened until it is gone: not forgotten yet.
+        await InProcessAgent.EventuallyAsync(() =>
+        {
+            try
+            {
+                return Task.FromResult(agent.SteamLogins.Load(gone) is null);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Task.FromResult(false);
+            }
+        }, "the login of an account the panel no longer has forgotten");
         Assert.NotNull(agent.SteamLogins.Load(keptLogin));
     }
 
