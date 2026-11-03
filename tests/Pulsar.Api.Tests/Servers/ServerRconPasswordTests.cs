@@ -140,9 +140,11 @@ public sealed class ServerRconPasswordTests(PulsarApiFactory factory) : IClassFi
         var first = await GameServerTests.InstalledAsync(admin, agent, "css");
         var second = await GameServerTests.InstalledAsync(admin, agent, "css");
 
+        // Its own password: the tests of this class share the panel, and the others choose theirs.
+        const string atOnce = "At_Once.Pass1";
         var answers = await Task.WhenAll(
-            admin.PutAsync($"/api/v1/servers/{first}/rcon-password", new SetRconPasswordRequest(Chosen)),
-            admin.PutAsync($"/api/v1/servers/{second}/rcon-password", new SetRconPasswordRequest(Chosen)));
+            admin.PutAsync($"/api/v1/servers/{first}/rcon-password", new SetRconPasswordRequest(atOnce)),
+            admin.PutAsync($"/api/v1/servers/{second}/rcon-password", new SetRconPasswordRequest(atOnce)));
         try
         {
             Assert.Single(answers, a => a.IsSuccessStatusCode);
