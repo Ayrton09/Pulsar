@@ -103,7 +103,7 @@ export function Table({ children, label }: { children: ReactNode; label: string 
 export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return (
     <th
-      className={`border-b border-border px-4 py-2.5 text-xs font-medium tracking-wide text-muted uppercase ${className}`}
+      className={`border-b border-border px-3 py-2.5 text-xs font-medium sm:px-4 tracking-wide text-muted uppercase ${className}`}
     >
       {children}
     </th>
@@ -111,5 +111,5 @@ export function Th({ children, className = '' }: { children?: ReactNode; classNa
 }
 
 export function Td({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <td className={`border-b border-border px-4 py-3 align-middle ${className}`}>{children}</td>;
+  return <td className={`border-b border-border px-3 py-3 align-middle sm:px-4 ${className}`}>{children}</td>;
 }

@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -55,9 +56,9 @@ export function RolesPage() {
           <thead>
             <tr>
               <Th>{t('roles.name')}</Th>
-              <Th>{t('roles.scope')}</Th>
+              <Th className="hidden sm:table-cell">{t('roles.scope')}</Th>
               <Th>{t('roles.permissions')}</Th>
-              <Th>{t('roles.assignedUsers')}</Th>
+              <Th className="hidden sm:table-cell">{t('roles.assignedUsers')}</Th>
               <Th>{t('roles.twoFactor')}</Th>
               {canManage && (
                 <Th>
@@ -70,19 +71,19 @@ export function RolesPage() {
             {roles.data.map((role) => (
               <tr key={role.id}>
                 <Td>
-                  <div className="flex items-center gap-2 font-medium">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
                     {role.name}
                     {role.isSystem && <Badge tone="accent">{t('roles.builtIn')}</Badge>}
                   </div>
                   {roleDescription(t, role) && <p className="mt-0.5 text-xs text-muted">{roleDescription(t, role)}</p>}
                 </Td>
-                <Td>{t(`roles.scopes.${role.scope}`)}</Td>
+                <Td className="hidden sm:table-cell">{t(`roles.scopes.${role.scope}`)}</Td>
                 <Td>
                   {role.isSystem
                     ? t('roles.allPermissions')
                     : t('roles.permissionCount', { count: role.permissions.length })}
                 </Td>
-                <Td>{role.assignedUsers}</Td>
+                <Td className="hidden sm:table-cell">{role.assignedUsers}</Td>
                 <Td>
                   {canManage ? (
                     <Checkbox
@@ -105,8 +106,14 @@ export function RolesPage() {
                 {canManage && (
                   <Td className="text-right">
                     {!role.isSystem && (
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(role)}>
-                        {t('actions.edit')}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Pencil}
+                        aria-label={t('actions.edit')}
+                        onClick={() => setEditing(role)}
+                      >
+                        <span className="hidden sm:inline">{t('actions.edit')}</span>
                       </Button>
                     )}
                   </Td>

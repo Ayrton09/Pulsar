@@ -51,7 +51,7 @@ export function AllocationsSection({ nodeId, canManage }: { nodeId: string; canM
             <tr>
               <Th>{t('allocations.address')}</Th>
               <Th>{t('allocations.usedBy')}</Th>
-              <Th>{t('allocations.notes')}</Th>
+              <Th className="hidden md:table-cell">{t('allocations.notes')}</Th>
               {canManage && <Th className="text-right">{t('common.actions')}</Th>}
             </tr>
           </thead>
@@ -73,7 +73,7 @@ export function AllocationsSection({ nodeId, canManage }: { nodeId: string; canM
                     <span className="text-muted">{t(allocation.inUse ? 'allocations.inUse' : 'allocations.free')}</span>
                   )}
                 </Td>
-                <Td>{allocation.notes ?? ''}</Td>
+                <Td className="hidden md:table-cell">{allocation.notes ?? ''}</Td>
                 {canManage && (
                   <Td className="text-right">
                     {!allocation.inUse && (

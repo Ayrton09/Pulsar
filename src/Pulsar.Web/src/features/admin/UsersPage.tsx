@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -110,8 +111,15 @@ export function UsersPage() {
                 </Td>
                 {canManage && (
                   <Td className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(user.id)}>
-                      {t('actions.edit')}
+                    {/* On a phone the pencil alone: the row keeps its name and roles in view. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Pencil}
+                      aria-label={t('actions.edit')}
+                      onClick={() => setEditing(user.id)}
+                    >
+                      <span className="hidden sm:inline">{t('actions.edit')}</span>
                     </Button>
                   </Td>
                 )}

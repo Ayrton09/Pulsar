@@ -6,15 +6,20 @@ import '@xterm/xterm/css/xterm.css';
 import {
   ArrowDownToLine,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Download,
+  Eraser,
   Maximize2,
   Minimize2,
   Pause,
   Play,
+  Search,
   Terminal as TerminalIcon,
   ZoomIn,
   ZoomOut,
+  type LucideIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -240,83 +245,71 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
             <TerminalIcon aria-hidden="true" className="size-4 text-accent" />
             {t('servers.console.title')}
           </span>
-          <Input
-            type="search"
-            aria-label={t('servers.console.search')}
-            placeholder={t('servers.console.search')}
-            className="max-w-xs"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && query) {
-                e.preventDefault();
-                if (e.shiftKey) {
-                  search.current?.findPrevious(query);
-                } else {
-                  search.current?.findNext(query);
+          {/* The search, and the console's tools: icons of one size in two groups, each named for screen readers. */}
+          <span className="flex h-9 min-w-0 items-center rounded-lg border border-border bg-bg focus-within:border-accent">
+            <Search aria-hidden="true" className="ml-2.5 size-4 shrink-0 text-muted" />
+            <input
+              type="search"
+              aria-label={t('servers.console.search')}
+              placeholder={t('servers.console.search')}
+              className="h-full w-44 min-w-0 bg-transparent px-2 text-sm placeholder:text-muted focus:outline-none sm:w-56"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && query) {
+                  e.preventDefault();
+                  if (e.shiftKey) {
+                    search.current?.findPrevious(query);
+                  } else {
+                    search.current?.findNext(query);
+                  }
                 }
-              }
-            }}
-          />
-          <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findPrevious(query)}>
-            {t('servers.console.previous')}
-          </Button>
-          <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findNext(query)}>
-            {t('servers.console.next')}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => terminal.current?.clear()}>
-            {t('servers.console.clear')}
-          </Button>
-          <span className="flex items-center gap-1">
-            <Button
-              variant="secondary"
-              size="icon"
+              }}
+            />
+            <ToolButton
+              icon={ChevronUp}
+              label={t('servers.console.previous')}
+              disabled={!query}
+              onClick={() => search.current?.findPrevious(query)}
+            />
+            <ToolButton
+              icon={ChevronDown}
+              label={t('servers.console.next')}
+              disabled={!query}
+              onClick={() => search.current?.findNext(query)}
+            />
+          </span>
+          <span className="flex h-9 items-center gap-0.5 rounded-lg border border-border bg-bg px-0.5">
+            <ToolButton
               icon={paused ? Play : Pause}
-              aria-label={paused ? t('servers.console.resume') : t('servers.console.pause')}
-              title={paused ? t('servers.console.resume') : t('servers.console.pause')}
-              aria-pressed={paused}
+              label={paused ? t('servers.console.resume') : t('servers.console.pause')}
+              pressed={paused}
               onClick={togglePause}
             />
-            <Button
-              variant="secondary"
-              size="icon"
+            <ToolButton
               icon={copied ? Check : Copy}
-              aria-label={t('servers.console.copyAll')}
-              title={copied ? t('servers.console.copied') : t('servers.console.copyAll')}
+              label={t('servers.console.copyAll')}
+              title={copied ? t('servers.console.copied') : undefined}
               onClick={copyAll}
             />
-            <Button
-              variant="secondary"
-              size="icon"
-              icon={Download}
-              aria-label={t('servers.console.download')}
-              title={t('servers.console.download')}
-              onClick={download}
-            />
-            <Button
-              variant="secondary"
-              size="icon"
+            <ToolButton icon={Download} label={t('servers.console.download')} onClick={download} />
+            <ToolButton icon={Eraser} label={t('servers.console.clear')} onClick={() => terminal.current?.clear()} />
+            <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+            <ToolButton
               icon={ZoomOut}
-              aria-label={t('servers.console.smaller')}
-              title={t('servers.console.smaller')}
+              label={t('servers.console.smaller')}
               disabled={fontSize <= FONT_SIZES.min}
               onClick={() => setFontSize((size) => Math.max(FONT_SIZES.min, size - 1))}
             />
-            <Button
-              variant="secondary"
-              size="icon"
+            <ToolButton
               icon={ZoomIn}
-              aria-label={t('servers.console.larger')}
-              title={t('servers.console.larger')}
+              label={t('servers.console.larger')}
               disabled={fontSize >= FONT_SIZES.max}
               onClick={() => setFontSize((size) => Math.min(FONT_SIZES.max, size + 1))}
             />
-            <Button
-              variant="secondary"
-              size="icon"
+            <ToolButton
               icon={fullScreen ? Minimize2 : Maximize2}
-              aria-label={fullScreen ? t('servers.console.exitFullScreen') : t('servers.console.fullScreen')}
-              title={fullScreen ? t('servers.console.exitFullScreen') : t('servers.console.fullScreen')}
+              label={fullScreen ? t('servers.console.exitFullScreen') : t('servers.console.fullScreen')}
               onClick={toggleFullScreen}
             />
           </span>
@@ -483,4 +476,37 @@ function openWebLink(uri: string) {
   } catch {
     // Not a URL.
   }
+}
+
+/** One of the console's tools: an icon, named by its label (also its tooltip). */
+function ToolButton({
+  icon: Icon,
+  label,
+  title,
+  pressed,
+  disabled,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  title?: string | undefined;
+  pressed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={title ?? label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
+      className={`grid size-8 shrink-0 place-items-center rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${
+        pressed ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-surface-raised hover:text-text'
+      }`}
+    >
+      <Icon aria-hidden="true" className="size-4" />
+    </button>
+  );
 }

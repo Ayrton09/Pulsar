@@ -46,17 +46,23 @@ export function AccountPage() {
   return (
     <>
       <PageHeader title={t('account.title')} description={t('account.description')} />
-      <div className="grid max-w-3xl gap-6">
-        <ProfileForm />
-        <LanguageSection />
-        <ThemeSection />
-        <PasswordForm />
-        <TwoFactorSection />
-        <LinkedAccountsSection />
-        <SftpAccessSection />
-        <SshKeysSection />
-        <PanelCertificateSection />
-        <ApiKeysSection />
+      {/* One column, as wide as reads well; on a wide screen two: the user and their sign-in, then how they reach
+          the panel and its files. */}
+      <div className="grid max-w-3xl gap-6 xl:max-w-none xl:grid-cols-2 xl:items-start">
+        <div className="grid min-w-0 gap-6">
+          <ProfileForm />
+          <LanguageSection />
+          <ThemeSection />
+          <PasswordForm />
+          <TwoFactorSection />
+          <LinkedAccountsSection />
+        </div>
+        <div className="grid min-w-0 gap-6">
+          <SftpAccessSection />
+          <SshKeysSection />
+          <PanelCertificateSection />
+          <ApiKeysSection />
+        </div>
       </div>
     </>
   );
