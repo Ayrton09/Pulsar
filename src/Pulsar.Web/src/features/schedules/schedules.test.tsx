@@ -575,7 +575,8 @@ describe('audit log', () => {
 
     renderAt('/admin/audit');
 
-    expect(await screen.findByText('Schedule: Nightly restart')).toBeInTheDocument();
-    expect(screen.getByText('System')).toBeInTheDocument();
+    // Twice in the page: under the date for phones and in its own column for wider screens (one shows at a time).
+    expect(await screen.findAllByText('Schedule: Nightly restart')).toHaveLength(2);
+    expect(screen.getAllByText('System')).toHaveLength(2);
   });
 });

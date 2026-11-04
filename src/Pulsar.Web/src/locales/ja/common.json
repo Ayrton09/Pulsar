@@ -311,7 +311,10 @@
         "api_key_created": "APIキーを作成",
         "api_key_revoked": "APIキーを失効",
         "ssh_key_added": "SSHキーを追加",
-        "ssh_key_deleted": "SSHキーを削除"
+        "ssh_key_deleted": "SSHキーを削除",
+        "sso_linked": "サインイン用アカウントを連携しました",
+        "sso_unlinked": "サインイン用アカウントの連携を解除しました",
+        "sso_second_factor_asked": "プロバイダーでサインイン、2段階認証コードを要求"
       },
       "user": {
         "created": "ユーザーを作成",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "ユーザーのAPIキーを失効",
         "ssh_keys_deleted": "ユーザーのSSHキーを削除",
         "quota_set": "ユーザーのクォータを変更しました",
-        "quota_removed": "ユーザーのクォータを削除しました"
+        "quota_removed": "ユーザーのクォータを削除しました",
+        "sso_links_removed": "ユーザーのサインイン用アカウントを削除しました",
+        "external_id_changed": "ユーザーの外部IDを変更しました"
       },
       "role": {
         "created": "ロールを作成",
@@ -411,7 +416,11 @@
         "game_update_started": "ゲームのアップデートを開始",
         "game_update_cancelled": "ゲームのアップデートをキャンセル",
         "template_update_started": "サーバーの新しいテンプレートへの移行を開始しました",
-        "steam_branch_changed": "サーバーの Steam ブランチを変更しました"
+        "steam_branch_changed": "サーバーの Steam ブランチを変更しました",
+        "owner_changed": "サーバーの所有者を変更しました",
+        "external_id_changed": "サーバーの外部IDを変更しました",
+        "rcon_password_chosen": "サーバーのRCONパスワードを設定しました",
+        "rcon_password_cleared": "サーバーのRCONパスワードをPulsarの生成に戻しました"
       },
       "template": {
         "imported": "ゲームテンプレートをインポート"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "CurseForge API キーを設定",
         "curseforge_key_removed": "CurseForge API キーを削除"
+      },
+      "sso": {
+        "provider_updated": "サインインプロバイダーを変更しました"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "バージョン{{version}}(プロトコルv{{protocol}})",
     "uptime": "稼働時間",
     "updated": "更新",
-    "cpuValue": "CPU {{value, number(maximumFractionDigits: 1)}} %",
     "memoryValue": "{{total}}中{{used}}",
     "noInventory": "エージェントがまだ接続していないため、表示できる情報がありません。",
     "neverConnected": "エージェントは一度も接続していません。",
@@ -1197,6 +1208,7 @@
     "yes": "はい",
     "no": "いいえ",
     "overview": "概要",
+    "portFact": "ポート: {{label}}",
     "actions": "サーバー操作",
     "notFound": "このサーバーは存在しません。",
     "backToList": "サーバー一覧へ戻る",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "ゲーム",
     "description": "サーバーの作成元となるゲームテンプレートです。Pulsarに同梱されているものと、管理者がインポートしたものがあります。",
+    "search": "ゲームを検索",
+    "noMatch": "一致するゲームはありません。",
     "import": "テンプレートをインポート",
     "importHint": "テンプレートは、各ノードが何を実行しダウンロードするかを決めます。インポートする前に内容を確認してください。",
     "sources": {

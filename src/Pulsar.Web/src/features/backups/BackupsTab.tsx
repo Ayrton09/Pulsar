@@ -1,9 +1,10 @@
+import { Archive } from 'lucide-react';
 import { useId, useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Badge, Card, EmptyState, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
@@ -91,7 +92,7 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
       {error && <Alert>{errorMessage(t, error)}</Alert>}
 
       {backups.data.backups.length === 0 ? (
-        <p className="text-sm text-muted">{t('backups.empty')}</p>
+        <EmptyState icon={Archive}>{t('backups.empty')}</EmptyState>
       ) : (
         <Table label={t('backups.title')}>
           <thead>

@@ -1,10 +1,11 @@
+import { Database } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, unwrap } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, EmptyState, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useNodes } from '../nodes/api';
@@ -41,7 +42,9 @@ export function DatabaseHostsPage() {
           {t('databaseHosts.tested', { version: test.data.version })}
         </p>
       )}
-      {hosts.data && hosts.data.hosts.length === 0 && <p className="text-sm text-muted">{t('databaseHosts.empty')}</p>}
+      {hosts.data && hosts.data.hosts.length === 0 && (
+        <EmptyState icon={Database}>{t('databaseHosts.empty')}</EmptyState>
+      )}
       {hosts.data && hosts.data.hosts.length > 0 && (
         <Table label={t('databaseHosts.title')}>
           <thead>

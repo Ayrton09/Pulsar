@@ -311,7 +311,10 @@
         "api_key_created": "Creó una API key",
         "api_key_revoked": "Revocó una API key",
         "ssh_key_added": "Agregó una clave SSH",
-        "ssh_key_deleted": "Borró una clave SSH"
+        "ssh_key_deleted": "Borró una clave SSH",
+        "sso_linked": "Vinculó una cuenta de inicio de sesión",
+        "sso_unlinked": "Desvinculó una cuenta de inicio de sesión",
+        "sso_second_factor_asked": "Entró con un proveedor; se pidió el código de dos pasos"
       },
       "user": {
         "created": "Creó un usuario",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "Revocó las API keys de un usuario",
         "ssh_keys_deleted": "Borró las claves SSH de un usuario",
         "quota_set": "Cambió la cuota de un usuario",
-        "quota_removed": "Quitó la cuota de un usuario"
+        "quota_removed": "Quitó la cuota de un usuario",
+        "sso_links_removed": "Quitó las cuentas de inicio de sesión de un usuario",
+        "external_id_changed": "Cambió el id externo de un usuario"
       },
       "role": {
         "created": "Creó un rol",
@@ -411,7 +416,11 @@
         "game_update_started": "Inició una actualización del juego",
         "game_update_cancelled": "Canceló una actualización del juego",
         "template_update_started": "Empezó a pasar un servidor a una plantilla más nueva",
-        "steam_branch_changed": "Cambió la rama de Steam de un servidor"
+        "steam_branch_changed": "Cambió la rama de Steam de un servidor",
+        "owner_changed": "Cambió el dueño de un servidor",
+        "external_id_changed": "Cambió el id externo de un servidor",
+        "rcon_password_chosen": "Eligió la contraseña RCON de un servidor",
+        "rcon_password_cleared": "Volvió a la contraseña RCON de Pulsar en un servidor"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "Cargó la clave de API de CurseForge",
         "curseforge_key_removed": "Quitó la clave de API de CurseForge"
+      },
+      "sso": {
+        "provider_updated": "Cambió un proveedor de inicio de sesión"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "Versión {{version}} (protocolo v{{protocol}})",
     "uptime": "Tiempo encendido",
     "updated": "Actualizado",
-    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % de CPU",
     "memoryValue": "{{used}} de {{total}}",
     "noInventory": "El agente todavía no se conectó, así que no hay nada para mostrar.",
     "neverConnected": "El agente nunca se conectó.",
@@ -1197,6 +1208,7 @@
     "yes": "Sí",
     "no": "No",
     "overview": "Resumen",
+    "portFact": "Puerto: {{label}}",
     "actions": "Acciones del servidor",
     "notFound": "Este servidor no existe.",
     "backToList": "Volver a los servidores",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "Juegos",
     "description": "Las plantillas de juego desde las que se crean los servidores: las que trae Pulsar y las que importaron los administradores.",
+    "search": "Buscar juegos",
+    "noMatch": "Ningún juego coincide.",
     "import": "Importar una plantilla",
     "importHint": "Una plantilla decide qué ejecuta y qué descarga cada nodo. Revisá qué hace antes de importarla.",
     "sources": {

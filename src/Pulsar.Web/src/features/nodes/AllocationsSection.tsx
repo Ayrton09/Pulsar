@@ -78,7 +78,8 @@ export function AllocationsSection({ nodeId, canManage }: { nodeId: string; canM
                   <Td className="text-right">
                     {!allocation.inUse && (
                       <Button
-                        variant="secondary"
+                        variant="ghost"
+                        size="sm"
                         busy={remove.isPending && remove.variables.allocationId === allocation.id}
                         onClick={() =>
                           window.confirm(

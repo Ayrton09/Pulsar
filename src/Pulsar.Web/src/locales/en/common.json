@@ -311,7 +311,10 @@
         "api_key_created": "Created an API key",
         "api_key_revoked": "Revoked an API key",
         "ssh_key_added": "Added an SSH key",
-        "ssh_key_deleted": "Deleted an SSH key"
+        "ssh_key_deleted": "Deleted an SSH key",
+        "sso_linked": "Linked a sign-in account",
+        "sso_unlinked": "Unlinked a sign-in account",
+        "sso_second_factor_asked": "Signed in with a provider, two-step code asked"
       },
       "user": {
         "created": "Created a user",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "Revoked a user's API keys",
         "ssh_keys_deleted": "Deleted a user's SSH keys",
         "quota_set": "Changed a user's quota",
-        "quota_removed": "Removed a user's quota"
+        "quota_removed": "Removed a user's quota",
+        "sso_links_removed": "Removed a user's sign-in accounts",
+        "external_id_changed": "Changed a user's external id"
       },
       "role": {
         "created": "Created a role",
@@ -411,7 +416,11 @@
         "game_update_started": "Started a game update",
         "game_update_cancelled": "Cancelled a game update",
         "template_update_started": "Started moving a server to a newer template",
-        "steam_branch_changed": "Changed a server's Steam branch"
+        "steam_branch_changed": "Changed a server's Steam branch",
+        "owner_changed": "Changed a server's owner",
+        "external_id_changed": "Changed a server's external id",
+        "rcon_password_chosen": "Chose a server's RCON password",
+        "rcon_password_cleared": "Put a server back on Pulsar's RCON password"
       },
       "template": {
         "imported": "Imported a game template"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "Set the CurseForge API key",
         "curseforge_key_removed": "Removed the CurseForge API key"
+      },
+      "sso": {
+        "provider_updated": "Changed a sign-in provider"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "Version {{version}} (protocol v{{protocol}})",
     "uptime": "Uptime",
     "updated": "Updated",
-    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % CPU",
     "memoryValue": "{{used}} of {{total}}",
     "noInventory": "The agent has not connected yet, so there is nothing to show.",
     "neverConnected": "The agent has never connected.",
@@ -1197,6 +1208,7 @@
     "yes": "Yes",
     "no": "No",
     "overview": "Overview",
+    "portFact": "{{label}} port",
     "actions": "Server actions",
     "notFound": "This server does not exist.",
     "backToList": "Back to the servers",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "Games",
     "description": "The game templates servers are created from: the ones shipped with Pulsar and the ones administrators imported.",
+    "search": "Search games",
+    "noMatch": "No game matches.",
     "import": "Import a template",
     "importHint": "A template decides what every node runs and downloads. Check what it does before importing it.",
     "sources": {

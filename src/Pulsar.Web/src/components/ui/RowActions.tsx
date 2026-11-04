@@ -36,7 +36,8 @@ export function RowActions({ name, children }: { name: string; children: ReactNo
     return null;
   }
   if (wide) {
-    return <span className="inline-flex flex-wrap justify-end gap-1">{children}</span>;
+    // One line: wrapped, the last action sat under the others, apart from its row.
+    return <span className="inline-flex justify-end gap-1 whitespace-nowrap">{children}</span>;
   }
   return (
     <RadixDialog.Root open={open} onOpenChange={setOpen}>

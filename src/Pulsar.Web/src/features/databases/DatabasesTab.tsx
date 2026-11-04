@@ -1,9 +1,10 @@
+import { Database } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, EmptyState, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Field, Input, Select } from '../../components/ui/Form';
 import { copyText } from '../../lib/clipboard';
@@ -89,7 +90,7 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
       {error && <Alert>{errorMessage(t, error)}</Alert>}
       {shown && <Credentials credentials={shown} onClose={() => setShown(null)} />}
       {list.length === 0 ? (
-        <p className="text-sm text-muted">{t('databases.empty')}</p>
+        <EmptyState icon={Database}>{t('databases.empty')}</EmptyState>
       ) : (
         <Table label={t('databases.title')}>
           <thead>

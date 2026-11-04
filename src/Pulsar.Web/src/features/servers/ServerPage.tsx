@@ -409,7 +409,11 @@ function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: Serv
     });
   }
   return (
-    <dl aria-label={t('servers.usage.label')} className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    // As many columns as tiles (three without players): no empty place at the end of the row.
+    <dl
+      aria-label={t('servers.usage.label')}
+      className={`mb-6 grid grid-cols-2 gap-3 ${tiles.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}
+    >
       {tiles.map(({ icon: Icon, label, value, detail, percent }) => (
         <div
           key={label}
@@ -447,8 +451,9 @@ interface UsageTile {
 function Facts({ items }: { items: [string, ReactNode][] }) {
   return (
     <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-2 text-sm">
-      {items.map(([label, value]) => (
-        <div key={label} className="contents">
+      {/* Keyed by place too: a port may be named as another row ("Game"). */}
+      {items.map(([label, value], index) => (
+        <div key={`${index}:${label}`} className="contents">
           <dt className="text-muted">{label}</dt>
           <dd className="min-w-0 break-words">{value}</dd>
         </div>
@@ -507,7 +512,7 @@ function OverviewCard({ details }: { details: ServerDetails }) {
             .ports(details.ports)
             .filter((port) => port.port !== null)
             .map((port): [string, ReactNode] => [
-              port.label,
+              t('servers.portFact', { label: port.label }),
               <code key={port.name}>
                 {port.ipAddress}:{port.port}
               </code>,

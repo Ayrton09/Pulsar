@@ -1,4 +1,4 @@
-import { Upload } from 'lucide-react';
+import { Search, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
@@ -30,6 +30,14 @@ export function TemplatesPage() {
   const canCreateServer = canAnywhere(me, Permission.ServerCreate);
   // The game a server is being created with, from its card.
   const [creatingWith, setCreatingWith] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const words = search.trim().toLocaleLowerCase();
+  const games = templates.data
+    ? newestOfEachGame(templates.data).filter(
+        (template) =>
+          words === '' || [template.name, template.key].some((text) => text.toLocaleLowerCase().includes(words)),
+      )
+    : [];
 
   return (
     <>
@@ -49,13 +57,32 @@ export function TemplatesPage() {
       {templates.isPending && <Spinner label={t('common.loading')} />}
       {templates.isError && <Alert>{errorMessage(t, templates.error)}</Alert>}
       {templates.data && artwork === undefined && <Spinner label={t('common.loading')} />}
+      {templates.data && artwork !== undefined && (
+        <label className="relative mb-5 block w-full sm:w-72">
+          <span className="sr-only">{t('templates.search')}</span>
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t('templates.search')}
+            className="h-10 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-sm placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+          />
+        </label>
+      )}
+      {templates.data && artwork !== undefined && games.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted">{t('templates.noMatch')}</p>
+      )}
       {/* Cards with each game's picture; without game artwork, a list without pictures. */}
-      {templates.data && artwork === false && (
+      {templates.data && artwork === false && games.length > 0 && (
         <ul
           aria-label={t('templates.title')}
           className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20"
         >
-          {newestOfEachGame(templates.data).map((template) => (
+          {games.map((template) => (
             <li key={template.id}>
               <GameRow
                 template={template}
@@ -65,12 +92,12 @@ export function TemplatesPage() {
           ))}
         </ul>
       )}
-      {templates.data && artwork === true && (
+      {templates.data && artwork === true && games.length > 0 && (
         <ul
           aria-label={t('templates.title')}
           className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
         >
-          {newestOfEachGame(templates.data).map((template) => (
+          {games.map((template) => (
             <li key={template.id} className="flex min-w-0">
               <GameCard
                 template={template}

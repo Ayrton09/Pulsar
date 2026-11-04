@@ -311,7 +311,10 @@
         "api_key_created": "创建了 API 密钥",
         "api_key_revoked": "吊销了 API 密钥",
         "ssh_key_added": "添加了 SSH 密钥",
-        "ssh_key_deleted": "删除了 SSH 密钥"
+        "ssh_key_deleted": "删除了 SSH 密钥",
+        "sso_linked": "关联了登录账户",
+        "sso_unlinked": "取消关联了登录账户",
+        "sso_second_factor_asked": "通过提供方登录，已要求两步验证码"
       },
       "user": {
         "created": "创建了用户",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "吊销了用户的 API 密钥",
         "ssh_keys_deleted": "删除了用户的 SSH 密钥",
         "quota_set": "更改了用户的配额",
-        "quota_removed": "移除了用户的配额"
+        "quota_removed": "移除了用户的配额",
+        "sso_links_removed": "移除了用户的登录账户",
+        "external_id_changed": "更改了用户的外部 ID"
       },
       "role": {
         "created": "创建了角色",
@@ -411,7 +416,11 @@
         "game_update_started": "开始了游戏更新",
         "game_update_cancelled": "取消了游戏更新",
         "template_update_started": "开始将服务器切换到较新的模板",
-        "steam_branch_changed": "更换了服务器的 Steam 分支"
+        "steam_branch_changed": "更换了服务器的 Steam 分支",
+        "owner_changed": "更改了服务器的所有者",
+        "external_id_changed": "更改了服务器的外部 ID",
+        "rcon_password_chosen": "设置了服务器的 RCON 密码",
+        "rcon_password_cleared": "将服务器的 RCON 密码改回由 Pulsar 生成"
       },
       "template": {
         "imported": "导入了游戏模板"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "设置了 CurseForge API 密钥",
         "curseforge_key_removed": "移除了 CurseForge API 密钥"
+      },
+      "sso": {
+        "provider_updated": "更改了登录提供方"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "版本 {{version}}（协议 v{{protocol}}）",
     "uptime": "运行时间",
     "updated": "更新于",
-    "cpuValue": "CPU {{value, number(maximumFractionDigits: 1)}} %",
     "memoryValue": "{{used}} / {{total}}",
     "noInventory": "代理尚未连接，因此没有可显示的内容。",
     "neverConnected": "代理从未连接过。",
@@ -1197,6 +1208,7 @@
     "yes": "是",
     "no": "否",
     "overview": "概览",
+    "portFact": "端口：{{label}}",
     "actions": "服务器操作",
     "notFound": "该服务器不存在。",
     "backToList": "返回服务器列表",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "游戏",
     "description": "用于创建服务器的游戏模板：Pulsar 自带的，以及管理员导入的。",
+    "search": "搜索游戏",
+    "noMatch": "没有匹配的游戏。",
     "import": "导入模板",
     "importHint": "模板决定每个节点运行和下载的内容。导入前请检查它的作用。",
     "sources": {

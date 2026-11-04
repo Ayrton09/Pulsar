@@ -140,7 +140,9 @@ function PublicIpCertificateForm({ saved }: { saved: PublicIpCertificate }) {
           {t('publicIpCertificate.termsLink')}
         </a>
       </p>
-      <p className="rounded-md border border-border px-3 py-2 text-sm">{t('publicIpCertificate.ports', { port })}</p>
+      <p className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm">
+        {t('publicIpCertificate.ports', { port })}
+      </p>
       <div className="flex justify-end">
         <Button type="submit" variant="secondary" busy={update.isPending}>
           {t('publicIpCertificate.save')}

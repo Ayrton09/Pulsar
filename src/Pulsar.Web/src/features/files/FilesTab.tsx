@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { File as FileIcon, Folder, Link2 } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -262,9 +263,13 @@ function FileBrowser({
                   <tr key={entry.name}>
                     <Td className="max-w-md">
                       <span className="flex min-w-0 items-center gap-2">
-                        <span aria-hidden className="w-4 shrink-0 text-muted">
-                          {entry.kind === 'directory' ? '▸' : entry.kind === 'link' ? '↪' : '·'}
-                        </span>
+                        {entry.kind === 'directory' ? (
+                          <Folder aria-hidden="true" className="size-4 shrink-0 text-accent" />
+                        ) : entry.kind === 'link' ? (
+                          <Link2 aria-hidden="true" className="size-4 shrink-0 text-muted" />
+                        ) : (
+                          <FileIcon aria-hidden="true" className="size-4 shrink-0 text-muted" />
+                        )}
                         {entry.kind === 'directory' ? (
                           <button
                             type="button"

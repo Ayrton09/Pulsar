@@ -163,8 +163,9 @@ function PingButton({ nodeId }: { nodeId: string }) {
 function Facts({ items }: { items: [string, ReactNode][] }) {
   return (
     <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-2 text-sm">
-      {items.map(([label, value]) => (
-        <div key={label} className="contents">
+      {/* Keyed by place too: a port may be named as another row ("Game"). */}
+      {items.map(([label, value], index) => (
+        <div key={`${index}:${label}`} className="contents">
           <dt className="text-muted">{label}</dt>
           <dd className="min-w-0 break-words">{value}</dd>
         </div>
@@ -230,7 +231,7 @@ function UsageCard({ node }: { node: NodeSummary }) {
           <Meter
             label={t('nodes.cpu')}
             percent={metrics.cpuPercent}
-            value={t('nodes.cpuValue', { value: metrics.cpuPercent })}
+            value={t('servers.usage.cpuValue', { value: metrics.cpuPercent })}
           />
           <Meter
             label={t('nodes.memory')}
@@ -287,7 +288,11 @@ function Meter({ label, percent, value }: { label: string; percent: number; valu
         aria-valuetext={value}
         className="h-2 overflow-hidden rounded-full bg-surface-raised"
       >
-        <div className="h-full rounded-full bg-accent" style={{ width: `${clamped}%` }} />
+        {/* Coloured as the node's card on the Nodes page: a node near its limit looks the same on both. */}
+        <div
+          className={`h-full rounded-full ${clamped >= 90 ? 'bg-danger' : clamped >= 75 ? 'bg-warning' : 'bg-accent'}`}
+          style={{ width: `${clamped}%` }}
+        />
       </div>
     </div>
   );

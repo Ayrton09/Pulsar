@@ -311,7 +311,10 @@
         "api_key_created": "Ha creato una chiave API",
         "api_key_revoked": "Ha revocato una chiave API",
         "ssh_key_added": "Ha aggiunto una chiave SSH",
-        "ssh_key_deleted": "Ha eliminato una chiave SSH"
+        "ssh_key_deleted": "Ha eliminato una chiave SSH",
+        "sso_linked": "Ha collegato un account di accesso",
+        "sso_unlinked": "Ha scollegato un account di accesso",
+        "sso_second_factor_asked": "Accesso con un provider, richiesto il codice in due passaggi"
       },
       "user": {
         "created": "Ha creato un utente",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "Ha revocato le chiavi API di un utente",
         "ssh_keys_deleted": "Ha eliminato le chiavi SSH di un utente",
         "quota_set": "Ha cambiato la quota di un utente",
-        "quota_removed": "Ha rimosso la quota di un utente"
+        "quota_removed": "Ha rimosso la quota di un utente",
+        "sso_links_removed": "Ha rimosso gli account di accesso di un utente",
+        "external_id_changed": "Ha cambiato l'id esterno di un utente"
       },
       "role": {
         "created": "Ha creato un ruolo",
@@ -411,7 +416,11 @@
         "game_update_started": "Ha avviato un aggiornamento del gioco",
         "game_update_cancelled": "Ha annullato un aggiornamento del gioco",
         "template_update_started": "Ha iniziato a passare un server a un modello più recente",
-        "steam_branch_changed": "Ha cambiato il ramo di Steam di un server"
+        "steam_branch_changed": "Ha cambiato il ramo di Steam di un server",
+        "owner_changed": "Ha cambiato il proprietario di un server",
+        "external_id_changed": "Ha cambiato l'id esterno di un server",
+        "rcon_password_chosen": "Ha scelto la password RCON di un server",
+        "rcon_password_cleared": "Ha riportato un server alla password RCON di Pulsar"
       },
       "template": {
         "imported": "Ha importato un modello di gioco"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "Ha impostato la chiave API di CurseForge",
         "curseforge_key_removed": "Ha rimosso la chiave API di CurseForge"
+      },
+      "sso": {
+        "provider_updated": "Ha modificato un provider di accesso"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "Versione {{version}} (protocollo v{{protocol}})",
     "uptime": "Tempo di attività",
     "updated": "Aggiornato",
-    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % CPU",
     "memoryValue": "{{used}} su {{total}}",
     "noInventory": "L'agent non si è ancora connesso, quindi non c'è nulla da mostrare.",
     "neverConnected": "L'agent non si è mai connesso.",
@@ -1197,6 +1208,7 @@
     "yes": "Sì",
     "no": "No",
     "overview": "Panoramica",
+    "portFact": "Porta: {{label}}",
     "actions": "Azioni del server",
     "notFound": "Questo server non esiste.",
     "backToList": "Torna ai server",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "Giochi",
     "description": "I modelli di gioco da cui vengono creati i server: quelli forniti con Pulsar e quelli importati dagli amministratori.",
+    "search": "Cerca giochi",
+    "noMatch": "Nessun gioco corrisponde.",
     "import": "Importa un modello",
     "importHint": "Un modello decide cosa esegue e scarica ogni nodo. Controllare cosa fa prima di importarlo.",
     "sources": {

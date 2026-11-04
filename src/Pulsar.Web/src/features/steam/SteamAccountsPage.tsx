@@ -1,10 +1,11 @@
+import { KeyRound } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, unwrap } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, EmptyState, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useSteamAccounts, useSteamAccountsChanged, type SteamAccount, type SteamAccountRequest } from './api';
@@ -25,7 +26,7 @@ export function SteamAccountsPage() {
       {accounts.isPending && <Spinner label={t('common.loading')} />}
       {accounts.isError && <Alert>{errorMessage(t, accounts.error)}</Alert>}
       {accounts.data && accounts.data.accounts.length === 0 && (
-        <p className="text-sm text-muted">{t('steamAccounts.empty')}</p>
+        <EmptyState icon={KeyRound}>{t('steamAccounts.empty')}</EmptyState>
       )}
       {accounts.data && accounts.data.accounts.length > 0 && (
         <Table label={t('steamAccounts.title')}>

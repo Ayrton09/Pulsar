@@ -1,10 +1,11 @@
+import { Archive } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, EmptyState, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { invalidateAfterChange } from '../../lib/queries';
@@ -42,7 +43,7 @@ export function BackupStoragesPage() {
       {storages.isPending && <Spinner label={t('common.loading')} />}
       {storages.isError && <Alert>{errorMessage(t, storages.error)}</Alert>}
       {storages.data && storages.data.storages.length === 0 && (
-        <p className="text-sm text-muted">{t('storage.empty')}</p>
+        <EmptyState icon={Archive}>{t('storage.empty')}</EmptyState>
       )}
       {storages.data && storages.data.storages.length > 0 && (
         <Table label={t('storage.title')}>

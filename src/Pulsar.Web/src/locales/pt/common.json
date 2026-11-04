@@ -311,7 +311,10 @@
         "api_key_created": "Criou uma chave de API",
         "api_key_revoked": "Revogou uma chave de API",
         "ssh_key_added": "Adicionou uma chave SSH",
-        "ssh_key_deleted": "Excluiu uma chave SSH"
+        "ssh_key_deleted": "Excluiu uma chave SSH",
+        "sso_linked": "Vinculou uma conta de login",
+        "sso_unlinked": "Desvinculou uma conta de login",
+        "sso_second_factor_asked": "Entrou com um provedor; código de duas etapas pedido"
       },
       "user": {
         "created": "Criou um usuário",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "Revogou as chaves de API de um usuário",
         "ssh_keys_deleted": "Excluiu as chaves SSH de um usuário",
         "quota_set": "Alterou a cota de um usuário",
-        "quota_removed": "Removeu a cota de um usuário"
+        "quota_removed": "Removeu a cota de um usuário",
+        "sso_links_removed": "Removeu as contas de login de um usuário",
+        "external_id_changed": "Alterou o id externo de um usuário"
       },
       "role": {
         "created": "Criou uma função",
@@ -411,7 +416,11 @@
         "game_update_started": "Iniciou uma atualização do jogo",
         "game_update_cancelled": "Cancelou uma atualização do jogo",
         "template_update_started": "Começou a passar um servidor para um modelo mais novo",
-        "steam_branch_changed": "Mudou a branch da Steam de um servidor"
+        "steam_branch_changed": "Mudou a branch da Steam de um servidor",
+        "owner_changed": "Alterou o dono de um servidor",
+        "external_id_changed": "Alterou o id externo de um servidor",
+        "rcon_password_chosen": "Escolheu a senha RCON de um servidor",
+        "rcon_password_cleared": "Voltou um servidor à senha RCON do Pulsar"
       },
       "template": {
         "imported": "Importou um modelo de jogo"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "Configurou a chave de API do CurseForge",
         "curseforge_key_removed": "Removeu a chave de API do CurseForge"
+      },
+      "sso": {
+        "provider_updated": "Alterou um provedor de login"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "Versão {{version}} (protocolo v{{protocol}})",
     "uptime": "Tempo ativo",
     "updated": "Atualizado",
-    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % de CPU",
     "memoryValue": "{{used}} de {{total}}",
     "noInventory": "O agente ainda não se conectou, então não há nada para mostrar.",
     "neverConnected": "O agente nunca se conectou.",
@@ -1197,6 +1208,7 @@
     "yes": "Sim",
     "no": "Não",
     "overview": "Visão geral",
+    "portFact": "Porta: {{label}}",
     "actions": "Ações do servidor",
     "notFound": "Este servidor não existe.",
     "backToList": "Voltar aos servidores",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "Jogos",
     "description": "Os modelos de jogos a partir dos quais os servidores são criados: os que acompanham o Pulsar e os que os administradores importaram.",
+    "search": "Buscar jogos",
+    "noMatch": "Nenhum jogo corresponde.",
     "import": "Importar um modelo",
     "importHint": "Um modelo decide o que cada nó executa e baixa. Confira o que ele faz antes de importá-lo.",
     "sources": {

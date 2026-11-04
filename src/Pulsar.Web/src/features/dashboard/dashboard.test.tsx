@@ -103,7 +103,7 @@ describe('dashboard', () => {
 
     expect(await screen.findByText('1 of 3 running')).toBeInTheDocument();
     expect(await screen.findByText('2 of 3 online')).toBeInTheDocument();
-    expect(screen.getByText('40 % CPU')).toBeInTheDocument(); // (4 × 10 + 12 × 50) / 16 cores
+    expect(screen.getByText('40 %')).toBeInTheDocument(); // (4 × 10 + 12 × 50) / 16 cores
     expect(screen.getByText('38 %')).toBeInTheDocument(); // 12 of 32 GB
     expect(screen.getByRole('link', { name: 'Zombies keeps crashing and was not restarted again' })).toHaveAttribute(
       'href',

@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export function PageHeader({
@@ -23,6 +24,18 @@ export function PageHeader({
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </header>
+  );
+}
+
+/** An empty list: a quiet card with the list's icon and what to do, in place of the table it would be. */
+export function EmptyState({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-surface/50 px-6 py-10 text-center">
+      <span className="grid size-10 place-items-center rounded-xl bg-accent/10 text-accent">
+        <Icon aria-hidden="true" className="size-5" />
+      </span>
+      <p className="max-w-md text-sm text-muted">{children}</p>
+    </div>
   );
 }
 
@@ -98,5 +111,5 @@ export function Th({ children, className = '' }: { children?: ReactNode; classNa
 }
 
 export function Td({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <td className={`border-b border-border px-4 py-3 align-top ${className}`}>{children}</td>;
+  return <td className={`border-b border-border px-4 py-3 align-middle ${className}`}>{children}</td>;
 }

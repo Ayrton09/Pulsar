@@ -63,15 +63,15 @@ export function ServerCard({
   return (
     <article
       aria-labelledby={`server-card-${server.id}`}
-      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-accent/10 focus-within:border-accent/60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-accent/10 focus-within:border-accent/60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <div className="relative aspect-[460/215] overflow-hidden">
-        <GameArt
-          templateKey={server.templateKey}
-          kind="header"
-          className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none"
-        />
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-surface to-transparent" />
+      <div className="relative isolate aspect-[460/215] overflow-hidden">
+        {/* The picture and its fade grow together, in one layer: apart, the browser draws them at different sub-pixel
+            offsets while the picture grows, and a line of it shows under the fade. */}
+        <div className="absolute inset-0 transition-transform duration-500 will-change-transform group-hover:scale-105 motion-reduce:transition-none">
+          <GameArt templateKey={server.templateKey} kind="header" className="absolute inset-0 size-full" />
+          <div className="absolute inset-x-0 -bottom-px h-1/3 bg-linear-to-t from-surface from-10% to-transparent" />
+        </div>
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
           <ServerStatusPill server={server} />
           {server.suspension && (

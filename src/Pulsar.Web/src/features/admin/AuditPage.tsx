@@ -37,17 +37,23 @@ export function AuditPage() {
             <thead>
               <tr>
                 <Th>{t('audit.when')}</Th>
-                <Th>{t('audit.who')}</Th>
+                <Th className="hidden md:table-cell">{t('audit.who')}</Th>
                 <Th>{t('audit.action')}</Th>
                 <Th>{t('audit.outcome')}</Th>
-                <Th>{t('audit.from')}</Th>
+                <Th className="hidden lg:table-cell">{t('audit.from')}</Th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry) => (
                 <tr key={entry.id}>
-                  <Td className="whitespace-nowrap">{formatDate(entry.occurredAt)}</Td>
                   <Td>
+                    <p className="whitespace-nowrap">{formatDate(entry.occurredAt)}</p>
+                    {/* On a phone, who did it goes under when: the table keeps three columns. */}
+                    <p className="text-xs md:hidden">
+                      <Actor entry={entry} />
+                    </p>
+                  </Td>
+                  <Td className="hidden md:table-cell">
                     <Actor entry={entry} />
                   </Td>
                   <Td>
@@ -57,7 +63,7 @@ export function AuditPage() {
                   <Td>
                     <Badge tone={outcomeTone[entry.outcome]}>{t(`audit.outcomes.${entry.outcome}`)}</Badge>
                   </Td>
-                  <Td className="font-mono text-xs text-muted">{entry.ipAddress ?? '—'}</Td>
+                  <Td className="hidden font-mono text-xs text-muted lg:table-cell">{entry.ipAddress ?? '—'}</Td>
                 </tr>
               ))}
             </tbody>

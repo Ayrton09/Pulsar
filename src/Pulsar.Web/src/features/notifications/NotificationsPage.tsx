@@ -1,8 +1,9 @@
+import { Bell } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Badge, Card, EmptyState, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
@@ -60,7 +61,7 @@ export function NotificationsPage() {
         {channels.isPending && <Spinner label={t('common.loading')} />}
         {channels.isError && <Alert>{errorMessage(t, channels.error)}</Alert>}
         {channels.data && channels.data.channels.length === 0 && (
-          <p className="text-sm text-muted">{t('notifications.noChannels')}</p>
+          <EmptyState icon={Bell}>{t('notifications.noChannels')}</EmptyState>
         )}
         {channels.data && channels.data.channels.length > 0 && (
           <Table label={t('notifications.channels')}>
@@ -259,7 +260,7 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
   };
 
   return (
-    <Card>
+    <Card className="p-6">
       <form className="space-y-4" onSubmit={submit} noValidate>
         <Field label={t('notifications.panelUrl')} hint={t('notifications.panelUrlHint')}>
           {(control) => (
@@ -336,7 +337,7 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
         <fieldset className="space-y-4">
           <legend className="text-sm font-semibold">{t('notifications.email')}</legend>
           {!settings.smtp && <p className="text-sm text-muted">{t('notifications.emailOff')}</p>}
-          <div className="grid gap-4 sm:grid-cols-[1fr_8rem_14rem]">
+          <div className="grid gap-4 sm:grid-cols-[1fr_8rem_16rem]">
             <Field label={t('notifications.smtpHost')} hint={t('notifications.smtpHostHint')}>
               {(control) => <Input {...control} value={host} onChange={(e) => setHost(e.target.value)} />}
             </Field>

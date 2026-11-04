@@ -311,7 +311,10 @@
         "api_key_created": "API 키 생성",
         "api_key_revoked": "API 키 폐기",
         "ssh_key_added": "SSH 키 추가",
-        "ssh_key_deleted": "SSH 키 삭제"
+        "ssh_key_deleted": "SSH 키 삭제",
+        "sso_linked": "로그인 계정을 연결함",
+        "sso_unlinked": "로그인 계정 연결을 해제함",
+        "sso_second_factor_asked": "공급자로 로그인, 2단계 코드 요청"
       },
       "user": {
         "created": "사용자 생성",
@@ -322,7 +325,9 @@
         "api_keys_revoked": "사용자의 API 키 폐기",
         "ssh_keys_deleted": "사용자의 SSH 키 삭제",
         "quota_set": "사용자의 할당량을 변경함",
-        "quota_removed": "사용자의 할당량을 제거함"
+        "quota_removed": "사용자의 할당량을 제거함",
+        "sso_links_removed": "사용자의 로그인 계정을 제거함",
+        "external_id_changed": "사용자의 외부 ID를 변경함"
       },
       "role": {
         "created": "역할 생성",
@@ -411,7 +416,11 @@
         "game_update_started": "게임 업데이트를 시작함",
         "game_update_cancelled": "게임 업데이트를 취소함",
         "template_update_started": "서버를 새 템플릿으로 옮기기 시작함",
-        "steam_branch_changed": "서버의 Steam 브랜치를 변경함"
+        "steam_branch_changed": "서버의 Steam 브랜치를 변경함",
+        "owner_changed": "서버 소유자를 변경함",
+        "external_id_changed": "서버의 외부 ID를 변경함",
+        "rcon_password_chosen": "서버의 RCON 비밀번호를 지정함",
+        "rcon_password_cleared": "서버를 Pulsar의 RCON 비밀번호로 되돌림"
       },
       "template": {
         "imported": "게임 템플릿 가져옴"
@@ -464,6 +473,9 @@
       "mod_catalogs": {
         "curseforge_key_set": "CurseForge API 키 설정",
         "curseforge_key_removed": "CurseForge API 키 제거"
+      },
+      "sso": {
+        "provider_updated": "로그인 공급자를 변경함"
       }
     }
   },
@@ -1066,7 +1078,6 @@
     "agentVersion": "버전 {{version}} (프로토콜 v{{protocol}})",
     "uptime": "가동 시간",
     "updated": "업데이트됨",
-    "cpuValue": "CPU {{value, number(maximumFractionDigits: 1)}} %",
     "memoryValue": "{{total}} 중 {{used}}",
     "noInventory": "에이전트가 아직 연결되지 않아 표시할 내용이 없습니다.",
     "neverConnected": "에이전트가 한 번도 연결된 적이 없습니다.",
@@ -1197,6 +1208,7 @@
     "yes": "예",
     "no": "아니요",
     "overview": "개요",
+    "portFact": "포트: {{label}}",
     "actions": "서버 작업",
     "notFound": "이 서버가 존재하지 않습니다.",
     "backToList": "서버 목록으로",
@@ -1674,6 +1686,8 @@
   "templates": {
     "title": "게임",
     "description": "서버를 만들 때 사용하는 게임 템플릿입니다. Pulsar에 포함된 것과 관리자가 가져온 것이 있습니다.",
+    "search": "게임 검색",
+    "noMatch": "일치하는 게임이 없습니다.",
     "import": "템플릿 가져오기",
     "importHint": "템플릿은 모든 노드가 실행하고 다운로드할 내용을 결정합니다. 가져오기 전에 내용을 확인하세요.",
     "sources": {

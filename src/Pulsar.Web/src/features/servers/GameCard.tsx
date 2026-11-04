@@ -63,7 +63,7 @@ export function GameCard({ template, onCreate }: { template: TemplateView; onCre
   return (
     <article
       aria-labelledby={`game-card-${template.id}`}
-      className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20"
+      className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg shadow-black/20"
     >
       <div className="relative aspect-[460/215] overflow-hidden">
         <GameArt templateKey={template.key} kind="header" className="absolute inset-0 size-full" />

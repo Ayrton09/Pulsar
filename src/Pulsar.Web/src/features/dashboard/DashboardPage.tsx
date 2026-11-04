@@ -84,7 +84,8 @@ function Stat({
   const body = (
     <Card className="h-full p-5">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm text-muted">{title}</p>
+        {/* Two lines at most within the icon's height: the values line up when a title wraps. */}
+        <p className="line-clamp-2 text-sm leading-tight text-muted">{title}</p>
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent ring-1 ring-accent/20">
           <Icon className="size-4.5" />
         </span>
@@ -152,7 +153,7 @@ function UsageCards({ nodes }: { nodes: NodeSummary[] }) {
       <Stat
         title={t('dashboard.cpu')}
         icon={Cpu}
-        value={cpu === null ? '—' : t('nodes.cpuValue', { value: Math.round(cpu * 10) / 10 })}
+        value={cpu === null ? '—' : t('servers.usage.cpuValue', { value: Math.round(cpu * 10) / 10 })}
         usage={cpu}
         detail={t('dashboard.acrossNodes', { count: reporting.length })}
       />

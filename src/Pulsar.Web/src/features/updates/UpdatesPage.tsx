@@ -116,7 +116,8 @@ export function UpdatesPage() {
                     <Td>
                       <NodeStatus node={node} />
                     </Td>
-                    <Td className="text-right">
+                    {/* Wide enough for why a node cannot update: squeezed, it stood a word per line. */}
+                    <Td className="min-w-48 text-right">
                       {data.available && node.updateAvailable && node.blocked === null ? (
                         <Button size="sm" icon={Download} onClick={() => setAsking([node])}>
                           {node.hostsPanel ? t('updates.updatePanel') : t('updates.update')}

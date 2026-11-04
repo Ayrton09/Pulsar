@@ -154,7 +154,7 @@ export function ServersPage() {
             <div
               role="group"
               aria-label={t('servers.filters.label')}
-              className="flex rounded-lg border border-border bg-surface p-1"
+              className="flex h-10 rounded-lg border border-border bg-surface p-1"
             >
               {filters.map((name) => (
                 <button
@@ -162,7 +162,7 @@ export function ServersPage() {
                   type="button"
                   aria-pressed={filter === name}
                   onClick={() => setFilter(name)}
-                  className={`rounded-md px-3 py-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
+                  className={`inline-flex items-center gap-1 rounded-md px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
                     filter === name ? 'bg-surface-raised font-medium text-text' : 'text-muted hover:text-text'
                   }`}
                 >
@@ -174,18 +174,17 @@ export function ServersPage() {
               (selecting ? (
                 <>
                   <Button
-                    size="sm"
                     variant="secondary"
                     onClick={() => setPicked(new Set([...picked, ...shown.map((server) => server.id)]))}
                   >
                     {t('servers.bulk.selectShown', { count: shown.length })}
                   </Button>
-                  <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={stopSelecting}>
+                  <Button variant="ghost" disabled={bulkBusy} onClick={stopSelecting}>
                     {t('servers.bulk.done')}
                   </Button>
                 </>
               ) : (
-                <Button size="sm" variant="secondary" icon={ListChecks} onClick={() => setSelecting(true)}>
+                <Button variant="secondary" icon={ListChecks} onClick={() => setSelecting(true)}>
                   {t('servers.bulk.start')}
                 </Button>
               ))}

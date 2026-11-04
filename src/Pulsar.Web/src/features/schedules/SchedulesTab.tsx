@@ -1,10 +1,11 @@
+import { CalendarClock } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Badge, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Badge, EmptyState, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { commandLine } from '../../lib/commandLine';
@@ -116,7 +117,7 @@ export function SchedulesTab({ details }: { details: ServerDetails }) {
       {error && <Alert>{errorMessage(t, error)}</Alert>}
 
       {schedules.data.tasks.length === 0 ? (
-        <p className="text-sm text-muted">{t('schedules.empty')}</p>
+        <EmptyState icon={CalendarClock}>{t('schedules.empty')}</EmptyState>
       ) : (
         <Table label={t('schedules.title')}>
           <thead>

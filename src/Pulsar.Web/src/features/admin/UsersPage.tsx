@@ -61,7 +61,7 @@ export function UsersPage() {
               <Th>{t('users.user')}</Th>
               <Th>{t('users.roles')}</Th>
               <Th>{t('users.status')}</Th>
-              <Th>{t('users.lastLogin')}</Th>
+              <Th className="hidden md:table-cell">{t('users.lastLogin')}</Th>
               {canManage && (
                 <Th>
                   <span className="sr-only">{t('common.actions')}</span>
@@ -101,7 +101,7 @@ export function UsersPage() {
                     {user.twoFactorEnabled && <Badge tone="accent">{t('users.twoFactor')}</Badge>}
                   </div>
                 </Td>
-                <Td>
+                <Td className="hidden md:table-cell">
                   {user.lastLoginAt ? (
                     formatDate(user.lastLoginAt)
                   ) : (
