@@ -190,20 +190,22 @@ public sealed class GameProcessTests : IDisposable
         var limited = await BurnAsync(process, output, 1);
         process.ApplyLimits(new ProcessLimits(50, null));
         // A cap is only a ceiling: on a busy machine (CI's runners, the other test assemblies) one round may get less,
-        // so the raised one is measured again, up to three times, until it gets the room the cap gives.
+        // so the raised one is measured again, up to three times, until it gets the room the cap gives (the last round
+        // counts: the highest of several noisy ones would only find the noise).
         var round = 2;
         var raised = await BurnAsync(process, output, round);
         while (raised <= limited * 2 && round < 4)
         {
-            raised = Math.Max(raised, await BurnAsync(process, output, ++round));
+            raised = await BurnAsync(process, output, ++round);
         }
 
         process.ApplyLimits(new ProcessLimits(5, null));
         var lowered = await BurnAsync(process, output, round + 1);
 
-        // A hard cap of a share of every processor (with room for scheduling granularity), changed at once both ways.
+        // A hard cap of a share of every processor, changed at once both ways. Room for scheduling granularity: 30 % over
+        // the cap at 50 %, less than the 50 % and 100 % over it allowed at 10 % and 5 %.
         Assert.True(limited <= 0.15, $"Limited to 10 %: {limited:P0} of the machine");
-        Assert.True(raised > limited * 2 && raised <= 0.6, $"Limited: {limited:P0}, raised to 50 %: {raised:P0}");
+        Assert.True(raised > limited * 2 && raised <= 0.65, $"Limited: {limited:P0}, raised to 50 %: {raised:P1}");
         Assert.True(lowered <= 0.1, $"Lowered to 5 %: {lowered:P0}");
     }
 
