@@ -17,10 +17,12 @@ using Pulsar.Api.Tests.Auth;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Api.Updates;
 using Pulsar.Application.Access;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Updates;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Domain.Common;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Updates;
@@ -169,6 +171,69 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         var ends = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog.AsNoTracking()
             .Where(e => e.Action == AuditActions.Updates.Finished && e.TargetId == node.ToString()).Select(e => e.Outcome).ToListAsync(Ct);
         Assert.Equal(new[] { AuditOutcome.Failure, AuditOutcome.Success }.Order(), ends.Order());
+    }
+
+    [DatabaseFact]
+    public async Task LostRetryAnswersAndAFinalReportDuringTheNextRetryKeepTheActualRunsIdentity()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var host = await UpdatingAgentAsync(admin, "updates-lost-retries", hostsPanel: true);
+        var node = host.Agent.Config!.NodeId;
+        factory.Releases.Publish(Next);
+        await CheckAsync(admin);
+        Guid? running = null;
+        Task? report = null;
+        var calls = 0;
+        factory.UpdateCommand = command =>
+        {
+            calls++;
+            if (calls == 1)
+            {
+                running = command.Attempt;
+            }
+
+            if (calls < 3)
+            {
+                // The original acceptance and the first retry's in_progress answer were both lost, as were progress reports.
+                return Task.FromResult<CommandAck?>(null);
+            }
+
+            // Its final report arrives before this in_progress answer is reconciled. It must wait for the actual id.
+            report = ReportFinalAsync();
+            Assert.False(report.IsCompleted);
+            return Task.FromResult<CommandAck?>(new CommandAck(Guid.NewGuid(), AckStatus.Rejected, "update.in_progress", "Already running.",
+                Update: new UpdateReport(UpdateStatuses.Downloading, "1.0.0", Next, null, null, DateTimeOffset.UtcNow, running)));
+        };
+        try
+        {
+            for (var lost = 0; lost < 2; lost++)
+            {
+                using var applied = await admin.PostAsync("/api/v1/updates/apply",
+                    new ApplyUpdateRequest([node], PulsarApiFactory.AdminPassword, null, Next));
+                Assert.False(Assert.Single(await ReadAsync<List<UpdateRequestResult>>(applied)).Sent);
+            }
+
+            await ApplyAsync(admin, node);
+            await report!.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+            var last = await NodeStatusAsync(admin, node);
+            Assert.Equal((UpdateStatuses.Failed, "Download failed."), (last?.Status, last?.Error));
+            await using var scope = factory.Services.CreateAsyncScope();
+            var saved = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().NodeUpdates.AsNoTracking()
+                .SingleAsync(u => u.NodeId == new NodeId(node), Ct);
+            Assert.Equal(running, saved.AttemptId);
+            Assert.True(saved.AttemptReported);
+        }
+        finally
+        {
+            factory.UpdateCommand = null;
+        }
+
+        async Task ReportFinalAsync()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(new NodeId(node),
+                new UpdateReport(UpdateStatuses.Failed, "1.0.0", Next, null, "Download failed.", DateTimeOffset.UtcNow, running), Ct);
+        }
     }
 
     private static async Task ApplyAsync(PanelClient admin, Guid node)
@@ -340,6 +405,8 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
 
         public UpdateVerifier Verifier { get; }
 
+        public Func<UpdatePulsarCommand, Task<CommandAck?>>? UpdateCommand { get; set; }
+
         public override async ValueTask DisposeAsync()
         {
             await base.DisposeAsync();
@@ -353,7 +420,26 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
             {
                 services.AddSingleton(Verifier);
                 services.AddScoped<IUpdateSource>(_ => new Source(Releases));
+                var original = services.Single(d => d.ServiceType == typeof(IAgentConnections));
+                services.Remove(original);
+                services.AddSingleton<IAgentConnections>(sp => new UpdateCommands((IAgentConnections)original.ImplementationFactory!(sp), this));
             });
+        }
+
+        private sealed class UpdateCommands(IAgentConnections inner, UpdatesFactory factory) : IAgentConnections
+        {
+            public AgentConnectionInfo? Find(NodeId node) => inner.Find(node);
+
+            public void Disconnect(NodeId node) => inner.Disconnect(node);
+
+            public void DisconnectEnded(NodeId node) => inner.DisconnectEnded(node);
+
+            public Task<int> UpdatePanelKeysAsync(NodeId? node, CancellationToken cancellationToken) => inner.UpdatePanelKeysAsync(node, cancellationToken);
+
+            public Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken,
+                Guid? operationId = null) => command is UpdatePulsarCommand update && factory.UpdateCommand is { } send
+                ? send(update)
+                : inner.SendAsync(node, command, actor, cancellationToken, operationId);
         }
 
         private sealed class Source(FakeReleases releases) : IUpdateSource

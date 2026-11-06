@@ -99,14 +99,14 @@ public sealed class NodeUpdate
     }
 
     /// <summary>
-    /// The node refused this request as under way, and the one under way is <paramref name="earlier"/> (what
-    /// <see cref="RequestAgain"/> returned): this request becomes that one, whose reports end it.
+    /// The node refused this request as under way: this request becomes its actual run, whose reports end it.
+    /// New agents name that run in the answer; an older agent falls back to what <see cref="RequestAgain"/> returned.
     /// </summary>
-    public void Resume(Guid earlier, DateTimeOffset now)
+    public void Resume(Guid attempt, DateTimeOffset now)
     {
         Status = Requested;
         Error = null;
-        AttemptId = earlier;
+        AttemptId = attempt;
         AttemptReported = false;
         UpdatedAt = now;
     }

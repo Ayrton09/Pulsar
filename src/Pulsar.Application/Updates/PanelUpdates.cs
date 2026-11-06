@@ -54,6 +54,7 @@ public sealed partial class PanelUpdates(
     IUpdateSource source,
     UpdateVerifier verifier,
     IAgentConnections connections,
+    CommandTurns<NodeId> updateTurns,
     AgentSessionStore sessions,
     IAuditLog audit,
     IRequestContext request,
@@ -182,6 +183,9 @@ public sealed partial class PanelUpdates(
         var results = new List<UpdateRequestResult>();
         foreach (var nodeId in nodes.Distinct())
         {
+            // Reports wait until the command's answer is reconciled: its previous run may finish while this retry is
+            // being refused as already under way, and that final report must see the identity we actually resume.
+            using var turn = await updateTurns.AcquireAsync(nodeId, cancellationToken);
             var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
             if (node is null)
             {
@@ -238,9 +242,15 @@ public sealed partial class PanelUpdates(
 
             var record = await db.NodeUpdates.SingleAsync(u => u.NodeId == nodeId, CancellationToken.None);
             // Under way on the node, after a request whose answer was lost: that one, whose reports end this request.
-            if (earlier is { } underWay && ack?.ErrorCode == "update.in_progress" && record.AttemptId == attempt)
+            var active = ack?.Update is { Attempt: not null, Status: UpdateStatuses.Downloading or UpdateStatuses.Installing } running ? running : null;
+            if ((active?.Attempt ?? earlier) is { } underWay && ack?.ErrorCode == "update.in_progress" && record.AttemptId == attempt)
             {
                 record.Resume(underWay, clock.GetUtcNow());
+                if (active is not null)
+                {
+                    record.Reported(active.Status, Version(active.From), Version(active.To), null, underWay, clock.GetUtcNow());
+                }
+
                 await db.SaveChangesAsync(CancellationToken.None);
                 results.Add(new UpdateRequestResult(nodeId.Value, true, null, null));
                 continue;
@@ -265,6 +275,7 @@ public sealed partial class PanelUpdates(
     public async Task ReportAsync(NodeId nodeId, UpdateReport report, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(report);
+        using var turn = await updateTurns.AcquireAsync(nodeId, cancellationToken);
         if (report.Status is not { } status || !UpdateStatuses.All.Contains(status))
         {
             return;

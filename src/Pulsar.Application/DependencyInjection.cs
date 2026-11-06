@@ -20,6 +20,7 @@ public static class DependencyInjection
     public static IServiceCollection AddPulsarApplication(this IServiceCollection services)
     {
         services.AddMemoryCache();
+        services.AddSingleton(typeof(CommandTurns<>));
         services.AddSingleton<PermissionCacheVersion>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         services.AddScoped<VisibleResources>();

@@ -15,7 +15,8 @@ namespace Pulsar.Application.Servers;
 /// the server), so nothing waits for a result that will never come; the agent reports the end of an accepted one
 /// (<see cref="AgentServerEvents"/>).
 /// </summary>
-public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnections connections, TimeProvider clock, ILogger<ServerOperations> logger)
+public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnections connections, CommandTurns<ServerId> specTurns,
+    TimeProvider clock, ILogger<ServerOperations> logger)
 {
     /// <param name="beforeSave">Adds what belongs with the operation (its backup row) to the same first save.</param>
     /// <returns>The operation (failed already when the node did not accept it), or why the server could not take it.</returns>
@@ -24,6 +25,9 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(operation);
+        // A provisioning and a settings sync share the turn: no spec read before a reinstall can arrive after it,
+        // even when it uses the same manifest. Saves are committed before the agent is called, as for every operation.
+        using var turn = command is ProvisionServerCommand ? await specTurns.AcquireAsync(server.Id, cancellationToken) : null;
         var taken = server.BeginOperation(operation, clock.GetUtcNow());
         if (!taken.IsSuccess)
         {

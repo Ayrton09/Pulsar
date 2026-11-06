@@ -139,6 +139,14 @@ function FileBrowser({
   const remove = useDeleteFile(serverId);
   const [naming, setNaming] = useState<NameAction | null>(null);
   const [archiving, setArchiving] = useState<ArchiveAction | null>(null);
+  const [dialogDirectory, setDialogDirectory] = useState(path);
+  // Back/forward can change folders while a modal is open. Drop that folder's dialogs before rendering another one;
+  // uploads stay mounted and finish in the folder they captured when they started.
+  if (dialogDirectory !== path) {
+    setDialogDirectory(path);
+    setNaming(null);
+    setArchiving(null);
+  }
   const uploads = useUploads(serverId, path);
   const input = useRef<HTMLInputElement>(null);
   const blocked = busy || !connected;

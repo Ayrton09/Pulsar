@@ -77,6 +77,7 @@ public sealed partial class AgentUpdater : IDisposable
     private readonly Lock _lock = new();
     private long _startedAt;
     private bool _running;
+    private UpdateReport? _currentUpdate;
     private DateTimeOffset? _reported;
 
     public AgentUpdater(IUpdatePlatform platform, PanelChannel channel, AgentPaths paths, TimeProvider clock, ILogger<AgentUpdater> logger,
@@ -130,11 +131,13 @@ public sealed partial class AgentUpdater : IDisposable
         {
             if (_running && _clock.GetElapsedTime(_startedAt) < _options.Deadline)
             {
-                return Refuse(commandId, "update.in_progress", "An update is under way on this node.");
+                return Refuse(commandId, "update.in_progress", "An update is under way on this node.") with { Update = _currentUpdate };
             }
 
             _running = true;
             _startedAt = _clock.GetTimestamp();
+            _currentUpdate = new UpdateReport(UpdateStatuses.Downloading, installed.Version.ToString(), version.ToString(), null, null,
+                _clock.GetUtcNow(), command.Attempt);
         }
 
         LogStarting(commandId, installed.Version, version);
@@ -325,6 +328,14 @@ public sealed partial class AgentUpdater : IDisposable
     {
         var report = new UpdateReport(status, from.ToString(), to.ToString(), null, Bounded(error, UpdateReport.MaxErrorLength), _clock.GetUtcNow(),
             attempt);
+        lock (_lock)
+        {
+            if (_currentUpdate?.Attempt == attempt && _currentUpdate?.To == report.To)
+            {
+                _currentUpdate = report;
+            }
+        }
+
         await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), report, CancellationToken.None);
         if (_options.OnReport is { } seen)
         {

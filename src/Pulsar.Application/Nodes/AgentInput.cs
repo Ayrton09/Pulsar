@@ -85,6 +85,14 @@ public static partial class AgentInput
             ErrorCode = ErrorCode(ack.ErrorCode),
             Message = ack.Message is null ? null : Text(ack.Message, MaxMessageLength),
             Result = Result(ack.Result),
+            Update = ack.Update is { } update ? update with
+            {
+                Status = Text(update.Status, 16),
+                From = update.From is null ? null : Text(update.From, 32),
+                To = update.To is null ? null : Text(update.To, 32),
+                Error = update.Error is null ? null : Text(update.Error, UpdateReport.MaxErrorLength),
+                Parts = null,
+            } : null,
         };
     }
 

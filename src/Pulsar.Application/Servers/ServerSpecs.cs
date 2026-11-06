@@ -72,13 +72,26 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
 
     /// <summary>
     /// The server's allocations on its node (one being transferred keeps those of the node it leaves until it is done), as
-    /// this context has them: those assigned or released and not saved yet too (a game change builds its spec before it saves).
+    /// saved now, with this context's unsaved assignments and releases overlaid (a game change builds before it saves).
+    /// Unchanged tracked rows may predate another request's port change and are never used as a fresh snapshot.
     /// </summary>
     public async Task<List<NodeAllocation>> AllocationsOf(Server server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
-        await db.NodeAllocations.Where(a => a.ServerId == server.Id).LoadAsync(cancellationToken);
-        return [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId && db.Entry(a).State != EntityState.Deleted)];
+        var saved = await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)
+            .ToDictionaryAsync(a => a.Id, cancellationToken);
+        foreach (var entry in db.ChangeTracker.Entries<NodeAllocation>()
+                     .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
+        {
+            var allocation = entry.Entity;
+            saved.Remove(allocation.Id);
+            if (entry.State != EntityState.Deleted && allocation.ServerId == server.Id && allocation.NodeId == server.NodeId)
+            {
+                saved[allocation.Id] = allocation;
+            }
+        }
+
+        return [.. saved.Values];
     }
 
     /// <summary>

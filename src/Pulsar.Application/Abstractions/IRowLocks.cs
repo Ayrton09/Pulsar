@@ -40,12 +40,6 @@ public interface IRowLocks
     Task LockRconPasswordsAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// What is sent of a server's spec to its agent takes turns (nothing else waits): each one reads the server as it is
-    /// then, so the last sent is the last saved, never an earlier read that arrives late.
-    /// </summary>
-    Task LockServerSpecAsync(ServerId server, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Creations of <typeparamref name="TEntity"/> rows that take this lock take turns until the transaction ends (nothing
     /// else waits): a panel-wide cap is counted against what is there now.
     /// </summary>

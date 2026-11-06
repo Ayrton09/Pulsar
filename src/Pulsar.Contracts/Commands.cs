@@ -703,7 +703,9 @@ public enum AckStatus
 
 /// <summary>The agent's answer: accepted or not (long work reports completion through events).</summary>
 /// <param name="Result">What the command answers, for commands that answer something (null from older agents).</param>
-public sealed record CommandAck(Guid CommandId, AckStatus Status, string? ErrorCode, string? Message, CommandResult? Result = null);
+/// <param name="Update">When an update is already running, its current identity and progress; absent from older agents.</param>
+public sealed record CommandAck(Guid CommandId, AckStatus Status, string? ErrorCode, string? Message, CommandResult? Result = null,
+    UpdateReport? Update = null);
 
 /// <summary>Capabilities an agent announces in its Hello; the panel never sends a command the agent did not announce.</summary>
 public static class AgentCapabilities

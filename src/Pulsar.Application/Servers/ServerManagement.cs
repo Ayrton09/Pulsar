@@ -142,6 +142,7 @@ public sealed partial class ServerManagement(
     IAuditLog audit,
     IRequestContext request,
     IRowLocks locks,
+    CommandTurns<ServerId> specTurns,
     TimeProvider clock,
     ILogger<ServerManagement> logger)
 {
@@ -1067,19 +1068,10 @@ public sealed partial class ServerManagement(
     /// <summary>Sends the server's spec to its agent now (a running game gets it at its next start); nothing when it is not installed or its node is away.</summary>
     public async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
     {
-        // In turns per server, each reading the server once it has its turn: two sends at once (two changes of its RCON
-        // password, a setting beside one) never leave the agent with the earlier read.
-        if (db.Database.CurrentTransaction is not null)
-        {
-            await locks.LockServerSpecAsync(id, cancellationToken);
-            return await SyncSpecInTurnAsync(id, cancellationToken);
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await locks.LockServerSpecAsync(id, cancellationToken);
-        var synced = await SyncSpecInTurnAsync(id, cancellationToken);
-        await transaction.CommitAsync(CancellationToken.None);
-        return synced;
+        // Provisioning takes this same turn across its save and command. Read only once it is ours: a sync waiting
+        // behind a reinstall sends its new settings, including when its manifest did not change.
+        using var turn = await specTurns.AcquireAsync(id, cancellationToken);
+        return await SyncSpecInTurnAsync(id, cancellationToken);
     }
 
     private async Task<Result> SyncSpecInTurnAsync(ServerId id, CancellationToken cancellationToken)

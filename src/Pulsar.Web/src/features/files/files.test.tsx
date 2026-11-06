@@ -264,6 +264,29 @@ describe('file paths and text', () => {
 });
 
 describe('files tab', () => {
+  it.each(['Rename World.ZIP', 'Zip World.ZIP', 'Unzip World.ZIP', 'New file', 'New folder'])(
+    'closes %s when back or forward changes the folder',
+    async (action) => {
+      fakeApi({
+        'GET /api/v1/auth/session': session(editor),
+        [`GET /api/v1/servers/${serverId}`]: () => json(details),
+        [`GET /api/v1/servers/${serverId}/files`]: listing,
+      });
+      const router = renderAt(`/servers/${serverId}?tab=files`);
+      await screen.findByRole('button', { name: 'game/' });
+      await act(() => router.navigate(`/servers/${serverId}?tab=files&path=worlds`));
+      await userEvent.click(await screen.findByRole('button', { name: action }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+      await act(() => router.navigate(-1));
+      expect(await screen.findByRole('button', { name: 'game/' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await act(() => router.navigate(1));
+      expect(await screen.findByRole('button', { name: 'world/' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    },
+  );
+
   it('browses folders, shows links without following them and offers downloads', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(editor),

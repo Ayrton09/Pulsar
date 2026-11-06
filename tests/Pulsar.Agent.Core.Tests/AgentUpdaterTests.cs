@@ -48,6 +48,24 @@ public sealed class AgentUpdaterTests : IDisposable
     }
 
     [Fact]
+    public async Task ARefusedRetryNamesTheUpdateActuallyRunning()
+    {
+        var release = Release();
+        using var updater = Updater(release.Handler);
+        var running = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256, running)).Status);
+        await _ended.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        // More than one unanswered retry: neither retry's new identity is the update the node is running.
+        for (var retry = 0; retry < 2; retry++)
+        {
+            var refused = updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256, Guid.NewGuid()));
+            Assert.Equal("update.in_progress", refused.ErrorCode);
+            Assert.Equal((running, UpdateStatuses.Installing, Version), (refused.Update?.Attempt, refused.Update?.Status, refused.Update?.To));
+        }
+    }
+
+    [Fact]
     public void WhatTheCommandAsksIsCheckedBeforeAnythingIsDownloaded()
     {
         var release = Release();
