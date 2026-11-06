@@ -206,7 +206,8 @@ public sealed class ScheduledTask
 
         Name = trimmed;
         CronExpression = cron.Trim();
-        TimeZone = zone.Id;
+        // A linked name the system lacks (FindZone found the zone it links to) is kept as given.
+        TimeZone = timeZone is not null && TimeZoneLinks.Target(timeZone) == zone.Id ? timeZone : zone.Id;
         Action = action;
         Payload = action switch
         {
