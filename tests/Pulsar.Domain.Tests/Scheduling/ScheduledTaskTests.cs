@@ -233,6 +233,37 @@ public sealed class ScheduledTaskTests
         Assert.Equal(zone, task.Value.TimeZone);
     }
 
+    [Fact]
+    public void AnOlderNameRunsAsTheZoneItLinksTo()
+    {
+        // Ubuntu 24.04 has no America/Buenos_Aires unless tzdata-legacy is installed: the link stands in for it.
+        Assert.Equal("America/Argentina/Buenos_Aires", TimeZoneLinks.Target("America/Buenos_Aires"));
+        Assert.Equal("Asia/Kolkata", TimeZoneLinks.Target("Asia/Calcutta"));
+        Assert.Null(TimeZoneLinks.Target("Europe/Madrid"));
+
+        var older = Create("0 4 * * *", "America/Buenos_Aires").Value;
+        var current = Create("0 4 * * *", "America/Argentina/Buenos_Aires").Value;
+
+        Assert.Equal(current.NextRunAt, older.NextRunAt);
+        Assert.Equal("America/Buenos_Aires", older.TimeZone);
+    }
+
+    [Fact]
+    public void EveryLinkLeadsToAZoneOfThisSystem()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Skip("Windows' zone data (ICU) may lag behind tz's newest names; the links are for Linux.");
+        }
+
+        foreach (var name in new[] { "America/Buenos_Aires", "Asia/Calcutta", "US/Eastern", "GMT", "Asia/Saigon", "Europe/Kiev" })
+        {
+            var target = TimeZoneLinks.Target(name);
+            Assert.NotNull(target);
+            Assert.True(TimeZoneInfo.TryFindSystemTimeZoneById(target, out _), $"{name} -> {target}");
+        }
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

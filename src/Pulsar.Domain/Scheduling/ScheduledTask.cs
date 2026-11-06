@@ -393,9 +393,23 @@ public sealed class ScheduledTask
         }
     }
 
-    /// <summary>IANA ids only: Windows ids exist only on Windows (the panel may run on Linux).</summary>
-    private static TimeZoneInfo? FindZone(string? id) =>
-        !string.IsNullOrWhiteSpace(id) && id.Length <= MaxTimeZoneLength && TimeZoneInfo.TryFindSystemTimeZoneById(id, out var zone) && zone.HasIanaId
-            ? zone
-            : null;
+    /// <summary>
+    /// IANA ids only: Windows ids exist only on Windows (the panel may run on Linux). A linked name the system does not
+    /// have (Ubuntu leaves tz's older names out unless tzdata-legacy is installed) is the zone it links to
+    /// (<see cref="TimeZoneLinks"/>); the task keeps the name as given.
+    /// </summary>
+    private static TimeZoneInfo? FindZone(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > MaxTimeZoneLength)
+        {
+            return null;
+        }
+
+        if (TimeZoneInfo.TryFindSystemTimeZoneById(id, out var zone) && zone.HasIanaId)
+        {
+            return zone;
+        }
+
+        return TimeZoneLinks.Target(id) is { } target && TimeZoneInfo.TryFindSystemTimeZoneById(target, out zone) && zone.HasIanaId ? zone : null;
+    }
 }
