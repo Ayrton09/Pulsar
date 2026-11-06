@@ -63,7 +63,7 @@
 
   <ItemGroup Label="Testing">
     <!-- JSON Schema validation of the published manifest schema (BSD-3-Clause; JsonSchema.Net moved to a commercial EULA). -->
-    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.2" />
+    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.3" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     <!-- SSH and SFTP client that drives the panel's SFTP server in the tests (MIT; Phase 17). -->
