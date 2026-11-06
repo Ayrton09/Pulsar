@@ -13,10 +13,11 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!--
       Releases are win-x64 builds (scripts/release/Build-Release.ps1: framework-dependent in the ZIP, self-contained in
-      the agent MSI): the lock files include that runtime, so a release restores in locked mode like every other build.
-      This does not make builds runtime-specific.
+      the agent MSI) and a linux-x64 build of the panel (self-contained, in the Linux tarball): the lock files include
+      those runtimes, so a release restores in locked mode like every other build. This does not make builds
+      runtime-specific.
     -->
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
 
     <!-- Lets Linux CI build the Windows-only agent projects. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

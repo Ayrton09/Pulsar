@@ -72,6 +72,35 @@ describe('updates', () => {
     expect(within(other).getByText("Update the panel's machine first.")).toBeInTheDocument();
   });
 
+  it('tells how to update a panel that no node hosts on its own machine', async () => {
+    const linux: Schemas['UpdatesView'] = {
+      ...available,
+      panelPlatform: 'linux',
+      nodes: [node(otherId, 'Second PC', {})],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      'GET /api/v1/updates': () => json(linux),
+    });
+    renderAt('/admin/updates');
+
+    expect(await screen.findByText(/so update the panel there: run this as root/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Command for the panel's machine")).toHaveTextContent(
+      'curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update',
+    );
+  });
+
+  it('says nothing more when a node hosts the panel', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      'GET /api/v1/updates': () => json({ ...available, panelPlatform: 'linux' }),
+    });
+    renderAt('/admin/updates');
+
+    expect(await screen.findByRole('heading', { name: 'Pulsar 1.0.1 is available' })).toBeInTheDocument();
+    expect(screen.queryByText(/so update the panel there/)).not.toBeInTheDocument();
+  });
+
   it('updates a node with the password, and says what a node refused', async () => {
     let sent: unknown;
     fakeApi({

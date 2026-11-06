@@ -8,6 +8,7 @@ import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { useCurrentUser } from '../auth/api';
+import { CopyBlock } from '../nodes/components';
 import {
   useApplyUpdate,
   useCheckForUpdates,
@@ -63,6 +64,9 @@ export function UpdatesPage() {
                   </p>
                 )}
                 {data.available.newerThanPanel && <p className="text-sm">{t('updates.panelFirst')}</p>}
+                {data.available.newerThanPanel && !data.nodes.some((node) => node.hostsPanel) && (
+                  <PanelOwnUpdate platform={data.panelPlatform} />
+                )}
               </div>
             ) : (
               <h2 className="text-lg font-semibold">{t('updates.upToDate')}</h2>
@@ -272,4 +276,22 @@ function ApplyDialog({ nodes, version, onClose }: { nodes: NodeUpdateView[]; ver
       </form>
     </Dialog>
   );
+}
+
+/** The command that updates a Linux panel on its own machine (docs/guides/update.md, "Linux"). */
+export const linuxUpdateCommand =
+  'curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update';
+
+/** How to update a panel that no node hosts (a Linux panel, or a Windows one installed without an agent): on its machine. */
+function PanelOwnUpdate({ platform }: { platform: string }) {
+  const { t } = useTranslation();
+  if (platform === 'linux') {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm">{t('updates.panelOwnLinux')}</p>
+        <CopyBlock label={t('updates.panelOwnLinuxCommand')} text={linuxUpdateCommand} />
+      </div>
+    );
+  }
+  return <p className="text-sm">{t('updates.panelOwnWindows')}</p>;
 }

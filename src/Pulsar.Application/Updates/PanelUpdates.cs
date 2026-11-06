@@ -24,8 +24,12 @@ public interface IUpdateSource
 /// <param name="PanelVersion">The version of the panel answering.</param>
 /// <param name="HasKeys">Whether this build trusts any update key: without one, it takes no update.</param>
 /// <param name="Available">The newest release, when it is newer than the panel or than some node.</param>
+/// <param name="PanelPlatform">
+/// The system the panel runs on ("windows", "linux" or "other"): a panel no node hosts (<see cref="NodeUpdateView.HostsPanel"/>)
+/// is updated on its machine with that system's installer (docs/guides/update.md), which the page names.
+/// </param>
 public sealed record UpdatesView(string PanelVersion, bool HasKeys, bool CheckAutomatically, DateTimeOffset? CheckedAt, string? CheckError,
-    AvailableUpdate? Available, IReadOnlyList<NodeUpdateView> Nodes);
+    AvailableUpdate? Available, IReadOnlyList<NodeUpdateView> Nodes, string PanelPlatform);
 
 /// <param name="Notes">What changed, as the release's signed manifest says (plain text).</param>
 /// <param name="NewerThanPanel">Whether the panel itself is older: it is updated through the node it runs on, first.</param>
@@ -94,7 +98,8 @@ public sealed partial class PanelUpdates(
             available = new AvailableUpdate(latest.Manifest.Version, latest.Manifest.Published, latest.Manifest.Notes, latest.Version.IsNewerThan(PanelVersion));
         }
 
-        return new UpdatesView(PanelVersionText, verifier.HasKeys, state.CheckAutomatically, state.CheckedAt, state.CheckError, available, views);
+        return new UpdatesView(PanelVersionText, verifier.HasKeys, state.CheckAutomatically, state.CheckedAt, state.CheckError, available, views,
+            PanelPlatform);
     }
 
     public async Task<bool> SetCheckAutomaticallyAsync(bool checkAutomatically, CancellationToken cancellationToken)
@@ -363,6 +368,8 @@ public sealed partial class PanelUpdates(
 
         return !HostsPanel(live) && latest.Version.IsNewerThan(PanelVersion) ? "update.panel_first" : null;
     }
+
+    private static string PanelPlatform => OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsLinux() ? "linux" : "other";
 
     private static bool HostsPanel(AgentConnectionInfo? live) => live?.Capabilities.Contains(AgentCapabilities.PanelHost) == true;
 

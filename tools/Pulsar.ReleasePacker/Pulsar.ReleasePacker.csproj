@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>pulsar-release-packer</AssemblyName>
+    <RootNamespace>Pulsar.ReleasePacker</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Contracts.Tests" />
+  </ItemGroup>
+
+</Project>

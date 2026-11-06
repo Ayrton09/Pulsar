@@ -32,6 +32,7 @@ export const noUpdates: Schemas['UpdatesView'] = {
   checkError: null,
   available: null,
   nodes: [],
+  panelPlatform: 'windows',
 };
 
 /** The public IP certificate, turned off: what tests about something else get. */

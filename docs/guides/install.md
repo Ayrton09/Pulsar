@@ -2,7 +2,8 @@
 
 Pulsar has two parts:
 
-- **The panel**: the web interface and API. It keeps its data in PostgreSQL. One per installation.
+- **The panel**: the web interface and API. It keeps its data in PostgreSQL. One per installation, on Windows or on
+  Linux ([Linux](#linux)).
 - **The agent**: runs on every Windows machine that hosts game servers (a *node*) and connects to the panel.
 
 Both can run on the same PC (the usual setup for a home server), or the panel can run on one machine and nodes on
@@ -167,6 +168,145 @@ asking nothing but the license ([update.md](update.md)); a setup older than what
 remove Pulsar, **Settings → Apps → Pulsar → Uninstall**: it runs `Install-Pulsar.ps1 -Uninstall`
 ([Uninstalling](#uninstalling)) and keeps the data. Remove Pulsar before the .NET runtimes: the agent's program needs
 them to unenroll.
+
+## Linux
+
+The panel also runs on Linux: x86_64 with systemd, on Debian 12 or later or Ubuntu 24.04 or later (whose packages
+have PostgreSQL 15 or later), or on another distribution with PostgreSQL 15 or later installed already. Its nodes are
+Windows machines with the agent: add them from the panel as on Windows (**Nodes → Add node**). The panel carries its
+own .NET runtime, so nothing is installed from Microsoft.
+
+### With one command
+
+As root (or with `sudo`), on the machine to install:
+
+```bash
+curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash
+```
+
+It asks for the first administrator's password on the terminal. Before it runs anything, it checks the release as
+`install.ps1` does on Windows: the release's manifest must be signed by the project's update key, which the script
+carries, and `pulsar-<version>-linux-x64.tar.gz` must have the size and SHA-256 that signed manifest gives. The tarball
+is downloaded into a new folder only root can use (`/var/tmp/pulsar-install.*`), checked (one folder, no links, nothing
+outside it), extracted there and its `install-pulsar.sh` run; the folder is removed afterwards. Options for
+`install-pulsar.sh` go after `bash -s --`:
+
+```bash
+curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --host-name panel.example.com
+```
+
+To read the script first, download `install.sh` from the Releases page (the signed manifest names it, with its
+SHA-256, and it has its own `.sha256` file), check it, and run `sudo bash ./install.sh`.
+
+### From the tarball
+
+Download `pulsar-<version>-linux-x64.tar.gz` and its `.sha256` from the Releases page, check it
+(`sha256sum -c pulsar-<version>-linux-x64.tar.gz.sha256`), and extract it as root into a folder only root can change:
+the installer runs as root what is next to it, so it refuses a folder (or a folder above it, or a file in it) that
+another user could change, as `Install-Pulsar.ps1` does.
+
+```bash
+sudo mkdir -m 700 /root/pulsar-release
+sudo tar -xzf pulsar-<version>-linux-x64.tar.gz -C /root/pulsar-release --no-same-owner
+sudo /root/pulsar-release/pulsar-<version>-linux-x64/install-pulsar.sh
+```
+
+### What the installer does
+
+- Installs what the machine lacks from the distribution's packages (`apt-get`, on Debian and Ubuntu): PostgreSQL when
+  there is none, `jq`, and the libraries the panel's .NET needs (ICU, OpenSSL 3). On other distributions it names what
+  to install and stops.
+- Creates the system user `pulsar` (no shell, no password): the panel runs as it. Keys an earlier panel left in
+  `/var/lib/pulsar/panel/keys` are moved aside to `keys.before-<date>` (the installer never writes into a folder the
+  panel's user can change).
+- Creates the `pulsar` database and role in the local PostgreSQL. The panel reaches it over PostgreSQL's local socket as
+  the system user `pulsar` (peer authentication, PostgreSQL's default for local connections), so the database has no
+  password at all. So the installer stops, changing nothing, when PostgreSQL's `pg_hba.conf` has a rule that could let
+  anyone else in as `pulsar` or into its database without proving who they are (`trust`, a user name map, PAM, LDAP
+  and the like): use `peer` for local connections and `scram-sha-256` for the others. `PULSAR_CONNECTION_STRING`
+  names another database instead.
+- Makes the panel's HTTPS certificate: self-signed (RSA 2048, five years, unable to issue certificates, for a web
+  server only) for `localhost`, this machine's names, `127.0.0.1`, `::1`, its private IPv4 addresses on networks with a
+  router and `--host-name`'s; or takes `--certificate`'s. It also makes the key ring certificate that protects the
+  panel's Data Protection keys, as on Windows.
+- Writes the panel's settings to `/etc/pulsar/panel.json`, which root may change and the panel may read (they hold the
+  certificates' passwords), and installs the `pulsar-panel` systemd service.
+- Opens the panel's ports (HTTPS, SFTP, and the agents' and port 80 when asked for) in ufw or firewalld when one is
+  active; a port either allows already is left as it is. With neither, it says which ports to open.
+- Prepares the database, starts the panel, creates the first administrator and says the address to open and the
+  certificate's SHA-256.
+
+The service runs as `pulsar` with nothing more than the right to listen on ports below 1024 (for port 80, Let's
+Encrypt's check, or 443): no new privileges, the whole system read-only but its keys and logs folders, its own `/tmp`,
+no devices, kernel settings or other users' homes, and a filter of the system calls a service makes
+(`systemd-analyze security pulsar-panel` rates it).
+
+| Option | What it does |
+|---|---|
+| `--port N` | The panel's HTTPS port (default 8443). |
+| `--agents-port N` | A second HTTPS port for agents with client certificates ([Agents' port](#agents-port-client-certificates-optional)). |
+| `--sftp-port N` | The SFTP port (default 2022). |
+| `--host-name NAME` | Another name or IP address in the self-signed certificate; repeat it for more. Remembered for `--renew-certificate`. |
+| `--certificate FILE` | A PFX certificate instead of a self-signed one; its password in `PULSAR_CERTIFICATE_PASSWORD`. |
+| `--admin-user NAME` | The first administrator's user name (default `admin`). |
+| `--public-ip IP` | [Access from the internet with your public IP](#access-from-the-internet-with-your-public-ip): a Let's Encrypt certificate for it, and port 80 opened. |
+| `--no-firewall` | Leaves ufw and firewalld alone. |
+| `--restore-from DIR` | Installs from a backup ([backup.md](backup.md)), made on Linux or on Windows. |
+| `--secrets-file FILE` | The secrets as JSON (`adminPassword`, `connectionString`, `certificatePassword`), in a file only root can read. |
+| `--unattended` | Asks for nothing: what is missing is an error. |
+
+Secrets never go on the command line, which other users can read: they come from the environment
+(`PULSAR_ADMIN_PASSWORD`, `PULSAR_CONNECTION_STRING`, `PULSAR_CERTIFICATE_PASSWORD`; `sudo` clears the environment, so
+pass them with `sudo --preserve-env=PULSAR_ADMIN_PASSWORD ...` or use `--secrets-file`), or are asked for on the
+terminal. The exit codes are `Install-Pulsar.ps1`'s: `0` done, `1` failed (an install that fails undoes what it did:
+service, programs, settings, firewall rules, and the database and role it made), `2` wrong options or a panel's database
+there already, `3` the machine or folder cannot install it, `6` the certificate, `7` an update put the previous version
+back. Each run writes a log, without secrets, in `/var/log/pulsar/setup`.
+
+### Where things are on Linux
+
+| What | Where |
+|---|---|
+| The panel's programs (with the web app and the agent's setup for Windows nodes) | `/opt/pulsar/panel` |
+| The installer and backup scripts kept for later | `/opt/pulsar` |
+| The panel's settings, and what the installer chose (ports, names, firewall rules) | `/etc/pulsar/panel.json`, `/etc/pulsar/install.json` |
+| Data Protection keys, key ring certificate, HTTPS certificate (`tls/panel.cer` to trust) | `/var/lib/pulsar/panel` |
+| Update backups and the version before the last update | `/var/lib/pulsar/updates` |
+| Logs | `journalctl -u pulsar-panel`, and `/var/log/pulsar/panel`; the installer's in `/var/log/pulsar/setup` |
+
+### Updating, renewing the certificate, removing
+
+- **Update**: `curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update`,
+  or the new tarball's `install-pulsar.sh --update`. It backs up the panel, replaces the programs, prepares the
+  database and checks the panel answers; if the new version does not, it puts the previous one back, and the database
+  too when the update changed it (exit code `7`). See [update.md](update.md). The panel's Updates page shows this
+  command when there is a newer release: no node runs on a Linux panel's machine, so its one-click update does not
+  reach it.
+- **The machine's address or name changed**: `sudo /opt/pulsar/install-pulsar.sh --renew-certificate` makes a new
+  self-signed certificate for the addresses it has now (and the names given before, plus any new `--host-name`), keeps
+  the old one until the new one works, and says both fingerprints. Nodes added with a node code pinned the old one:
+  pin them again ([Your server's IP changed](#your-servers-ip-changed)).
+- **Remove**: `sudo /opt/pulsar/install-pulsar.sh --uninstall` removes the service, programs, settings and the firewall
+  rules it made, and keeps the database, `/var/lib/pulsar`, the logs and the `pulsar` user.
+
+To start over from nothing (this deletes the panel's data for good: [back it up](backup.md) first):
+
+```bash
+sudo /opt/pulsar/install-pulsar.sh --uninstall
+sudo -u postgres psql -c 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)' -c 'DROP ROLE IF EXISTS pulsar'
+sudo rm -rf /var/lib/pulsar /var/log/pulsar /etc/pulsar
+sudo userdel pulsar
+```
+
+### Moving a panel from Windows to Linux
+
+Back up the Windows panel with `Backup-Pulsar.ps1`, copy the backup folder to the Linux machine (into a folder only
+root can change), and install with `--restore-from <the folder>`: the panel comes back with its users, servers, nodes,
+keys and certificate. The backup's database dump comes from the Windows PostgreSQL (18 when the Windows installer
+installed it), and `pg_restore` reads only dumps of its own version or older: on Ubuntu 26.04 (PostgreSQL 18) it just
+works; on Debian or Ubuntu 24.04, install PostgreSQL 18 from [PostgreSQL's apt repository](https://www.postgresql.org/download/linux/)
+first (the installer says so when it cannot read the dump). Nodes reconnect when the panel's address leads to the new
+machine; if the address changed, renew the certificate and pin them again, as above.
 
 ## Connecting from another PC
 

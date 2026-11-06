@@ -58,6 +58,27 @@ before it changes anything, the setup says why and leaves Pulsar as it was; othe
 An agent installed with the agent MSI is updated with its MSI (below): `PulsarAgentSetup.exe` refuses that machine,
 and `PulsarSetup.exe` updates only its panel.
 
+## On Linux
+
+A panel on Linux ([install.md](install.md#linux)) is updated on its machine, as root, with the newest release checked
+against its signature as for an install:
+
+```bash
+curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update
+```
+
+or with the new tarball's `install-pulsar.sh --update` (extracted as for an install). No node runs on that machine, so
+the panel's one-click update cannot update it: the Updates page shows that command instead, and the nodes are updated
+from the page as always once the panel is. The update takes a lock (one at a time), backs up the database (`pg_dump`),
+the keys, certificates and settings into `/var/lib/pulsar/updates/backups/<version>-<time>` (the three newest are
+kept), stops the panel, moves its programs to `/var/lib/pulsar/updates/previous` and puts the new ones in their place,
+prepares the database, starts the panel and waits up to three minutes for it to answer. When the new version does not
+prepare the database, start or answer, it stops it, puts the previous programs back, and the database from the backup
+when the new version changed it, starts the previous version and ends with exit code `7`; the result is in
+`/var/lib/pulsar/updates/last-update.json`. A release older than the installed panel is refused (exit code `2`, nothing
+changed). An update cut off half way (the machine lost power) is rolled back by the next run of the script, or, with
+`--discard-interrupted-update`, left as it is.
+
 ## Updating
 
 On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), and extract it, in

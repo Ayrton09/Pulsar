@@ -72,6 +72,21 @@ one). Another `SSL Mode` value stops the backup. The script never follows a link
 certificates: if the panel's account (which can write there) left a junction or symbolic link in `keys`, `keyring` or
 `tls`, the backup stops with an error and the half-made folder is deleted, instead of copying whatever the link points at.
 
+### On Linux
+
+As root, with the copy the installer keeps:
+
+```bash
+sudo /opt/pulsar/backup-pulsar.sh --destination /root/pulsar-backups
+```
+
+It writes `pulsar-backup-<date>` there in the same format (`pulsar.dump`, `panel-data`, the settings as
+`appsettings.Production.json`, and `backup.json`), readable by root only, into a destination only root can change (one
+that does not exist yet is made so). The database is dumped as the panel's own `pulsar` user over the local socket, or
+with the password of the panel's connection string in `pg_dump`'s environment, never on its command line. Every night,
+for example, with a systemd timer: a `pulsar-backup.service` running that command (`Type=oneshot`) and a
+`pulsar-backup.timer` with `OnCalendar=daily` and `Persistent=true`; keep copies away from the machine as on Windows.
+
 ## Backing up game servers
 
 Each server's **Backups** tab makes backups on its node (and schedules can make them every night). They are kept in
@@ -182,6 +197,22 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
 
 3. Start the panel: `Start-Service PulsarPanel`.
 
+### On Linux
+
+Install the panel from the backup, on the same machine (after dropping the lost database, as in install.md's "start
+over from nothing", but keeping the backup) or on a new one: copy the backup folder into a folder only root can change
+and run the release's installer with it:
+
+```bash
+sudo /root/pulsar-release/pulsar-<version>-linux-x64/install-pulsar.sh --restore-from /root/pulsar-backups/pulsar-backup-<date>
+```
+
+It copies the backup into a private folder, checks every file against `backup.json` (and refuses a backup of a newer
+Pulsar than the release), restores the dump as the panel's `pulsar` user (never as `postgres`), and puts the keys,
+certificates and settings back; then the backup's users sign in as before. A backup made on Windows restores the same
+way ([moving a panel from Windows to Linux](install.md#moving-a-panel-from-windows-to-linux)), and one made on Linux
+restores on Windows with `Install-Pulsar.ps1 -Mode Panel -RestoreFrom`.
+
 ### On a new machine
 
 1. Install PostgreSQL ([install.md](install.md), step 1) and extract the release ZIP of the **same or a later**
@@ -217,4 +248,5 @@ folders must be restored separately (they are on that machine's disk).
 ## Moving the panel to another machine
 
 Back up on the old machine, stop its panel (`Stop-Service PulsarPanel`, or `Install-Pulsar.ps1 -Uninstall` if no
-agent runs there), and restore on the new one as above.
+agent runs there), and restore on the new one as above. The new machine may run the other system: a backup restores on
+Windows and on Linux alike ([install.md](install.md#moving-a-panel-from-windows-to-linux)).

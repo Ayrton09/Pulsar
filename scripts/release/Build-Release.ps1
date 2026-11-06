@@ -879,6 +879,15 @@ function Build-UpdateSigner([string] $repository, [string] $output) {
     return $exe
 }
 
+# Builds pulsar-release-packer (tools\Pulsar.ReleasePacker), which packs the Linux tarball; returns its path.
+function Build-ReleasePacker([string] $repository, [string] $output) {
+    dotnet publish (Join-Path $repository 'tools\Pulsar.ReleasePacker') -c Release -r win-x64 --no-self-contained -p:DebugType=none -p:RestoreLockedMode=true -o $output | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'publish of the release packer failed' }
+    $exe = Join-Path $output 'pulsar-release-packer.exe'
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "The release packer was built, but $exe is missing." }
+    return $exe
+}
+
 # Runs the signer with $arguments (paths and words, never a secret) on this console, so that it can ask for the key's
 # passphrase there; the passphrase of PULSAR_UPDATE_KEY_PASSPHRASE is in its environment only for this call.
 function Invoke-UpdateSigner([string] $signer, [string[]] $arguments) {
@@ -986,6 +995,10 @@ try {
     }
     $staging = Join-Path $Work $name
     $msiAgent = Join-Path $Work "$name-msi-agent"
+    # The Linux tarball (docs\guides\install.md, "Linux"): the panel, self-contained (install-pulsar.sh installs no .NET),
+    # with the Linux install and backup scripts.
+    $linuxName = "pulsar-$Version-linux-x64"
+    $linuxStaging = Join-Path $Work $linuxName
     # The panel's and the agent's programs, by the project each is published from, in the folders they are published to (what
     # is signed, and what is checked again before each package is made of it). The panel's downloads folder also holds
     # the agent's setup once it is built.
@@ -1026,13 +1039,16 @@ try {
     # The MSI's agent carries its own runtime: Windows Installer runs it as is, with nothing to install .NET first.
     dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @common --self-contained -o $msiAgent
     if ($LASTEXITCODE -ne 0) { throw 'publish agent for the MSI failed' }
+    $linuxOptions = @($common | ForEach-Object { if ($_ -ceq 'win-x64') { 'linux-x64' } else { $_ } }) + @('--self-contained')
+    dotnet publish (Join-Path $repo 'src\Pulsar.Api') @linuxOptions -o (Join-Path $linuxStaging 'panel')
+    if ($LASTEXITCODE -ne 0) { throw 'publish panel for Linux failed' }
     if ($Signing) {
         dotnet build-server shutdown
         if ($LASTEXITCODE -ne 0) { throw 'dotnet build-server shutdown failed' }
     }
 
     # Development settings never ship.
-    Get-ChildItem $staging, $msiAgent -Recurse -Filter 'appsettings.Development.json' | Remove-Item
+    Get-ChildItem $staging, $msiAgent, $linuxStaging -Recurse -Filter 'appsettings.Development.json' | Remove-Item
 
     # Signed before they are packed into the MSI, the ZIP and the setups (and before the MSI reads their sizes and
     # versions), so the copies in them are the signed ones. Only the programs the projects list, and none unexpected.
@@ -1111,6 +1127,43 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
     Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip -CompressionLevel Optimal
     $hash = Write-Checksum $zip
 
+    # The Linux tarball: its panel offers the same agent setup for Windows nodes, and the tar is packed with Unix owners
+    # and permissions (root, programs executable) by pulsar-release-packer, dated at the commit's time.
+    $linuxInfo = [ordered]@{ version = $Version; commit = $buildState.Commit; postgresMinimum = '15' }
+    if (@($buildState.Changes).Count -gt 0) { $linuxInfo['dirty'] = $true }
+    $linuxInfo | ConvertTo-Json | Set-Content (Join-Path $linuxStaging 'release.json') -Encoding ASCII
+    Copy-Item (Join-Path $repo 'scripts\install\*.sh') $linuxStaging
+    Copy-Item (Join-Path $repo 'LICENSE') $linuxStaging
+    New-Item -ItemType Directory -Force (Join-Path $linuxStaging 'docs') | Out-Null
+    Copy-Item (Join-Path $repo 'docs\guides\*.md') (Join-Path $linuxStaging 'docs')
+    if ($agentSetup) {
+        $linuxDownloads = New-Item -ItemType Directory -Force (Join-Path $linuxStaging 'panel\downloads')
+        Copy-Item -LiteralPath $agentSetup -Destination (Join-Path $linuxDownloads.FullName 'PulsarAgentSetup.exe')
+    }
+@"
+Pulsar $Version for Linux (x64): the panel
+
+Install it as root from this folder, which must be one only root can change:
+    sudo ./install-pulsar.sh
+or from the internet in one command, checked against the release's signature:
+    curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash
+docs/install.md, "Linux", says what it does. The panel's nodes (the machines that run game servers) are Windows
+machines with the agent, added from the panel (Nodes > Add node).
+Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas under MIT.
+"@.Replace("`r`n", "`n") | Set-Content (Join-Path $linuxStaging 'README.txt') -Encoding ASCII -NoNewline
+    $packer = Build-ReleasePacker $repo (Join-Path $Work 'release-packer')
+    $commitTime = "$(& git -C $repo show -s --format=%ct $buildState.Commit)".Trim()
+    if ($LASTEXITCODE -ne 0 -or $commitTime -notmatch '^\d+$') { throw "git could not read the time of the commit $($buildState.Commit)." }
+    $tarball = Join-Path $Work "$linuxName.tar.gz"
+    & $packer tar $linuxStaging $tarball $commitTime
+    if ($LASTEXITCODE -ne 0) { throw 'packing the Linux tarball failed' }
+    $linuxHash = Write-Checksum $tarball
+    # The one-command install for Linux (docs/guides/install.md, "Linux"), which installs that tarball once the signed
+    # manifest names it: published with it, and named by the manifest too.
+    $oneCommandLinux = Join-Path $Work 'install.sh'
+    [IO.File]::WriteAllText($oneCommandLinux, [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'install.sh')).Replace("`r`n", "`n"), (New-Object Text.UTF8Encoding $false))
+    $null = Write-Checksum $oneCommandLinux
+
     $setup = $null
     if ($iscc) {
         Assert-ProgramsSigned
@@ -1119,7 +1172,8 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
     }
 
     # All there, signed and verified: now it replaces what an earlier build of this version left in the output folder.
-    $published = @($name, "$name.zip", "$name.zip.sha256", (Split-Path $msi -Leaf), "$(Split-Path $msi -Leaf).sha256")
+    $published = @($name, "$name.zip", "$name.zip.sha256", (Split-Path $msi -Leaf), "$(Split-Path $msi -Leaf).sha256",
+        "$linuxName.tar.gz", "$linuxName.tar.gz.sha256", 'install.sh', 'install.sh.sha256')
     # The commit this release was built at, in a file of its own: the signed manifest names it (with its SHA-256), so
     # Publish-GitHubRelease.ps1 can check, without opening the ZIP, that the tag it makes is at the commit that was built.
     $commitFile = Join-Path $Work "pulsar-$Version.commit"
@@ -1153,6 +1207,7 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
     Publish-Release $Work $Output $published
     Write-Host "Release: $(Join-Path $Output "$name.zip")"
     Write-Host "SHA-256: $hash"
+    Write-Host "Linux: $(Join-Path $Output "$linuxName.tar.gz") (SHA-256 $linuxHash)"
     Write-Host "Agent MSI: $(Join-Path $Output (Split-Path $msi -Leaf)) (SHA-256 $msiHash)"
     if ($iscc) {
         foreach ($built in $setup, $agentSetup) {

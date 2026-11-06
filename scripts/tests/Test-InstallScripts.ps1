@@ -1624,10 +1624,10 @@ Check 'release: CI builds the setups with Inno Setup 7.1.0 pinned by SHA-256 and
     $releaseWorkflow -match 'releases/download/is-7_1_0/innosetup-7\.1\.0-x64\.exe' -and $releaseWorkflow -match "-ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'" -and
     $releaseWorkflow -match "-cne 'O=Pyrsys B\.V\.'" -and $releaseWorkflow -match 'Build-Release\.ps1 .*-RequireSetups' -and
     $releaseWorkflow.IndexOf('innosetup-7.1.0-x64.exe') -lt $releaseWorkflow.IndexOf('./scripts/release/Build-Release.ps1'))
-Check 'release: the setups are uploaded by the build, then attested and published with their SHA-256 files' (
-    $releaseWorkflow -match 'path: \|[\s\S]*artifacts/release/\*\.exe[\s\S]*artifacts/release/\*\.sha256' -and
-    $releaseWorkflow -match 'subject-path: \|[\s\S]*release/\*\.exe' -and
-    $releaseWorkflow -match '"PulsarSetup-\$version\.exe" "PulsarAgentSetup-\$version\.exe"; do\s+files\+=\("release/\$name" "release/\$name\.sha256"\)')
+Check 'release: the setups and the Linux tarball are uploaded by the build, then attested and published with their SHA-256 files' (
+    $releaseWorkflow -match 'path: \|[\s\S]*artifacts/release/\*\.exe[\s\S]*artifacts/release/\*\.tar\.gz[\s\S]*artifacts/release/install\.sh[\s\S]*artifacts/release/\*\.sha256' -and
+    $releaseWorkflow -match 'subject-path: \|[\s\S]*release/\*\.exe[\s\S]*release/\*\.tar\.gz[\s\S]*release/install\.sh' -and
+    $releaseWorkflow -match '"PulsarSetup-\$version\.exe" "PulsarAgentSetup-\$version\.exe" "pulsar-\$version-linux-x64\.tar\.gz" install\.sh; do\s+files\+=\("release/\$name" "release/\$name\.sha256"\)')
 # Only the publish job may write, and it runs nothing of the repository; every action is pinned by commit SHA.
 $jobs = [regex]::Split($releaseWorkflow, '(?m)^  publish:')
 $actions = @([regex]::Matches($releaseWorkflow, '(?m)^\s*- uses: (\S+)') | ForEach-Object { $_.Groups[1].Value })

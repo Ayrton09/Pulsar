@@ -37,6 +37,16 @@ if the new version does not come up.
 **Requirements:** Windows 11 or Windows Server 2022/2025, 64-bit, with Windows updates installed (Windows 10 22H2 on a
 best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk and memory of its games.
 
+**The panel on Linux:** the panel (its nodes stay Windows machines) also runs on Linux, x86_64 with systemd: Debian 12
+or later, Ubuntu 24.04 or later. As root, checked against the same signing key:
+
+```bash
+curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash
+```
+
+It installs PostgreSQL from the distribution when there is none and runs the panel as a hardened systemd service
+([Linux](docs/guides/install.md#linux)); a panel moves between Windows and Linux with its backup.
+
 ## Features
 
 **Servers**
@@ -136,7 +146,7 @@ flowchart LR
 
 | Part | Technology |
 |---|---|
-| Panel | ASP.NET Core (.NET 10), SignalR, OpenAPI; a modular monolith |
+| Panel | ASP.NET Core (.NET 10), SignalR, OpenAPI; a modular monolith; a Windows service or a systemd service on Linux |
 | Database | PostgreSQL (the panel's data only) |
 | Web app | React, TypeScript, Vite and Tailwind, served by the panel |
 | Agent | .NET 10 Windows service: Job Objects, ConPTY, per-server accounts |

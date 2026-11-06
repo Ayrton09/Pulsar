@@ -248,6 +248,54 @@ jobs:
           path: artifacts/install-ci/report
           retention-days: 7
 
+  # The Linux panel's tarball, packed as Build-Release.ps1 packs it (pulsar-release-packer: root's, programs
+  # executable), extracted as install.sh extracts it, and installed with its install-pulsar.sh as
+  # docs/guides/install.md ("Linux") describes: backed up, updated (and rolled back from a release that breaks),
+  # refused an older release, its certificate renewed, removed, restored and installed behind ufw
+  # (scripts/sandbox/linux-install). Before that, the scripts' own checks (scripts/tests/test-install-scripts.sh) and
+  # shellcheck. The runner is disposable: the checks run as root and change it.
+  linux-install:
+    name: Install on Linux (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    needs: [dotnet]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Check the install scripts
+        run: sudo bash scripts/tests/test-install-scripts.sh
+
+      - name: Build and pack the Linux tarball
+        run: |
+          release=artifacts/linux-install/pulsar-0.0.0-ci-linux-x64
+          dotnet publish src/Pulsar.Api -c Release -r linux-x64 --self-contained -p:DebugType=none -p:RestoreLockedMode=true -o "$release/panel"
+          cp scripts/install/install-pulsar.sh scripts/install/backup-pulsar.sh LICENSE "$release/"
+          jq -n --arg commit "$GITHUB_SHA" '{version: "0.0.0-ci", commit: $commit, postgresMinimum: "15"}' >"$release/release.json"
+          dotnet run --project tools/Pulsar.ReleasePacker -c Release -- tar "$release" artifacts/linux-install/release.tar.gz "$(git show -s --format=%ct HEAD)"
+          sudo mkdir -m 700 /root/pulsar-release
+          sudo tar -xzf artifacts/linux-install/release.tar.gz -C /root/pulsar-release --no-same-owner
+
+      - name: Install, back up, update, roll back, restore and remove
+        run: sudo bash scripts/sandbox/linux-install/run.sh /root/pulsar-release/pulsar-0.0.0-ci-linux-x64 "$RUNNER_TEMP/linux-install-report"
+
+      - name: Report
+        if: always()
+        run: |
+          sudo cat "$RUNNER_TEMP/linux-install-report/summary.txt" 2>/dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
+          sudo cp -r /var/log/pulsar/setup "$RUNNER_TEMP/linux-install-report/setup-logs" 2>/dev/null || true
+          sudo journalctl -u pulsar-panel --no-pager 2>/dev/null | sudo tee "$RUNNER_TEMP/linux-install-report/journal.txt" >/dev/null || true
+          sudo chmod -R a+rX "$RUNNER_TEMP/linux-install-report" || true
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: linux-install-report
+          path: ${{ runner.temp }}/linux-install-report
+          retention-days: 7
+
   e2e:
     name: End-to-end (${{ matrix.os }})
     needs: [dotnet, web]

@@ -18467,6 +18467,7 @@ export interface components {
             checkError: null | string;
             available: null | components["schemas"]["AvailableUpdate"];
             nodes: components["schemas"]["NodeUpdateView"][];
+            panelPlatform: string;
         };
         UpdateUserRequest: {
             displayName: null | string;

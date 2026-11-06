@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using Pulsar.Api;
@@ -37,10 +38,14 @@ try
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     {
         Args = migrateOnly ? args[1..] : args,
-        // A Windows service starts in System32: settings, the SPA and the bundled games are next to the executable.
-        ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null,
+        // A service starts elsewhere (a Windows service in System32, a systemd service in /): settings, the SPA and the
+        // bundled games are next to the executable.
+        ContentRootPath = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService() ? AppContext.BaseDirectory : null,
     });
     builder.Services.AddWindowsService(options => options.ServiceName = "PulsarPanel");
+    // Type=notify: systemd counts the panel as started once it listens (docs/guides/install.md, "Linux").
+    builder.Services.AddSystemd();
+    PanelSettingsFile.Add(builder.Configuration, Environment.GetEnvironmentVariable(PanelSettingsFile.Variable));
 
     // The console sink is always on, so startup failures are visible even when appsettings.json is missing;
     // configuration adds levels and extra sinks. Pulsar:LogsDirectory adds daily files (a service has no console).

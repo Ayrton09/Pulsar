@@ -24650,7 +24650,8 @@
           "checkedAt",
           "checkError",
           "available",
-          "nodes"
+          "nodes",
+          "panelPlatform"
         ],
         "type": "object",
         "properties": {
@@ -24691,6 +24692,9 @@
             "items": {
               "$ref": "#/components/schemas/NodeUpdateView"
             }
+          },
+          "panelPlatform": {
+            "type": "string"
           }
         }
       },

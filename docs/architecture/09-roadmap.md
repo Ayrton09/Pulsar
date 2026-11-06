@@ -444,7 +444,7 @@ the other nodes, without anyone carrying a setup to each PC, and without breakin
 
 ## Post-v1 (tentative order)
 
-Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)
+Linux agent (the panel runs on Linux since 1.0.34). (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)
 
 A stop step that closes a game's window (`WM_CLOSE`, as `taskkill` without `/F` does), for games whose server is a windowed program that neither reads its console nor takes Ctrl+C: Core Keeper (checked on 2026-10-24: `CoreKeeperServer.exe` is a GUI program, Ctrl+C left it running until the stop timed out, and its own launch script stops it with `taskkill`). The host would post the message on the game's own desktop, which needs checking with servers run as their own accounts by the agent's service.
 
@@ -573,6 +573,12 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 - A Counter-Strike 2 server with a Workshop map did not load it: the template passed `+host_workshop_map` instead of `+map`, and the Workshop download needs a server already up on a map. It now starts on the starting map and changes to the Workshop map or collection after (template 1.5.1).
 - The agent asks a game host again when it closes the connection at once on reattach, instead of ending the host with its game (doc 06).
+
+## 1.0.34 — The panel on Linux (2026-11-06, at the user's request)
+
+The panel (not yet the agent) runs on Linux: x86_64 with systemd, Debian 12+ or Ubuntu 24.04+ (or another distribution with PostgreSQL 15+). A release has `pulsar-<version>-linux-x64.tar.gz` (the panel self-contained, with `install-pulsar.sh` and `backup-pulsar.sh`, packed by `tools/Pulsar.ReleasePacker` with root's owner and Unix permissions) and `install.sh` (`curl ... | sudo bash`, the signed manifest checked with openssl). The installer installs PostgreSQL from the distribution's packages when there is none and gives the panel a database without a password (peer authentication over the local socket), makes the self-signed and key ring certificates with openssl, writes `/etc/pulsar/panel.json` (read through `PULSAR_SETTINGS_FILE`), runs the panel as the hardened `pulsar-panel` systemd service (`Type=notify`, `AddSystemd`), opens its ports in ufw or firewalld, and creates the first administrator; `--update` (backup, swap, check, rollback with the database), `--renew-certificate`, `--uninstall` and `--restore-from` (backups in Windows' format, so a panel moves between the two systems). The Updates page shows the update command when no node hosts the panel. Checked in a WSL Ubuntu 24.04 and by CI (`linux-install`).
+
+Next: the Linux agent, so game servers run on Linux nodes too and a Linux panel's machine takes one-click updates.
 
 ## Before the first public release
 

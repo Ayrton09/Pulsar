@@ -78,8 +78,12 @@ web app do not count), because the release would not be what any commit holds. `
 trying things out: the release is marked `dirty`, `Publish-GitHubRelease.ps1` never publishes it, and it cannot be combined with
 `-UpdateSigningKey` or `-RequireUpdateSignature` (such a build never gets the update key's signature). The commit is
 written into `release.json` and into `pulsar-<version>.commit`, which is published with the release and named by the
-signed manifest. The script builds everything in a work folder, as before, and, only when every file is
-built, checksummed and verified:
+signed manifest. Besides the Windows files, a release has `pulsar-<version>-linux-x64.tar.gz` (the panel for Linux,
+self-contained, with `install-pulsar.sh` and `backup-pulsar.sh`) and `install.sh`, the one-command install for Linux; the
+tarball is packed by `tools/Pulsar.ReleasePacker`, built like the signer, which gives every entry root's owner, Unix
+permissions (programs and scripts executable) and the commit's time, so the same commit packs the same bytes (Windows'
+`tar` cannot). The script builds everything in a work folder, as before, and, only when every file is built,
+checksummed and verified:
 
 1. writes `pulsar-update.json` for the files it is about to publish (not the `.sha256` files), with `-MinimumUpdateFrom`
    (default `1.0.0`) and the notes. A version that is not exactly `major.minor.patch` (`0.0.0-dev`, a pre-release)
