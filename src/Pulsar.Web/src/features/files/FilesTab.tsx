@@ -290,7 +290,7 @@ function FileBrowser({
                           <button
                             type="button"
                             onClick={() => onOpenFile(target)}
-                            className="truncate font-mono hover:underline"
+                            className="truncate font-mono text-accent hover:underline"
                           >
                             {visibleName(entry.name)}
                           </button>
@@ -308,6 +308,18 @@ function FileBrowser({
                     </Td>
                     <Td className="text-right whitespace-nowrap">
                       <RowActions name={visibleName(entry.name)}>
+                        {editable && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={t(canEdit ? 'files.editNamed' : 'files.viewNamed', {
+                              name: visibleName(entry.name),
+                            })}
+                            onClick={() => onOpenFile(target)}
+                          >
+                            {t(canEdit ? 'files.edit' : 'files.view')}
+                          </Button>
+                        )}
                         {entry.kind === 'file' && (
                           <a
                             href={downloadUrl(serverId, target)}

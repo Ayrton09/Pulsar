@@ -305,6 +305,7 @@ describe('files tab', () => {
     expect(rows[4]).toHaveTextContent('80 MB');
     // Too large for the editor: downloaded, not opened.
     expect(within(rows[4] as HTMLElement).queryByRole('button', { name: 'de_dust2.bsp' })).not.toBeInTheDocument();
+    expect(within(rows[4] as HTMLElement).queryByRole('button', { name: 'Edit de_dust2.bsp' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Download server.cfg' })).toHaveAttribute(
       'href',
       `/api/v1/servers/${serverId}/files/download?path=server.cfg`,
@@ -317,6 +318,32 @@ describe('files tab', () => {
     expect(screen.getByRole('navigation', { name: 'Location' })).toHaveTextContent('server/game');
     await userEvent.click(screen.getByRole('button', { name: '..' }));
     expect(await screen.findByRole('button', { name: 'game/' })).toBeInTheDocument();
+  });
+
+  it('offers to edit a text file from its row, or to view it without the right to change files', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    const router = renderAt(`/servers/${serverId}?tab=files`);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit server.cfg' }));
+
+    expect(router.state.location.search).toBe('?tab=files&file=server.cfg');
+  });
+
+  it('offers only to view a file to who may not change files', async () => {
+    const viewer = { ...adminUser, permissions: ['server.view', 'server.files.view'] };
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    renderAt(`/servers/${serverId}?tab=files`);
+
+    expect(await screen.findByRole('button', { name: 'View server.cfg' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit server.cfg' })).not.toBeInTheDocument();
   });
 
   it('says apart that a listing was cut and that entries with names Pulsar cannot open are not shown', async () => {
