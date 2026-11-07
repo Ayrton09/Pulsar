@@ -89,6 +89,27 @@ public sealed class ServerCommandTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task AnInstallThatCannotBeginFailsEvenWhenTheServerIsSavedMeanwhile()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "saved-meanwhile");
+        var refused = await InstalledServerAsync(admin, agent, "Saved meanwhile");
+        await SetAsync(refused, "UPDATE servers SET install_state = 'installing', runtime_state = 'running' WHERE id = {0}");
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+
+        // Right before the install is marked failed, something else saves the server (its agent's report, say).
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Server>().Any(e => e.Entity.Id == new ServerId(refused) && e.Entity.InstallState == InstallState.Failed),
+            () => SetAsync(refused, "UPDATE servers SET updated_at = now() WHERE id = {0}"));
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ServerManagement>().ContinueInstallAsync(new ServerId(refused), null, Ct);
+        }
+
+        Assert.Equal(InstallState.Failed, (await ServerApi.GetAsync(admin, refused))!.Server.InstallState);
+    }
+
+    [DatabaseFact]
     public async Task AHelloLeavesAnInstallThatIsQueuedOrRunningAlone()
     {
         using var admin = await factory.CreateAdminClientAsync();

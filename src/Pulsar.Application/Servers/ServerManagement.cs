@@ -586,10 +586,25 @@ public sealed partial class ServerManagement(
             }
         }
 
-        // The install could not even begin (the server was busy, or started meanwhile): it failed, rather than installing for ever.
-        if (server.InstallAbandoned(clock.GetUtcNow()))
+        // The install could not even begin (the server was busy, or started meanwhile): it failed, rather than installing for
+        // ever. Something else saving the server meanwhile (its agent's report) only means it is read again and looked at
+        // as it is now.
+        for (var attempt = 1; server.InstallAbandoned(clock.GetUtcNow()); attempt++)
         {
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 3)
+            {
+                db.ChangeTracker.Clear();
+                server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+                if (server is null)
+                {
+                    return;
+                }
+            }
         }
     }
 
