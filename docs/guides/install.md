@@ -203,7 +203,9 @@ SHA-256, and it has its own `.sha256` file), check it, and run `sudo bash ./inst
 Download `pulsar-<version>-linux-x64.tar.gz` and its `.sha256` from the Releases page, check it
 (`sha256sum -c pulsar-<version>-linux-x64.tar.gz.sha256`), and extract it as root into a folder only root can change:
 the installer runs as root what is next to it, so it refuses a folder (or a folder above it, or a file in it) that
-another user could change, as `Install-Pulsar.ps1` does.
+another user could change, as `Install-Pulsar.ps1` does. For the same reason it refuses a machine whose `/opt`, `/etc`,
+`/var/lib` or `/etc/systemd/system` another user than root could change (a system group such as Ubuntu's `syslog` may
+write `/var/log`), since Pulsar's programs, settings and service go there.
 
 ```bash
 sudo mkdir -m 700 /root/pulsar-release

@@ -185,6 +185,17 @@ results=$(
         ! path_owned_by_root "$sticky"
         echo "a folder another user owns: not trusted|$?"
         rm -rf "$sticky"
+        logs=$(mktemp -d /root/pulsar-test.XXXXXX)
+        chmod 0775 "$logs" && chgrp adm "$logs"
+        system_group_folder "$logs"
+        echo "a log folder a system group may write (as Ubuntu's /var/log): trusted|$?"
+        chgrp nogroup "$logs" && chmod 0775 "$logs"
+        ! system_group_folder "$logs"
+        echo "a folder a group of users (gid 1000 or more) may write: not trusted|$?"
+        chgrp adm "$logs" && chmod 0777 "$logs"
+        ! system_group_folder "$logs"
+        echo "a folder everyone may write: not trusted|$?"
+        rm -rf "$logs"
     else
         echo "the folder checks need root (skipped)|0"
     fi

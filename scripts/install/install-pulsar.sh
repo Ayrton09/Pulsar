@@ -190,6 +190,36 @@ path_owned_by_root() {
 
 # This script runs as root and installs what is next to it: nobody else may have been able to change it (the tarball's
 # folder, its files, and the folders above it), as Install-Pulsar.ps1 checks its own folder.
+# The folders Pulsar's programs, settings, data, logs and service go into must be ones only root can change, up to /:
+# whoever could rename or replace /opt/pulsar (in an /opt others may write) would have their programs run, by the panel's
+# service and by root's backups. backup-pulsar.sh refuses to run there too.
+require_trusted_parents() {
+    local folder trusted
+    for folder in "$(dirname -- "$INSTALL_ROOT")" "$(dirname -- "$CONFIG_DIR")" "$(dirname -- "$DATA_ROOT")" \
+        "$(dirname -- "$LOG_ROOT")" "$(dirname -- "$UNIT")"; do
+        trusted=false
+        if path_owned_by_root "$folder"; then
+            trusted=true
+        elif [[ $folder == "$(dirname -- "$LOG_ROOT")" ]] && system_group_folder "$folder"; then
+            # Debian's and Ubuntu's /var/log is root's and its system group's (syslog): no user's.
+            trusted=true
+        fi
+        [[ $trusted == true ]] || fail "$EXIT_UNSUPPORTED" \
+            "$folder (owner $(stat -c %U -- "$folder"), mode $(stat -c %a -- "$folder")), or a folder above it, can be changed by another user than root, and Pulsar would put its programs, settings or service there. Make it root's and closed to others (sudo chown root:root $folder && sudo chmod go-w $folder) and run the script again. Nothing was changed."
+    done
+}
+
+# Whether a folder is root's and, besides root, writable only by a system group (gid below 1000), with the folders
+# above it root's alone.
+system_group_folder() {
+    local folder=$1 mode
+    [[ ! -L $folder && $(stat -c %u -- "$folder") == 0 ]] || return 1
+    mode=$(stat -c %a -- "$folder")
+    (((8#$mode & 8#002) == 0)) || return 1
+    (((8#$mode & 8#020) == 0 || $(stat -c %g -- "$folder") < 1000)) || return 1
+    path_owned_by_root "$(dirname -- "$folder")"
+}
+
 require_trusted_location() {
     path_owned_by_root "$SCRIPT_DIR" || fail "$EXIT_UNSUPPORTED" \
         "$SCRIPT_DIR (or a folder above it) can be changed by another user than root. Extract the release as root into a folder only root can change, for example: sudo mkdir -m 700 /root/pulsar-release && sudo tar -xzf pulsar-<version>-linux-x64.tar.gz -C /root/pulsar-release --no-same-owner"
@@ -1594,7 +1624,9 @@ main() {
     install | update)
         require_trusted_location
         require_release
+        require_trusted_parents
         ;;
+    renew) require_trusted_parents ;;
     esac
     require_tools
     read_secrets_file

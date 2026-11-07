@@ -79,6 +79,16 @@ pulsar_db() { runuser -u pulsar -- psql -X -qtA -c "$1" 'host=/var/run/postgresq
 
 echo "== Install (release $(jq -r .version "$release/release.json"))"
 first=$(stage 9.0.0)
+# A machine whose /opt others may change (GitHub's runners have one) gets no install: whoever could replace /opt/pulsar
+# would have their programs run as root by the backups. Then /opt is made root's, as on an ordinary machine.
+if [[ $(stat -c %u /opt) != 0 || $((8#$(stat -c %a /opt) & 8#022)) != 0 ]]; then
+    "$first/install-pulsar.sh" --unattended --secrets-file "$secrets" >"$report/install-open-opt.log" 2>&1
+    code=$?
+    [[ $code == 3 && ! -e /opt/pulsar/panel ]] && grep -q 'can be changed by another user than root' "$report/install-open-opt.log"
+    check "install where /opt is open to others ($(stat -c '%U %a' /opt)): refused, nothing changed" "$?" "exit code $code"
+    chown root:root /opt
+    chmod go-w /opt
+fi
 "$first/install-pulsar.sh" --unattended --secrets-file "$secrets" >"$report/install.log" 2>&1
 check 'install: exit code 0' "$?" "$(tail -3 "$report/install.log")"
 systemctl is-active --quiet pulsar-panel
