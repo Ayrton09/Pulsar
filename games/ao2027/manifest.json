@@ -74,6 +74,6 @@
 
   "backup": {
     "include": ["CoverAO-win-x64/data/**", "CoverAO-win-x64/gamedata/**", "CoverAO-win-x64/Server.ini"],
-    "exclude": ["CoverAO-win-x64/data/backups/**", "CoverAO-win-x64/data/logs/**"]
+    "exclude": ["CoverAO-win-x64/data/backups/**", "CoverAO-win-x64/data/logs/**", "CoverAO-win-x64/data/*.lock"]
   }
 }
