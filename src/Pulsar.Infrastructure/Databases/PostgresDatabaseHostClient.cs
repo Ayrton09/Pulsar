@@ -60,7 +60,8 @@ internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabas
         {
             // Whatever stops a later step (a refusal, the request given up), what this call made goes again, and only
             // that: a role or a database of that name already there is someone's, never adopted. A statement that did not
-            // come back (the connection lost) may have been done all the same: what it made stays, and the log says so.
+            // come back (the connection lost) may have been done all the same: what it made may then stay behind (a later
+            // creation of that name is refused), and what could not be removed is logged.
             var roleMade = false;
             var databaseMade = false;
             try
@@ -120,9 +121,17 @@ internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabas
                 {
                     await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", cancellationToken);
                 }
-                catch
+                catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
-                    await ExecuteAsync(connection, $"ALTER ROLE {role} LOGIN", CancellationToken.None);
+                    try
+                    {
+                        await ExecuteAsync(connection, $"ALTER ROLE {role} LOGIN", CancellationToken.None);
+                    }
+                    catch (Exception restore) when (restore is NpgsqlException or InvalidOperationException)
+                    {
+                        LogLoginLeftOff(name, host.Host, restore.Message);
+                    }
+
                     throw;
                 }
             }
@@ -220,6 +229,10 @@ internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabas
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "What was made for the database {Database} on {Host} could not be removed after a failed creation ({Reason}; it failed with: {Failure}): drop it by hand")]
     private partial void LogLeft(string database, string host, string reason, string failure);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The database {Database} on {Host} could not be dropped, and its role could not sign in again ({Reason}): ALTER ROLE it LOGIN by hand")]
+    private partial void LogLoginLeftOff(string database, string host, string reason);
 
     // \z, not $: $ also matches before a final line feed.
     [GeneratedRegex(@"^s[a-z0-9]{1,12}_[a-z0-9_]{1,20}\z", RegexOptions.CultureInvariant)]
