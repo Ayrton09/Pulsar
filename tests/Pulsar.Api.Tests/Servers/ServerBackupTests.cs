@@ -258,6 +258,53 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task RetentionKeepsTheNewestUnfinishedBackupsAndRecentOperations()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "retention-unfinished");
+        var server = await InstalledServerAsync(admin, agent, "Retention unfinished");
+        var id = new ServerId(server);
+        var now = DateTimeOffset.UtcNow;
+
+        // A schedule that kept failing for two months: a failed backup and its operation every day.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var row = await db.Servers.SingleAsync(s => s.Id == id, Ct);
+            for (var day = 60; day > 0; day--)
+            {
+                var at = now.AddDays(-day);
+                var operation = Operation.Create(OperationType.BackupCreate, row.NodeId, id, null, OperationRequester.Schedule, at);
+                operation.Complete(OperationStatus.Failed, "backup.failed", "locked", at);
+                var backup = Backup.Create(row, $"Failed {day}", operation, null, OperationRequester.Schedule, at).Value;
+                backup.Ended(BackupStatus.Failed, "locked", at);
+                db.Operations.Add(operation);
+                db.Backups.Add(backup);
+            }
+
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var made = await MadeAsync(admin, server, "after them");
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ServerBackups>().PruneAsync(id, Ct);
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var failed = await db.Backups.AsNoTracking().Where(b => b.ServerId == id && b.Status == BackupStatus.Failed)
+                .OrderByDescending(b => b.CreatedAt).Select(b => b.Name).ToListAsync(Ct);
+            Assert.Equal(ServerBackups.KeptUnfinished, failed.Count);
+            Assert.Equal("Failed 1", failed[0]);
+            // The operations of the last month stay, and the newest ones whatever their age; the completed backup stays.
+            var operations = await db.Operations.AsNoTracking().Where(o => o.ServerId == id).Select(o => o.CreatedAt).ToListAsync(Ct);
+            Assert.Equal(ServerBackups.KeptOperations, operations.Count);
+            Assert.Contains((await ListAsync(admin, server)).Backups, b => b.Id == made.Id);
+        }
+
+        Assert.Contains(await AuditAsync(server), a => a.Action == AuditActions.Server.BackupDeleted && a.Metadata.Contains("retention_unfinished", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
     public async Task RetentionKeepsABackupLockedMeanwhileAndPrunesTheRest()
     {
         using var admin = await factory.CreateAdminClientAsync();

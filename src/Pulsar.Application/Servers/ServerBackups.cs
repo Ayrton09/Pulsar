@@ -388,14 +388,39 @@ public sealed partial class ServerBackups(
         return await ListOfAsync(server, cancellationToken);
     }
 
+    /// <summary>Backups that did not complete kept per server: they hold no archive, and the newest say what went wrong.</summary>
+    public const int KeptUnfinished = 20;
+
+    /// <summary>A server's newest operations, kept whatever their age (its page lists the last ones).</summary>
+    public const int KeptOperations = 50;
+
+    /// <summary>How long a server's finished operations are kept beyond <see cref="KeptOperations"/>.</summary>
+    public static readonly TimeSpan OperationsKeptFor = TimeSpan.FromDays(30);
+
     /// <summary>
-    /// Retention: deletes the oldest complete, unlocked backups beyond the server's limit. Runs after every new backup
-    /// and when the limit changes; whatever it cannot delete now (the node is disconnected) goes at the next run.
+    /// Retention: deletes the oldest complete, unlocked backups beyond the server's limit, the rows of backups that did
+    /// not complete beyond <see cref="KeptUnfinished"/>, and the server's old finished operations (1.0.36: a schedule that
+    /// kept failing left a row of each every time, forever). Runs after every new backup and when the limit changes;
+    /// whatever it cannot delete now (the node is disconnected) goes at the next run.
     /// </summary>
     public async Task PruneAsync(ServerId id, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-        if (server?.BackupLimit is not { } limit)
+        if (server is null)
+        {
+            return;
+        }
+
+        // A clone or a transfer copies the server's newest whole backup, which may be the oldest one kept: retention waits
+        // until it ends, and runs again after the next backup.
+        if (await CopyingAsync(id, cancellationToken))
+        {
+            return;
+        }
+
+        await PruneUnfinishedAsync(server, cancellationToken);
+        await PruneOperationsAsync(server, cancellationToken);
+        if (server.BackupLimit is not { } limit)
         {
             return;
         }
@@ -414,6 +439,71 @@ public sealed partial class ServerBackups(
                 return;
             }
         }
+    }
+
+    private async Task<bool> CopyingAsync(ServerId id, CancellationToken cancellationToken)
+    {
+        if (await TransferGate.RunningAsync(db, id, cancellationToken))
+        {
+            return true;
+        }
+
+        // A clone's sequence names its source in its first step (ServerManagement.CloneAsync).
+        var source = id.Value.ToString();
+        return (await db.ServerSequences.AsNoTracking()
+                .Where(q => q.Origin == Domain.Scheduling.SequenceOrigin.Clone && q.Status == Domain.Scheduling.SequenceStatus.Running)
+                .ToListAsync(cancellationToken))
+            .Any(q => q.Steps is [{ Text: { } text }, ..] && text == source);
+    }
+
+    // No archive to delete on the node: the rows go at once, with one audit entry for them all.
+    private async Task PruneUnfinishedAsync(Server server, CancellationToken cancellationToken)
+    {
+        var oldestKept = await db.Backups.AsNoTracking()
+            .Where(b => b.ServerId == server.Id && (b.Status == BackupStatus.Failed || b.Status == BackupStatus.Cancelled))
+            .OrderByDescending(b => b.CreatedAt)
+            .Skip(KeptUnfinished - 1)
+            .Select(b => (DateTimeOffset?)b.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (oldestKept is not { } cutoff)
+        {
+            return;
+        }
+
+        var count = await db.Backups
+            .Where(b => b.ServerId == server.Id && (b.Status == BackupStatus.Failed || b.Status == BackupStatus.Cancelled) && !b.IsLocked
+                && b.CreatedAt < cutoff)
+            .ExecuteDeleteAsync(cancellationToken);
+        if (count > 0)
+        {
+            audit.Record(AuditActions.Server.BackupDeleted, AuditOutcome.Success, AuditActor.System, new { count, reason = "retention_unfinished" })
+                .WithServer(server.Id, server.NodeId);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+    }
+
+    // Finished, older than OperationsKeptFor and beyond the newest KeptOperations: what refers to them (a backup, a mod,
+    // a scheduled run) keeps its row, without the link.
+    private async Task PruneOperationsAsync(Server server, CancellationToken cancellationToken)
+    {
+        var oldestKept = await db.Operations.AsNoTracking()
+            .Where(o => o.ServerId == server.Id)
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip(KeptOperations - 1)
+            .Select(o => (DateTimeOffset?)o.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (oldestKept is not { } kept)
+        {
+            return;
+        }
+
+        var cutoff = clock.GetUtcNow() - OperationsKeptFor;
+        var before = kept < cutoff ? kept : cutoff;
+        await db.Operations
+            .Where(o => o.ServerId == server.Id && o.CreatedAt < before
+                && (o.Status == OperationStatus.Succeeded || o.Status == OperationStatus.Failed || o.Status == OperationStatus.Cancelled
+                    || o.Status == OperationStatus.Interrupted))
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>Starts the backup's way from its node to the browser (streamed, never stored on the panel).</summary>
