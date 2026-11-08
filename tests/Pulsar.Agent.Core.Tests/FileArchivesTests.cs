@@ -133,6 +133,41 @@ public sealed class FileArchivesTests : IDisposable
     }
 
     [Fact]
+    public async Task AZipWhoseDirectoryHoldsMoreHeadersThanItsEndRecordSaysIsRefusedBeforeItIsRead()
+    {
+        // .NET reads every header it finds, whatever the end record says: a directory of empty names fits a million in 48 MiB.
+        using var stream = DirectoryOf(FileArchives.MaxEntries + 1, nameLength: 0, declared: 1);
+
+        var refused = await Assert.ThrowsAsync<FileManagerException>(() => FileArchives.CheckDirectoryAsync(stream, Ct));
+
+        Assert.Equal(FileErrors.ArchiveInvalid, refused.Code);
+        Assert.Contains("more than", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AZipOfTheMostEntriesWithLongNamesStillPassesTheDirectoryCheck()
+    {
+        // 200,000 headers with 200-byte names: 49 MB, under the bound on the directory's size.
+        using var stream = DirectoryOf(FileArchives.MaxEntries, nameLength: 200, declared: 1);
+
+        await FileArchives.CheckDirectoryAsync(stream, Ct);
+
+        Assert.Equal(0, stream.Position);
+    }
+
+    [Fact]
+    public void TheFloorTheAgentKeepsFreeIsTheNodesDiskFloor()
+    {
+        const long GiB = 1024L * 1024 * 1024;
+
+        // 5% of a big drive, 2 GiB of a small one: what the panel's backups and uploads are held to as well.
+        Assert.False(FileArchives.KeepsFloor(100 * GiB, 10 * GiB, 5 * GiB + GiB / 2));
+        Assert.True(FileArchives.KeepsFloor(100 * GiB, 10 * GiB, 4 * GiB));
+        Assert.False(FileArchives.KeepsFloor(10 * GiB, 3 * GiB, GiB + GiB / 2));
+        Assert.True(FileArchives.KeepsFloor(10 * GiB, 3 * GiB, GiB));
+    }
+
+    [Fact]
     public async Task AZip64EndRecordClaimingTooManyEntriesIsRefusedBeforeItIsRead()
     {
         // Its Zip64 end record, the locator pointing at it, and the classic end record whose fields say "see Zip64".
@@ -374,6 +409,30 @@ public sealed class FileArchivesTests : IDisposable
 
         Assert.False(File.Exists(Full("world.zip")));
         Assert.Empty(Directory.GetFiles(_server.Directory, ".pulsar-upload-*"));
+    }
+
+    /// <summary>A stream holding only <paramref name="headers"/> central directory file headers and an end record that says <paramref name="declared"/>.</summary>
+    private static MemoryStream DirectoryOf(int headers, int nameLength, ushort declared)
+    {
+        var stream = new MemoryStream();
+        var header = new byte[46 + nameLength];
+        BitConverter.TryWriteBytes(header.AsSpan(0, 4), 0x02014b50u);
+        BitConverter.TryWriteBytes(header.AsSpan(28, 2), (ushort)nameLength);
+        header.AsSpan(46).Fill((byte)'a');
+        for (var i = 0; i < headers; i++)
+        {
+            stream.Write(header);
+        }
+
+        var end = new byte[22];
+        BitConverter.TryWriteBytes(end.AsSpan(0, 4), 0x06054b50u);
+        BitConverter.TryWriteBytes(end.AsSpan(8, 2), declared);
+        BitConverter.TryWriteBytes(end.AsSpan(10, 2), declared);
+        BitConverter.TryWriteBytes(end.AsSpan(12, 4), (uint)stream.Length);
+        BitConverter.TryWriteBytes(end.AsSpan(16, 4), 0u);
+        stream.Write(end);
+        stream.Position = 0;
+        return stream;
     }
 
     private Task Progress(string stage, double? percent)

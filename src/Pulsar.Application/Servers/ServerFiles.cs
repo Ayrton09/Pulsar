@@ -281,7 +281,15 @@ public sealed class ServerFiles(
     /// to commit it; content that fails or is cancelled is never taken for a shorter file (but see
     /// <see cref="FileWriteMode.Append"/>). Audited as a write, with the bytes that went to the node.
     /// </summary>
-    public async Task<Result<FileDetails>> WriteStreamAsync(ServerId id, string path, Stream content, FileWriteMode mode,
+    public Task<Result<FileDetails>> WriteStreamAsync(ServerId id, string path, Stream content, FileWriteMode mode,
+        CancellationToken cancellationToken) => WriteStreamAsync(id, path, content, mode, null, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="WriteStreamAsync(ServerId, string, Stream, FileWriteMode, CancellationToken)"/>, failing with
+    /// <c>files.changed</c> unless the file is still at <paramref name="expectedVersion"/> (a resumed upload that checked
+    /// the file's size when it was opened: what it appends goes where the client thinks it does).
+    /// </summary>
+    public async Task<Result<FileDetails>> WriteStreamAsync(ServerId id, string path, Stream content, FileWriteMode mode, string? expectedVersion,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -319,7 +327,7 @@ public sealed class ServerFiles(
         }
 
         return await UploadAsync(target.Value, started,
-            ticket => new ReceiveFileCommand(id.Value, path, ticket, limit, mode == FileWriteMode.Replace, null, Streamed: true,
+            ticket => new ReceiveFileCommand(id.Value, path, ticket, limit, mode == FileWriteMode.Replace, expectedVersion, Streamed: true,
                 Append: mode == FileWriteMode.Append),
             (result, sent) => new
             {

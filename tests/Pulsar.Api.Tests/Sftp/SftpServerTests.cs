@@ -212,6 +212,18 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
         Assert.Equal(content, await File.ReadAllBytesAsync(Path.Combine(server.Directory, "resume1.bin"), Ct));
         Assert.Equal(content, await File.ReadAllBytesAsync(Path.Combine(server.Directory, "resume2.bin"), Ct));
 
+        // A resume whose file changed between the open and the first write is refused: its data would land at another offset.
+        var changing = Path.Combine(server.Directory, "resume3.bin");
+        await File.WriteAllBytesAsync(changing, content[..2_000_000], Ct);
+        await Assert.ThrowsAnyAsync<Exception>(() => Run(() =>
+        {
+            using var resumed = client.Open("/resume3.bin", FileMode.Open, FileAccess.Write);
+            File.WriteAllBytes(changing, content[..2_100_000]);
+            resumed.Seek(2_000_000, SeekOrigin.Begin);
+            resumed.Write(content, 2_000_000, 1_000);
+        }));
+        Assert.Equal(2_100_000, new FileInfo(changing).Length);
+
         // Renames: never over an existing file, unless posix-rename says to (WinSCP's .filepart).
         await Run(() => client.WriteAllText("/server.cfg", "old"));
         await Run(() => client.WriteAllText("/server.cfg.filepart", "new"));

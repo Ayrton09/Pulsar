@@ -68,8 +68,14 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
         return OnOpened is { } replace ? new OpenedFile(replace(path, opened.Content), opened.Info) : opened;
     }
 
-    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false) =>
-        inner.Create(server, path, size, overwrite, expectedVersion, sizeIsLimit);
+    /// <summary>Called with the path of each file about to be created; throwing keeps it from being written.</summary>
+    public Action<string>? OnCreate { get; set; }
+
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false)
+    {
+        OnCreate?.Invoke(path);
+        return inner.Create(server, path, size, overwrite, expectedVersion, sizeIsLimit);
+    }
 
     public PendingFile Append(ProvisionedServer server, string path, string? expectedVersion) => inner.Append(server, path, expectedVersion);
 }

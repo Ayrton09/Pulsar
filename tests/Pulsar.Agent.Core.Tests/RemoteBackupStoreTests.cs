@@ -311,6 +311,21 @@ public sealed class RemoteBackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ACopyTheDriveCannotTakeIsRefusedBeforeItDownloads()
+    {
+        var remote = new FakeRemote { Content = new byte[10] };
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, remote);
+        var location = new BackupLocation(_root, "abcd1234", Guid.NewGuid());
+
+        var error = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.FetchAsync(location, Target(), new string('0', 64), long.MaxValue / 4, Progress, Ct));
+
+        Assert.Equal(FileErrors.DiskFull, error.Code);
+        Assert.Equal(0, remote.Downloads);
+        Assert.False(File.Exists(location.Partial));
+    }
+
+    [Fact]
     public async Task WithoutASizeFromTheOlderPanelTheDownloadHasNoLimit()
     {
         var content = new byte[1000];

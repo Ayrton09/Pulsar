@@ -514,6 +514,52 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ACleanRestoreThatFailsWritingSaysItIsIncompleteAndHowFar()
+    {
+        Write("cfg/a.cfg", "a old");
+        Write("cfg/b.cfg", "b old");
+        Write("cfg/c.cfg", "c old");
+        var files = new HookedServerFileManager(new DirectServerFileManager());
+        var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+        var location = Location();
+        var backup = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/new.cfg", "made later");
+        var created = 0;
+        files.OnCreate = path =>
+        {
+            if (++created == 2)
+            {
+                throw new FileManagerException(FileErrors.InUse, $"'{path}' is open in another program.");
+            }
+        };
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.InUse, error.Code);
+        Assert.IsType<FileManagerException>(error.InnerException);
+        Assert.Contains("restore is incomplete: 1 of 3 files were written", error.Message, StringComparison.Ordinal);
+        Assert.Contains("already deleted", error.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "new.cfg")));
+    }
+
+    [Fact]
+    public async Task ARestoreThatIsNotCleanFailsWritingWithTheFileError()
+    {
+        Write("cfg/a.cfg", "a old");
+        var files = new HookedServerFileManager(new DirectServerFileManager());
+        var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+        var location = Location();
+        var backup = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        files.OnCreate = path => throw new FileManagerException(FileErrors.InUse, $"'{path}' is open in another program.");
+
+        var error = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.InUse, error.Code);
+    }
+
+    [Fact]
     public async Task ACleanRestoreOfAnArchiveThatChangedDeletesNothing()
     {
         Write("cfg/server.cfg", "hostname old");

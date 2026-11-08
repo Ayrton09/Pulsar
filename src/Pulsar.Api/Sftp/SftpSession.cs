@@ -503,6 +503,7 @@ internal sealed partial class SftpSession(
         {
             Exists = exists,
             ExistingSize = exists ? stat.Value.Entry.Size : 0,
+            ExistingVersion = exists ? stat.Value.Version : null,
             Create = create,
             Append = (flags & SftpProtocol.OpenAppend) != 0,
             Truncate = (flags & SftpProtocol.OpenTruncate) != 0,
@@ -821,6 +822,7 @@ internal sealed partial class SftpSession(
     {
         FileWriteMode mode;
         long start;
+        string? expectedVersion = null;
         if (handle.Exclusive)
         {
             (mode, start) = (FileWriteMode.CreateNew, 0);
@@ -841,8 +843,10 @@ internal sealed partial class SftpSession(
         }
         else if (firstOffset == (ulong)handle.ExistingSize)
         {
-            // A resumed upload: the rest goes at the end of what is there.
+            // A resumed upload: the rest goes at the end of what is there, if it is still the file seen at the open: the
+            // node refuses (files.changed) an append to one that changed since, which would land at another offset.
             (mode, start) = (FileWriteMode.Append, handle.ExistingSize);
+            expectedVersion = handle.ExistingVersion;
         }
         else
         {
@@ -851,7 +855,7 @@ internal sealed partial class SftpSession(
 
         handle.Mode = mode;
         handle.NextOffset = start;
-        handle.Upload = SftpUpload.Start(files, handle.Server, handle.Path, mode, connection.Ended);
+        handle.Upload = SftpUpload.Start(files, handle.Server, handle.Path, mode, expectedVersion, connection.Ended);
     }
 
     private static async Task PushAsync(WriteHandle handle, ReadOnlyMemory<byte> data, CancellationToken cancellationToken)

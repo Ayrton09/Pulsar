@@ -148,6 +148,37 @@ public sealed class SftpFileTests(PulsarApiFactory factory) : IClassFixture<Puls
     }
 
     [DatabaseFact]
+    public async Task AnAppendWithTheVersionSeenFailsWhenTheFileChangedSinceThen()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "sftp-append-version");
+        var (server, id) = await InstalledServerAsync(admin, agent, "Append version");
+        var directory = ServerDirectory(agent, server);
+        var path = Path.Combine(directory, "part.bin");
+        await File.WriteAllBytesAsync(path, new byte[1000], Ct);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var files = scope.ServiceProvider.GetRequiredService<ServerFiles>();
+        var seen = (await files.StatAsync(id, "part.bin", Ct)).Value.Version;
+
+        // Still the file that was seen: the rest goes at its end.
+        using (var rest = new MemoryStream(new byte[10]))
+        {
+            Assert.True((await files.WriteStreamAsync(id, "part.bin", rest, FileWriteMode.Append, seen, Ct)).IsSuccess);
+        }
+
+        Assert.Equal(1010, new FileInfo(path).Length);
+
+        // Another write got there first: nothing is added at an offset the client does not know.
+        using (var late = new MemoryStream(new byte[10]))
+        {
+            var failed = await files.WriteStreamAsync(id, "part.bin", late, FileWriteMode.Append, seen, Ct);
+            Assert.Equal(FileErrors.Changed, failed.Error!.Code);
+        }
+
+        Assert.Equal(1010, new FileInfo(path).Length);
+    }
+
+    [DatabaseFact]
     public async Task AStreamedWriteThatFailsOrGrowsTooLargeLeavesNoShorterFile()
     {
         using var admin = await factory.CreateAdminClientAsync();

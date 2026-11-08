@@ -252,6 +252,9 @@ internal sealed class WriteHandle(string clientPath, SftpServer server, string p
 
     public long ExistingSize { get; init; }
 
+    /// <summary>The version of the existing file when it was opened: a resumed upload appends only to this very file.</summary>
+    public string? ExistingVersion { get; init; }
+
     public bool Create { get; init; }
 
     public bool Append { get; init; }
@@ -312,7 +315,8 @@ internal sealed class SftpUpload : IAsyncDisposable
 
     public Task<Result<FileDetails>> Task { get; }
 
-    public static SftpUpload Start(SftpFileSystem files, SftpServer server, string path, FileWriteMode mode, CancellationToken ended)
+    /// <param name="expectedVersion">When given, the file must still be at it (a resume at the size seen when the file was opened).</param>
+    public static SftpUpload Start(SftpFileSystem files, SftpServer server, string path, FileWriteMode mode, string? expectedVersion, CancellationToken ended)
     {
         var scope = files.CreateScope();
         var serverFiles = scope.ServiceProvider.GetRequiredService<ServerFiles>();
@@ -322,7 +326,7 @@ internal sealed class SftpUpload : IAsyncDisposable
         {
             try
             {
-                return await serverFiles.WriteStreamAsync(server.Id, path, pipe.Reader.AsStream(), mode, cancel.Token);
+                return await serverFiles.WriteStreamAsync(server.Id, path, pipe.Reader.AsStream(), mode, expectedVersion, cancel.Token);
             }
             finally
             {

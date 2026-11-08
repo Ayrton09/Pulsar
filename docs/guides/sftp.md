@@ -191,7 +191,8 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
   that offset (audited as a download).
 - Uploads stream to the node and are saved when the file is closed, complete or not at all; a file opened for writing
   is replaced as a whole (the time the client asks for is set afterwards). Writing at the end of an existing file, or
-  with the append flag, adds to it in place (resumed uploads). Writes elsewhere in an existing file are refused, and a
+  with the append flag, adds to it in place (resumed uploads); if the file changed between the open and the first
+  write, a resume at its end fails instead of landing at another offset. Writes elsewhere in an existing file are refused, and a
   file cannot be open for reading and writing at once. Partial overwrite is not supported: an existing file opened
   without truncation and written from its start for fewer bytes than it holds is not saved (the close fails and the
   file stays as it was), where a local file would keep the rest; clients that upload whole files truncate them first.

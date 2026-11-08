@@ -326,45 +326,59 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             var meter = new ProgressMeter(BackupStages.Restoring, entries.Sum(e => e.Entry.Length), progress);
             await meter.ReportAsync(force: true);
             var buffer = new byte[BufferSize];
-            foreach (var (entry, path, directory) in entries)
+            var written = 0;
+            var writing = "";
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (directory)
+                foreach (var (entry, path, directory) in entries)
                 {
-                    files.EnsureDirectory(server, path);
-                    continue;
-                }
-
-                if (ServerFilePath.Parent(path) is { Length: > 0 } parent)
-                {
-                    files.EnsureDirectory(server, parent);
-                }
-
-                using var pending = files.Create(server, path, entry.Length, overwrite: true, expectedVersion: null);
-                await using (var source = await entry.OpenAsync(cancellationToken))
-                {
-                    var remaining = entry.Length;
-                    while (remaining > 0)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    writing = path;
+                    if (directory)
                     {
-                        var read = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken);
-                        if (read == 0)
+                        files.EnsureDirectory(server, path);
+                        continue;
+                    }
+
+                    if (ServerFilePath.Parent(path) is { Length: > 0 } parent)
+                    {
+                        files.EnsureDirectory(server, parent);
+                    }
+
+                    using var pending = files.Create(server, path, entry.Length, overwrite: true, expectedVersion: null);
+                    await using (var source = await entry.OpenAsync(cancellationToken))
+                    {
+                        var remaining = entry.Length;
+                        while (remaining > 0)
                         {
-                            throw Corrupt(path, "it is shorter than its declared size");
+                            var read = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken);
+                            if (read == 0)
+                            {
+                                throw Corrupt(path, "it is shorter than its declared size");
+                            }
+
+                            await pending.Content.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                            remaining -= read;
+                            meter.Add(read);
+                            await meter.ReportAsync();
                         }
 
-                        await pending.Content.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                        remaining -= read;
-                        meter.Add(read);
-                        await meter.ReportAsync();
+                        if (await source.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) > 0)
+                        {
+                            throw Corrupt(path, "it is longer than its declared size");
+                        }
                     }
 
-                    if (await source.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) > 0)
-                    {
-                        throw Corrupt(path, "it is longer than its declared size");
-                    }
+                    pending.Commit();
+                    written++;
                 }
-
-                pending.Commit();
+            }
+            catch (Exception ex) when (clean is not null && ex is FileManagerException or IOException or UnauthorizedAccessException)
+            {
+                // The newer files are gone already: say so, and how far the backup's files got, so the restore is not taken for done.
+                throw new BackupException(ex is FileManagerException file ? file.Code : FileErrors.Failed,
+                    $"The restore is incomplete: {written} of {entries.Count(e => !e.Directory)} files were written and the newer files were already deleted; "
+                    + $"restore the backup again (stopped at {writing}: {ex.Message}).", ex);
             }
 
             meter.Complete();
@@ -421,7 +435,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// <summary>
     /// Brings a backup the node no longer has back from remote storage (before a restore), checked against the SHA-256
     /// the node made it with. The archive stays on the node. A copy larger than <paramref name="sizeBytes"/> (the
-    /// archive's size when it was made; null: unknown) is refused while it downloads, before it fills the disk.
+    /// archive's size when it was made; null: unknown) is refused while it downloads, before it fills the disk, and
+    /// nothing is downloaded that would leave the drive below the node's disk floor.
     /// </summary>
     public async Task FetchAsync(BackupLocation location, RemoteBackupTarget target, string sha256, long? sizeBytes, BackupProgress progress,
         CancellationToken cancellationToken)
@@ -434,6 +449,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         }
 
         System.IO.Directory.CreateDirectory(location.Directory);
+        // The size the node made it with: the drive must take it, keeping its floor, before a byte is downloaded.
+        if (sizeBytes is { } needed)
+        {
+            FileArchives.EnsureSpace(location.Directory, needed);
+        }
+
         try
         {
             await progress(BackupStages.Downloading, 0);

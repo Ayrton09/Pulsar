@@ -28,8 +28,15 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
     /// <summary>The most entries a zip may have to be written out.</summary>
     public const int MaxEntries = 200_000;
 
-    /// <summary>Room left on the server's drive once a zip is made or written out.</summary>
-    public const long FreeSpaceMargin = 1024L * 1024 * 1024;
+    /// <summary>
+    /// Room left on the server's drive once a zip is made or written out: at least <see cref="MinFreePercent"/> % of it
+    /// and <see cref="MinFreeBytes"/>, the floor the panel keeps on a node (<c>Pulsar.Domain.Nodes.DiskFloor</c>, which
+    /// the agent cannot reference: a test checks that the numbers match).
+    /// </summary>
+    public const int MinFreePercent = 5;
+
+    /// <inheritdoc cref="MinFreePercent"/>
+    public const long MinFreeBytes = 2L * 1024 * 1024 * 1024;
 
     /// <summary>
     /// The most of a zip, from its central directory to its end, that is read to list its entries: .NET holds all of it in
@@ -406,7 +413,8 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
     /// <summary>
     /// Refuses a zip whose end record says it has more than <see cref="MaxEntries"/> entries, or whose central directory
     /// (read from where the record says it starts to the end of the file, as .NET reads it) is larger than
-    /// <see cref="MaxDirectoryBytes"/>, before .NET reads any of it into memory. A zip without an end record is left
+    /// <see cref="MaxDirectoryBytes"/>, or that really holds more than <see cref="MaxEntries"/> file headers (whatever
+    /// the record says), before .NET reads any of it into memory. A zip without an end record is left
     /// to .NET, which refuses it.
     /// </summary>
     internal static async Task CheckDirectoryAsync(Stream zip, CancellationToken cancellationToken)
@@ -464,7 +472,52 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
             throw new FileManagerException(FileErrors.ArchiveInvalid, "The zip's list of entries is too large to read.");
         }
 
+        await CountHeadersAsync(zip, start, cancellationToken);
         zip.Position = 0;
+    }
+
+    /// <summary>
+    /// Counts the file headers of the central directory the way .NET walks it (one after the other from <paramref name="start"/>
+    /// while each begins with its signature), whatever the end record says, and refuses more than <see cref="MaxEntries"/>:
+    /// .NET makes an object of each before it compares their count. What is not a header ends the count; .NET refuses it.
+    /// </summary>
+    private static async Task CountHeadersAsync(Stream zip, long start, CancellationToken cancellationToken)
+    {
+        const int HeaderSize = 46;
+        var length = zip.Length;
+        // The directory is read in big pieces, never a read or a seek per header.
+        var window = new byte[BufferSize];
+        long windowStart = 0;
+        var filled = 0;
+        var position = start;
+        long count = 0;
+        while (position + HeaderSize <= length)
+        {
+            if (position < windowStart || position + HeaderSize > windowStart + filled)
+            {
+                zip.Position = position;
+                filled = await zip.ReadAtLeastAsync(window.AsMemory(0, (int)Math.Min(window.Length, length - position)), HeaderSize, throwOnEndOfStream: false, cancellationToken);
+                windowStart = position;
+                if (filled < HeaderSize)
+                {
+                    break;
+                }
+            }
+
+            var header = window.AsSpan((int)(position - windowStart), HeaderSize);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(header) != 0x02014b50)
+            {
+                break;
+            }
+
+            if (++count > MaxEntries)
+            {
+                throw new FileManagerException(FileErrors.ArchiveInvalid, $"The zip has more than {MaxEntries} entries.");
+            }
+
+            position += HeaderSize + BinaryPrimitives.ReadUInt16LittleEndian(header[28..]) + BinaryPrimitives.ReadUInt16LittleEndian(header[30..])
+                + BinaryPrimitives.ReadUInt16LittleEndian(header[32..]);
+        }
     }
 
     /// <summary>A path the file manager would take, outside Pulsar's own folder.</summary>
@@ -531,14 +584,26 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
 
     private static void EnsureSpace(ProvisionedServer server, long needed) => EnsureSpace(server.Directory, needed);
 
-    /// <summary>Refuses <paramref name="needed"/> bytes the drive of <paramref name="directory"/> cannot take with <see cref="FreeSpaceMargin"/> to spare.</summary>
+    /// <summary>Refuses <paramref name="needed"/> bytes the drive of <paramref name="directory"/> cannot take without going below the node's disk floor.</summary>
     internal static void EnsureSpace(string directory, long needed)
     {
         var root = Path.GetPathRoot(Path.GetFullPath(directory));
-        if (root is { Length: > 0 } && new DriveInfo(root).AvailableFreeSpace - needed < FreeSpaceMargin)
+        if (root is { Length: > 0 })
         {
-            throw new FileManagerException(FileErrors.DiskFull, $"The files ({needed} bytes) do not fit on the drive with {FreeSpaceMargin / (1024 * 1024)} MiB to spare.");
+            var drive = new DriveInfo(root);
+            if (!KeepsFloor(drive.TotalSize, drive.AvailableFreeSpace, needed))
+            {
+                throw new FileManagerException(FileErrors.DiskFull,
+                    $"The files ({needed} bytes) do not fit on the drive: {MinFreePercent}% of it and {MinFreeBytes / (1024 * 1024)} MiB must stay free.");
+            }
         }
+    }
+
+    /// <summary>Whether a drive of <paramref name="total"/> bytes with <paramref name="free"/> free still has <see cref="MinFreePercent"/> % and <see cref="MinFreeBytes"/> free once <paramref name="needed"/> bytes are written.</summary>
+    internal static bool KeepsFloor(long total, long free, long needed)
+    {
+        var left = free - Math.Max(needed, 0);
+        return total <= 0 || (left >= MinFreeBytes && left * 100.0 / total >= MinFreePercent);
     }
 
     /// <summary>The most a zip of <paramref name="files"/> entries holding <paramref name="total"/> bytes takes: deflate gives up on what does not shrink.</summary>

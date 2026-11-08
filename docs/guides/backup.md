@@ -134,6 +134,11 @@ open cannot be restored clean (it would delete them), and neither can a node who
 If a newer file cannot be deleted because a program has it open, the backup's files are still restored and the
 restore reports which file stayed: close what holds it and restore again.
 
+A clean restore deletes the newer files before it writes the backup's. If writing then fails halfway (a file a program
+holds open, a full disk), the restore says it is incomplete and how many of the backup's files were written: the
+newer files are already gone, so restore the backup again once the cause is fixed. A backup kept in remote storage is
+downloaded only if the node's drive can take it and still keep 5 % and 2 GB free.
+
 Through the API: `POST /api/v1/servers/{id}/backups/{backupId}/restore?clean=true`.
 
 ### Restoring some files
