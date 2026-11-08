@@ -3,10 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Nodes;
+using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Databases;
+using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Servers;
+using Pulsar.Manifests;
 
 namespace Pulsar.Application.Databases;
 
@@ -14,6 +19,7 @@ namespace Pulsar.Application.Databases;
 /// <param name="Host">The host's name in the panel.</param>
 /// <param name="Address">Where the game server connects (the host's address for servers).</param>
 /// <param name="UserHost">Where its user may connect from (MySQL; % on PostgreSQL, whose own settings say).</param>
+/// <param name="ForGame">The server's game keeps its data in it (1.0.37): it cannot be deleted while it does.</param>
 public sealed record ServerDatabaseView(
     Guid Id,
     DatabaseEngine Engine,
@@ -25,10 +31,19 @@ public sealed record ServerDatabaseView(
     int Port,
     string UserHost,
     DateTimeOffset CreatedAt,
-    DateTimeOffset PasswordChangedAt);
+    DateTimeOffset PasswordChangedAt,
+    bool ForGame = false);
 
 /// <param name="Hosts">The hosts the server's node may use (for creating one).</param>
-public sealed record ServerDatabaseList(int Limit, IReadOnlyList<ServerDatabaseView> Databases, IReadOnlyList<DatabaseHostChoice> Hosts);
+/// <param name="Game">Where its game keeps its data; null when the game cannot be given a database.</param>
+public sealed record ServerDatabaseList(int Limit, IReadOnlyList<ServerDatabaseView> Databases, IReadOnlyList<DatabaseHostChoice> Hosts,
+    GameDatabaseChoice? Game = null);
+
+/// <summary>Where a server's game keeps its data (Pulsar 1.0.37): its own files, or one of the server's databases.</summary>
+/// <param name="Engine">What the game's manifest takes.</param>
+/// <param name="DatabaseId">The database it uses (not counted in the server's limit); null: its own files.</param>
+/// <param name="Supported">The node's agent is connected and gives games a database: one can be chosen.</param>
+public sealed record GameDatabaseChoice(DatabaseEngine Engine, Guid? DatabaseId, bool Supported);
 
 public sealed record DatabaseHostChoice(Guid Id, string Name, DatabaseEngine Engine);
 
@@ -39,6 +54,7 @@ public sealed record ServerDatabaseCredentials(ServerDatabaseView Database, stri
 /// A server's MySQL/MariaDB (Phase 13) and PostgreSQL (1.0.37) databases: <c>server.databases.view</c> lists them, <c>server.databases.manage</c>
 /// creates, deletes and rotates them and reads their passwords. Each one is created on its host first and kept only
 /// when that worked; the server's limit is checked with its row locked, so two requests cannot both take the last one.
+/// A game whose manifest takes a database (1.0.37) may be given one: <see cref="SetGameDatabaseAsync"/>.
 /// </summary>
 public sealed partial class ServerDatabases(
     IPulsarDbContext db,
@@ -47,9 +63,14 @@ public sealed partial class ServerDatabases(
     IDatabaseHostClient client,
     IRowLocks locks,
     IAuditLog audit,
+    IAgentConnections connections,
+    AgentSessionStore sessions,
     TimeProvider clock,
     ILogger<ServerDatabases> logger)
 {
+    /// <summary>What follows the server's prefix in its game's database: <c>s{short id}_game</c>.</summary>
+    public const string GameSuffix = "game";
+
     public async Task<Result<ServerDatabaseList>> ListAsync(ServerId serverId, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken);
@@ -60,8 +81,87 @@ public sealed partial class ServerDatabases(
 
         var all = await db.DatabaseHosts.AsNoTracking().OrderBy(h => h.Name).ToListAsync(cancellationToken);
         var databases = await db.ServerDatabases.AsNoTracking().Where(d => d.ServerId == serverId).OrderBy(d => d.Name).ToListAsync(cancellationToken);
-        return new ServerDatabaseList(server.DatabaseLimit, [.. databases.Select(d => View(d, all.Single(h => h.Id == d.HostId)))],
-            [.. all.Where(h => h.Serves(server.NodeId)).Select(h => new DatabaseHostChoice(h.Id.Value, h.Name, h.Engine))]);
+        var game = await GameEngineAsync(server, cancellationToken) is { } engine
+            ? new GameDatabaseChoice(engine, server.GameDatabaseId?.Value, AgentGivesDatabases(server.NodeId))
+            : null;
+        return new ServerDatabaseList(server.DatabaseLimit, [.. databases.Select(d => View(d, all.Single(h => h.Id == d.HostId), d.Id == server.GameDatabaseId))],
+            [.. all.Where(h => h.Serves(server.NodeId)).Select(h => new DatabaseHostChoice(h.Id.Value, h.Name, h.Engine))], game);
+    }
+
+    /// <summary>
+    /// Where the server's game keeps its data from its next start (the caller then sends the server's spec): a database
+    /// on <paramref name="hostId"/>, or its own files (null). The game's database is <c>s{short id}_game</c>: made on the
+    /// host the first time (not counted in the server's limit), and used again when the game goes back to it, with the
+    /// data it had; going back to the game's own files keeps it, as one of the server's databases (counted again).
+    /// </summary>
+    /// <returns>Whether anything changed.</returns>
+    public async Task<Result<bool>> SetGameDatabaseAsync(ServerId serverId, Guid? hostId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        // The node gets the change with the server's spec right away: one that is away would go on giving the game the
+        // database (specs are not sent again when it connects).
+        if (connections.Find(server.NodeId) is not { } live || !sessions.IsActive(live.SessionId))
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        if (hostId is null)
+        {
+            return await LinkAsync(server.Id, null, null, cancellationToken);
+        }
+
+        if (server.ActiveOperationType == OperationType.ServerDelete)
+        {
+            return ServerErrors.Busy;
+        }
+
+        if (await GameEngineAsync(server, cancellationToken) is not { } engine)
+        {
+            return DatabaseErrors.GameUnsupported;
+        }
+
+        var host = await db.DatabaseHosts.AsNoTracking().SingleOrDefaultAsync(h => h.Id == new DatabaseHostId(hostId.Value), cancellationToken);
+        if (host is null)
+        {
+            return DatabaseErrors.HostNotFound;
+        }
+
+        if (host.Engine != engine)
+        {
+            return DatabaseErrors.EngineMismatch(engine);
+        }
+
+        if (!host.Serves(server.NodeId))
+        {
+            return DatabaseErrors.HostNotAllowed;
+        }
+
+        // An agent that would not give the game its database would start it on its own files instead.
+        if (!AgentGivesDatabases(server.NodeId))
+        {
+            return ServerErrors.GameDatabaseUnsupported;
+        }
+
+        var name = ServerDatabase.NameFor(server.ShortId, GameSuffix)!;
+        var existing = await db.ServerDatabases.AsNoTracking().SingleOrDefaultAsync(d => d.ServerId == server.Id && d.Name == name, cancellationToken);
+        if (server.GameDatabaseId is { } current)
+        {
+            return existing?.Id == current && existing.HostId == host.Id ? false : DatabaseErrors.GameDatabaseSet;
+        }
+
+        if (existing is not null)
+        {
+            // The one it had before: its data is there.
+            return existing.HostId == host.Id ? await LinkAsync(server.Id, existing, host, cancellationToken) : DatabaseErrors.NameTaken;
+        }
+
+        var created = await CreateOnHostAsync(server, host, GameSuffix, forGame: true, cancellationToken);
+        return created.IsSuccess ? true : created.Error!;
     }
 
     public async Task<Result<ServerDatabaseCredentials>> CreateAsync(ServerId serverId, Guid hostId, string name, CancellationToken cancellationToken)
@@ -88,6 +188,16 @@ public sealed partial class ServerDatabases(
             return DatabaseErrors.HostNotAllowed;
         }
 
+        return await CreateOnHostAsync(server, host, name, forGame: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes the database on its host and keeps it; the game's (<paramref name="forGame"/>) is not counted in the
+    /// server's limit, and is the game's once it is kept.
+    /// </summary>
+    private async Task<Result<ServerDatabaseCredentials>> CreateOnHostAsync(Server server, DatabaseHost host, string name, bool forGame,
+        CancellationToken cancellationToken)
+    {
         if (hosts.Connection(host) is not { } connection)
         {
             return DatabaseErrors.HostPasswordUnreadable;
@@ -101,7 +211,7 @@ public sealed partial class ServerDatabases(
         }
 
         var database = created.Value;
-        if (await ReserveAsync(server.Id, database, cancellationToken) is { } refused)
+        if (await ReserveAsync(server.Id, database, forGame, cancellationToken) is { } refused)
         {
             return refused;
         }
@@ -135,9 +245,17 @@ public sealed partial class ServerDatabases(
         }
 
         audit.Record(AuditActions.Server.DatabaseCreated, metadata: new { database.Name, Host = host.Name }).WithServer(server.Id, server.NodeId);
+        if (forGame)
+        {
+            var tracked = await db.Servers.SingleAsync(s => s.Id == server.Id, CancellationToken.None);
+            tracked.SetGameDatabase(database.Id, clock.GetUtcNow());
+            audit.Record(AuditActions.Server.GameDatabaseChanged, metadata: new { database.Name, Host = host.Name })
+                .WithServer(server.Id, server.NodeId);
+        }
+
         await db.SaveChangesAsync(CancellationToken.None);
         await transaction.CommitAsync(CancellationToken.None);
-        return new ServerDatabaseCredentials(View(database, host), password);
+        return new ServerDatabaseCredentials(View(database, host, forGame), password);
     }
 
     /// <summary>Audited (who read which database's password, never the password).</summary>
@@ -162,7 +280,7 @@ public sealed partial class ServerDatabases(
         audit.Record(AuditActions.Server.DatabasePasswordViewed, metadata: new { database.Name, Host = host.Name })
             .WithServer(serverId, await NodeOfAsync(serverId, cancellationToken));
         await db.SaveChangesAsync(CancellationToken.None);
-        return new ServerDatabaseCredentials(View(database, host), password);
+        return new ServerDatabaseCredentials(View(database, host, await IsGamesAsync(serverId, database.Id, cancellationToken)), password);
     }
 
     /// <summary>
@@ -200,7 +318,7 @@ public sealed partial class ServerDatabases(
             .WithServer(serverId, await NodeOfAsync(serverId, CancellationToken.None));
         await db.SaveChangesAsync(CancellationToken.None);
         await transaction.CommitAsync(CancellationToken.None);
-        return new ServerDatabaseCredentials(View(database, host), password);
+        return new ServerDatabaseCredentials(View(database, host, await IsGamesAsync(serverId, database.Id, CancellationToken.None)), password);
     }
 
     /// <summary>
@@ -215,6 +333,13 @@ public sealed partial class ServerDatabases(
         if (database is null || host is null)
         {
             return DatabaseErrors.NotFound;
+        }
+
+        // Its game's data is there: the game goes back to its own files first (which takes the server's lock, as this does).
+        await locks.LockServerAsync(serverId, cancellationToken);
+        if (await db.Servers.AsNoTracking().AnyAsync(s => s.Id == serverId && s.GameDatabaseId == database.Id, cancellationToken))
+        {
+            return DatabaseErrors.InUseByGame;
         }
 
         if (hosts.Connection(host) is not { } connection)
@@ -251,6 +376,14 @@ public sealed partial class ServerDatabases(
     {
         ArgumentNullException.ThrowIfNull(server);
         await locks.LockServerAsync(server.Id, cancellationToken);
+        // The server's row and its databases' go together, and its row points at its game's (1.0.37): that goes first, in
+        // the caller's transaction, or the two would wait for each other.
+        if (server.GameDatabaseId is not null)
+        {
+            server.SetGameDatabase(null, clock.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         var databases = await db.ServerDatabases.Where(d => d.ServerId == server.Id).ToListAsync(cancellationToken);
         // Why a host was left alone: an error code for the audit log, the host's own words (they name the panel's account
         // and the host's address) for the panel's log only.
@@ -289,12 +422,16 @@ public sealed partial class ServerDatabases(
         }
     }
 
-    /// <summary>Adds the row with the server's row locked: its limit and the name are checked against what is there now.</summary>
-    private async Task<DomainError?> ReserveAsync(ServerId serverId, ServerDatabase database, CancellationToken cancellationToken)
+    /// <summary>
+    /// Adds the row with the server's row locked: its limit (which its game's database is not counted in) and the name are
+    /// checked against what is there now; the game's (<paramref name="forGame"/>) only while the game has none.
+    /// </summary>
+    private async Task<DomainError?> ReserveAsync(ServerId serverId, ServerDatabase database, bool forGame, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await locks.LockServerAsync(serverId, cancellationToken);
-        var server = await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => new { s.DatabaseLimit, s.ActiveOperationType })
+        var server = await db.Servers.AsNoTracking().Where(s => s.Id == serverId)
+            .Select(s => new { s.DatabaseLimit, s.ActiveOperationType, s.GameDatabaseId })
             .SingleOrDefaultAsync(cancellationToken);
         if (server is null)
         {
@@ -306,15 +443,15 @@ public sealed partial class ServerDatabases(
         {
             return ServerErrors.Busy;
         }
-        var existing = await db.ServerDatabases.Where(d => d.ServerId == serverId).Select(d => d.Name).ToListAsync(cancellationToken);
-        if (existing.Contains(database.Name, StringComparer.Ordinal))
+        var existing = await db.ServerDatabases.Where(d => d.ServerId == serverId).Select(d => new { d.Id, d.Name }).ToListAsync(cancellationToken);
+        if (existing.Any(d => d.Name == database.Name))
         {
             return DatabaseErrors.NameTaken;
         }
 
-        if (existing.Count >= server.DatabaseLimit)
+        if (forGame ? server.GameDatabaseId is not null : existing.Count(d => d.Id != server.GameDatabaseId) >= server.DatabaseLimit)
         {
-            return DatabaseErrors.LimitReached;
+            return forGame ? DatabaseErrors.GameDatabaseSet : DatabaseErrors.LimitReached;
         }
 
         db.ServerDatabases.Add(database);
@@ -365,11 +502,79 @@ public sealed partial class ServerDatabases(
         return DatabaseErrors.HostUnreachable;
     }
 
-    private static ServerDatabaseView View(ServerDatabase database, DatabaseHost host)
+    /// <summary>The game uses <paramref name="database"/> (on <paramref name="host"/>) from its next start; null: its own files.</summary>
+    private async Task<Result<bool>> LinkAsync(ServerId serverId, ServerDatabase? database, DatabaseHost? host, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockServerAsync(serverId, cancellationToken);
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        if (server.GameDatabaseId == database?.Id)
+        {
+            return false;
+        }
+
+        // Another request gave it one meanwhile: the caller chose from what it saw before.
+        if (database is not null && server.GameDatabaseId is not null)
+        {
+            return DatabaseErrors.GameDatabaseSet;
+        }
+
+        if (database is not null && !await db.ServerDatabases.AnyAsync(d => d.Id == database.Id, cancellationToken))
+        {
+            return DatabaseErrors.NotFound;
+        }
+
+        var before = server.GameDatabaseId is { } previous
+            ? await db.ServerDatabases.AsNoTracking().Where(d => d.Id == previous).Select(d => d.Name).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        server.SetGameDatabase(database?.Id, clock.GetUtcNow());
+        audit.Record(AuditActions.Server.GameDatabaseChanged, metadata: new { database?.Name, Host = host?.Name, before })
+            .WithServer(server.Id, server.NodeId);
+        await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
+        return true;
+    }
+
+    /// <summary>The engine of the database the server's game takes; null when its manifest takes none.</summary>
+    private async Task<DatabaseEngine?> GameEngineAsync(Server server, CancellationToken cancellationToken)
+    {
+        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        GameManifest manifest;
+        try
+        {
+            manifest = ServerSpecs.Parse(template);
+        }
+        catch (DomainErrorException)
+        {
+            return null;
+        }
+
+        return manifest.Database?.Engine switch
+        {
+            "postgres" => DatabaseEngine.Postgres,
+            "mysql" => DatabaseEngine.Mysql,
+            _ => null,
+        };
+    }
+
+    /// <summary>The node's agent is connected and gives games the database the panel sends.</summary>
+    private bool AgentGivesDatabases(NodeId node) =>
+        connections.Find(node) is { } live && sessions.IsActive(live.SessionId)
+        && live.Capabilities.Contains(AgentCapabilities.GameDatabase, StringComparer.Ordinal);
+
+    private Task<bool> IsGamesAsync(ServerId serverId, ServerDatabaseId database, CancellationToken cancellationToken) =>
+        db.Servers.AsNoTracking().AnyAsync(s => s.Id == serverId && s.GameDatabaseId == database, cancellationToken);
+
+    private static ServerDatabaseView View(ServerDatabase database, DatabaseHost host, bool forGame)
     {
         var (address, port) = host.AddressForServers;
         return new ServerDatabaseView(database.Id.Value, host.Engine, database.Name, database.Name, host.Id.Value, host.Name, address, port, database.UserHost,
-            database.CreatedAt, database.PasswordChangedAt);
+            database.CreatedAt, database.PasswordChangedAt, forGame);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The database host {Host} failed a server's request: {Reason}")]

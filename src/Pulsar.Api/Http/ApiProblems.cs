@@ -45,6 +45,7 @@ public static class ApiProblems
             or "mods.catalog_not_configured" or "mods.distribution_forbidden" or "mods.addon_missing"
             or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many" or "backup_storage.holds_copies"
             or "database_host.in_use" or "database_host.too_many" or "database_host.name_taken" or "database.name_taken" or "database.limit_reached"
+            or "database.game_database_set" or "database.in_use_by_game" or "server.game_database_unsupported" or "server.clone_game_database"
             or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required" or "steam_account.name_taken"
             or "server.steam_branch_unknown" or "server.steam_branch_password_required" or "server.steam_branch_unsupported" or "server.steam_branch_agent_too_old"
             => StatusCodes.Status409Conflict,

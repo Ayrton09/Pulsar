@@ -151,6 +151,13 @@ public static class ManifestFeatures
         return manifest.PortList.Any(p => p.Http);
     }
 
+    /// <summary>A database the game can be given (<see cref="GameManifest.Database"/>, Pulsar 1.0.37).</summary>
+    public static bool UsesGameDatabase(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Database is not null;
+    }
+
     /// <summary>A release step with files an update keeps (<see cref="GitHubReleaseStep.Keep"/>, Pulsar 1.0.35).</summary>
     public static bool UsesReleaseKeep(GameManifest manifest)
     {

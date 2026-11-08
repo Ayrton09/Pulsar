@@ -410,6 +410,7 @@
         "database_deleted": "Ha eliminato un database",
         "database_password_rotated": "Ha cambiato la password di un database",
         "database_password_viewed": "Ha visualizzato la password di un database",
+        "game_database_changed": "Ha cambiato dove il gioco di un server tiene i suoi dati",
         "steam_account_changed": "Ha cambiato l'account Steam di un server",
         "game_updates_changed": "Ha cambiato come un server segue gli aggiornamenti del gioco",
         "game_update_check_requested": "Ha chiesto di controllare un aggiornamento del gioco",
@@ -671,6 +672,7 @@
       "invalid_settings": "Controllare le impostazioni: {{detail}}",
       "variable_protected": "Non puoi modificare questa impostazione: {{detail}}",
       "limits_unsupported": "L'agent del nodo non può limitare CPU e memoria di un server: aggiornare l'agent.",
+      "game_database_unsupported": "L'agente del nodo non può dare un database al gioco: connettilo o aggiornalo.",
       "limits_invalid": "Un limite di CPU va da 1 a 100 %, un limite di memoria da 128 MiB a 1 TiB.",
       "template_not_newer": "Un server può passare solo a una versione più recente del modello del proprio gioco.",
       "template_invalid": "Il modello di gioco di questo server non supera più i controlli di questo pannello: passare il server a una sua versione più recente.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "Questo gioco non ha una console RCON, quindi non ha una password RCON.",
       "rcon_password_unsupported": "L'agente del nodo non può usare una password RCON scelta: aggiorna l'agente.",
       "rcon_password_reused": "Questa password RCON è già scelta per un altro dei tuoi server: un plugin dell'uno entrerebbe nella console dell'altro. Usane una per server.",
-      "rcon_password_pending": "Salvata, ma il nodo non l’ha ancora presa: si applica al prossimo avvio dal pannello."
+      "rcon_password_pending": "Salvata, ma il nodo non l’ha ancora presa: si applica al prossimo avvio dal pannello.",
+      "clone_game_database": "Il gioco di questo server tiene i suoi dati in un database, che un clone non copia ancora: riporta il gioco sui propri file per clonarlo."
     },
     "console": {
       "invalid_input": "Un comando è una sola riga senza caratteri di controllo (come le tabulazioni).",
@@ -864,7 +867,11 @@
       "limit_reached": "Il server ha già il numero massimo di database consentito.",
       "host_not_allowed": "Il nodo di questo server non può usare quell'host di database.",
       "host_unreachable": "Il pannello non ha potuto operare con l'host di database. Un amministratore ne trova il motivo nel log del pannello.",
-      "password_unreadable": "La password non può essere letta con le chiavi di questo pannello: cambiarla per ottenerne una nuova."
+      "password_unreadable": "La password non può essere letta con le chiavi di questo pannello: cambiarla per ottenerne una nuova.",
+      "game_unsupported": "Il gioco di questo server tiene i suoi dati solo nei propri file.",
+      "engine_mismatch": "Il gioco di questo server usa un database di tipo diverso da quello di quell'host.",
+      "game_database_set": "Il gioco usa un database su un altro host: prima riportalo sui propri file.",
+      "in_use_by_game": "Il gioco tiene i suoi dati in questo database: prima riportalo sui propri file."
     },
     "steamcmd": {
       "account_required": "Solo un account Steam che possiede il server dedicato di questo gioco può scaricarlo: sceglierne uno nelle impostazioni del server.",
@@ -2386,6 +2393,7 @@
     "address": "Indirizzo",
     "created": "Creato",
     "user": "Utente {{user}}",
+    "forGame": "Usato dal gioco",
     "userName": "Utente",
     "password": "Password",
     "onHost": "Su {{host}} · connessioni da {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "Eliminare {{name}} e tutto il suo contenuto? L'operazione non può essere annullata.",
     "credentials": "Dettagli di connessione di {{name}}",
     "copyPassword": "Copia password",
-    "copied": "Copiato."
+    "copied": "Copiato.",
+    "game": {
+      "title": "Database del gioco",
+      "ownFiles": "Il gioco tiene i suoi dati nei propri file.",
+      "inDatabase": "Il gioco tiene i suoi dati in {{name}}, su {{host}}.",
+      "choose": "Tenere i dati del gioco in",
+      "ownFilesOption": "I file del gioco",
+      "hostOption": "{{engine}} su {{host}}",
+      "unsupported": "Per dare un database al gioco, l'agente del nodo deve essere connesso e aggiornato.",
+      "noHosts": "Nessun host {{engine}} è disponibile per il nodo di questo server: un amministratore ne aggiunge uno in Host di database.",
+      "saved": "Salvato: il gioco lo usa dal prossimo avvio.",
+      "hint": "Una modifica vale dal prossimo avvio del gioco. Tornando ai file del gioco, il database resta, con i suoi dati, tra quelli del server (di nuovo contato nel limite); sceglierlo di nuovo usa quei dati. Pulsar non copia dati tra i file del gioco e un database: solo ciò che fa il gioco stesso."
+    }
   },
   "databaseHosts": {
     "title": "Host di database",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, il mondo di Argentum Online su un server moderno (CoverAO, il suo port in .NET), installato dalle sue release su GitHub. Si gioca con l'app desktop del gioco, CoverAO, dalle stesse release: i giocatori aggiungono il server con il suo indirizzo e la porta Gioco. I game master e le altre impostazioni sono in CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, il mondo di Argentum Online su un server moderno (CoverAO, il suo port in .NET), installato dalle sue release su GitHub. Si gioca con l'app desktop del gioco, CoverAO, dalle stesse release: i giocatori aggiungono il server con il suo indirizzo e la porta Gioco. I game master e le altre impostazioni sono in CoverAO-win-x64/Server.ini. Personaggi e account sono nel file SQLite del gioco, o in un database PostgreSQL scelto nella scheda Database del server, che al primo avvio prende i personaggi del file SQLite.",
       "variables": {
         "maxUsers": {
           "label": "Limite di giocatori",

@@ -150,7 +150,67 @@ public static partial class ManifestValidator
         }
 
         ValidateMods(manifest, context);
+        ValidateDatabase(manifest, Error);
         return errors;
+    }
+
+    /// <summary>
+    /// The game database (Pulsar 1.0.37): an engine, and environment variables that only its placeholders fill (no other
+    /// placeholder goes there, nor do its own anywhere else), none of which the runtime's own environment sets.
+    /// </summary>
+    private static void ValidateDatabase(GameManifest manifest, Action<string, string> error)
+    {
+        if (manifest.Database is not { } database)
+        {
+            return;
+        }
+
+        // PostgreSQL only for now: the panel backs it up with pg_dump, which its machine has (MySQL's tools it usually has not).
+        if (database.Engine is not "postgres")
+        {
+            error("database.engine", "Use \"postgres\".");
+        }
+
+        var environment = database.Environment ?? new Dictionary<string, string>();
+        if (environment.Count is 0 or > 16)
+        {
+            error("database.environment", "1 to 16 variables.");
+        }
+
+        if (environment.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != environment.Count)
+        {
+            error("database.environment", "Names differ only by case.");
+        }
+
+        var runtimeNames = manifest.Runtime.Values.SelectMany(r => r.Environment?.Keys ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, value) in environment)
+        {
+            var path = $"database.environment.{name}";
+            if (s_reservedEnvironment.Contains(name) || !EnvironmentNamePattern().IsMatch(name))
+            {
+                error(path, "Reserved or invalid environment variable name.");
+            }
+            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                error(path, "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+            }
+            else if (runtimeNames.Contains(name))
+            {
+                error(path, "The runtime's environment sets it already.");
+            }
+
+            if (value is null || value.Length > 1024)
+            {
+                error(path, "Up to 1024 characters.");
+                continue;
+            }
+
+            var placeholders = Placeholders.Parse(value, out var malformed);
+            if (malformed || placeholders.Any(p => p is not ["database", "host" or "port" or "name" or "user" or "password"]))
+            {
+                error(path, "Only {{database.host}}, {{database.port}}, {{database.name}}, {{database.user}} and {{database.password}} go here.");
+            }
+        }
     }
 
     private static void ValidateMods(GameManifest manifest, Context context)

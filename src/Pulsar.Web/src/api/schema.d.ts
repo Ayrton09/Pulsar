@@ -13672,6 +13672,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/databases/game": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GameDatabaseRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/database-hosts": {
         parameters: {
             query?: never;
@@ -17152,6 +17236,16 @@ export interface components {
             /** Format: date-time */
             updated: null | string;
         };
+        GameDatabaseChoice: {
+            engine: components["schemas"]["DatabaseEngine"];
+            /** Format: uuid */
+            databaseId: null | string;
+            supported: boolean;
+        };
+        GameDatabaseRequest: {
+            /** Format: uuid */
+            hostId: null | string;
+        };
         /** @enum {unknown} */
         GameSaveResult: "confirmed" | "waited" | "unconfirmed" | null;
         /** @enum {unknown} */
@@ -17949,6 +18043,7 @@ export interface components {
             limit: number;
             databases: components["schemas"]["ServerDatabaseView"][];
             hosts: components["schemas"]["DatabaseHostChoice"][];
+            game?: null | components["schemas"]["GameDatabaseChoice"];
         };
         ServerDatabaseView: {
             /** Format: uuid */
@@ -17967,6 +18062,8 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             passwordChangedAt: string;
+            /** @default false */
+            forGame: boolean;
         };
         ServerDetails: {
             server: components["schemas"]["ServerSummary"];

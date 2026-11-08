@@ -4,6 +4,7 @@ using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
@@ -95,6 +96,22 @@ public sealed partial class ServerManagement
         if (server.RconPasswordProtected is not null && !Announces(target, AgentCapabilities.ChosenRconPassword))
         {
             return ServerErrors.RconPasswordUnsupported;
+        }
+
+        // Its game's database stays where it is (1.0.37): the server must still reach it, and be given it, from there.
+        if (server.GameDatabaseId is { } gameDatabase)
+        {
+            if (!Announces(target, AgentCapabilities.GameDatabase))
+            {
+                return ServerErrors.GameDatabaseUnsupported;
+            }
+
+            var host = await db.ServerDatabases.AsNoTracking().Where(d => d.Id == gameDatabase)
+                .Join(db.DatabaseHosts.AsNoTracking(), d => d.HostId, h => h.Id, (d, h) => h).SingleAsync(cancellationToken);
+            if (!host.Serves(nodeId))
+            {
+                return DatabaseErrors.HostNotAllowed;
+            }
         }
 
         if (await steamAccounts.LoginForAsync(server, manifest, target, null, cancellationToken) is { IsSuccess: false } login)

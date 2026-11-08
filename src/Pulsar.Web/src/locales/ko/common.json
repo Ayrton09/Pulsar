@@ -410,6 +410,7 @@
         "database_deleted": "데이터베이스 삭제",
         "database_password_rotated": "데이터베이스 비밀번호 변경",
         "database_password_viewed": "데이터베이스 비밀번호 확인",
+        "game_database_changed": "서버 게임의 데이터 저장 위치를 변경함",
         "steam_account_changed": "서버의 Steam 계정 변경",
         "game_updates_changed": "서버가 게임 업데이트를 따르는 방식을 변경함",
         "game_update_check_requested": "게임 업데이트 확인을 요청함",
@@ -671,6 +672,7 @@
       "invalid_settings": "설정을 확인하세요: {{detail}}",
       "variable_protected": "해당 설정은 변경할 수 없습니다: {{detail}}",
       "limits_unsupported": "노드의 에이전트가 서버의 CPU와 메모리를 제한할 수 없습니다. 에이전트를 업데이트하세요.",
+      "game_database_unsupported": "노드의 에이전트가 게임에 데이터베이스를 줄 수 없습니다. 연결하거나 업데이트하세요.",
       "limits_invalid": "CPU 제한은 1에서 100 %, 메모리 제한은 128 MiB에서 1 TiB까지입니다.",
       "template_not_newer": "서버는 자신의 게임 템플릿의 더 새로운 버전으로만 이동할 수 있습니다.",
       "template_invalid": "이 서버의 게임 템플릿이 더 이상 이 패널의 검사를 통과하지 못합니다. 서버를 더 새로운 버전으로 이동하세요.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "이 게임에는 RCON 콘솔이 없어 RCON 비밀번호도 없습니다.",
       "rcon_password_unsupported": "노드의 에이전트가 선택한 RCON 비밀번호를 쓸 수 없습니다. 에이전트를 업데이트하세요.",
       "rcon_password_reused": "이 RCON 비밀번호는 다른 서버에 이미 선택되어 있습니다. 한 서버의 플러그인이 다른 서버의 콘솔에 들어갈 수 있습니다. 서버마다 다르게 쓰세요.",
-      "rcon_password_pending": "저장했지만 노드가 아직 받지 않았습니다. 다음에 패널에서 서버를 시작할 때 적용됩니다."
+      "rcon_password_pending": "저장했지만 노드가 아직 받지 않았습니다. 다음에 패널에서 서버를 시작할 때 적용됩니다.",
+      "clone_game_database": "이 서버의 게임은 데이터를 데이터베이스에 저장하며, 복제는 아직 이를 복사하지 않습니다. 복제하려면 게임을 자체 파일로 되돌리세요."
     },
     "console": {
       "invalid_input": "명령은 제어 문자(탭 등)가 없는 한 줄이어야 합니다.",
@@ -864,7 +867,11 @@
       "limit_reached": "서버가 만들 수 있는 최대 데이터베이스 수에 도달했습니다.",
       "host_not_allowed": "이 서버의 노드는 해당 데이터베이스 호스트를 사용할 수 없습니다.",
       "host_unreachable": "패널이 데이터베이스 호스트를 사용하지 못했습니다. 관리자가 패널 로그에서 원인을 확인할 수 있습니다.",
-      "password_unreadable": "이 패널의 키로 비밀번호를 읽을 수 없습니다. 새 비밀번호를 받으려면 변경하세요."
+      "password_unreadable": "이 패널의 키로 비밀번호를 읽을 수 없습니다. 새 비밀번호를 받으려면 변경하세요.",
+      "game_unsupported": "이 서버의 게임은 자체 파일에만 데이터를 저장합니다.",
+      "engine_mismatch": "이 서버의 게임은 그 호스트와 다른 종류의 데이터베이스를 사용합니다.",
+      "game_database_set": "게임이 다른 호스트의 데이터베이스를 쓰고 있습니다. 먼저 자체 파일로 되돌리세요.",
+      "in_use_by_game": "게임이 이 데이터베이스에 데이터를 저장합니다. 먼저 자체 파일로 되돌리세요."
     },
     "steamcmd": {
       "account_required": "이 게임의 전용 서버를 소유한 Steam 계정만 다운로드할 수 있습니다. 서버 설정에서 계정을 선택하세요.",
@@ -2386,6 +2393,7 @@
     "address": "주소",
     "created": "생성일",
     "user": "사용자 {{user}}",
+    "forGame": "게임이 사용 중",
     "userName": "사용자",
     "password": "비밀번호",
     "onHost": "{{host}}에 위치 · 접속 허용 위치 {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "{{name}}과(와) 그 안의 모든 내용을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
     "credentials": "{{name}} 연결 정보",
     "copyPassword": "비밀번호 복사",
-    "copied": "복사했습니다."
+    "copied": "복사했습니다.",
+    "game": {
+      "title": "게임 데이터베이스",
+      "ownFiles": "게임이 자체 파일에 데이터를 저장합니다.",
+      "inDatabase": "게임이 {{host}}의 {{name}}에 데이터를 저장합니다.",
+      "choose": "게임 데이터 저장 위치",
+      "ownFilesOption": "게임 자체 파일",
+      "hostOption": "{{host}}의 {{engine}}",
+      "unsupported": "게임에 데이터베이스를 주려면 노드의 에이전트가 연결되어 있고 최신이어야 합니다.",
+      "noHosts": "이 서버의 노드에서 쓸 수 있는 {{engine}} 호스트가 없습니다. 관리자가 데이터베이스 호스트에서 추가합니다.",
+      "saved": "저장했습니다. 게임은 다음 시작부터 사용합니다.",
+      "hint": "변경은 게임의 다음 시작부터 적용됩니다. 게임 자체 파일로 돌아가도 데이터베이스는 데이터와 함께 서버의 데이터베이스로 남고(다시 한도에 포함됨), 다시 고르면 그 데이터를 씁니다. Pulsar는 게임 파일과 데이터베이스 사이에서 데이터를 복사하지 않으며, 게임이 스스로 하는 것만 있습니다."
+    }
   },
   "databaseHosts": {
     "title": "데이터베이스 호스트",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027. 최신 서버에서 돌아가는 Argentum Online의 세계(CoverAO: .NET 포트)로, GitHub 릴리스에서 설치됩니다. 플레이어는 같은 릴리스에 있는 게임의 데스크톱 앱 CoverAO에 서버의 주소와 게임 포트를 추가해 플레이합니다. 게임 마스터와 나머지 설정은 CoverAO-win-x64/Server.ini에 있습니다.",
+      "description": "AO2027. 최신 서버에서 돌아가는 Argentum Online의 세계(CoverAO: .NET 포트)로, GitHub 릴리스에서 설치됩니다. 플레이어는 같은 릴리스에 있는 게임의 데스크톱 앱 CoverAO에 서버의 주소와 게임 포트를 추가해 플레이합니다. 게임 마스터와 나머지 설정은 CoverAO-win-x64/Server.ini에 있습니다. 캐릭터와 계정은 게임 자체의 SQLite 파일, 또는 서버의 데이터베이스 탭에서 고른 PostgreSQL 데이터베이스에 저장됩니다. PostgreSQL은 처음 시작할 때 SQLite 파일의 캐릭터를 가져옵니다.",
       "variables": {
         "maxUsers": {
           "label": "플레이어 제한",

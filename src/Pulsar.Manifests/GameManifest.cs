@@ -29,7 +29,8 @@ public sealed record GameManifest(
     QueryDefinition? Query = null,
     IReadOnlyList<AddonDefinition>? Addons = null,
     CommandsDefinition? Commands = null,
-    IReadOnlyList<ModSourceDefinition>? Mods = null)
+    IReadOnlyList<ModSourceDefinition>? Mods = null,
+    GameDatabaseDefinition? Database = null)
 {
     /// <summary>Optional editor hint (<c>"$schema"</c>); ignored.</summary>
     [JsonPropertyName("$schema")]
@@ -697,6 +698,20 @@ public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, 
 /// <param name="Variable">A string variable that lists Workshop items or catalog projects (its separator splits the ids).</param>
 /// <param name="Key">The member of each object that holds its id (<c>modId</c>).</param>
 public sealed record ConfigListDefinition(string Variable, string Key);
+
+/// <summary>
+/// A database server the game can keep its data in instead of its own files (Pulsar 1.0.37; docs/architecture/04,
+/// "Game database"): a server of this game may be given one of the panel's databases of <see cref="Engine"/>, and then
+/// starts with <see cref="Environment"/> as well, where <c>{{database.host}}</c>, <c>{{database.port}}</c>,
+/// <c>{{database.name}}</c>, <c>{{database.user}}</c> and <c>{{database.password}}</c> are that database's. Without one,
+/// the game runs as it would without this section (its own files, SQLite say).
+/// </summary>
+/// <param name="Engine"><c>postgres</c> (the only one for now).</param>
+/// <param name="Environment">
+/// Variables for the game's process, only there when the server has a database; the password goes nowhere else (not in
+/// configuration files, which whoever may read the server's files reads).
+/// </param>
+public sealed record GameDatabaseDefinition(string Engine, IReadOnlyDictionary<string, string> Environment);
 
 /// <summary>
 /// What a backup contains: globs relative to the server directory (Phase 7); and how a running game is asked to write

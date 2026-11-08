@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,6 +13,7 @@ using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Databases;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
@@ -852,10 +854,189 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         }
     }
 
+    /// <summary>A game that can keep its data in a PostgreSQL database (1.0.37), installed with no program of its own.</summary>
+    private const string DatabaseGameManifest = """
+        {
+          "schemaVersion": 1, "key": "db-game", "version": "1.0.0", "name": "Database game", "platforms": ["windows-x64"],
+          "install": { "steps": [ { "type": "ensureDirectory", "path": "data" } ] },
+          "runtime": { "windows-x64": { "executable": "bin/game.exe", "console": { "mode": "pty" } } },
+          "readiness": { "type": "logPattern", "pattern": "^ready", "timeoutSeconds": 60 },
+          "stop": { "steps": [ { "type": "ctrlC" } ], "timeoutSeconds": 15 },
+          "database": { "engine": "postgres", "environment": {
+            "GAME_DB": "{{database.user}}@{{database.host}}:{{database.port}}/{{database.name}}", "GAME_DB_PASSWORD": "{{database.password}}" } }
+        }
+        """;
+
+    [DatabaseFact]
+    public async Task AGameKeepsItsDataInADatabaseOfItsServerChosenAndPutBack()
+    {
+        // A panel whose database hosts answer as PostgreSQL would, without one: the flow is the panel's.
+        var hosts = new GameHostClient();
+        await AccessScenario.CreateAsync(factory);
+        using var app = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.AddSingleton<IDatabaseHostClient>(hosts)));
+        using var admin = await PanelClient.CreateAsync(app);
+        using (var login = await admin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            Assert.True(login.IsSuccessStatusCode);
+        }
+
+        var node = await NodeApi.CreateAsync(admin, "databases-game");
+        await using var agent = new InProcessAgent(app);
+        await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, node.Node.Id)).Node.Connected, "agent connected");
+
+        DatabaseHostView host;
+        using (var created = await admin.PostAsync("/api/v1/database-hosts",
+                   new DatabaseHostRequest("game-postgres", "127.0.0.1", 5432, "pulsar_games", "host password", null, null, null, [], Engine: DatabaseEngine.Postgres)))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            host = (await created.Content.ReadFromJsonAsync<DatabaseHostView>(AccessScenario.Json, Ct))!;
+        }
+
+        using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(DatabaseGameManifest)))
+        {
+            await AccessScenario.EnsureSuccessAsync(imported);
+        }
+
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "db-game");
+        Guid server;
+        using (var created = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "db-game", null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            server = (await created.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!.Server.Id;
+        }
+
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "installed");
+        var shortId = (await ServerApi.GetAsync(admin, server))!.Server.ShortId;
+
+        // Its own files to begin with.
+        var list = await ListAsync(admin, server);
+        Assert.Equal(new GameDatabaseChoice(DatabaseEngine.Postgres, null, true), list.Game);
+        Assert.Null(agent.StoredSpec(server).Database);
+
+        // A database chosen: made on the host, sent to the node, not counted in the limit, not deleted while the game's.
+        using (var set = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        }
+
+        list = await ListAsync(admin, server);
+        var game = Assert.Single(list.Databases);
+        Assert.Equal(($"s{shortId}_game", true, DatabaseEngine.Postgres), (game.Name, game.ForGame, game.Engine));
+        Assert.Equal(game.Id, list.Game!.DatabaseId);
+        var password = await PasswordAsync(admin, server, game.Id);
+        Assert.Equal(password, hosts.Passwords[game.Name]);
+        var spec = agent.StoredSpec(server).Database!;
+        Assert.Equal(("postgres", host.Host, host.Port, game.Name, password), (spec.Engine, spec.Host, spec.Port, spec.Name, spec.Password));
+
+        await CreateDatabaseAsync(admin, server, host.Id, "main");
+        await CreateDatabaseAsync(admin, server, host.Id, "logs");
+        using (var third = await admin.PostAsync($"/api/v1/servers/{server}/databases", new CreateDatabaseRequest(host.Id, "third")))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
+        }
+
+        using (var deleted = await admin.DeleteAsync($"/api/v1/servers/{server}/databases/{game.Id}"))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, deleted.StatusCode);
+            Assert.Contains("database.in_use_by_game", await deleted.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain(game.Name, hosts.Dropped);
+
+        // A new password reaches the node too.
+        using (var rotated = await admin.PostAsync($"/api/v1/servers/{server}/databases/{game.Id}/rotate-password"))
+        {
+            await AccessScenario.EnsureSuccessAsync(rotated);
+            password = (await rotated.Content.ReadFromJsonAsync<ServerDatabaseCredentials>(AccessScenario.Json, Ct))!.Password;
+        }
+
+        Assert.Equal(password, agent.StoredSpec(server).Database!.Password);
+
+        // Back on its own files: the database stays (with its data), and is the game's again when chosen again.
+        using (var back = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, back.StatusCode);
+        }
+
+        Assert.Null(agent.StoredSpec(server).Database);
+        list = await ListAsync(admin, server);
+        Assert.Null(list.Game!.DatabaseId);
+        Assert.False(list.Databases.Single(d => d.Id == game.Id).ForGame);
+        using (var again = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        }
+
+        Assert.Equal(game.Id, (await ListAsync(admin, server)).Game!.DatabaseId);
+        Assert.Equal(game.Name, agent.StoredSpec(server).Database!.Name);
+        Assert.Single(hosts.Created, name => name == game.Name); // made once
+
+        // A host of another engine is not the game's; nor is a game that takes none; nor is a clone made while it has one.
+        using (var back = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, back.StatusCode);
+        }
+
+        DatabaseHostView mysql;
+        using (var created = await admin.PostAsync("/api/v1/database-hosts",
+                   new DatabaseHostRequest("game-mysql", "127.0.0.1", 3306, "pulsar", "host password", null, null, null, [])))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            mysql = (await created.Content.ReadFromJsonAsync<DatabaseHostView>(AccessScenario.Json, Ct))!;
+        }
+
+        using (var mismatch = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(mysql.Id)))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, mismatch.StatusCode);
+            Assert.Contains("database.engine_mismatch", await mismatch.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        var plain = (await ServerApi.CreateAsync(admin, node.Node.Id, "db-plain")).Server.Id;
+        await ServerApi.WaitForAsync(admin, plain, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "installed");
+        Assert.Null((await ListAsync(admin, plain)).Game);
+        using (var unsupported = await admin.PutAsync($"/api/v1/servers/{plain}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, unsupported.StatusCode);
+            Assert.Contains("database.game_unsupported", await unsupported.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        using (var set = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        }
+
+        using (var clone = await admin.PostAsync($"/api/v1/servers/{server}/clone", new { nodeId = node.Node.Id, name = "db-game copy" }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, clone.StatusCode);
+            Assert.Contains("server.clone_game_database", await clone.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        // Audited, never with a password; the server's deletion drops them all.
+        var changes = await AuditAsync(AuditActions.Server.GameDatabaseChanged, server);
+        Assert.NotEmpty(changes);
+        Assert.All(changes, e => Assert.DoesNotContain(password, e, StringComparison.Ordinal));
+        await DeleteServerAsync(admin, server);
+        await DeleteServerAsync(admin, plain);
+        Assert.Contains(game.Name, hosts.Dropped);
+    }
+
+    private static async Task<ServerDatabaseList> ListAsync(PanelClient client, Guid server) =>
+        (await client.Http.GetFromJsonAsync<ServerDatabaseList>(new Uri($"/api/v1/servers/{server}/databases", UriKind.Relative), AccessScenario.Json, Ct))!;
+
+    private static async Task<string> PasswordAsync(PanelClient client, Guid server, Guid database)
+    {
+        using var response = await client.GetAsync($"/api/v1/servers/{server}/databases/{database}/password");
+        await AccessScenario.EnsureSuccessAsync(response);
+        return (await response.Content.ReadFromJsonAsync<ServerDatabaseCredentials>(AccessScenario.Json, Ct))!.Password;
+    }
+
     private static ServerDatabases DatabasesWith(IServiceProvider services, IDatabaseHostClient client) => new(
         services.GetRequiredService<IPulsarDbContext>(), services.GetRequiredService<DatabaseHosts>(), services.GetRequiredService<IDatabaseSecretProtector>(),
-        client, services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), TimeProvider.System,
-        NullLogger<ServerDatabases>.Instance);
+        client, services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), services.GetRequiredService<IAgentConnections>(),
+        services.GetRequiredService<AgentSessionStore>(), TimeProvider.System, NullLogger<ServerDatabases>.Instance);
 
     /// <summary>A host client whose every call fails as given, counting them.</summary>
     private sealed class FailingClient(Exception failure) : IDatabaseHostClient
@@ -895,6 +1076,49 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
 
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             return await base.CheckAsync(host, cancellationToken);
+        }
+    }
+
+    /// <summary>A PostgreSQL-like host that keeps what it was asked to make, drop and set.</summary>
+    private sealed class GameHostClient : RecordingClientBase
+    {
+        public List<string> Created { get; } = [];
+
+        public List<string> Dropped { get; } = [];
+
+        public Dictionary<string, string> Passwords { get; } = [];
+
+        public override Task<string> CheckAsync(DatabaseHostConnection host, CancellationToken cancellationToken) => Task.FromResult("PostgreSQL 18.6");
+
+        public override Task CreateAsync(DatabaseHostConnection host, string name, string userHost, string password, CancellationToken cancellationToken)
+        {
+            lock (Created)
+            {
+                Created.Add(name);
+                Passwords[name] = password;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public override Task DropAsync(DatabaseHostConnection host, string name, string userHost, CancellationToken cancellationToken)
+        {
+            lock (Created)
+            {
+                Dropped.Add(name);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public override Task SetPasswordAsync(DatabaseHostConnection host, string name, string userHost, string password, CancellationToken cancellationToken)
+        {
+            lock (Created)
+            {
+                Passwords[name] = password;
+            }
+
+            return Task.CompletedTask;
         }
     }
 

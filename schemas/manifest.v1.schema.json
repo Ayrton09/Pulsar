@@ -35,7 +35,25 @@
         "query": { "$ref": "#/$defs/QueryDefinition" },
         "addons": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/AddonDefinition" }, "description": "Mods the game supports, installed on request." },
         "commands": { "$ref": "#/$defs/CommandsDefinition" },
-        "mods": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/ModSourceDefinition" }, "description": "Catalogs of mods the panel installs files from (Pulsar 1.0.9)." }
+        "mods": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/ModSourceDefinition" }, "description": "Catalogs of mods the panel installs files from (Pulsar 1.0.9)." },
+        "database": { "$ref": "#/$defs/GameDatabaseDefinition" }
+      }
+    },
+    "GameDatabaseDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "environment"],
+      "description": "A database server the game can keep its data in instead of its own files (Pulsar 1.0.37): a server may be given one of the panel's databases of this engine, and then starts with these environment variables too. Without one, the game runs as it would without this section.",
+      "properties": {
+        "engine": { "enum": ["postgres"], "description": "postgres: PostgreSQL (the only one for now)." },
+        "environment": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" },
+          "additionalProperties": { "type": "string", "maxLength": 1024 },
+          "description": "Only {{database.host}}, {{database.port}}, {{database.name}}, {{database.user}} and {{database.password}} go in these values; the runtime's environment may not set the same names."
+        }
       }
     },
     "AddonDefinition": {

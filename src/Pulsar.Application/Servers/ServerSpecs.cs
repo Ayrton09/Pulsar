@@ -1,8 +1,11 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Databases;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Servers;
 using Pulsar.Manifests;
@@ -17,7 +20,7 @@ public sealed record PortNumberAllocations(IReadOnlyDictionary<string, Guid?> Po
 /// manifest, and the runtime spec the agent receives (docs/architecture/03). Secret values are decrypted only here,
 /// right before they are signed into a command.
 /// </summary>
-public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protector)
+public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protector, IDatabaseSecretProtector databaseSecrets)
 {
     private const string Platform = ManifestValidator.WindowsX64;
 
@@ -46,7 +49,42 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
             server.RestartOnCrash && !server.IsSuspended,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
-            server.SteamBranch, server.RconPasswordProtected is { } rcon ? protector.Unprotect(rcon) : null);
+            server.SteamBranch, server.RconPasswordProtected is { } rcon ? protector.Unprotect(rcon) : null,
+            await GameDatabaseAsync(server, template, cancellationToken));
+    }
+
+    /// <summary>
+    /// Where the server's game keeps its data (Pulsar 1.0.37), for a manifest that takes a database of its host's engine;
+    /// null for the game's own files. A database whose password this panel cannot read stops the spec
+    /// (<see cref="DatabaseErrors.PasswordUnreadable"/>): the game must not start on its own files instead.
+    /// </summary>
+    private async Task<GameDatabaseSpec?> GameDatabaseAsync(Server server, GameTemplate template, CancellationToken cancellationToken)
+    {
+        if (server.GameDatabaseId is not { } id)
+        {
+            return null;
+        }
+
+        var found = await db.ServerDatabases.AsNoTracking().Where(d => d.Id == id)
+            .Join(db.DatabaseHosts.AsNoTracking(), d => d.HostId, h => h.Id, (d, h) => new { Database = d, Host = h })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (found is null || Parse(template).Database?.Engine != found.Host.Engine.Key())
+        {
+            return null;
+        }
+
+        string password;
+        try
+        {
+            password = databaseSecrets.Unprotect(found.Database.PasswordProtected);
+        }
+        catch (CryptographicException)
+        {
+            throw new DomainErrorException(DatabaseErrors.PasswordUnreadable);
+        }
+
+        var (host, port) = found.Host.AddressForServers;
+        return new GameDatabaseSpec(found.Host.Engine.Key(), host, port, found.Database.Name, password);
     }
 
     /// <summary>The server's caps for its agent; null without any (older agents never see the field then).</summary>

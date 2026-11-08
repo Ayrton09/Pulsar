@@ -277,4 +277,17 @@ public static class DatabaseErrors
 
     public static DomainError PasswordUnreadable { get; } =
         new("database.password_unreadable", "The password cannot be read with this panel's keys: rotate it to get a new one.");
+
+    public static DomainError GameUnsupported { get; } =
+        new("database.game_unsupported", "This server's game keeps its data in its own files only.");
+
+    /// <summary>The game takes a database of another engine than the host's.</summary>
+    public static DomainError EngineMismatch(DatabaseEngine engine) =>
+        new("database.engine_mismatch", $"This server's game takes a {(engine == DatabaseEngine.Postgres ? "PostgreSQL" : "MySQL or MariaDB")} database.");
+
+    public static DomainError GameDatabaseSet { get; } =
+        new("database.game_database_set", "The game uses a database on another host: put it back on its own files first.");
+
+    public static DomainError InUseByGame { get; } =
+        new("database.in_use_by_game", "The game keeps its data in this database: put it back on its own files first.");
 }

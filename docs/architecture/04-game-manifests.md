@@ -156,6 +156,10 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 `environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`; and every name starting with `DOTNET_`, `COR_` or `CORECLR_` (the .NET runtime's own settings, `DOTNET_STARTUP_HOOKS` and the profiler variables among them, load any DLL into the game). A `string` variable in a value needs a `pattern`, as anywhere else. Only the agent itself sets `DOTNET_ROOT` and `DOTNET_ROOT_X64`, to the server's `dotnet` folder, for a manifest whose install has a `dotnetRuntime` step (1.0.12, below).
 
+### Game database (1.0.37)
+
+`database` says the game can keep its data in a database server instead of its own files: `engine` (`postgres`, the only one for now: the panel backs it up with `pg_dump`, which its machine has, unlike MySQL's tools) and `environment`, 1 to 16 variables named as above (and none the runtime's `environment` sets) whose values hold literal text and `{{database.host}}`, `{{database.port}}`, `{{database.name}}`, `{{database.user}}` and `{{database.password}}` only; those placeholders go nowhere else. A server of the game may be given one of its databases, on a host of that engine (doc 07, "Databases"; `Server.GameDatabaseId`), and its agent then starts the game with these variables, set after the runtime's: the host's address for game servers, its port, the database and its role (the same name), and the password. Without one, the game runs as the section were not there (its own files: SQLite, say). The password goes in the environment, unlike a secret variable or the RCON password: it is the game's own database, whose only user is the game, and a configuration file would show it to whoever may read the server's files (doc 08, T27). It is among the plan's `Secrets`, masked in the console, and the spec that carries it is kept encrypted by the agent. Agents that announce `manifest.game_database` read the section (older ones refuse such a manifest), and the panel gives a server a database only through them. AO2027 sends PostgreSQL's settings as `COVERAO_BASEDEDATOS_*`, which the game reads instead of `Server.ini`'s `[BASEDEDATOS]`.
+
 ### Install/update steps (closed set)
 
 | Type | v1 | Parameters |
@@ -375,7 +379,7 @@ Bundled: every command and the three lists for Minecraft (`pardon`, `whitelist`,
 
 ### Reserved for later versions
 
-Additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.
+Additional `healthChecks`, managed `runtime`s, `linux-x64`. (A database from the game databases module is `database`, 1.0.37, above.)
 
 ## Validation
 

@@ -410,6 +410,7 @@
         "database_deleted": "删除了数据库",
         "database_password_rotated": "更改了数据库密码",
         "database_password_viewed": "查看了数据库密码",
+        "game_database_changed": "更改了服务器的游戏保存数据的位置",
         "steam_account_changed": "更改了服务器的 Steam 账户",
         "game_updates_changed": "更改了服务器跟随游戏更新的方式",
         "game_update_check_requested": "请求检查游戏更新",
@@ -671,6 +672,7 @@
       "invalid_settings": "请检查设置：{{detail}}",
       "variable_protected": "你无法更改该设置：{{detail}}",
       "limits_unsupported": "该节点的代理无法限制服务器的 CPU 和内存：请更新代理。",
+      "game_database_unsupported": "节点的代理无法给游戏数据库：请连接或更新它。",
       "limits_invalid": "CPU 限制范围为 1 到 100 %，内存限制范围为 128 MiB 到 1 TiB。",
       "template_not_newer": "服务器只能切换到其所属游戏模板的更新版本。",
       "template_invalid": "此服务器的游戏模板已无法通过本面板的检查：请将服务器切换到该模板的更新版本。",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "此游戏没有 RCON 控制台，因此没有 RCON 密码。",
       "rcon_password_unsupported": "节点的代理无法使用所选的 RCON 密码：请更新代理。",
       "rcon_password_reused": "该 RCON 密码已用于你的另一台服务器：一台服务器的插件可以进入另一台的控制台。请每台服务器使用不同的密码。",
-      "rcon_password_pending": "已保存，但节点尚未接收：下次从面板启动服务器时生效。"
+      "rcon_password_pending": "已保存，但节点尚未接收：下次从面板启动服务器时生效。",
+      "clone_game_database": "此服务器的游戏将数据保存在数据库中，克隆暂不复制它：请先把游戏改回自己的文件再克隆。"
     },
     "console": {
       "invalid_input": "命令必须是单行内容，且不含控制字符（如制表符）。",
@@ -864,7 +867,11 @@
       "limit_reached": "该服务器的数据库数量已达上限。",
       "host_not_allowed": "此服务器所在的节点无法使用该数据库主机。",
       "host_unreachable": "面板无法操作该数据库主机。管理员可在面板日志中查明原因。",
-      "password_unreadable": "无法用此面板的密钥读取该密码：请更改密码以获取新密码。"
+      "password_unreadable": "无法用此面板的密钥读取该密码：请更改密码以获取新密码。",
+      "game_unsupported": "此服务器的游戏只将数据保存在自己的文件中。",
+      "engine_mismatch": "此服务器的游戏使用的数据库类型与该主机不同。",
+      "game_database_set": "游戏正在使用另一台主机上的数据库：请先改回游戏自己的文件。",
+      "in_use_by_game": "游戏将数据保存在此数据库中：请先改回游戏自己的文件。"
     },
     "steamcmd": {
       "account_required": "只有拥有此游戏专用服务器的 Steam 账户才能下载它：请在服务器设置中选择一个。",
@@ -2386,6 +2393,7 @@
     "address": "地址",
     "created": "创建时间",
     "user": "用户 {{user}}",
+    "forGame": "游戏正在使用",
     "userName": "用户",
     "password": "密码",
     "onHost": "位于 {{host}} · 允许来自 {{from}} 的连接",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "删除 {{name}} 及其中的所有内容？此操作无法撤销。",
     "credentials": "{{name}} 的连接信息",
     "copyPassword": "复制密码",
-    "copied": "已复制。"
+    "copied": "已复制。",
+    "game": {
+      "title": "游戏的数据库",
+      "ownFiles": "游戏将数据保存在自己的文件中。",
+      "inDatabase": "游戏将数据保存在 {{host}} 上的 {{name}} 中。",
+      "choose": "游戏数据保存在",
+      "ownFilesOption": "游戏自己的文件",
+      "hostOption": "{{host}} 上的 {{engine}}",
+      "unsupported": "要给游戏数据库，节点的代理需要已连接并且是最新版本。",
+      "noHosts": "此服务器的节点没有可用的 {{engine}} 主机：管理员可在“数据库主机”中添加。",
+      "saved": "已保存：游戏从下次启动起使用它。",
+      "hint": "更改从游戏下次启动起生效。改回游戏自己的文件后，数据库连同数据仍保留在服务器的数据库中（重新计入上限）；再次选择它会使用这些数据。Pulsar 不会在游戏文件和数据库之间复制数据，只有游戏自己会这样做。"
+    }
   },
   "databaseHosts": {
     "title": "数据库主机",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，.NET 移植），从其 GitHub 发布版本安装。玩家使用同一发布版本中的游戏桌面应用 CoverAO，按服务器地址和“游戏”端口添加服务器来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。",
+      "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，.NET 移植），从其 GitHub 发布版本安装。玩家使用同一发布版本中的游戏桌面应用 CoverAO，按服务器地址和“游戏”端口添加服务器来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。角色和账户保存在游戏自己的 SQLite 文件中，或保存在服务器“数据库”标签页中选择的 PostgreSQL 数据库中；后者在首次启动时会接收 SQLite 文件中的角色。",
       "variables": {
         "maxUsers": {
           "label": "玩家上限",

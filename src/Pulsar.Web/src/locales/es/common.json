@@ -410,6 +410,7 @@
         "database_deleted": "Borró una base de datos",
         "database_password_rotated": "Cambió la contraseña de una base de datos",
         "database_password_viewed": "Vio la contraseña de una base de datos",
+        "game_database_changed": "Cambió dónde guarda sus datos el juego de un servidor",
         "steam_account_changed": "Cambió la cuenta de Steam de un servidor",
         "game_updates_changed": "Cambió cómo un servidor sigue las actualizaciones del juego",
         "game_update_check_requested": "Pidió revisar si hay una actualización del juego",
@@ -671,6 +672,7 @@
       "invalid_settings": "Revisá la configuración: {{detail}}",
       "variable_protected": "No podés cambiar esa opción: {{detail}}",
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
+      "game_database_unsupported": "El agente del nodo no puede darle una base al juego: conectalo o actualizalo.",
       "limits_invalid": "Un límite de CPU va de 1 a 100 %; uno de memoria, de 128 MiB a 1 TiB.",
       "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego.",
       "template_invalid": "La plantilla del juego de este servidor ya no pasa los controles de este panel: pasá el servidor a una versión más nueva.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "Este juego no tiene consola RCON, así que no tiene contraseña RCON.",
       "rcon_password_unsupported": "El agente del nodo no puede usar una contraseña RCON elegida: actualizá el agente.",
       "rcon_password_reused": "Esa contraseña RCON ya está elegida en otro de tus servidores: un plugin de uno entraría a la consola del otro. Usá una por servidor.",
-      "rcon_password_pending": "Guardada, pero el nodo todavía no la tomó: se aplica la próxima vez que arranques el servidor desde el panel."
+      "rcon_password_pending": "Guardada, pero el nodo todavía no la tomó: se aplica la próxima vez que arranques el servidor desde el panel.",
+      "clone_game_database": "El juego de este servidor guarda sus datos en una base, que un clon todavía no copia: volvé el juego a sus propios archivos para clonarlo."
     },
     "console": {
       "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones).",
@@ -864,7 +867,11 @@
       "limit_reached": "El servidor ya tiene todas las bases de datos que puede tener.",
       "host_not_allowed": "El nodo de este servidor no puede usar ese servidor de bases de datos.",
       "host_unreachable": "El panel no pudo trabajar con el servidor de bases de datos. Un administrador puede ver por qué en el registro del panel.",
-      "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
+      "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva.",
+      "game_unsupported": "El juego de este servidor guarda sus datos solo en sus propios archivos.",
+      "engine_mismatch": "El juego de este servidor usa una base de otro tipo que la de ese servidor de bases de datos.",
+      "game_database_set": "El juego usa una base en otro servidor de bases de datos: primero volvelo a sus propios archivos.",
+      "in_use_by_game": "El juego guarda sus datos en esta base: primero volvelo a sus propios archivos."
     },
     "steamcmd": {
       "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor.",
@@ -2386,6 +2393,7 @@
     "address": "Dirección",
     "created": "Creada",
     "user": "Usuario {{user}}",
+    "forGame": "La usa el juego",
     "userName": "Usuario",
     "password": "Contraseña",
     "onHost": "En {{host}} · conexiones desde {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "¿Borrar {{name}} y todo lo que tiene? No se puede deshacer.",
     "credentials": "Datos de conexión de {{name}}",
     "copyPassword": "Copiar contraseña",
-    "copied": "Copiada."
+    "copied": "Copiada.",
+    "game": {
+      "title": "Base de datos del juego",
+      "ownFiles": "El juego guarda sus datos en sus propios archivos.",
+      "inDatabase": "El juego guarda sus datos en {{name}}, en {{host}}.",
+      "choose": "Guardar los datos del juego en",
+      "ownFilesOption": "Los archivos propios del juego",
+      "hostOption": "{{engine}} en {{host}}",
+      "unsupported": "Para darle una base al juego, el agente del nodo tiene que estar conectado y actualizado.",
+      "noHosts": "No hay un servidor {{engine}} disponible para el nodo de este servidor: un administrador lo agrega en Servidores de bases de datos.",
+      "saved": "Guardado: el juego la usa desde su próximo arranque.",
+      "hint": "El cambio vale desde el próximo arranque del juego. Si volvés a los archivos propios del juego, la base queda, con sus datos, entre las del servidor (y vuelve a contar en su límite); si la elegís de nuevo, el juego usa esos datos. Pulsar no copia datos entre los archivos del juego y una base: solo lo que haga el juego mismo."
+    }
   },
   "databaseHosts": {
     "title": "Servidores de bases de datos",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, el mundo de Argentum Online en un servidor moderno (CoverAO, su port a .NET), instalado desde sus releases de GitHub. Se juega con la app de escritorio del juego, CoverAO, de los mismos releases: los jugadores agregan el servidor por su dirección y el puerto Juego. Los game masters y el resto de la configuración están en CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, el mundo de Argentum Online en un servidor moderno (CoverAO, su port a .NET), instalado desde sus releases de GitHub. Se juega con la app de escritorio del juego, CoverAO, de los mismos releases: los jugadores agregan el servidor por su dirección y el puerto Juego. Los game masters y el resto de la configuración están en CoverAO-win-x64/Server.ini. Los personajes y las cuentas están en el archivo SQLite propio del juego, o en una base PostgreSQL que se elige en la pestaña Bases de datos del servidor, que toma los personajes del archivo SQLite en su primer arranque.",
       "variables": {
         "maxUsers": {
           "label": "Límite de jugadores",

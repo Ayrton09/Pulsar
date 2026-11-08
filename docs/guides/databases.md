@@ -113,6 +113,22 @@ Resources; from 0 to 50, and an empty field keeps the current limit).
 Deleting a server drops its databases; if their host cannot be reached then, the audit log says which database was left
 behind, to drop by hand.
 
+## The game's own database
+
+Some games can keep their data in a database server instead of their own files (AO2027 in PostgreSQL instead of its
+SQLite file). For those, the server's **Databases** tab opens with **The game's database**: with
+`server.databases.manage`, choose between the game's own files and a host of the kind the game takes, and save. The
+first time, Pulsar makes the database `s<short id>_game` on that host; the game gets its address, name, user and
+password at its next start (in its environment, not in a file), so there is nothing to copy into its configuration.
+That database is not counted in the server's limit and cannot be deleted while the game uses it. Going back to the
+game's own files keeps it, with its data, among the server's databases (counted again); choosing that host again uses
+it as it was. Pulsar copies no data between the game's files and the database: AO2027 itself takes its SQLite file's
+characters into an empty database at its first start on it. The node's agent must be connected and up to date
+(Pulsar 1.0.37) for the change, which reaches it at once.
+
+A clone of a server whose game uses a database is refused for now; moving the server to another node is allowed when the
+database host serves that node too.
+
 ## Backups
 
 Pulsar's backups hold the server's files, not its databases. Back up your database server with its own tools

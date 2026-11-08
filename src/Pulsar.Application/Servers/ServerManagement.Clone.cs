@@ -72,6 +72,12 @@ public sealed partial class ServerManagement
             return ServerErrors.MustBeStopped;
         }
 
+        // Its game's data is in a database (1.0.37), which a copy of its files does not carry.
+        if (source.GameDatabaseId is not null)
+        {
+            return ServerErrors.CloneGameDatabase;
+        }
+
         if (Connection(nodeId) is not { } target || Connection(source.NodeId) is not { } from)
         {
             return NodeErrors.NotConnected;

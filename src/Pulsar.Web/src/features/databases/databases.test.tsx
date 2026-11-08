@@ -63,6 +63,7 @@ const main: Schemas['ServerDatabaseView'] = {
   userHost: '%',
   createdAt: '2026-10-09T12:00:00Z',
   passwordChangedAt: '2026-10-09T12:00:00Z',
+  forGame: false,
 };
 
 function list(databases: Schemas['ServerDatabaseView'][], limit = 2): Schemas['ServerDatabaseList'] {
@@ -117,6 +118,66 @@ describe('databases tab', () => {
     const table = await screen.findByRole('table', { name: 'Databases' });
     expect(table).toHaveTextContent('PostgreSQL on Panel PostgreSQL');
     expect(table).not.toHaveTextContent('connections from');
+  });
+
+  it('lets managers keep the game data in a PostgreSQL database, and back in its own files', async () => {
+    const bodies: unknown[] = [];
+    const pgHostId = '0192f1a0-0000-7000-8000-0000000000d2';
+    const gameDatabase: Schemas['ServerDatabaseView'] = {
+      ...main,
+      id: '0192f1a0-0000-7000-8000-0000000000c9',
+      name: 'sk3x7m2qa_game',
+      userName: 'sk3x7m2qa_game',
+      engine: 'postgres',
+      hostId: pgHostId,
+      host: 'Panel PostgreSQL',
+      port: 5432,
+      forGame: true,
+    };
+    let current: string | null = null;
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/databases`]: () =>
+        json({
+          limit: 2,
+          databases: current ? [gameDatabase] : [],
+          hosts: [
+            { id: hostId, name: 'LAN MariaDB', engine: 'mysql' },
+            { id: pgHostId, name: 'Panel PostgreSQL', engine: 'postgres' },
+          ],
+          game: { engine: 'postgres', databaseId: current, supported: true },
+        }),
+      [`PUT /api/v1/servers/${serverId}/databases/game`]: async (request) => {
+        const body = (await request.json()) as { hostId: string | null };
+        bodies.push(body);
+        current = body.hostId ? gameDatabase.id : null;
+        return new Response(null, { status: 204 });
+      },
+    });
+
+    renderAt(`/servers/${serverId}?tab=databases`);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('The game keeps its data in its own files.')).toBeInTheDocument();
+    const choice = screen.getByLabelText("Keep the game's data in");
+    // Only hosts of the engine the game takes.
+    expect(within(choice).queryByRole('option', { name: /LAN MariaDB/ })).not.toBeInTheDocument();
+    await user.selectOptions(choice, 'PostgreSQL on Panel PostgreSQL');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText('The game keeps its data in sk3x7m2qa_game, on Panel PostgreSQL.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Used by the game')).toBeInTheDocument();
+    // Its database is not counted, nor deleted while the game's.
+    expect(screen.getByText('0 of 2 databases')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Keep the game's data in"), "The game's own files");
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('The game keeps its data in its own files.')).toBeInTheDocument();
+    expect(bodies).toEqual([{ hostId: pgHostId }, { hostId: null }]);
   });
 
   it('is not there without the permission to see databases', async () => {

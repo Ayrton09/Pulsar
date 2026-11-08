@@ -14041,6 +14041,89 @@
         }
       }
     },
+    "/api/v1/servers/{id}/databases/game": {
+      "put": {
+        "tags": [
+          "Databases"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameDatabaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
     "/api/v1/database-hosts": {
       "get": {
         "tags": [
@@ -19200,6 +19283,44 @@
           }
         }
       },
+      "GameDatabaseChoice": {
+        "required": [
+          "engine",
+          "databaseId",
+          "supported"
+        ],
+        "type": "object",
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/DatabaseEngine"
+          },
+          "databaseId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GameDatabaseRequest": {
+        "required": [
+          "hostId"
+        ],
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "GameSaveResult": {
         "enum": [
           "confirmed",
@@ -22479,6 +22600,16 @@
             "items": {
               "$ref": "#/components/schemas/DatabaseHostChoice"
             }
+          },
+          "game": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GameDatabaseChoice"
+              }
+            ]
           }
         }
       },
@@ -22535,6 +22666,10 @@
           "passwordChangedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "forGame": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

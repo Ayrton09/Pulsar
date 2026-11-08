@@ -317,15 +317,17 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
             .Single(t => t.Key == "ao2027" && t.Source == TemplateSource.Bundled);
 
-        // Before 1.0.35 an agent would run the game answering on the node only, and an update would put back Server.ini's defaults.
+        // Before 1.0.35 an agent would run the game answering on the node only, and an update would put back Server.ini's defaults;
+        // before 1.0.37 it would refuse the manifest's database section (template 1.0.1).
         string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands,
             AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall];
         foreach (var (name, capabilities, refused) in new[]
         {
             ("ao2027-old", older, true),
-            ("ao2027-no-keep", [.. older, AgentCapabilities.HttpUrls], true),
-            ("ao2027-no-urls", [.. older, AgentCapabilities.ReleaseKeep], true),
-            ("ao2027-new", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep], false),
+            ("ao2027-no-keep", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.GameDatabase], true),
+            ("ao2027-no-urls", [.. older, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase], true),
+            ("ao2027-no-database", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep], true),
+            ("ao2027-new", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase], false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);
@@ -352,7 +354,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
         await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings,
             AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands, AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall,
-            AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep]);
+            AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase]);
         await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.5", "7666-7669");
         await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.6", "7666-7669");
 

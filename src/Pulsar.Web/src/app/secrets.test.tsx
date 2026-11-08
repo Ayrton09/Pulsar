@@ -252,6 +252,7 @@ describe('one-time secrets', () => {
       userHost: '%',
       createdAt: '2026-10-09T12:00:00Z',
       passwordChangedAt: '2026-10-09T12:00:00Z',
+      forGame: false,
     };
     fakeApi({
       'GET /api/v1/auth/session': session({

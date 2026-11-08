@@ -410,6 +410,7 @@
         "database_deleted": "Suppression d'une base de données",
         "database_password_rotated": "Modification du mot de passe d'une base de données",
         "database_password_viewed": "Consultation du mot de passe d'une base de données",
+        "game_database_changed": "A changé où le jeu d'un serveur garde ses données",
         "steam_account_changed": "Modification du compte Steam d'un serveur",
         "game_updates_changed": "A changé la façon dont un serveur suit les mises à jour du jeu",
         "game_update_check_requested": "A demandé de vérifier une mise à jour du jeu",
@@ -671,6 +672,7 @@
       "invalid_settings": "Vérifiez les paramètres : {{detail}}",
       "variable_protected": "Vous ne pouvez pas modifier ce paramètre : {{detail}}",
       "limits_unsupported": "L'agent du nœud ne peut pas limiter le CPU et la mémoire d'un serveur : mettez l'agent à jour.",
+      "game_database_unsupported": "L'agent du nœud ne peut pas donner de base au jeu : connectez-le ou mettez-le à jour.",
       "limits_invalid": "Une limite de CPU va de 1 à 100 %, une limite de mémoire de 128 Mio à 1 Tio.",
       "template_not_newer": "Un serveur ne peut passer qu'à une version plus récente du modèle de son propre jeu.",
       "template_invalid": "Le modèle de jeu de ce serveur ne passe plus les vérifications de ce panneau : passez le serveur à une version plus récente du modèle.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "Ce jeu n'a pas de console RCON, donc pas de mot de passe RCON.",
       "rcon_password_unsupported": "L'agent du nœud ne peut pas utiliser un mot de passe RCON choisi : mettez l'agent à jour.",
       "rcon_password_reused": "Ce mot de passe RCON est déjà choisi pour un autre de vos serveurs : un plugin de l'un entrerait dans la console de l'autre. Utilisez-en un par serveur.",
-      "rcon_password_pending": "Enregistré, mais le nœud ne l'a pas encore pris : il s'applique au prochain démarrage depuis le panel."
+      "rcon_password_pending": "Enregistré, mais le nœud ne l'a pas encore pris : il s'applique au prochain démarrage depuis le panel.",
+      "clone_game_database": "Le jeu de ce serveur garde ses données dans une base, qu'un clone ne copie pas encore : remettez le jeu sur ses propres fichiers pour le cloner."
     },
     "console": {
       "invalid_input": "Une commande tient sur une seule ligne, sans caractères de contrôle (comme les tabulations).",
@@ -864,7 +867,11 @@
       "limit_reached": "Le serveur a atteint le nombre maximal de bases de données autorisé.",
       "host_not_allowed": "Le nœud de ce serveur ne peut pas utiliser cet hôte de bases de données.",
       "host_unreachable": "Le panneau n'a pas pu travailler avec l'hôte de bases de données. Un administrateur trouvera la cause dans le journal du panneau.",
-      "password_unreadable": "Le mot de passe ne peut pas être lu avec les clés de ce panneau : modifiez-le pour en obtenir un nouveau."
+      "password_unreadable": "Le mot de passe ne peut pas être lu avec les clés de ce panneau : modifiez-le pour en obtenir un nouveau.",
+      "game_unsupported": "Le jeu de ce serveur garde ses données dans ses propres fichiers uniquement.",
+      "engine_mismatch": "Le jeu de ce serveur utilise une base d'un autre type que celle de cet hôte.",
+      "game_database_set": "Le jeu utilise une base sur un autre hôte : remettez-le d'abord sur ses propres fichiers.",
+      "in_use_by_game": "Le jeu garde ses données dans cette base : remettez-le d'abord sur ses propres fichiers."
     },
     "steamcmd": {
       "account_required": "Seul un compte Steam qui possède le serveur dédié de ce jeu peut le télécharger : choisissez-en un dans les paramètres du serveur.",
@@ -2386,6 +2393,7 @@
     "address": "Adresse",
     "created": "Créée",
     "user": "Utilisateur {{user}}",
+    "forGame": "Utilisée par le jeu",
     "userName": "Utilisateur",
     "password": "Mot de passe",
     "onHost": "Sur {{host}} · connexions depuis {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "Supprimer {{name}} et tout son contenu ? Cette action est irréversible.",
     "credentials": "Informations de connexion de {{name}}",
     "copyPassword": "Copier le mot de passe",
-    "copied": "Copié."
+    "copied": "Copié.",
+    "game": {
+      "title": "Base de données du jeu",
+      "ownFiles": "Le jeu garde ses données dans ses propres fichiers.",
+      "inDatabase": "Le jeu garde ses données dans {{name}}, sur {{host}}.",
+      "choose": "Garder les données du jeu dans",
+      "ownFilesOption": "Les fichiers du jeu",
+      "hostOption": "{{engine}} sur {{host}}",
+      "unsupported": "Pour donner une base au jeu, l'agent du nœud doit être connecté et à jour.",
+      "noHosts": "Aucun hôte {{engine}} n'est disponible pour le nœud de ce serveur : un administrateur en ajoute un dans Hôtes de bases de données.",
+      "saved": "Enregistré : le jeu l'utilise à son prochain démarrage.",
+      "hint": "Un changement prend effet au prochain démarrage du jeu. Revenir aux fichiers du jeu garde la base, avec ses données, parmi celles du serveur (comptée de nouveau dans sa limite) ; la choisir de nouveau utilise ces données. Pulsar ne copie aucune donnée entre les fichiers du jeu et une base : seulement ce que le jeu fait lui-même."
+    }
   },
   "databaseHosts": {
     "title": "Hôtes de bases de données",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, le monde d'Argentum Online sur un serveur moderne (CoverAO, son portage en .NET), installé depuis ses versions GitHub. On joue avec l'application de bureau du jeu, CoverAO, des mêmes versions : les joueurs y ajoutent le serveur par son adresse et le port Jeu. Les maîtres du jeu et les autres réglages sont dans CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, le monde d'Argentum Online sur un serveur moderne (CoverAO, son portage en .NET), installé depuis ses versions GitHub. On joue avec l'application de bureau du jeu, CoverAO, des mêmes versions : les joueurs y ajoutent le serveur par son adresse et le port Jeu. Les maîtres du jeu et les autres réglages sont dans CoverAO-win-x64/Server.ini. Les personnages et les comptes sont dans le fichier SQLite du jeu, ou dans une base PostgreSQL choisie dans l'onglet Bases de données du serveur, qui reprend les personnages du fichier SQLite à son premier démarrage.",
       "variables": {
         "maxUsers": {
           "label": "Limite de joueurs",

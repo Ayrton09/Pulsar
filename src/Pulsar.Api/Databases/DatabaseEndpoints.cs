@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Databases;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Databases;
@@ -11,6 +12,9 @@ namespace Pulsar.Api.Databases;
 
 /// <param name="Name">What follows the server's prefix: 1 to 20 lowercase letters, digits and underscores.</param>
 public sealed record CreateDatabaseRequest(Guid HostId, [property: Required, StringLength(ServerDatabase.MaxSuffixLength)] string Name);
+
+/// <param name="HostId">The database host its game's database is on (made there the first time); null: the game's own files.</param>
+public sealed record GameDatabaseRequest(Guid? HostId);
 
 /// <param name="Password">Required to create; leave it out on an update to keep the current one.</param>
 /// <param name="ServerAddress">Where game servers connect, when not <paramref name="Host"/> (e.g. 127.0.0.1 for a database on the node).</param>
@@ -56,12 +60,11 @@ public static class DatabaseEndpoints
         databases.MapGet("/{databaseId:guid}/password", async (Guid id, Guid databaseId, ServerDatabases d, HttpResponse response, CancellationToken ct) =>
                 NoStore(response, (await d.PasswordAsync(new ServerId(id), databaseId, ct)).ToHttp()))
             .RequirePermission(Permissions.Server.DatabasesManage);
-        databases.MapPost("/{databaseId:guid}/rotate-password", async (Guid id, Guid databaseId, ServerDatabases d, HttpResponse response,
-                CancellationToken ct) => NoStore(response, (await d.RotatePasswordAsync(new ServerId(id), databaseId, ct)).ToHttp()))
-            .RequirePermission(Permissions.Server.DatabasesManage);
+        databases.MapPost("/{databaseId:guid}/rotate-password", RotatePasswordAsync).RequirePermission(Permissions.Server.DatabasesManage);
         databases.MapDelete("/{databaseId:guid}", async (Guid id, Guid databaseId, ServerDatabases d, CancellationToken ct) =>
                 (await d.DeleteAsync(new ServerId(id), databaseId, ct)).ToHttp())
             .RequirePermission(Permissions.Server.DatabasesManage);
+        databases.MapPut("/game", SetGameAsync).RequirePermission(Permissions.Server.DatabasesManage);
 
         var hosts = api.MapGroup("/database-hosts").WithTags("Databases").RequirePermission(Permissions.Settings.Manage);
         hosts.MapGet("/", async (DatabaseHosts h, CancellationToken ct) => TypedResults.Ok(await h.ListAsync(ct)));
@@ -81,6 +84,46 @@ public static class DatabaseEndpoints
         return result.IsSuccess
             ? TypedResults.Created($"/api/v1/servers/{id}/databases/{result.Value.Database.Id}", result.Value)
             : ApiProblems.FromDomainError(result.Error!);
+    }
+
+    /// <summary>
+    /// Where the server's game keeps its data from its next start (1.0.37); its node gets the server's spec at once (when
+    /// it is connected; otherwise when it connects).
+    /// </summary>
+    private static async Task<Results<NoContent, ProblemHttpResult>> SetGameAsync(Guid id, GameDatabaseRequest request, ServerDatabases databases,
+        ServerManagement servers, CancellationToken ct)
+    {
+        var set = await databases.SetGameDatabaseAsync(new ServerId(id), request.HostId, ct);
+        if (!set.IsSuccess)
+        {
+            return ApiProblems.FromDomainError(set.Error!);
+        }
+
+        if (set.Value)
+        {
+            await servers.SyncSpecAsync(new ServerId(id), CancellationToken.None);
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>A new password for the game's database reaches its node with the server's spec (the game uses it from its next start).</summary>
+    private static async Task<Results<Ok<ServerDatabaseCredentials>, ProblemHttpResult>> RotatePasswordAsync(Guid id, Guid databaseId,
+        ServerDatabases databases, ServerManagement servers, HttpResponse response, CancellationToken ct)
+    {
+        var rotated = await databases.RotatePasswordAsync(new ServerId(id), databaseId, ct);
+        NoStore(response, rotated);
+        if (!rotated.IsSuccess)
+        {
+            return ApiProblems.FromDomainError(rotated.Error!);
+        }
+
+        if (rotated.Value.Database.ForGame)
+        {
+            await servers.SyncSpecAsync(new ServerId(id), CancellationToken.None);
+        }
+
+        return TypedResults.Ok(rotated.Value);
     }
 
     /// <summary>Answers that carry a password are kept by no cache (the browser's included).</summary>

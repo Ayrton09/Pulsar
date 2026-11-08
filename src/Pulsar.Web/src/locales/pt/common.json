@@ -410,6 +410,7 @@
         "database_deleted": "Excluiu um banco de dados",
         "database_password_rotated": "Alterou a senha de um banco de dados",
         "database_password_viewed": "Viu a senha de um banco de dados",
+        "game_database_changed": "Mudou onde o jogo de um servidor guarda seus dados",
         "steam_account_changed": "Alterou a conta Steam de um servidor",
         "game_updates_changed": "Mudou como um servidor segue as atualizações do jogo",
         "game_update_check_requested": "Pediu para verificar uma atualização do jogo",
@@ -671,6 +672,7 @@
       "invalid_settings": "Verifique as configurações: {{detail}}",
       "variable_protected": "Você não pode alterar essa configuração: {{detail}}",
       "limits_unsupported": "O agente do nó não pode limitar a CPU e a memória de um servidor: atualize o agente.",
+      "game_database_unsupported": "O agente do nó não pode dar um banco ao jogo: conecte-o ou atualize-o.",
       "limits_invalid": "Um limite de CPU vai de 1 a 100 %, e um limite de memória de 128 MiB a 1 TiB.",
       "template_not_newer": "Um servidor só pode passar para uma versão mais nova do modelo do seu próprio jogo.",
       "template_invalid": "O modelo de jogo deste servidor não passa mais nas verificações deste painel: mude o servidor para uma versão mais nova dele.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "Este jogo não tem console RCON, então não tem senha RCON.",
       "rcon_password_unsupported": "O agente do nó não pode usar uma senha RCON escolhida: atualize o agente.",
       "rcon_password_reused": "Essa senha RCON já está escolhida em outro de seus servidores: um plugin de um entraria no console do outro. Use uma por servidor.",
-      "rcon_password_pending": "Salva, mas o nó ainda não a recebeu: ela vale a partir da próxima inicialização pelo painel."
+      "rcon_password_pending": "Salva, mas o nó ainda não a recebeu: ela vale a partir da próxima inicialização pelo painel.",
+      "clone_game_database": "O jogo deste servidor guarda seus dados em um banco, que um clone ainda não copia: volte o jogo para os próprios arquivos para cloná-lo."
     },
     "console": {
       "invalid_input": "Um comando é uma linha sem caracteres de controle (como tabulações).",
@@ -864,7 +867,11 @@
       "limit_reached": "O servidor já tem o máximo de bancos de dados permitido.",
       "host_not_allowed": "O nó deste servidor não pode usar esse host de banco de dados.",
       "host_unreachable": "O painel não conseguiu trabalhar com o host de banco de dados. Um administrador encontra o motivo no log do painel.",
-      "password_unreadable": "A senha não pode ser lida com as chaves deste painel: altere-a para obter uma nova."
+      "password_unreadable": "A senha não pode ser lida com as chaves deste painel: altere-a para obter uma nova.",
+      "game_unsupported": "O jogo deste servidor guarda seus dados apenas nos próprios arquivos.",
+      "engine_mismatch": "O jogo deste servidor usa um banco de outro tipo que o desse host.",
+      "game_database_set": "O jogo usa um banco em outro host: primeiro volte-o para os próprios arquivos.",
+      "in_use_by_game": "O jogo guarda seus dados neste banco: primeiro volte-o para os próprios arquivos."
     },
     "steamcmd": {
       "account_required": "Somente uma conta Steam que possui o servidor dedicado deste jogo pode baixá-lo: escolha uma nas configurações do servidor.",
@@ -2386,6 +2393,7 @@
     "address": "Endereço",
     "created": "Criado",
     "user": "Usuário {{user}}",
+    "forGame": "Usado pelo jogo",
     "userName": "Usuário",
     "password": "Senha",
     "onHost": "Em {{host}} · conexões de {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "Excluir {{name}} e tudo o que há nele? Isso não pode ser desfeito.",
     "credentials": "Dados de conexão de {{name}}",
     "copyPassword": "Copiar senha",
-    "copied": "Copiado."
+    "copied": "Copiado.",
+    "game": {
+      "title": "Banco de dados do jogo",
+      "ownFiles": "O jogo guarda seus dados nos próprios arquivos.",
+      "inDatabase": "O jogo guarda seus dados em {{name}}, em {{host}}.",
+      "choose": "Guardar os dados do jogo em",
+      "ownFilesOption": "Os arquivos do próprio jogo",
+      "hostOption": "{{engine}} em {{host}}",
+      "unsupported": "Para dar um banco ao jogo, o agente do nó precisa estar conectado e atualizado.",
+      "noHosts": "Nenhum host {{engine}} está disponível para o nó deste servidor: um administrador adiciona um em Hosts de banco de dados.",
+      "saved": "Salvo: o jogo o usa a partir da próxima inicialização.",
+      "hint": "Uma mudança vale a partir da próxima inicialização do jogo. Voltar aos arquivos do jogo mantém o banco, com seus dados, entre os do servidor (contado de novo no limite); escolhê-lo de novo usa esses dados. O Pulsar não copia dados entre os arquivos do jogo e um banco: só o que o próprio jogo fizer."
+    }
   },
   "databaseHosts": {
     "title": "Hosts de banco de dados",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, o mundo de Argentum Online em um servidor moderno (CoverAO, seu port para .NET), instalado a partir das releases no GitHub. Joga-se com o app de desktop do jogo, CoverAO, das mesmas releases: os jogadores adicionam o servidor pelo endereço e pela porta Jogo. Os game masters e o restante da configuração ficam em CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, o mundo de Argentum Online em um servidor moderno (CoverAO, seu port para .NET), instalado a partir das releases no GitHub. Joga-se com o app de desktop do jogo, CoverAO, das mesmas releases: os jogadores adicionam o servidor pelo endereço e pela porta Jogo. Os game masters e o restante da configuração ficam em CoverAO-win-x64/Server.ini. Personagens e contas ficam no arquivo SQLite do próprio jogo, ou em um banco PostgreSQL escolhido na aba Bancos de dados do servidor, que recebe os personagens do arquivo SQLite na primeira inicialização.",
       "variables": {
         "maxUsers": {
           "label": "Limite de jogadores",

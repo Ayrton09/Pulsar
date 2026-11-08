@@ -177,6 +177,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.GitHubReleaseInstall;
             yield return AgentCapabilities.ReleaseKeep;
             yield return AgentCapabilities.HttpUrls;
+            yield return AgentCapabilities.GameDatabase;
             yield return AgentCapabilities.DotnetRuntime;
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
@@ -2072,7 +2073,9 @@ public sealed partial class ServerHost(
 
     private static ServerBinding Binding(ServerRuntimeSpec spec, string? rconPassword) => new(spec.ShortId, spec.Variables,
         spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments, rconPassword,
-        Addons: spec.Addons);
+        Addons: spec.Addons,
+        // The game's database (Pulsar 1.0.37): its user is the database's namesake.
+        Database: spec.Database is { } database ? new GameDatabaseBinding(database.Host, database.Port, database.Name, database.Name, database.Password) : null);
 
     /// <summary>32 random letters and digits (about 190 bits): RCON is exposed on the game's TCP port (docs/architecture/08, T18).</summary>
     private static string NewRconPassword() =>

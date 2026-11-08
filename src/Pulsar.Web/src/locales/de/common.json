@@ -410,6 +410,7 @@
         "database_deleted": "Datenbank gelöscht",
         "database_password_rotated": "Passwort einer Datenbank geändert",
         "database_password_viewed": "Passwort einer Datenbank angezeigt",
+        "game_database_changed": "Hat geändert, wo das Spiel eines Servers seine Daten speichert",
         "steam_account_changed": "Steam-Konto eines Servers geändert",
         "game_updates_changed": "Hat geändert, wie ein Server Spiel-Updates folgt",
         "game_update_check_requested": "Hat eine Prüfung auf ein Spiel-Update angefordert",
@@ -671,6 +672,7 @@
       "invalid_settings": "Prüfen Sie die Einstellungen: {{detail}}",
       "variable_protected": "Sie können diese Einstellung nicht ändern: {{detail}}",
       "limits_unsupported": "Der Agent des Nodes kann CPU und Speicher eines Servers nicht begrenzen: Aktualisieren Sie den Agent.",
+      "game_database_unsupported": "Der Agent des Nodes kann dem Spiel keine Datenbank geben: Verbinden oder aktualisieren Sie ihn.",
       "limits_invalid": "Ein CPU-Limit reicht von 1 bis 100 %, ein Speicherlimit von 128 MiB bis 1 TiB.",
       "template_not_newer": "Ein Server kann nur auf eine neuere Version der Vorlage seines eigenen Spiels umgestellt werden.",
       "template_invalid": "Die Spielvorlage dieses Servers besteht die Prüfungen dieses Panels nicht mehr: Stellen Sie den Server auf eine neuere Version um.",
@@ -710,7 +712,8 @@
       "rcon_unsupported": "Dieses Spiel hat keine RCON-Konsole und daher kein RCON-Passwort.",
       "rcon_password_unsupported": "Der Agent des Knotens kann kein gewähltes RCON-Passwort verwenden: Aktualisiere den Agenten.",
       "rcon_password_reused": "Dieses RCON-Passwort ist für einen anderen deiner Server gewählt: Ein Plugin des einen käme in die Konsole des anderen. Verwende eines pro Server.",
-      "rcon_password_pending": "Gespeichert, aber der Knoten hat es noch nicht übernommen: Es gilt ab dem nächsten Start aus dem Panel."
+      "rcon_password_pending": "Gespeichert, aber der Knoten hat es noch nicht übernommen: Es gilt ab dem nächsten Start aus dem Panel.",
+      "clone_game_database": "Das Spiel dieses Servers speichert seine Daten in einer Datenbank, die ein Klon noch nicht kopiert: Stellen Sie das Spiel auf seine eigenen Dateien zurück, um es zu klonen."
     },
     "console": {
       "invalid_input": "Ein Befehl ist eine einzelne Zeile ohne Steuerzeichen (wie Tabulatoren).",
@@ -864,7 +867,11 @@
       "limit_reached": "Der Server hat so viele Datenbanken, wie er haben darf.",
       "host_not_allowed": "Der Node dieses Servers darf diesen Datenbank-Host nicht verwenden.",
       "host_unreachable": "Das Panel konnte nicht mit dem Datenbank-Host arbeiten. Ein Administrator findet den Grund im Protokoll des Panels.",
-      "password_unreadable": "Das Passwort kann mit den Schlüsseln dieses Panels nicht gelesen werden: Ändern Sie es, um ein neues zu erhalten."
+      "password_unreadable": "Das Passwort kann mit den Schlüsseln dieses Panels nicht gelesen werden: Ändern Sie es, um ein neues zu erhalten.",
+      "game_unsupported": "Das Spiel dieses Servers speichert seine Daten nur in seinen eigenen Dateien.",
+      "engine_mismatch": "Das Spiel dieses Servers nutzt eine Datenbank anderer Art als die dieses Hosts.",
+      "game_database_set": "Das Spiel nutzt eine Datenbank auf einem anderen Host: Stellen Sie es zuerst auf seine eigenen Dateien zurück.",
+      "in_use_by_game": "Das Spiel speichert seine Daten in dieser Datenbank: Stellen Sie es zuerst auf seine eigenen Dateien zurück."
     },
     "steamcmd": {
       "account_required": "Nur ein Steam-Konto, das den Dedicated Server dieses Spiels besitzt, darf ihn herunterladen: Wählen Sie eines in den Servereinstellungen.",
@@ -2386,6 +2393,7 @@
     "address": "Adresse",
     "created": "Erstellt",
     "user": "Benutzer {{user}}",
+    "forGame": "Vom Spiel verwendet",
     "userName": "Benutzer",
     "password": "Passwort",
     "onHost": "Auf {{host}} · Verbindungen von {{from}}",
@@ -2397,7 +2405,19 @@
     "deleteConfirm": "{{name}} und alles darin löschen? Dies kann nicht rückgängig gemacht werden.",
     "credentials": "Verbindungsdaten von {{name}}",
     "copyPassword": "Passwort kopieren",
-    "copied": "Kopiert."
+    "copied": "Kopiert.",
+    "game": {
+      "title": "Datenbank des Spiels",
+      "ownFiles": "Das Spiel speichert seine Daten in seinen eigenen Dateien.",
+      "inDatabase": "Das Spiel speichert seine Daten in {{name}} auf {{host}}.",
+      "choose": "Daten des Spiels speichern in",
+      "ownFilesOption": "Eigene Dateien des Spiels",
+      "hostOption": "{{engine}} auf {{host}}",
+      "unsupported": "Damit das Spiel eine Datenbank bekommt, muss der Agent des Nodes verbunden und aktuell sein.",
+      "noHosts": "Für den Node dieses Servers ist kein {{engine}}-Host verfügbar: Ein Administrator fügt einen unter Datenbank-Hosts hinzu.",
+      "saved": "Gespeichert: Das Spiel nutzt sie ab dem nächsten Start.",
+      "hint": "Eine Änderung gilt ab dem nächsten Start des Spiels. Zurück zu den eigenen Dateien des Spiels bleibt die Datenbank mit ihren Daten unter denen des Servers (und zählt wieder zu seinem Limit); wird sie erneut gewählt, nutzt das Spiel diese Daten. Pulsar kopiert keine Daten zwischen den Dateien des Spiels und einer Datenbank, nur das Spiel selbst tut das gegebenenfalls."
+    }
   },
   "databaseHosts": {
     "title": "Datenbank-Hosts",
@@ -7805,7 +7825,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, die Welt von Argentum Online auf einem modernen Server (CoverAO, seine Portierung nach .NET), aus seinen GitHub-Releases installiert. Gespielt wird mit der Desktop-App des Spiels, CoverAO, aus denselben Releases: Spieler fügen den Server mit seiner Adresse und dem Port Spiel hinzu. Spielleiter und die übrigen Einstellungen stehen in CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, die Welt von Argentum Online auf einem modernen Server (CoverAO, seine Portierung nach .NET), aus seinen GitHub-Releases installiert. Gespielt wird mit der Desktop-App des Spiels, CoverAO, aus denselben Releases: Spieler fügen den Server mit seiner Adresse und dem Port Spiel hinzu. Spielleiter und die übrigen Einstellungen stehen in CoverAO-win-x64/Server.ini. Charaktere und Konten liegen in der eigenen SQLite-Datei des Spiels oder in einer PostgreSQL-Datenbank, die im Tab Datenbanken des Servers gewählt wird und beim ersten Start die Charaktere der SQLite-Datei übernimmt.",
       "variables": {
         "maxUsers": {
           "label": "Spielerlimit",

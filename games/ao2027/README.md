@@ -31,10 +31,14 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   back) and through a move to a new version of the template.
 - Backups take `data` (the SQLite database `coverao.db` with its `-wal` and `-shm` files), `gamedata` and `Server.ini`,
   without the game's own backups and logs in `data/backups` and `data/logs`, and without `data/*.lock`, which the game
-  holds open while it runs. SQLite is the game's default (`[BASEDEDATOS]` in `Server.ini`); with `Tipo=postgres` the
-  characters and accounts are in that PostgreSQL server instead, outside the server's folder, so Pulsar's backups do
-  not have them. The game's own backups still do (every 30 minutes in `data/backups`, with Postgres a zip of every
-  table), on the same disk as the server.
+  holds open while it runs. SQLite is the game's default.
+- The characters and accounts can be in PostgreSQL instead (template 1.0.1, Pulsar 1.0.37): in the server's
+  **Databases** tab, choose a PostgreSQL host for the game's database. Pulsar makes `s<short id>_game` there and starts
+  the game with `COVERAO_BASEDEDATOS_TIPO`, `_SERVIDOR`, `_PUERTO`, `_BASE`, `_USUARIO` and `_CLAVE` in its environment,
+  which the game reads instead of `Server.ini`'s `[BASEDEDATOS]` (it says so at start: `[ini] pisado por el entorno:`
+  and the names, never the values); `Server.ini` keeps no password. At its first start on an empty database the game
+  takes the characters of its SQLite file (`data/coverao.db`), which stays as it was. Set by hand in `Server.ini`
+  instead (`Tipo=postgres` and the rest), the database is outside what Pulsar knows: its backups would not have it.
 - An update unpacks the whole release again: a map in `gamedata` edited by hand is replaced by the release's (the
   game's own updater, `Actualizar.bat`, would keep it). `Server.ini` is the only file kept, so take a backup before
   updating a server whose maps were changed.

@@ -82,4 +82,70 @@ public sealed class Ao2027ManifestTests
 
         Assert.Contains(errors, e => e.Path == "install.steps[0].keep");
     }
+
+    [Fact]
+    public void AGivenDatabaseReachesTheGameThroughItsEnvironmentOnly()
+    {
+        var manifest = TestManifests.Load("ao2027");
+        Assert.Equal("postgres", manifest.Database!.Engine);
+        Assert.True(ManifestFeatures.UsesGameDatabase(manifest));
+        Assert.False(ManifestFeatures.UsesGameDatabase(TestManifests.Load("terraria")));
+        var ports = new Dictionary<string, PortAssignment>
+        {
+            ["base"] = new(PortAssignment.AnyAddress, 7700),
+            ["websocket"] = new(PortAssignment.AnyAddress, 7701),
+            ["admin"] = new(PortAssignment.AnyAddress, 7702),
+            ["game"] = new(PortAssignment.AnyAddress, 7703),
+        };
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?>(), ports, Directory: "D:/servers/abcd1234");
+
+        // Without one, the game keeps its own files: nothing about a database.
+        var own = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding);
+        Assert.DoesNotContain(own.Environment.Keys, k => k.StartsWith("COVERAO_BASEDEDATOS", StringComparison.Ordinal));
+
+        const string Password = "Pw7GameDatabase24chars0";
+        var given = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64,
+            binding with { Database = new GameDatabaseBinding("127.0.0.1", 5432, "sabcd1234_game", "sabcd1234_game", Password) });
+        Assert.Equal("postgres", given.Environment["COVERAO_BASEDEDATOS_TIPO"]);
+        Assert.Equal("127.0.0.1", given.Environment["COVERAO_BASEDEDATOS_SERVIDOR"]);
+        Assert.Equal("5432", given.Environment["COVERAO_BASEDEDATOS_PUERTO"]);
+        Assert.Equal("sabcd1234_game", given.Environment["COVERAO_BASEDEDATOS_BASE"]);
+        Assert.Equal("sabcd1234_game", given.Environment["COVERAO_BASEDEDATOS_USUARIO"]);
+        Assert.Equal(Password, given.Environment["COVERAO_BASEDEDATOS_CLAVE"]);
+        // Not in its files, its arguments or the console.
+        Assert.DoesNotContain(given.ConfigFiles.SelectMany(f => f.Entries), e => e.Value.Contains(Password, StringComparison.Ordinal));
+        Assert.DoesNotContain(given.Arguments, a => a.Contains(Password, StringComparison.Ordinal));
+        Assert.Contains(Password, given.Secrets);
+        Assert.DoesNotContain(Password, given.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(Password, new GameDatabaseBinding("h", 1, "n", "u", Password).ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{ "engine": "oracle", "environment": { "DB": "{{database.name}}" } }""", "database.engine")]
+    [InlineData("""{ "engine": "mysql", "environment": { "DB": "{{database.name}}" } }""", "database.engine")]
+    [InlineData("""{ "engine": "postgres", "environment": {} }""", "database.environment")]
+    [InlineData("""{ "engine": "postgres", "environment": { "DB": "{{var.maxUsers}}" } }""", "database.environment.DB")]
+    [InlineData("""{ "engine": "postgres", "environment": { "DB": "{{database.secret}}" } }""", "database.environment.DB")]
+    [InlineData("""{ "engine": "postgres", "environment": { "DB": "{{database.name" } }""", "database.environment.DB")]
+    [InlineData("""{ "engine": "postgres", "environment": { "PATH": "{{database.name}}" } }""", "database.environment.PATH")]
+    [InlineData("""{ "engine": "postgres", "environment": { "DOTNET_STARTUP_HOOKS": "{{database.name}}" } }""", "database.environment.DOTNET_STARTUP_HOOKS")]
+    [InlineData("""{ "engine": "postgres", "environment": { "DB": "a", "db": "b" } }""", "database.environment")]
+    public void TheDatabaseSectionIsChecked(string database, string path)
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("ao2027", m => m["database"] = JsonNode.Parse(database)));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    [Fact]
+    public void TheDatabasesPlaceholdersGoNowhereElseAndItsNamesAreItsOwn()
+    {
+        var inArguments = TestManifests.Errors(TestManifests.Change("ao2027",
+            m => m["runtime"]!["windows-x64"]!["arguments"] = new JsonArray("--db={{database.password}}")));
+        Assert.Contains(inArguments, e => e.Path.StartsWith("runtime.windows-x64.arguments", StringComparison.Ordinal));
+
+        var clash = TestManifests.Errors(TestManifests.Change("ao2027",
+            m => m["runtime"]!["windows-x64"]!["environment"] = new JsonObject { ["COVERAO_BASEDEDATOS_TIPO"] = "sqlite" }));
+        Assert.Contains(clash, e => e.Path == "database.environment.COVERAO_BASEDEDATOS_TIPO");
+    }
 }

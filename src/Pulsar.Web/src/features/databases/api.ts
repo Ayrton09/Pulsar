@@ -39,6 +39,16 @@ export function useCreateDatabase(serverId: string) {
   });
 }
 
+/** Where the server's game keeps its data (1.0.37): a database on the host given, or its own files (null). */
+export function useSetGameDatabase(serverId: string) {
+  const changed = useDatabasesChanged(serverId);
+  return useMutation({
+    mutationFn: (hostId: string | null) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/databases/game', { params: { path: { id: serverId } }, body: { hostId } })),
+    onSuccess: changed,
+  });
+}
+
 export function useDatabasePassword(serverId: string) {
   return useMutation({
     mutationFn: (databaseId: string) =>

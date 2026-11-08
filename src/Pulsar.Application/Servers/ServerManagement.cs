@@ -8,6 +8,7 @@ using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
@@ -529,6 +530,15 @@ public sealed partial class ServerManagement(
             return changed.Error!;
         }
 
+        // A version that takes no database of its kind (1.0.37) runs the game on its own files: the database stays among the server's.
+        if (server.GameDatabaseId is { } gameDatabase
+            && manifest.Database?.Engine != await db.ServerDatabases.AsNoTracking().Where(d => d.Id == gameDatabase)
+                .Join(db.DatabaseHosts.AsNoTracking(), d => d.HostId, h => h.Id, (d, h) => h.Engine).Select(e => e == DatabaseEngine.Postgres ? "postgres" : "mysql")
+                .SingleAsync(cancellationToken))
+        {
+            server.SetGameDatabase(null, now);
+        }
+
         // No new values: the stored ones (and the new version's defaults) must make a valid whole.
         var values = specs.SetVariables(server, manifest, new Dictionary<string, string?>(), canEditProtected: true, request.UserId, now);
         if (!values.IsSuccess)
@@ -891,7 +901,7 @@ public sealed partial class ServerManagement(
     /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
     /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
     /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12, GoldSrc's RCON 1.0.15,
-    /// the Steam client's libraries 1.0.25, reserved HTTP URLs and a release's kept files 1.0.35.
+    /// the Steam client's libraries 1.0.25, reserved HTTP URLs and a release's kept files 1.0.35, a game database 1.0.37.
     /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
@@ -916,7 +926,8 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesGoldSrcRcon(manifest) || Announces(connection, AgentCapabilities.GoldSrcRcon))
         && (!ManifestFeatures.UsesSteamClient(manifest) || Announces(connection, AgentCapabilities.SteamClient))
         && (!ManifestFeatures.UsesHttpUrls(manifest) || Announces(connection, AgentCapabilities.HttpUrls))
-        && (!ManifestFeatures.UsesReleaseKeep(manifest) || Announces(connection, AgentCapabilities.ReleaseKeep));
+        && (!ManifestFeatures.UsesReleaseKeep(manifest) || Announces(connection, AgentCapabilities.ReleaseKeep))
+        && (!ManifestFeatures.UsesGameDatabase(manifest) || Announces(connection, AgentCapabilities.GameDatabase));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;
@@ -1109,6 +1120,12 @@ public sealed partial class ServerManagement(
         if (server.RconPasswordProtected is not null && !agent.Capabilities.Contains(AgentCapabilities.ChosenRconPassword))
         {
             return ServerErrors.RconPasswordUnsupported;
+        }
+
+        // Nor on its own files while its data is in a database (1.0.37).
+        if (server.GameDatabaseId is not null && !agent.Capabilities.Contains(AgentCapabilities.GameDatabase))
+        {
+            return ServerErrors.GameDatabaseUnsupported;
         }
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);

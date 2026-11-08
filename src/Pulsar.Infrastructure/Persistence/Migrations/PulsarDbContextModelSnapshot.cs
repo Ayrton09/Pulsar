@@ -2666,6 +2666,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnName("extra_arguments")
                         .HasDefaultValueSql("'{}'");
 
+                    b.Property<Guid?>("GameDatabaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("game_database_id");
+
                     b.Property<string>("GameVersion")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
@@ -2781,6 +2785,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasIndex("ExternalId")
                         .IsUnique()
                         .HasDatabaseName("ix_servers_external_id");
+
+                    b.HasIndex("GameDatabaseId")
+                        .HasDatabaseName("ix_servers_game_database_id");
 
                     b.HasIndex("NodeId")
                         .HasDatabaseName("ix_servers_node_id");
@@ -3909,6 +3916,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasForeignKey("BackupStorageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_servers_backup_storages_backup_storage_id");
+
+                    b.HasOne("Pulsar.Domain.Databases.ServerDatabase", null)
+                        .WithMany()
+                        .HasForeignKey("GameDatabaseId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_servers_server_databases_game_database_id");
 
                     b.HasOne("Pulsar.Domain.Nodes.Node", null)
                         .WithMany()

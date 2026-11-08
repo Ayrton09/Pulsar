@@ -34,7 +34,7 @@ public sealed record LaunchPlan(
     public IReadOnlyList<LineEdit> LineEdits { get; init; } = [];
 
     /// <summary>
-    /// What the console must not show: the values of secret variables and the RCON password, of
+    /// What the console must not show: the values of secret variables, the RCON password and the game database's, of
     /// <see cref="MinimumSecretLength"/> characters or more. The agent masks them in the game's output, since some games
     /// print their command line (Unreal Engine's do) or their settings.
     /// </summary>
@@ -48,6 +48,9 @@ public sealed record LaunchPlan(
 
     /// <summary>The folder of the server the game takes for its user's (<see cref="RuntimeDefinition.UserProfile"/>); null: its account's.</summary>
     public string? UserProfile { get; init; }
+
+    // The default would print every argument and environment value, secrets among them (the RCON and database passwords).
+    public override string ToString() => $"LaunchPlan {{ Executable = {Executable}, Arguments = {Arguments.Count} }}";
 }
 
 /// <summary>An <c>ip:port</c> pair of a node given to a server (both protocols). <c>0.0.0.0</c> means every interface.</summary>
@@ -135,9 +138,18 @@ public sealed record ServerBinding(
     IReadOnlyList<string>? ExtraArguments = null,
     string? RconPassword = null,
     string? Directory = null,
-    IReadOnlyList<string>? Addons = null)
+    IReadOnlyList<string>? Addons = null,
+    GameDatabaseBinding? Database = null)
 {
     public override string ToString() => $"ServerBinding {{ ShortId = {ShortId} }}";
+}
+
+/// <summary>The panel's database a server was given for its game (Pulsar 1.0.37, <see cref="GameManifest.Database"/>).</summary>
+/// <param name="Host">Where the game connects (the host's address for game servers).</param>
+public sealed record GameDatabaseBinding(string Host, int Port, string Name, string User, string Password)
+{
+    // The password is a secret: never print it.
+    public override string ToString() => $"GameDatabaseBinding {{ {User}@{Host}:{Port}/{Name} }}";
 }
 
 /// <summary>A value that cannot be used for a variable, or a manifest that cannot run on a platform.</summary>
@@ -447,6 +459,25 @@ public static partial class LaunchPlanRenderer
             environment[LaunchPlan.DotnetRootVariable + "_X64"] = root;
         }
 
+        // The game's database (Pulsar 1.0.37), when the server was given one: its variables, set last (the runtime's own
+        // environment names none of them).
+        var database = manifest.Database is not null ? binding.Database : null;
+        if (database is not null)
+        {
+            foreach (var (variable, template) in manifest.Database!.Environment)
+            {
+                environment[variable] = Placeholders.Replace(template, parts => parts switch
+                {
+                    ["database", "host"] => database.Host,
+                    ["database", "port"] => database.Port.ToString(CultureInfo.InvariantCulture),
+                    ["database", "name"] => database.Name,
+                    ["database", "user"] => database.User,
+                    ["database", "password"] => database.Password,
+                    _ => throw new LaunchPlanException($"database.environment.{variable}: unknown placeholder."),
+                });
+            }
+        }
+
         // A value made of options all left empty is empty, whatever text goes around them (Squad's quotes around its name).
         string Setting(string template) =>
             Placeholders.Parse(template, out _) is { Count: > 0 } used && used.All(p => p is ["var", var key] && string.IsNullOrEmpty(resolved[key]))
@@ -509,7 +540,7 @@ public static partial class LaunchPlanRenderer
             LineEdits = [.. manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true).SelectMany(a => a.LineEditList)],
             UserProfile = runtime.UserProfile,
             Secrets = [.. manifest.VariableList.Where(v => v.Secret).Select(v => resolved.GetValueOrDefault(v.Key)).Append(rcon?.Password)
-                .OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],
+                .Append(database?.Password).OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],
         };
     }
 

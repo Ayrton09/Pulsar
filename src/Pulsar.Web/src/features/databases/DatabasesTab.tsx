@@ -5,7 +5,7 @@ import type { Schemas } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, EmptyState, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Card, EmptyState, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Field, Input, Select } from '../../components/ui/Form';
 import { copyText } from '../../lib/clipboard';
@@ -20,6 +20,7 @@ import {
   useDeleteDatabase,
   useRotateDatabasePassword,
   useServerDatabases,
+  useSetGameDatabase,
   type ServerDatabase,
   type ServerDatabaseCredentials,
 } from './api';
@@ -53,10 +54,12 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
     return <Alert>{errorMessage(t, databases.error)}</Alert>;
   }
 
-  const { limit, hosts } = databases.data;
+  const { limit, hosts, game } = databases.data;
   const list = databases.data.databases;
   const error = reveal.error ?? rotate.error ?? remove.error;
-  const full = list.length >= limit;
+  // The game's database is not counted in the limit.
+  const counted = list.filter((database) => !database.forGame).length;
+  const full = counted >= limit;
   // The password stays only in `shown`: the mutations that brought it forget it.
   const rotatePassword = (database: ServerDatabase) =>
     window.confirm(t('databases.rotateConfirm', { name: database.name })) &&
@@ -78,7 +81,7 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl space-y-1 text-sm text-muted">
           <p>{t('databases.hint')}</p>
-          <p>{t('databases.usage', { used: list.length, count: limit })}</p>
+          <p>{t('databases.usage', { used: counted, count: limit })}</p>
         </div>
         {canManage && (
           <Button disabled={full || hosts.length === 0} onClick={() => setCreating(true)}>
@@ -86,6 +89,16 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
           </Button>
         )}
       </div>
+      {game && (
+        <GameDatabaseCard
+          key={game.databaseId ?? 'own'}
+          serverId={server.id}
+          game={game}
+          hosts={hosts}
+          databases={list}
+          canManage={canManage}
+        />
+      )}
       {canManage && hosts.length === 0 && <p className="text-sm text-muted">{t('databases.noHosts')}</p>}
       {canManage && full && hosts.length > 0 && <p className="text-sm text-muted">{t('databases.full')}</p>}
       {error && <Alert>{errorMessage(t, error)}</Alert>}
@@ -112,6 +125,7 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
                 <Td>
                   <p className="font-mono">{database.name}</p>
                   <p className="text-xs text-muted">{t('databases.user', { user: database.userName })}</p>
+                  {database.forGame && <p className="text-xs text-accent">{t('databases.forGame')}</p>}
                 </Td>
                 <Td>
                   <p className="font-mono">
@@ -151,14 +165,17 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
                       >
                         {t('databases.rotate')}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={remove.isPending}
-                        onClick={() => deleteDatabase(database)}
-                      >
-                        {t('actions.delete')}
-                      </Button>
+                      {/* The game's data is there: it goes back to its own files first. */}
+                      {!database.forGame && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={remove.isPending}
+                          onClick={() => deleteDatabase(database)}
+                        >
+                          {t('actions.delete')}
+                        </Button>
+                      )}
                     </RowActions>
                   </Td>
                 )}
@@ -180,6 +197,88 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Where the game keeps its data (1.0.37): its own files, or a database of the server's on a host of the engine its
+ * manifest takes. The change reaches the node at once and the game uses it from its next start.
+ */
+function GameDatabaseCard({
+  serverId,
+  game,
+  hosts,
+  databases,
+  canManage,
+}: {
+  serverId: string;
+  game: Schemas['GameDatabaseChoice'];
+  hosts: Schemas['DatabaseHostChoice'][];
+  databases: ServerDatabase[];
+  canManage: boolean;
+}) {
+  const { t } = useTranslation();
+  const set = useSetGameDatabase(serverId);
+  const current = databases.find((database) => database.id === game.databaseId) ?? null;
+  const choices = hosts.filter((host) => host.engine === game.engine);
+  const [choice, setChoice] = useState(current?.hostId ?? '');
+  const engine = t(`databaseHosts.engines.${game.engine}`);
+
+  return (
+    <Card className="space-y-3 p-5">
+      <div>
+        <h3 className="font-semibold">{t('databases.game.title')}</h3>
+        <p className="mt-1 text-sm text-muted">
+          {current
+            ? t('databases.game.inDatabase', { name: current.name, host: current.host })
+            : t('databases.game.ownFiles')}
+        </p>
+      </div>
+      {canManage && (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            set.mutate(choice === '' ? null : choice);
+          }}
+        >
+          <Field label={t('databases.game.choose')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={choice}
+                disabled={!game.supported && current === null}
+                onChange={(e) => {
+                  set.reset();
+                  setChoice(e.target.value);
+                }}
+              >
+                <option value="">{t('databases.game.ownFilesOption')}</option>
+                {choices.map((host) => (
+                  <option key={host.id} value={host.id}>
+                    {t('databases.game.hostOption', { engine, host: host.name })}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Button type="submit" busy={set.isPending} disabled={choice === (current?.hostId ?? '')}>
+            {t('actions.save')}
+          </Button>
+        </form>
+      )}
+      {canManage && !game.supported && <p className="text-xs text-muted">{t('databases.game.unsupported')}</p>}
+      {canManage && choices.length === 0 && (
+        <p className="text-xs text-muted">{t('databases.game.noHosts', { engine })}</p>
+      )}
+      {set.isError && <Alert>{errorMessage(t, set.error)}</Alert>}
+      {set.isSuccess && (
+        <p role="status" className="text-sm text-muted">
+          {t('databases.game.saved')}
+        </p>
+      )}
+      <p className="text-xs text-muted">{t('databases.game.hint')}</p>
+    </Card>
   );
 }
 

@@ -134,6 +134,9 @@ public static class AuditActions
         public const string SteamBranchChanged = "server.steam_branch_changed";
         public const string DatabaseCreated = "server.database_created";
         public const string DatabaseDeleted = "server.database_deleted";
+
+        /// <summary>Where the server's game keeps its data: one of its databases, or its own files (1.0.37).</summary>
+        public const string GameDatabaseChanged = "server.game_database_changed";
         public const string DatabasePasswordRotated = "server.database_password_rotated";
         public const string DatabasePasswordViewed = "server.database_password_viewed";
         public const string BackupStorageChanged = "server.backup_storage_changed";

@@ -14,4 +14,7 @@ public static class DatabaseEngines
 {
     /// <summary>The port its servers listen on unless told otherwise.</summary>
     public static int DefaultPort(this DatabaseEngine engine) => engine == DatabaseEngine.Postgres ? 5432 : 3306;
+
+    /// <summary>How manifests name it (<c>database.engine</c>): <c>mysql</c> or <c>postgres</c>.</summary>
+    public static string Key(this DatabaseEngine engine) => engine == DatabaseEngine.Postgres ? "postgres" : "mysql";
 }

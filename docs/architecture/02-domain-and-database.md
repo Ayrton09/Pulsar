@@ -637,6 +637,8 @@ CREATE TABLE steam_accounts (
     updated_at          timestamptz NOT NULL
 );
 -- servers.steam_account_id uuid REFERENCES steam_accounts(id) ON DELETE RESTRICT: NULL signs in anonymously.
+-- servers.game_database_id uuid REFERENCES server_databases(id) ON DELETE SET NULL (1.0.37): the one of its databases its
+-- game keeps its data in; NULL: the game's own files. Not counted in database_limit; the panel refuses to delete it alone.
 
 -- ===================== Game databases (Phase 13) =====================
 CREATE TABLE database_hosts (

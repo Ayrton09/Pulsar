@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
@@ -66,6 +67,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.DatabaseLimit).HasDefaultValue(Server.DefaultDatabaseLimit).HasSentinel(-1);
         builder.HasIndex(s => s.NodeId);
         builder.HasOne<SteamAccount>().WithMany().HasForeignKey(s => s.SteamAccountId).OnDelete(DeleteBehavior.Restrict);
+        // The game's database (1.0.37) is one of the server's: it goes with them (the panel refuses to delete it alone).
+        builder.HasOne<ServerDatabase>().WithMany().HasForeignKey(s => s.GameDatabaseId).OnDelete(DeleteBehavior.SetNull);
         builder.Property(s => s.SteamBranch).HasMaxLength(GameBranch.MaxNameLength);
         builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);

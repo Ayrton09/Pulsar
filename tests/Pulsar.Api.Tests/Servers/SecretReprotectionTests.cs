@@ -19,7 +19,7 @@ public sealed class SecretReprotectionTests
         var server = Server.Create(NodeId.New(), TemplateId.New(), "Retakes", null, "abcd2345", s_now).Value!;
         server.SetVariable("password", "join-me", null, s_now); // stored in clear by the version where it was not secret
         server.SetVariable("map", "cs_office", null, s_now);
-        var specs = new ServerSpecs(null!, new ReversingProtector());
+        var specs = new ServerSpecs(null!, new ReversingProtector(), null!);
 
         var set = specs.SetVariables(server, manifest, new Dictionary<string, string?>(), canEditProtected: true, null, s_now);
 

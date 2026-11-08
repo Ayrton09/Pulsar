@@ -73,6 +73,11 @@ public enum StateChangeReason
 /// The RCON password chosen for the server (Pulsar 1.0.29, <see cref="RconPasswords"/>), used by the game and by the
 /// agent's own RCON; null for the one the agent makes (a new one at each provisioning). Only a stopped server's changes.
 /// </param>
+/// <param name="Database">
+/// The panel's database given to the server for its game (Pulsar 1.0.37), whose manifest's <c>database</c> environment
+/// the game then starts with; null for the game's own files. Older agents ignore it: the panel gives it only to agents
+/// that announce <see cref="AgentCapabilities.GameDatabase"/>.
+/// </param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
@@ -84,10 +89,21 @@ public sealed record ServerRuntimeSpec(
     ServerLimits? Limits = null,
     IReadOnlyList<string>? Addons = null,
     string? SteamBranch = null,
-    string? RconPassword = null)
+    string? RconPassword = null,
+    GameDatabaseSpec? Database = null)
 {
-    // Variables and the RCON password are secrets: never print them.
+    // Variables, the RCON password and the database's are secrets: never print them.
     public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";
+}
+
+/// <summary>Where a server's game reaches its database (Pulsar 1.0.37): what the manifest's <c>{{database.*}}</c> stand for.</summary>
+/// <param name="Engine"><c>postgres</c> or <c>mysql</c>, as the manifest's <c>database.engine</c>.</param>
+/// <param name="Host">The host's address for game servers.</param>
+/// <param name="Name">The database, whose user (role) has the same name.</param>
+public sealed record GameDatabaseSpec(string Engine, string Host, int Port, string Name, string Password)
+{
+    // The password is a secret: never print it.
+    public override string ToString() => $"GameDatabaseSpec {{ {Engine} {Name}@{Host}:{Port} }}";
 }
 
 /// <summary>

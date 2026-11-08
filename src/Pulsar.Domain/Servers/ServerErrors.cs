@@ -206,6 +206,12 @@ public static class ServerErrors
     public static DomainError LimitsUnsupported { get; } =
         new("server.limits_unsupported", "The node's agent cannot limit a server's CPU and memory (update the agent).");
 
+    public static DomainError CloneGameDatabase { get; } =
+        new("server.clone_game_database", "This server's game keeps its data in a database, which a clone does not copy yet: put the game back on its own files to clone it.");
+
+    public static DomainError GameDatabaseUnsupported { get; } =
+        new("server.game_database_unsupported", "The node's agent cannot give a game a database (connect it, or update it).");
+
     public static DomainError DatabaseLimitInvalid { get; } =
         new("server.database_limit_invalid", $"The database limit is a number from 0 to {Server.MaxDatabaseLimit}.");
 

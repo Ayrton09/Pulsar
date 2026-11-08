@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 
 namespace Pulsar.Domain.Servers;
 
@@ -165,8 +166,17 @@ public sealed class Server
     /// </summary>
     public byte[]? RconPasswordProtected { get; private set; }
 
-    /// <summary>How many MySQL/MariaDB databases the server may have (Phase 13); 0: none.</summary>
+    /// <summary>
+    /// How many databases the server may have (Phase 13); 0: none. Its game's database (<see cref="GameDatabaseId"/>) is
+    /// not counted.
+    /// </summary>
     public int DatabaseLimit { get; private set; } = DefaultDatabaseLimit;
+
+    /// <summary>
+    /// The one of its databases its game keeps its data in (Pulsar 1.0.37, a manifest with a <c>database</c> section);
+    /// null: the game's own files (SQLite, say).
+    /// </summary>
+    public ServerDatabaseId? GameDatabaseId { get; private set; }
 
     public bool AutoStart { get; private set; }
 
@@ -419,8 +429,9 @@ public sealed class Server
     /// <summary>
     /// Makes the stopped server another game's, or its own again from nothing (Pulsar 1.0.16): its template becomes
     /// <paramref name="next"/>, and what belonged to the old game goes: its values (the new game's are set next), extra arguments,
-    /// game version, Steam branch and chosen RCON password (another game's only). Its name, access, limits, backups and
-    /// Steam account stay. Its files go with the provisioning that follows.
+    /// game version, Steam branch, chosen RCON password (another game's only) and game database (which stays among the
+    /// server's databases). Its name, access, limits, backups and Steam account stay. Its files go with the provisioning
+    /// that follows.
     /// </summary>
     public Result ChangeGame(GameTemplate current, GameTemplate next, DateTimeOffset now)
     {
@@ -452,6 +463,8 @@ public sealed class Server
             RconPasswordProtected = null;
         }
 
+        // The game starts from nothing on its own files: the database it used (1.0.37) stays among the server's.
+        GameDatabaseId = null;
         TemplateId = next.Id;
         UpdatedAt = now;
         return Result.Success();
@@ -694,6 +707,13 @@ public sealed class Server
     public void RestoreSteamBranch(string? branch, DateTimeOffset now)
     {
         SteamBranch = branch is null || GameBranch.IsName(branch) ? branch : null;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The database its game uses from its next start; null: the game's own files.</summary>
+    public void SetGameDatabase(ServerDatabaseId? database, DateTimeOffset now)
+    {
+        GameDatabaseId = database;
         UpdatedAt = now;
     }
 

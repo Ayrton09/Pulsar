@@ -846,6 +846,13 @@ public static class AgentCapabilities
     public const string HttpUrls = "manifest.http_urls";
 
     /// <summary>
+    /// Not a command: the agent gives the game the database the panel sends with its spec (Pulsar 1.0.37,
+    /// <see cref="ServerRuntimeSpec.Database"/>), in the environment its manifest's <c>database</c> section names; an older
+    /// one refuses manifests that have that section.
+    /// </summary>
+    public const string GameDatabase = "manifest.game_database";
+
+    /// <summary>
     /// Not a command: the agent installs Microsoft's .NET runtime in the server's folder for the game (Pulsar 1.0.12, the
     /// <c>dotnetRuntime</c> install step); an older one refuses manifests that use it.
     /// </summary>
