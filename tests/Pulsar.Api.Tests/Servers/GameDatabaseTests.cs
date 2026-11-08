@@ -801,6 +801,8 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Assert.False((bool)(await TestPostgresHost.ScalarAsync(game,
                 "SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit FROM pg_roles WHERE rolname = current_user"))!);
             Assert.False((bool)(await TestPostgresHost.ScalarAsync(game, "SELECT has_database_privilege('public', current_database(), 'CONNECT')"))!);
+            // One game cannot use up the connections the panel's own database needs.
+            Assert.Equal(16, (int)(await TestPostgresHost.ScalarAsync(game, "SELECT rolconnlimit FROM pg_roles WHERE rolname = current_user"))!);
         }
 
         await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, otherMain.Database.Name));

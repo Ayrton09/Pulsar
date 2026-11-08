@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "Databases",
-    "hint": "MySQL/MariaDB databases for the game and its plugins. Each one has a user of its own that can only use it; put the address, name, user and password in the plugin's configuration.",
+    "hint": "MySQL/MariaDB or PostgreSQL databases for the game and its plugins. Each one has a user of its own that can only use it; put the address, name, user and password in the plugin's configuration.",
     "usage_one": "{{used, number}} of {{count, number}} database",
     "usage_other": "{{used, number}} of {{count, number}} databases",
     "create": "Create database",
@@ -2389,6 +2389,8 @@
     "userName": "User",
     "password": "Password",
     "onHost": "On {{host}} · connections from {{from}}",
+    "onPostgresHost": "PostgreSQL on {{host}}",
+    "postgresHostChoice": "{{host}} (PostgreSQL)",
     "showPassword": "Show password",
     "rotate": "Change password",
     "rotateConfirm": "Give {{name}} a new password? The game stops connecting until its configuration has the new one.",

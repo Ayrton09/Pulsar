@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "Bases de données",
-    "hint": "Des bases de données MySQL/MariaDB pour le jeu et ses plugins. Chacune a son propre utilisateur, qui ne peut utiliser qu'elle ; indiquez l'adresse, le nom, l'utilisateur et le mot de passe dans la configuration du plugin.",
+    "hint": "Des bases de données MySQL/MariaDB ou PostgreSQL pour le jeu et ses plugins. Chacune a son propre utilisateur, qui ne peut utiliser qu'elle ; indiquez l'adresse, le nom, l'utilisateur et le mot de passe dans la configuration du plugin.",
     "usage_one": "{{used, number}} sur {{count, number}} base de données",
     "usage_other": "{{used, number}} sur {{count, number}} bases de données",
     "create": "Créer une base de données",
@@ -2389,6 +2389,8 @@
     "userName": "Utilisateur",
     "password": "Mot de passe",
     "onHost": "Sur {{host}} · connexions depuis {{from}}",
+    "onPostgresHost": "PostgreSQL sur {{host}}",
+    "postgresHostChoice": "{{host}} (PostgreSQL)",
     "showPassword": "Afficher le mot de passe",
     "rotate": "Changer le mot de passe",
     "rotateConfirm": "Donner un nouveau mot de passe à {{name}} ? Le jeu cesse de se connecter tant que sa configuration n'a pas le nouveau.",

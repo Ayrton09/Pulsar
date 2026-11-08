@@ -1,6 +1,7 @@
 import { Database } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { Schemas } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { RowActions } from '../../components/ui/RowActions';
 import { Dialog } from '../../components/ui/Dialog';
@@ -26,8 +27,8 @@ import {
 const MAX_NAME_LENGTH = 20;
 
 /**
- * The server's MySQL/MariaDB databases (docs/architecture/07, "Databases"): created on a host the panel's
- * administrators set up, each with a user of its own. Seeing them takes server.databases.view; creating, deleting,
+ * The server's MySQL/MariaDB and PostgreSQL databases (docs/architecture/07, "Databases"): created on a host the panel's
+ * administrators set up, each with a user (a role, in PostgreSQL) of its own. Seeing them takes server.databases.view; creating, deleting,
  * rotating and reading passwords takes server.databases.manage.
  */
 export function DatabasesTab({ details }: { details: ServerDetails }) {
@@ -116,8 +117,11 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
                   <p className="font-mono">
                     {database.address}:{database.port}
                   </p>
+                  {/* PostgreSQL says where its roles connect from in its own pg_hba.conf. */}
                   <p className="text-xs text-muted">
-                    {t('databases.onHost', { host: database.host, from: database.userHost })}
+                    {database.engine === 'postgres'
+                      ? t('databases.onPostgresHost', { host: database.host })
+                      : t('databases.onHost', { host: database.host, from: database.userHost })}
                   </p>
                 </Td>
                 <Td>{formatDate(database.createdAt)}</Td>
@@ -228,7 +232,7 @@ function CreateDialog({
   onClose,
 }: {
   serverId: string;
-  hosts: { id: string; name: string }[];
+  hosts: Schemas['DatabaseHostChoice'][];
   prefix: string;
   onCreated: (created: ServerDatabaseCredentials) => void;
   onClose: () => void;
@@ -255,7 +259,7 @@ function CreateDialog({
               <Select {...control} value={hostId} onChange={(e) => setHostId(e.target.value)}>
                 {hosts.map((host) => (
                   <option key={host.id} value={host.id}>
-                    {host.name}
+                    {host.engine === 'postgres' ? t('databases.postgresHostChoice', { host: host.name }) : host.name}
                   </option>
                 ))}
               </Select>

@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "Database",
-    "hint": "Database MySQL/MariaDB per il gioco e i suoi plugin. Ognuno ha un utente dedicato che può usare solo quello; inserire indirizzo, nome, utente e password nella configurazione del plugin.",
+    "hint": "Database MySQL/MariaDB o PostgreSQL per il gioco e i suoi plugin. Ognuno ha un utente dedicato che può usare solo quello; inserire indirizzo, nome, utente e password nella configurazione del plugin.",
     "usage_one": "{{used, number}} su {{count, number}} database",
     "usage_other": "{{used, number}} su {{count, number}} database",
     "create": "Crea database",
@@ -2389,6 +2389,8 @@
     "userName": "Utente",
     "password": "Password",
     "onHost": "Su {{host}} · connessioni da {{from}}",
+    "onPostgresHost": "PostgreSQL su {{host}}",
+    "postgresHostChoice": "{{host}} (PostgreSQL)",
     "showPassword": "Mostra password",
     "rotate": "Cambia password",
     "rotateConfirm": "Assegnare a {{name}} una nuova password? Il gioco smette di connettersi finché la sua configurazione non ha quella nuova.",

@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "Bancos de dados",
-    "hint": "Bancos de dados MySQL/MariaDB para o jogo e seus plugins. Cada um tem um usuário próprio que só pode usá-lo; coloque o endereço, o nome, o usuário e a senha na configuração do plugin.",
+    "hint": "Bancos de dados MySQL/MariaDB ou PostgreSQL para o jogo e seus plugins. Cada um tem um usuário próprio que só pode usá-lo; coloque o endereço, o nome, o usuário e a senha na configuração do plugin.",
     "usage_one": "{{used, number}} de {{count, number}} banco de dados",
     "usage_other": "{{used, number}} de {{count, number}} bancos de dados",
     "create": "Criar banco de dados",
@@ -2389,6 +2389,8 @@
     "userName": "Usuário",
     "password": "Senha",
     "onHost": "Em {{host}} · conexões de {{from}}",
+    "onPostgresHost": "PostgreSQL em {{host}}",
+    "postgresHostChoice": "{{host}} (PostgreSQL)",
     "showPassword": "Mostrar senha",
     "rotate": "Alterar senha",
     "rotateConfirm": "Dar uma nova senha a {{name}}? O jogo deixa de se conectar até que sua configuração tenha a nova.",

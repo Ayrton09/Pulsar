@@ -104,6 +104,21 @@ describe('databases tab', () => {
     expect(screen.queryByRole('button', { name: 'Create database' })).not.toBeInTheDocument();
   });
 
+  it('leaves where a PostgreSQL role connects from to PostgreSQL', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/databases`]: () =>
+        json(list([{ ...main, engine: 'postgres', host: 'Panel PostgreSQL', port: 5432 }])),
+    });
+
+    renderAt(`/servers/${serverId}?tab=databases`);
+
+    const table = await screen.findByRole('table', { name: 'Databases' });
+    expect(table).toHaveTextContent('PostgreSQL on Panel PostgreSQL');
+    expect(table).not.toHaveTextContent('connections from');
+  });
+
   it('is not there without the permission to see databases', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),

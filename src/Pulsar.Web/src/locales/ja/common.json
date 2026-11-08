@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "データベース",
-    "hint": "ゲームとそのプラグイン用のMySQL/MariaDBデータベースです。それぞれ専用のユーザーがあり、そのデータベースのみ使用できます。アドレス、名前、ユーザー、パスワードをプラグインの設定に入力してください。",
+    "hint": "ゲームとそのプラグイン用のMySQL/MariaDBまたはPostgreSQLデータベースです。それぞれ専用のユーザーがあり、そのデータベースのみ使用できます。アドレス、名前、ユーザー、パスワードをプラグインの設定に入力してください。",
     "usage_one": "{{count, number}}個中{{used, number}}個のデータベース",
     "usage_other": "{{count, number}}個中{{used, number}}個のデータベース",
     "create": "データベースを作成",
@@ -2389,6 +2389,8 @@
     "userName": "ユーザー",
     "password": "パスワード",
     "onHost": "{{host}}上 · 接続元 {{from}}",
+    "onPostgresHost": "{{host}}上のPostgreSQL",
+    "postgresHostChoice": "{{host}}（PostgreSQL）",
     "showPassword": "パスワードを表示",
     "rotate": "パスワードを変更",
     "rotateConfirm": "{{name}}に新しいパスワードを設定しますか?ゲームの設定に新しいパスワードを入力するまで、ゲームは接続できなくなります。",

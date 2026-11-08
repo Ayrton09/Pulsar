@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "데이터베이스",
-    "hint": "게임과 플러그인용 MySQL/MariaDB 데이터베이스입니다. 각 데이터베이스에는 해당 데이터베이스만 사용할 수 있는 전용 사용자가 있습니다. 주소, 이름, 사용자, 비밀번호를 플러그인 설정에 입력하세요.",
+    "hint": "게임과 플러그인용 MySQL/MariaDB 또는 PostgreSQL 데이터베이스입니다. 각 데이터베이스에는 해당 데이터베이스만 사용할 수 있는 전용 사용자가 있습니다. 주소, 이름, 사용자, 비밀번호를 플러그인 설정에 입력하세요.",
     "usage_one": "데이터베이스 {{count, number}}개 중 {{used, number}}개 사용",
     "usage_other": "데이터베이스 {{count, number}}개 중 {{used, number}}개 사용",
     "create": "데이터베이스 만들기",
@@ -2389,6 +2389,8 @@
     "userName": "사용자",
     "password": "비밀번호",
     "onHost": "{{host}}에 위치 · 접속 허용 위치 {{from}}",
+    "onPostgresHost": "{{host}}의 PostgreSQL",
+    "postgresHostChoice": "{{host}} (PostgreSQL)",
     "showPassword": "비밀번호 표시",
     "rotate": "비밀번호 변경",
     "rotateConfirm": "{{name}}의 비밀번호를 새로 발급하시겠습니까? 게임 설정에 새 비밀번호를 입력하기 전까지 게임이 연결되지 않습니다.",

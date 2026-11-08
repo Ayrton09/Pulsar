@@ -74,17 +74,29 @@ machine reach it at `127.0.0.1`.
 
    Not a superuser, and not the panel's own role (`pulsar`). From PostgreSQL 16, a role with `CREATEROLE` may change
    only the roles it created (older versions let it change every role but the superusers, the panel's included: Pulsar
-   refuses them). Pulsar makes, for each server's database, a role of the same name that may sign in and nothing else
-   (no superuser, no creating databases or roles), the owner of a database made from `template0` that no other role
-   may connect to; it sets the role's password as a SCRAM-SHA-256 verifier, never in clear. The panel's own database
-   is closed to other roles too: Pulsar takes `PUBLIC`'s right to connect to it away when it updates (an external
-   database whose owner is not the panel's account: do it yourself, `REVOKE CONNECT, TEMPORARY ON DATABASE pulsar FROM
-   PUBLIC;`). Every role can still see the names of the server's databases and roles (PostgreSQL shows them to all).
+   refuses them). Its password must be stored as SCRAM-SHA-256 (PostgreSQL's default since 14): Pulsar signs in with
+   SCRAM only. Pulsar makes, for each server's database, a role of the same name that may sign in and nothing else
+   (no superuser, no creating databases or roles) with at most 16 connections at once, the owner of a database made
+   from `template0` that no other role may connect to; it sets the role's password as a SCRAM-SHA-256 verifier, never
+   in clear. The panel's own database is closed to other roles too: Pulsar takes `PUBLIC`'s right to connect to it
+   away when it updates, and its log warns at every start while it could not (an external database whose owner is not
+   the panel's account: do it yourself, `REVOKE CONNECT, TEMPORARY ON DATABASE pulsar FROM PUBLIC;`). Every role can
+   still see the names of the server's databases and roles (PostgreSQL shows them to all).
+
+   A PostgreSQL upgraded from version 14 or older with `pg_upgrade` may still let every role create objects in the
+   `public` schema of its `postgres` and `template1` databases; take that away there:
+   `REVOKE CREATE ON SCHEMA public FROM PUBLIC;` (connected to each of them as a superuser).
+
+   Each game server's role may hold 16 connections: keep the servers' total under the server's `max_connections`
+   (100 unless changed), with room for the panel's own, or give the panel's role connections of its own
+   (`reserved_connections` and `GRANT pg_use_reserved_connections TO pulsar;`).
 2. Where game servers may connect from is PostgreSQL's own `pg_hba.conf`: the installer's PostgreSQL takes connections
    from the machine itself only, which suits games on the panel's machine. Game servers on other nodes need lines for
    their addresses there (and `listen_addresses`), with `scram-sha-256`, and the port open to those nodes alone.
 3. In **Database hosts**, add it as **PostgreSQL** (port 5432) with that role and its password. **Require TLS** works as
-   for MySQL; the installer's PostgreSQL has no TLS, which is fine on `127.0.0.1`.
+   for MySQL, and then also binds the SCRAM sign-in to the TLS channel (`channel_binding=require`), so a man in the
+   middle cannot relay it even though the certificate is not checked; the installer's PostgreSQL has no TLS, which is
+   fine on `127.0.0.1`.
 
 ## Databases of a server
 

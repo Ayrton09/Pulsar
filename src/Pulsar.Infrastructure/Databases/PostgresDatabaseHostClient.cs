@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Pulsar.Application.Databases;
 
@@ -9,21 +10,27 @@ namespace Pulsar.Infrastructure.Databases;
 
 /// <summary>
 /// PostgreSQL through Npgsql (1.0.37). A server's database is owned by a role of the same name, which may log in and
-/// nothing else (no superuser, no creating databases or roles, no replication, no row security bypass); the database is
+/// nothing else (no superuser, no creating databases or roles, no replication, no row security bypass), with at most
+/// <see cref="ConnectionLimit"/> sessions (a game cannot use up the connections the panel's own database needs); the database is
 /// made from <c>template0</c> (nothing anyone put in <c>template1</c> comes along) and PUBLIC may not connect to it, so
 /// only its role (and the panel's account) can. DDL takes no parameters, so every name is checked against a strict
 /// pattern here (whatever the caller checked before) and only then quoted. The password is sent as a SCRAM-SHA-256
 /// verifier made here, never in clear: PostgreSQL keeps it as given, and a statement in its log shows no password.
 /// Each call opens its own connection to the <c>postgres</c> database (no pool: hosts are few and calls rare) with TLS
-/// when the server offers it, or only with TLS when the host requires it.
+/// when the server offers it, or only with TLS when the host requires it, and then with SCRAM bound to the TLS channel
+/// (a man in the middle cannot relay the sign-in); the panel's account signs in with SCRAM-SHA-256 only, never sending
+/// its password in clear or as MD5.
 /// </summary>
 /// <remarks>
 /// PostgreSQL 16 or newer (<see cref="CheckAsync"/>). The panel's account needs CREATEDB and CREATEROLE (or is a
 /// superuser). It grants itself each role it creates: a role with CREATEROLE may do that for the roles it made, and
-/// needs it to make one the owner of a database and to drop that database again.
+/// needs it to make one the owner of a database and to drop that database again (with INHERIT and SET).
 /// </remarks>
-internal sealed partial class PostgresDatabaseHostClient : IDatabaseHostClient
+internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabaseHostClient> logger) : IDatabaseHostClient
 {
+    /// <summary>Sessions a server's role may hold at once.</summary>
+    internal const int ConnectionLimit = 16;
+
     private const int ScramIterations = 4096;
     private const int MinimumMajorVersion = 16;
     private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(15);
@@ -51,49 +58,37 @@ internal sealed partial class PostgresDatabaseHostClient : IDatabaseHostClient
         var verifier = Secret(password);
         await RunAsync(host, async connection =>
         {
-            // Whatever stops a later step (a refusal, the request given up), what this call made goes again, and what was
-            // there before it stays: a role or a database of that name already there is someone's, never adopted.
+            // Whatever stops a later step (a refusal, the request given up), what this call made goes again, and only
+            // that: a role or a database of that name already there is someone's, never adopted. A statement that did not
+            // come back (the connection lost) may have been done all the same: what it made stays, and the log says so.
             var roleMade = false;
             var databaseMade = false;
             try
             {
-                try
-                {
-                    roleMade = true;
-                    await ExecuteAsync(connection,
-                        $"CREATE ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD {verifier}",
-                        cancellationToken);
-                }
-                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.DuplicateObject)
-                {
-                    roleMade = false;
-                    throw;
-                }
-
-                await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER", cancellationToken);
-                try
-                {
-                    databaseMade = true;
-                    await ExecuteAsync(connection, $"CREATE DATABASE {role} OWNER {role} TEMPLATE template0", cancellationToken);
-                }
-                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.DuplicateDatabase)
-                {
-                    databaseMade = false;
-                    throw;
-                }
-
+                await ExecuteAsync(connection,
+                    $"CREATE ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS " +
+                    $"CONNECTION LIMIT {ConnectionLimit.ToString(CultureInfo.InvariantCulture)} PASSWORD {verifier}",
+                    cancellationToken);
+                roleMade = true;
+                await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE", cancellationToken);
+                await ExecuteAsync(connection, $"CREATE DATABASE {role} OWNER {role} TEMPLATE template0", cancellationToken);
+                databaseMade = true;
                 await ExecuteAsync(connection, $"REVOKE ALL ON DATABASE {role} FROM PUBLIC", cancellationToken);
             }
-            catch
+            catch (Exception ex) when (roleMade)
             {
-                if (databaseMade)
+                try
                 {
-                    await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", CancellationToken.None);
-                }
+                    if (databaseMade)
+                    {
+                        await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", CancellationToken.None);
+                    }
 
-                if (roleMade)
-                {
                     await ExecuteAsync(connection, $"DROP ROLE IF EXISTS {role}", CancellationToken.None);
+                }
+                catch (Exception undo) when (undo is NpgsqlException or InvalidOperationException)
+                {
+                    LogLeft(name, host.Host, undo.Message, ex.Message);
                 }
 
                 throw;
@@ -108,18 +103,34 @@ internal sealed partial class PostgresDatabaseHostClient : IDatabaseHostClient
         var role = Identifier(name);
         await RunAsync(host, async connection =>
         {
-            await using (var exists = new NpgsqlCommand("SELECT 1 FROM pg_roles WHERE rolname = $1", connection))
+            bool exists;
+            await using (var query = new NpgsqlCommand("SELECT 1 FROM pg_roles WHERE rolname = $1", connection))
             {
-                exists.Parameters.Add(new NpgsqlParameter { Value = name });
-                if (await exists.ExecuteScalarAsync(cancellationToken) is not null)
-                {
-                    // The role first: nobody can connect while the data goes (WITH (FORCE) ends its sessions).
-                    await ExecuteAsync(connection, $"ALTER ROLE {role} NOLOGIN", cancellationToken);
-                    await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER", cancellationToken);
-                }
+                query.Parameters.Add(new NpgsqlParameter { Value = name });
+                exists = await query.ExecuteScalarAsync(cancellationToken) is not null;
             }
 
-            await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", cancellationToken);
+            if (exists)
+            {
+                await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE", cancellationToken);
+                // The role first: nobody can connect while the data goes (WITH (FORCE) ends its sessions). A database that
+                // could not go is its role's to use again, as before.
+                await ExecuteAsync(connection, $"ALTER ROLE {role} NOLOGIN", cancellationToken);
+                try
+                {
+                    await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", cancellationToken);
+                }
+                catch
+                {
+                    await ExecuteAsync(connection, $"ALTER ROLE {role} LOGIN", CancellationToken.None);
+                    throw;
+                }
+            }
+            else
+            {
+                await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {role} WITH (FORCE)", cancellationToken);
+            }
+
             await ExecuteAsync(connection, $"DROP ROLE IF EXISTS {role}", cancellationToken);
             return true;
         }, cancellationToken);
@@ -159,8 +170,11 @@ internal sealed partial class PostgresDatabaseHostClient : IDatabaseHostClient
             Username = host.UserName,
             Password = host.Password,
             Database = "postgres",
-            // Neither checks the certificate (self-signed ones are the rule); Require at least never falls back to plain text.
+            // Neither checks the certificate (self-signed ones are the rule); Require at least never falls back to plain text,
+            // and binds the sign-in to the TLS channel.
             SslMode = host.RequireTls ? SslMode.Require : SslMode.Prefer,
+            ChannelBinding = host.RequireTls ? ChannelBinding.Require : ChannelBinding.Prefer,
+            RequireAuth = "ScramSHA256",
             GssEncryptionMode = GssEncryptionMode.Disable,
             Pooling = false,
             Timeout = (int)s_timeout.TotalSeconds,
@@ -202,6 +216,10 @@ internal sealed partial class PostgresDatabaseHostClient : IDatabaseHostClient
         PasswordPattern().IsMatch(password)
             ? $"'{ScramVerifier(password, RandomNumberGenerator.GetBytes(16))}'"
             : throw new ArgumentException("Not a password Pulsar makes.", nameof(password));
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "What was made for the database {Database} on {Host} could not be removed after a failed creation ({Reason}; it failed with: {Failure}): drop it by hand")]
+    private partial void LogLeft(string database, string host, string reason, string failure);
 
     // \z, not $: $ also matches before a final line feed.
     [GeneratedRegex(@"^s[a-z0-9]{1,12}_[a-z0-9_]{1,20}\z", RegexOptions.CultureInvariant)]

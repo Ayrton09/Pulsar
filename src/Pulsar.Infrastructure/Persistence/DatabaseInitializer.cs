@@ -75,8 +75,23 @@ internal sealed partial class DatabaseInitializer(
         }
 
         await EnsureAdministratorRoleAsync(cancellationToken);
+        if (historyExists && await OpenToEveryRoleAsync(cancellationToken))
+        {
+            LogOpenToEveryRole(builder.Database ?? "?");
+        }
+
         return new DatabaseStatus(HasUsers: await db.Users.AnyAsync(cancellationToken));
     }
+
+    /// <summary>
+    /// Whether PostgreSQL still lets every role connect to the panel's database (1.0.37): its migration takes that away
+    /// when the panel's account owns the database; when it does not (an external database set up by hand), the
+    /// administrator does it (docs/guides/databases.md), or game servers' roles on the same PostgreSQL could connect.
+    /// </summary>
+    private Task<bool> OpenToEveryRoleAsync(CancellationToken cancellationToken) =>
+        db.Database
+            .SqlQueryRaw<bool>("""SELECT has_database_privilege('public', current_database(), 'CONNECT') AS "Value" """)
+            .SingleAsync(cancellationToken);
 
     private Task<bool> HistoryTableExistsAsync(CancellationToken cancellationToken) =>
         db.Database
@@ -134,4 +149,8 @@ internal sealed partial class DatabaseInitializer(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created the built-in Administrator role")]
     private partial void LogAdministratorRoleCreated();
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Every PostgreSQL role may connect to the panel's database '{Database}': as its owner or a superuser, run REVOKE CONNECT, TEMPORARY ON DATABASE \"{Database}\" FROM PUBLIC (docs/guides/databases.md)")]
+    private partial void LogOpenToEveryRole(string database);
 }

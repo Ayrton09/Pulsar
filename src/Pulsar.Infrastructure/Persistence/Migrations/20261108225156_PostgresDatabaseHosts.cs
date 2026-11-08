@@ -26,14 +26,15 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
             // A PostgreSQL that holds the panel's database may now also hold game servers' databases, whose roles any game
             // server's account can sign in with: PostgreSQL lets every role connect to every database unless told otherwise,
             // so the panel's own database stops letting PUBLIC in (its owner, the panel's account, keeps its access; a
-            // superuser is never kept out). Only its owner can do this: a panel whose account is not (an external database
-            // set up by hand) goes on, and doc 08 says to do it there by hand.
+            // superuser is never kept out). Only its owner can do this: for anyone else PostgreSQL only warns, or refuses,
+            // and the panel goes on; it says so in its log at every start while PUBLIC may still connect
+            // (DatabaseInitializer), and the guide says how to do it by hand.
             migrationBuilder.Sql("""
                 DO $$
                 BEGIN
                     EXECUTE format('REVOKE CONNECT, TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
                 EXCEPTION WHEN insufficient_privilege THEN
-                    RAISE NOTICE 'The panel''s account does not own its database: PUBLIC''s access to it is left as it is.';
+                    NULL;
                 END
                 $$;
                 """);

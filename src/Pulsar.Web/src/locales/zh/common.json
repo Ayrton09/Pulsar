@@ -2372,7 +2372,7 @@
   },
   "databases": {
     "title": "数据库",
-    "hint": "供游戏及其插件使用的 MySQL/MariaDB 数据库。每个数据库都有专属用户，且该用户只能使用它；请将地址、名称、用户和密码填入插件的配置中。",
+    "hint": "供游戏及其插件使用的 MySQL/MariaDB 或 PostgreSQL 数据库。每个数据库都有专属用户，且该用户只能使用它；请将地址、名称、用户和密码填入插件的配置中。",
     "usage_one": "已用 {{used, number}} / {{count, number}} 个数据库",
     "usage_other": "已用 {{used, number}} / {{count, number}} 个数据库",
     "create": "创建数据库",
@@ -2389,6 +2389,8 @@
     "userName": "用户",
     "password": "密码",
     "onHost": "位于 {{host}} · 允许来自 {{from}} 的连接",
+    "onPostgresHost": "位于 {{host}} 的 PostgreSQL",
+    "postgresHostChoice": "{{host}}（PostgreSQL）",
     "showPassword": "显示密码",
     "rotate": "修改密码",
     "rotateConfirm": "为 {{name}} 设置新密码？在配置中更新为新密码之前，游戏将无法连接。",
