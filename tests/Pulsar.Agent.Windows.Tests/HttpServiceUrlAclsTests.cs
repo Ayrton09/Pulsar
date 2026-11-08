@@ -65,11 +65,16 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
     public void ADescriptorIsComparedAsWindowsWritesItBack()
     {
         var acls = new HttpServiceUrlAcls();
-        var administrator = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, WindowsIdentity.GetCurrent().User!.AccountDomainSid);
 
         // The machine's own Administrator (as CI's runner is) comes back as "LA", SYSTEM as "SY"; an ordinary account
-        // (a server's) by its security identifier.
-        Assert.Equal("D:(A;;GX;;;LA)", acls.Canonical(HttpUrlReservations.Descriptor(administrator.Value)));
+        // (a server's) by its security identifier. SYSTEM (CI's step as SYSTEM) has no account domain to make the
+        // Administrator's identifier from.
+        if (WindowsIdentity.GetCurrent().User!.AccountDomainSid is { } domain)
+        {
+            var administrator = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, domain);
+            Assert.Equal("D:(A;;GX;;;LA)", acls.Canonical(HttpUrlReservations.Descriptor(administrator.Value)));
+        }
+
         Assert.Equal("D:(A;;GX;;;SY)", acls.Canonical(HttpUrlReservations.Descriptor("S-1-5-18")));
         Assert.Equal("D:(A;;GX;;;S-1-5-21-1-2-3-1001)", acls.Canonical(HttpUrlReservations.Descriptor("S-1-5-21-1-2-3-1001")));
         Assert.Equal("not a descriptor", acls.Canonical("not a descriptor"));
