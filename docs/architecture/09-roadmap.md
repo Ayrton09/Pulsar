@@ -576,7 +576,7 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 
 ## 1.0.35 — AO2027 (2026-11-08, at the user's request)
 
-The user's own game, AO2027 (CoverAO: Argentum Online's world on a .NET server with a web client), bundled for everyone, installed from its public releases (`Ayrton09/CoverAO`). Two things Pulsar did not have: ports marked `http`, whose `http://+:port/` the agent reserves for the server's account (the game uses `HttpListener`, which otherwise answers on `localhost` only for an account that is no administrator), and a release step's `keep`, files an update writes only while they are missing (its `Server.ini`, where the game masters are). Its four ports follow the base one (`StartPort`, set in `Server.ini`); only the web client's is opened and shown as the server's address. The file manager's editor got an Edit button.
+The user's own game, AO2027 (CoverAO: Argentum Online's world on a .NET server, played with its own desktop app), bundled for everyone, installed from its public releases (`Ayrton09/CoverAO`). Two things Pulsar did not have: ports marked `http`, whose `http://+:port/` the agent reserves for the server's account (the game uses `HttpListener`, which otherwise answers on `localhost` only for an account that is no administrator), and a release step's `keep`, files an update writes only while they are missing (its `Server.ini`, where the game masters are). Its four ports follow the base one (`StartPort`, set in `Server.ini`); only the Game port, the one the app connects to, is opened and shown as the server's address. The file manager's editor got an Edit button.
 
 ## 1.0.34 — The panel on Linux (2026-11-06, at the user's request)
 

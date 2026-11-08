@@ -7792,7 +7792,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027。Argentum Online の世界を最新のサーバーで動かします（CoverAO：Web クライアント付きの .NET への移植）。GitHub のリリースからインストールされます。プレイヤーはサーバーの「Web クライアント」ポートでブラウザからプレイします。ゲームマスターなどの設定は CoverAO-win-x64/Server.ini にあります。",
+      "description": "AO2027。Argentum Online の世界を最新のサーバーで動かします（CoverAO：.NET への移植）。GitHub のリリースからインストールされます。プレイヤーは同じリリースにあるゲームのデスクトップアプリ CoverAO に、サーバーのアドレスと「ゲーム」ポートを追加してプレイします。ゲームマスターなどの設定は CoverAO-win-x64/Server.ini にあります。",
       "variables": {
         "maxUsers": {
           "label": "プレイヤー上限",
@@ -7830,15 +7830,15 @@
         },
         "websocket": {
           "label": "WebSocket",
-          "description": "古い Web クライアントのために残しています。Web クライアントは「Web クライアント」ポートでプレイします。"
+          "description": "古いクライアントのために残しています。アプリは「ゲーム」ポートでプレイします。"
         },
         "admin": {
           "label": "管理パネル",
           "description": "ゲーム自体の管理パネル。このマシンからのみ使えます。トークンは起動のたびにコンソールに表示されます。"
         },
         "game": {
-          "label": "Web クライアント",
-          "description": "プレイヤーはブラウザで http://<アドレス>:<ポート>/ を開いてプレイします。"
+          "label": "ゲーム",
+          "description": "プレイヤーは CoverAO アプリにサーバーを <アドレス>:<ポート>（例：190.1.2.3:7669）として追加します。"
         }
       }
     }

@@ -11,12 +11,15 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   new characters, game masters only) are written only when set in the panel, and every other line stays as it is.
 - The game prints `Puertos:` when it is ready, about 2 s after it starts. Ctrl+C stops it in about 1 s ("Servidor
   detenido"), with exit code 0.
-- Ports, all from `StartPort`: +0 is the classic protocol, +1 the WebSocket older web clients used, +2 the game's admin
-  panel (on the machine only) and +3 the web client, page and `/ws`: the one players open, and the only one Pulsar
-  opens in the firewall. The web client at `http://localhost:<port>/` loaded in a browser and read the players online
-  from the server.
+- Players play with the game's desktop app, CoverAO (`CoverAO-Setup.exe`, from the same releases): they add the
+  server in it by address and Game port, for example `190.1.2.3:7669`. The app loads the server's page from that port
+  and plays through `/ws` on it.
+- Ports, all from `StartPort`: +0 is the classic protocol, +1 the WebSocket older clients used, +2 the game's admin
+  panel (on the machine only) and +3 the Game port, the page and `/ws`: the only one Pulsar opens in the firewall and
+  the address it shows. The page the app loads, opened at `http://localhost:<port>/`, loaded whole and read the players
+  online from the server.
 - The game listens with Windows' HTTP Server API, which lets an account other than an administrator listen on every
-  address only with a URL reservation. Before every start the agent reserves `http://+:<web client port>/` for the
+  address only with a URL reservation. Before every start the agent reserves `http://+:<Game port>/` for the
   server's account (released when the server is deleted or the agent is unenrolled). A reservation it cannot make is
   said in the console, and the game then answers on the machine only.
 - `CoverAO-win-x64/Server.ini` is the release's only kept file: written by the first install, never replaced or

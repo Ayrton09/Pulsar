@@ -7792,7 +7792,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027, le monde d'Argentum Online sur un serveur moderne (CoverAO, son portage en .NET avec un client web), installé depuis ses versions GitHub. On joue depuis un navigateur sur le port Client web du serveur ; les maîtres du jeu et les autres réglages sont dans CoverAO-win-x64/Server.ini.",
+      "description": "AO2027, le monde d'Argentum Online sur un serveur moderne (CoverAO, son portage en .NET), installé depuis ses versions GitHub. On joue avec l'application de bureau du jeu, CoverAO, des mêmes versions : les joueurs y ajoutent le serveur par son adresse et le port Jeu. Les maîtres du jeu et les autres réglages sont dans CoverAO-win-x64/Server.ini.",
       "variables": {
         "maxUsers": {
           "label": "Limite de joueurs",
@@ -7830,15 +7830,15 @@
         },
         "websocket": {
           "label": "WebSocket",
-          "description": "Conservé pour les anciens clients web : le client web joue par le port Client web."
+          "description": "Conservé pour les anciens clients : l'application joue par le port Jeu."
         },
         "admin": {
           "label": "Panneau d'administration",
           "description": "Le panneau d'administration du jeu lui-même, sur cette machine uniquement. Son jeton apparaît dans la console à chaque démarrage."
         },
         "game": {
-          "label": "Client web",
-          "description": "Les joueurs ouvrent http://<adresse>:<port>/ dans un navigateur pour jouer."
+          "label": "Jeu",
+          "description": "Les joueurs ajoutent le serveur dans l'application CoverAO sous la forme <adresse>:<port>, par exemple 190.1.2.3:7669."
         }
       }
     }

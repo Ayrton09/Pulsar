@@ -7792,7 +7792,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027. 최신 서버에서 돌아가는 Argentum Online의 세계(CoverAO: 웹 클라이언트가 있는 .NET 포트)로, GitHub 릴리스에서 설치됩니다. 플레이어는 서버의 웹 클라이언트 포트로 브라우저에서 플레이합니다. 게임 마스터와 나머지 설정은 CoverAO-win-x64/Server.ini에 있습니다.",
+      "description": "AO2027. 최신 서버에서 돌아가는 Argentum Online의 세계(CoverAO: .NET 포트)로, GitHub 릴리스에서 설치됩니다. 플레이어는 같은 릴리스에 있는 게임의 데스크톱 앱 CoverAO에 서버의 주소와 게임 포트를 추가해 플레이합니다. 게임 마스터와 나머지 설정은 CoverAO-win-x64/Server.ini에 있습니다.",
       "variables": {
         "maxUsers": {
           "label": "플레이어 제한",
@@ -7830,15 +7830,15 @@
         },
         "websocket": {
           "label": "WebSocket",
-          "description": "오래된 웹 클라이언트를 위해 유지됩니다. 웹 클라이언트는 웹 클라이언트 포트로 플레이합니다."
+          "description": "오래된 클라이언트를 위해 유지됩니다. 앱은 게임 포트로 플레이합니다."
         },
         "admin": {
           "label": "관리 패널",
           "description": "게임 자체의 관리 패널로, 이 컴퓨터에서만 쓸 수 있습니다. 토큰은 시작할 때마다 콘솔에 표시됩니다."
         },
         "game": {
-          "label": "웹 클라이언트",
-          "description": "플레이어는 브라우저에서 http://<주소>:<포트>/를 열어 플레이합니다."
+          "label": "게임",
+          "description": "플레이어는 CoverAO 앱에 서버를 <주소>:<포트>(예: 190.1.2.3:7669)로 추가합니다."
         }
       }
     }

@@ -7792,7 +7792,7 @@
       }
     },
     "ao2027": {
-      "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，带网页客户端的 .NET 移植），从其 GitHub 发布版本安装。玩家通过浏览器访问服务器的“网页客户端”端口来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。",
+      "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，.NET 移植），从其 GitHub 发布版本安装。玩家使用同一发布版本中的游戏桌面应用 CoverAO，按服务器地址和“游戏”端口添加服务器来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。",
       "variables": {
         "maxUsers": {
           "label": "玩家上限",
@@ -7830,15 +7830,15 @@
         },
         "websocket": {
           "label": "WebSocket",
-          "description": "为旧版网页客户端保留：网页客户端通过“网页客户端”端口游玩。"
+          "description": "为旧版客户端保留：应用通过“游戏”端口游玩。"
         },
         "admin": {
           "label": "管理面板",
           "description": "游戏自带的管理面板，仅限本机使用。每次启动时其令牌会显示在控制台中。"
         },
         "game": {
-          "label": "网页客户端",
-          "description": "玩家在浏览器中打开 http://<地址>:<端口>/ 即可游玩。"
+          "label": "游戏",
+          "description": "玩家在 CoverAO 应用中以 <地址>:<端口> 添加服务器，例如 190.1.2.3:7669。"
         }
       }
     }

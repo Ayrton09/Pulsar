@@ -4,7 +4,7 @@
   "key": "ao2027",
   "version": "1.0.0",
   "name": "AO2027",
-  "description": "AO2027, Argentum Online's world on a modern server (CoverAO, its port to .NET with a web client), installed from its GitHub releases. Players play from a browser at the server's Web client port; game masters and the other settings are in CoverAO-win-x64/Server.ini.",
+  "description": "AO2027, Argentum Online's world on a modern server (CoverAO, its port to .NET), installed from its GitHub releases. Players play with the game's desktop app, CoverAO, from the same releases: they add the server by its address and Game port. Game masters and the other settings are in CoverAO-win-x64/Server.ini.",
   "authors": ["Pulsar contributors"],
   "platforms": ["windows-x64"],
 
@@ -30,13 +30,13 @@
       "description": "StartPort in Server.ini: the other three follow it. The classic Windows client cannot log in to this server, so it stays closed." },
     { "name": "websocket", "label": "WebSocket", "protocols": ["tcp"], "default": 7667, "internal": true,
       "follows": { "port": "base", "offset": 1 },
-      "description": "Kept for older web clients: the web client plays through the Web client port." },
+      "description": "Kept for older clients: the app plays through the Game port." },
     { "name": "admin", "label": "Admin panel", "protocols": ["tcp"], "default": 7668, "internal": true,
       "follows": { "port": "base", "offset": 2 },
       "description": "The game's own admin panel, on this machine only. Its token is in the console at every start." },
-    { "name": "game", "label": "Web client", "protocols": ["tcp"], "default": 7669, "http": true,
+    { "name": "game", "label": "Game", "protocols": ["tcp"], "default": 7669, "http": true,
       "follows": { "port": "base", "offset": 3 },
-      "description": "Players open http://<address>:<port>/ in a browser to play." }
+      "description": "Players add the server in the CoverAO app as <address>:<port>, for example 190.1.2.3:7669." }
   ],
 
   "install": { "steps": [
