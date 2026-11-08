@@ -25,6 +25,9 @@ describe('game artwork', () => {
     // Not on Steam: its cover on its own site.
     expect(gameArtwork('minecraft', 'header')).toMatch(/^https:\/\/www\.minecraft\.net\/content\/dam\//);
     expect(gameArtwork('minecraft-bedrock', 'hero')).toBe(gameArtwork('minecraft', 'header'));
+    // On neither: its pictures come with the panel, from its own origin.
+    expect(gameArtwork('ao2027', 'header')).toMatch(/^\/[^/].*ao2027-header[^/]*\.jpg$/);
+    expect(gameArtwork('ao2027', 'hero')).toMatch(/^\/[^/].*ao2027-hero[^/]*\.jpg$/);
     expect(gameArtwork('constructor', 'header')).toBeNull();
     expect(gameArtwork('toString', 'header')).toBeNull();
     expect(gameArtwork('https://example.com/x', 'header')).toBeNull();

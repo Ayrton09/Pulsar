@@ -1,8 +1,12 @@
+import ao2027Header from './art/ao2027-header.jpg';
+import ao2027Hero from './art/ao2027-hero.jpg';
+
 /**
  * Game artwork from Steam's store CDN, and Minecraft's cover from minecraft.net (it is not on Steam): the image origins
- * the panel's Content-Security-Policy allows besides its own while the artwork is on. Addresses come only from these
- * fixed tables, keyed by the built-in templates' keys: nothing a user typed ever becomes an image address. Templates not
- * listed here get a drawn tile instead.
+ * the panel's Content-Security-Policy allows besides its own while the artwork is on. A game on neither has its pictures
+ * in the panel itself (served from its own origin). Addresses come only from these fixed tables, keyed by the built-in
+ * templates' keys: nothing a user typed ever becomes an image address. Templates not listed here get a drawn tile
+ * instead.
  */
 const steamApps: Readonly<Record<string, number>> = {
   '7dtd': 251570,
@@ -58,6 +62,14 @@ const otherArtwork: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Games whose pictures come with the panel, by template key. AO2027's are the game's own (its menu's background, and
+ * its logo on the card), from its repository, Ayrton09/AO-2027.
+ */
+const panelArtwork: Readonly<Record<string, Readonly<Record<ArtworkKind, string>>>> = {
+  ao2027: { header: ao2027Header, hero: ao2027Hero },
+};
+
+/**
  * How a picture sits in its frame when the frame crops it: Minecraft's cover has its logo at the top, which a card's
  * wider frame would cut, so the card keeps the top and crops the bottom.
  */
@@ -66,6 +78,9 @@ export function artworkPosition(templateKey: string, kind: ArtworkKind): string 
 }
 
 export function gameArtwork(templateKey: string, kind: ArtworkKind): string | null {
+  if (Object.hasOwn(panelArtwork, templateKey)) {
+    return panelArtwork[templateKey]?.[kind] ?? null;
+  }
   if (Object.hasOwn(otherArtwork, templateKey)) {
     return otherArtwork[templateKey] ?? null;
   }
