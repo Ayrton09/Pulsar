@@ -327,7 +327,7 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         {
             var name = entryName.Replace('\\', '/');
             var path = addon.Target.Length == 0 ? name : $"{addon.Target}/{name}";
-            if (!IsAddonPath(path))
+            if (!IsAddonPath(path) || (kept.Count > 0 && HasShortNameSegment(path)))
             {
                 throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entryName}'.");
             }
@@ -386,9 +386,10 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             }
         });
 
-        // Files of the previous release the new one does not have (the kept ones stay).
+        // Files of the previous release the new one does not have (the kept ones stay, and where files are kept nothing is
+        // removed by a short name, which could be a kept file's).
         var current = entries.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var old in ownedBefore.Where(p => !current.Contains(p) && !kept.Contains(p)))
+        foreach (var old in ownedBefore.Where(p => !current.Contains(p) && !kept.Contains(p) && (kept.Count == 0 || !HasShortNameSegment(p))))
         {
             Delete(serverDirectory, old);
         }
@@ -437,10 +438,14 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     /// A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>, by any case or
     /// by a first segment shaped like its 8.3 short name: addon files are written as SYSTEM).
     /// </summary>
-    // No segment shaped like an 8.3 short name (COVERA~1, SERVER~1.INI), anywhere: on a volume that keeps them it names
-    // another file than it reads as, so it could write a file a release step keeps, or Pulsar's own folder.
-    private static bool IsAddonPath(string path) =>
-        ManifestValidator.IsValidRelativePath(path) && !FileCommands.IsPulsarFolder(path) && !path.Split('/').Any(s => ShortNameSegment().IsMatch(s));
+    private static bool IsAddonPath(string path) => ManifestValidator.IsValidRelativePath(path) && !FileCommands.IsPulsarFolder(path);
+
+    /// <summary>
+    /// Whether a segment of <paramref name="path"/> is shaped like an 8.3 short name (COVERA~1, SERVER~1.INI): on a volume
+    /// that keeps them it names another file than it reads as, so where files are kept it could reach one by that name.
+    /// Elsewhere such names are ordinary files (foo~1.dll).
+    /// </summary>
+    private static bool HasShortNameSegment(string path) => path.Split('/').Any(s => ShortNameSegment().IsMatch(s));
 
     [GeneratedRegex(@"^[^.~]{1,6}~[0-9]+(\.[^.]{1,3})?\z", RegexOptions.CultureInvariant)]
     private static partial Regex ShortNameSegment();

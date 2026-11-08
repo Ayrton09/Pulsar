@@ -150,6 +150,8 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
     private static List<(ZipArchiveEntry Entry, string Relative)> Entries(ZipArchive archive)
     {
         var entries = new List<(ZipArchiveEntry, string)>();
+        // One file once, by any case: Windows takes two names that differ only in case for the same file.
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long total = 0;
         foreach (var entry in archive.Entries)
         {
@@ -159,7 +161,8 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
                 continue;
             }
 
-            if (!ManifestValidator.IsValidRelativePath($"{DotnetRuntimeStep.Folder}/{relative}") || $"{DotnetRuntimeStep.Folder}/{relative}".Equals(Marker, StringComparison.OrdinalIgnoreCase))
+            if (!ManifestValidator.IsValidRelativePath($"{DotnetRuntimeStep.Folder}/{relative}") || $"{DotnetRuntimeStep.Folder}/{relative}".Equals(Marker, StringComparison.OrdinalIgnoreCase)
+                || !names.Add(relative))
             {
                 throw Failed("dotnet.bad_archive", $"The .NET runtime archive has an unexpected entry '{entry.FullName}'.");
             }

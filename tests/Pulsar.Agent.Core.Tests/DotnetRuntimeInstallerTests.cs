@@ -92,6 +92,7 @@ public sealed class DotnetRuntimeInstallerTests : IDisposable
     [InlineData("sub/../../outside.dll")]
     [InlineData("pulsar-dotnet.txt")]
     [InlineData("C:/outside.dll")]
+    [InlineData("DOTNET.EXE")] // the muxer again, in another case: one file on Windows
     public async Task AnArchiveThatReachesOutOfItsFolderIsRefused(string entry)
     {
         Publish("9.0.21", Zip(("dotnet.exe", "muxer"), (entry, "x")));

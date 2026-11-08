@@ -1475,7 +1475,9 @@ public sealed partial class ServerHost(
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, async _ignored =>
+        // In the server's spec turn: a spec being applied finishes first (its record saved, then deleted here), and one that
+        // comes after finds the server gone; neither saves the record of a server this deleted.
+        return RunOperation(envelope, command.ServerId, operationId, _ignored => InSpecTurnAsync(command.ServerId, async () =>
         {
             await server.Supervisor.KillAsync();
             await server.Supervisor.WaitUntilSettledAsync();
@@ -1484,7 +1486,8 @@ public sealed partial class ServerHost(
             _relay.Unsubscribe(command.ServerId);
             await server.Supervisor.Console.DisposeAsync();
             await CleanUpDeletedAsync(command.ServerId, server.ShortId);
-        });
+            return true;
+        }));
     }
 
     /// <summary>

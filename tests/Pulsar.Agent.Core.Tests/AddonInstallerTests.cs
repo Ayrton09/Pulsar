@@ -288,14 +288,37 @@ public sealed class AddonInstallerTests : IDisposable
     [InlineData("../outside.dll")]
     [InlineData(".pulsar/addons/oxide.json")]
     [InlineData("PULSAR~1/addons/metamod.json")] // .pulsar's 8.3 short name, on volumes that keep them
-    [InlineData("COVERA~1/Server.ini")] // another folder's short name: around a file a release step keeps
-    [InlineData("CoverAO-win-x64/SERVER~1.INI")]
     [InlineData("C:/Windows/evil.dll")]
     public async Task AnArchiveCannotWriteOutsideItsPlace(string entry)
     {
         Release("2.0.7801", Zip((entry, "x")));
 
         Assert.Equal("addon.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_oxide))).Code);
+    }
+
+    [Theory]
+    [InlineData("COVERA~1/Server.ini")] // another folder's short name, around the kept file
+    [InlineData("CoverAO-win-x64/SERVER~1.INI")]
+    public async Task WhereFilesAreKeptNoEntryIsNamedLikeAShortName(string entry)
+    {
+        var step = new GitHubReleaseStep("OxideMod/Oxide.Rust", @"^Oxide\.Rust\.zip$", Keep: ["CoverAO-win-x64/Server.ini"]);
+        var steps = new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles());
+        Release("v1.0.6", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.6"), (entry, "x")));
+
+        var failure = await Assert.ThrowsAsync<GameProcessException>(() =>
+            steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("addon.bad_archive", failure.Code);
+    }
+
+    [Fact]
+    public async Task ElsewhereANameWithATildeIsAnOrdinaryFile()
+    {
+        Release("2.0.7801", Zip(("RustDedicated_Data/Managed/Oxide~1.dll", "x")));
+
+        await InstallAsync(s_oxide);
+
+        Assert.True(File.Exists(Path.Combine(_root, "RustDedicated_Data", "Managed", "Oxide~1.dll")));
     }
 
     [Fact]
