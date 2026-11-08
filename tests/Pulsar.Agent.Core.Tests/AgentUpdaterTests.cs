@@ -195,6 +195,87 @@ public sealed class AgentUpdaterTests : IDisposable
         Assert.Equal((attempt, "Another update is running."), (failed.Attempt, failed.Error));
     }
 
+    [Fact]
+    public async Task AFailureThePanelDidNotTakeIsSentAgainAfterTheNextHelloUntilItIsTaken()
+    {
+        var release = Release();
+        var panel = new Panel { Takes = false };
+        using var updater = Updater(release.Handler, panel);
+        var attempt = Guid.NewGuid();
+
+        // Not connected (or refused): the failure before the installer is lost on its way.
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, new string('a', 64), attempt)).Status);
+        var failed = await FailuresAsync(1);
+        Assert.Equal(attempt, failed.Attempt);
+        Assert.NotEmpty(panel.Failures());
+
+        // Still not taken after a Hello: sent again again.
+        var before = panel.Failures().Count;
+        await updater.ReportResultAsync(always: true, TestContext.Current.CancellationToken);
+        Assert.Equal(before + 1, panel.Failures().Count);
+
+        // Taken this time, with the run's own identity and message; nothing is sent again after that.
+        panel.Takes = true;
+        await updater.ReportResultAsync(always: true, TestContext.Current.CancellationToken);
+        var taken = Assert.Single(panel.Taken());
+        Assert.Equal((UpdateStatuses.Failed, attempt, failed.Error), (taken.Status, taken.Attempt, taken.Error));
+        await updater.ReportResultAsync(always: true, TestContext.Current.CancellationToken);
+        Assert.Single(panel.Taken());
+    }
+
+    [Fact]
+    public async Task AnEndTheConnectedPanelRefusedIsSentAgainAFewTimes()
+    {
+        var release = Release();
+        var panel = new Panel { Takes = false, TakesAfter = 2 };
+        using var updater = Updater(release.Handler, panel);
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, new string('a', 64))).Status);
+        await FailuresAsync(1);
+
+        // Refused twice, taken the third time, with no Hello in between.
+        Assert.Equal(3, panel.Failures().Count);
+        Assert.Single(panel.Taken());
+        await updater.ReportResultAsync(always: true, TestContext.Current.CancellationToken);
+        Assert.Equal(3, panel.Failures().Count);
+    }
+
+    /// <summary>The panel as the agent reaches it: refuses (or is not there) until <see cref="Takes"/>, or its first <see cref="TakesAfter"/> calls.</summary>
+    private sealed class Panel
+    {
+        private readonly List<(UpdateReport Report, bool Taken)> _calls = [];
+
+        public bool Takes { get; set; }
+
+        public int? TakesAfter { get; set; }
+
+        public Task<bool> DeliverAsync(UpdateReport report, CancellationToken cancellationToken)
+        {
+            lock (_calls)
+            {
+                var taken = Takes || (TakesAfter is { } after && _calls.Count(c => c.Report.Status == UpdateStatuses.Failed) >= after);
+                _calls.Add((report, taken));
+                return Task.FromResult(taken);
+            }
+        }
+
+        public List<UpdateReport> Failures()
+        {
+            lock (_calls)
+            {
+                return [.. _calls.Where(c => c.Report.Status == UpdateStatuses.Failed).Select(c => c.Report)];
+            }
+        }
+
+        public List<UpdateReport> Taken()
+        {
+            lock (_calls)
+            {
+                return [.. _calls.Where(c => c.Taken && c.Report.Status == UpdateStatuses.Failed).Select(c => c.Report)];
+            }
+        }
+    }
+
     private static void WriteResult(AgentUpdater updater, string status, Guid? attempt)
     {
         Directory.CreateDirectory(updater.UpdatesRoot);
@@ -280,11 +361,13 @@ public sealed class AgentUpdaterTests : IDisposable
         Directory.Delete(_root, recursive: true);
     }
 
-    private AgentUpdater Updater(HttpMessageHandler handler) => new(_platform, new PanelChannel(), new AgentPaths(Path.Combine(_root, "Agent")),
-        TimeProvider.System, NullLogger<AgentUpdater>.Instance, new AgentUpdaterOptions
+    private AgentUpdater Updater(HttpMessageHandler handler, Panel? panel = null) => new(_platform, new PanelChannel(),
+        new AgentPaths(Path.Combine(_root, "Agent")), TimeProvider.System, NullLogger<AgentUpdater>.Instance, new AgentUpdaterOptions
         {
             Verifier = new UpdateVerifier([Convert.ToBase64String(_key.ExportSubjectPublicKeyInfo())]),
             Handler = () => handler,
+            Deliver = panel is null ? null : panel.DeliverAsync,
+            RetryDelay = TimeSpan.Zero,
             OnReport = report =>
             {
                 lock (_reports)

@@ -27,6 +27,7 @@ internal sealed partial class AgentHub(
     LiveMetrics liveMetrics,
     MetricHistory history,
     ResourceWatch resources,
+    UpdateReportQueue updateReports,
     FileTransfers transfers,
     IRealtimeNotifier notifier,
     IHubContext<PanelHub, IPanelClient> browsers,
@@ -293,17 +294,19 @@ internal sealed partial class AgentHub(
     }
 
     /// <summary>How an update of Pulsar on the node goes (Phase 19): kept on the node's row, its end audited.</summary>
-    public async Task UpdateReport(UpdateReport report)
+    public Task UpdateReport(UpdateReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
         if (RegisteredNode() is not { } nodeId || !UpdateStatuses.All.Contains(report.Status ?? string.Empty))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         LogUpdateReport(nodeId, report.Status!);
-        await using var scope = scopes.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(nodeId, report, CancellationToken.None);
+        // Not awaited inside its own call: a report waits for the node's update turn, which a request holds while it waits for
+        // the agent's answer to its command, a message this connection cannot deliver until this method returns.
+        updateReports.Enqueue(nodeId, report);
+        return Task.CompletedTask;
     }
 
     /// <summary>What a node's check for game updates found (Pulsar 1.0.9): kept on the server's watch, a new update notified.</summary>

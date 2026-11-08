@@ -236,6 +236,36 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         }
     }
 
+    [DatabaseFact]
+    public async Task AReportThatArrivesWhileARequestWaitsForTheAgentsAnswerIsNotHeldUpByIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var host = await UpdatingAgentAsync(admin, "updates-report-before-ack", hostsPanel: true);
+        var node = host.Agent.Config!.NodeId;
+        factory.Releases.Publish(Next);
+        await CheckAsync(admin);
+        factory.UpdateCommand = async command =>
+        {
+            // The node reports while the request holds the node's turn and waits for the answer to its command: that answer
+            // travels on the connection whose hub method is handling this report, so the report must return without the turn.
+            var report = new UpdateReport(UpdateStatuses.Failed, "1.0.0", Next, null, "Download failed.", DateTimeOffset.UtcNow, command.Attempt);
+            Assert.True(await host.Agent.Channel!.DeliverAsync(nameof(IAgentHub.UpdateReport), report, Ct).WaitAsync(TimeSpan.FromSeconds(5), Ct));
+            return new CommandAck(Guid.NewGuid(), AckStatus.Accepted, null, null);
+        };
+        try
+        {
+            await ApplyAsync(admin, node);
+
+            // Kept once the request let go of the node's turn: the report was not lost, and it is the update's end.
+            await InProcessAgent.EventuallyAsync(async () => (await NodeStatusAsync(admin, node))?.Status == UpdateStatuses.Failed, "the report kept");
+            Assert.Equal("Download failed.", (await NodeStatusAsync(admin, node))?.Error);
+        }
+        finally
+        {
+            factory.UpdateCommand = null;
+        }
+    }
+
     private static async Task ApplyAsync(PanelClient admin, Guid node)
     {
         using var applied = await admin.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([node], PulsarApiFactory.AdminPassword, null, Next));

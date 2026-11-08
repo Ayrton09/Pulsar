@@ -229,7 +229,12 @@ An update started from the panel ([From the panel](#from-the-panel)) runs the sa
 code and where its log is). Each request has an id of its own, which the agent passes to the installer
 (`-UpdateAttempt`) and sends with everything it reports about it: the agent sends the last result again after every
 reconnection, and the panel takes a result only for the request it names, so an earlier update's end (of the same
-version too) never closes a later one, and a step reported late never moves an update back. Results without an id (an
+version too) never closes a later one, and a step reported late never moves an update back. A failure before the
+installer starts (the download, a check, the unpacking) is written in no file: the agent keeps it in memory, sends it
+again a few times if the panel refuses it while connected, and again after every reconnection until the panel takes it
+(until the agent restarts or the next update starts). The panel handles each node's reports one after another, off the
+connection's own message, so that a report arriving while a request waits for the agent's answer never holds either
+back. Results without an id (an
 agent or a release older than 1.0.3) are taken in order only: an end once the agent said it started the update, the
 installer's result once the installer was started. It takes only releases of this project's GitHub repository whose `pulsar-update.json` is
 signed by an update key Pulsar trusts ([releasing.md](releasing.md) is how the maintainer makes them).

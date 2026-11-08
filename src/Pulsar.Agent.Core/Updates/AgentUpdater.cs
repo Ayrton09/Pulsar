@@ -51,6 +51,15 @@ public sealed record AgentUpdaterOptions
     /// the panel took it, when it is).
     /// </summary>
     internal Func<UpdateReport, Task>? OnReport { get; init; }
+
+    /// <summary>Tests: takes the place of the call to the panel (true: it took the report); also makes the channel count as connected.</summary>
+    internal Func<UpdateReport, CancellationToken, Task<bool>>? Deliver { get; init; }
+
+    /// <summary>
+    /// How long to wait before sending an end again that the panel did not take while connected (it refuses reports over its
+    /// rate limit: a burst of ten, then one in five seconds).
+    /// </summary>
+    internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
@@ -65,6 +74,10 @@ public sealed record AgentUpdaterOptions
 public sealed partial class AgentUpdater : IDisposable
 {
     private const string UserAgent = "Pulsar-Agent";
+
+    /// <summary>How many times an end the connected panel refused is sent again right away, before the next Hello or poll does.</summary>
+    private const int FinalRetries = 3;
+
     private static readonly Regex s_releaseFolder = new(@"\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})-[0-9a-f]{8}\z",
         RegexOptions.CultureInvariant);
 
@@ -78,6 +91,7 @@ public sealed partial class AgentUpdater : IDisposable
     private long _startedAt;
     private bool _running;
     private UpdateReport? _currentUpdate;
+    private UpdateReport? _undelivered;
     private DateTimeOffset? _reported;
 
     public AgentUpdater(IUpdatePlatform platform, PanelChannel channel, AgentPaths paths, TimeProvider clock, ILogger<AgentUpdater> logger,
@@ -135,6 +149,8 @@ public sealed partial class AgentUpdater : IDisposable
             }
 
             _running = true;
+            // The end of an earlier run the panel never took is no longer news: this request replaced that one on its row.
+            _undelivered = null;
             _startedAt = _clock.GetTimestamp();
             _currentUpdate = new UpdateReport(UpdateStatuses.Downloading, installed.Version.ToString(), version.ToString(), null, null,
                 _clock.GetUtcNow(), command.Attempt);
@@ -249,13 +265,20 @@ public sealed partial class AgentUpdater : IDisposable
     /// </summary>
     internal async Task ReportResultAsync(bool always, CancellationToken cancellationToken)
     {
+        await ReportInstallerResultAsync(always, cancellationToken);
+        // After it: the end of this agent's last run, if the panel never took it, is the newest word.
+        await ResendUndeliveredAsync(cancellationToken);
+    }
+
+    private async Task ReportInstallerResultAsync(bool always, CancellationToken cancellationToken)
+    {
         if (ReadResult() is not { } result || (!always && result.At == _reported))
         {
             return;
         }
 
         // An update this agent runs ends in RunAsync: an older result sent again after a Hello says nothing about it.
-        if (await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), result, cancellationToken))
+        if (await DeliverAsync(result, cancellationToken))
         {
             _reported = result.At;
         }
@@ -328,20 +351,72 @@ public sealed partial class AgentUpdater : IDisposable
     {
         var report = new UpdateReport(status, from.ToString(), to.ToString(), null, Bounded(error, UpdateReport.MaxErrorLength), _clock.GetUtcNow(),
             attempt);
+        var final = UpdateStatuses.IsFinal(status);
         lock (_lock)
         {
             if (_currentUpdate?.Attempt == attempt && _currentUpdate?.To == report.To)
             {
                 _currentUpdate = report;
             }
+
+            if (final)
+            {
+                // Kept until the panel takes it: a failure before the installer starts is written nowhere else, and one the
+                // panel never saw leaves its row under way for an hour.
+                _undelivered = report;
+            }
         }
 
-        await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), report, CancellationToken.None);
+        var delivered = await DeliverAsync(report, CancellationToken.None);
+        for (var retry = 0; final && !delivered && retry < FinalRetries && CanDeliver; retry++)
+        {
+            // Connected and refused (the panel limits reports): again after a while; not connected: the next Hello sends it.
+            await Task.Delay(_options.RetryDelay, CancellationToken.None);
+            delivered = await DeliverAsync(report, CancellationToken.None);
+        }
+
+        if (delivered)
+        {
+            Delivered(report);
+        }
+
         if (_options.OnReport is { } seen)
         {
             await seen(report);
         }
     }
+
+    /// <summary>Sends the end of this agent's own run again, when the panel did not take it (after a Hello, and while the result is polled).</summary>
+    private async Task ResendUndeliveredAsync(CancellationToken cancellationToken)
+    {
+        UpdateReport? pending;
+        lock (_lock)
+        {
+            pending = _undelivered;
+        }
+
+        if (pending is not null && await DeliverAsync(pending, cancellationToken))
+        {
+            Delivered(pending);
+        }
+    }
+
+    private void Delivered(UpdateReport report)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_undelivered, report))
+            {
+                _undelivered = null;
+            }
+        }
+    }
+
+    private bool CanDeliver => _options.Deliver is not null || _channel.IsConnected;
+
+    private Task<bool> DeliverAsync(UpdateReport report, CancellationToken cancellationToken) => _options.Deliver is { } deliver
+        ? deliver(report, cancellationToken)
+        : _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), report, cancellationToken);
 
     private static string? ReleaseVersion(string path)
     {

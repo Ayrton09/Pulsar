@@ -213,6 +213,7 @@ internal static class ApiServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IServerPlayers, LivePlayers>());
         services.Replace(ServiceDescriptor.Singleton<IRealtimeNotifier, PanelNotifier>());
         services.AddSingleton<AgentConnectionRegistry>();
+        services.AddSingleton<UpdateReportQueue>();
         services.AddSingleton<IAgentConnections>(sp => sp.GetRequiredService<AgentConnectionRegistry>());
         services.AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, AgentAuthenticationHandler>(AgentAuthenticationHandler.Scheme, null);
