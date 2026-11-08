@@ -40,8 +40,18 @@ public sealed class NoHttpUrlReservations : IHttpUrlReservations
 /// <summary>The URL reservations of the HTTP Server API (Windows' <c>netsh http ... urlacl</c>), by URL.</summary>
 public interface IHttpUrlAcls
 {
-    /// <summary>The security descriptor (SDDL) the URL is reserved with, or null when it is not reserved.</summary>
+    /// <summary>
+    /// The security descriptor (SDDL) the URL is reserved with, as the system writes it back (<see cref="Canonical"/>), or
+    /// null when it is not reserved.
+    /// </summary>
     string? Find(string url);
+
+    /// <summary>
+    /// The security descriptor (SDDL) as the system writes it back once reserved: a well-known account by its alias (the
+    /// machine's Administrator as <c>LA</c>), not by the security identifier it was given. What <see cref="Find"/> returns
+    /// is compared with this form.
+    /// </summary>
+    string Canonical(string securityDescriptor);
 
     /// <summary>Reserves the URL with the security descriptor (SDDL).</summary>
     void Add(string url, string securityDescriptor);
@@ -97,7 +107,7 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
             string descriptor;
             try
             {
-                descriptor = Descriptor(sidOf(identity));
+                descriptor = acls.Canonical(Descriptor(sidOf(identity)));
             }
             catch (Exception ex) when (ex is SystemException)
             {

@@ -33,7 +33,7 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
         Assert.Null(acls.Find(url));
 
         acls.Add(url, descriptor);
-        Assert.Equal(descriptor, acls.Find(url), ignoreCase: true);
+        Assert.Equal(acls.Canonical(descriptor), acls.Find(url), ignoreCase: true);
 
         acls.Delete(url);
         Assert.Null(acls.Find(url));
@@ -59,6 +59,20 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
         // Windows reserves this one for everyone, as netsh http show urlacl lists it.
         Assert.Contains(";;;WD)", new HttpServiceUrlAcls().Find("http://+:80/Temporary_Listen_Addresses/"), StringComparison.OrdinalIgnoreCase);
         Assert.Null(new HttpServiceUrlAcls().Find(HttpUrlReservations.Url(_port)));
+    }
+
+    [WindowsFact]
+    public void ADescriptorIsComparedAsWindowsWritesItBack()
+    {
+        var acls = new HttpServiceUrlAcls();
+        var administrator = new SecurityIdentifier(WellKnownSidType.AccountAdministratorSid, WindowsIdentity.GetCurrent().User!.AccountDomainSid);
+
+        // The machine's own Administrator (as CI's runner is) comes back as "LA", SYSTEM as "SY"; an ordinary account
+        // (a server's) by its security identifier.
+        Assert.Equal("D:(A;;GX;;;LA)", acls.Canonical(HttpUrlReservations.Descriptor(administrator.Value)));
+        Assert.Equal("D:(A;;GX;;;SY)", acls.Canonical(HttpUrlReservations.Descriptor("S-1-5-18")));
+        Assert.Equal("D:(A;;GX;;;S-1-5-21-1-2-3-1001)", acls.Canonical(HttpUrlReservations.Descriptor("S-1-5-21-1-2-3-1001")));
+        Assert.Equal("not a descriptor", acls.Canonical("not a descriptor"));
     }
 
     [WindowsFact]

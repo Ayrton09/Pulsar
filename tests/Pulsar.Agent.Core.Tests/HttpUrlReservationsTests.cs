@@ -170,6 +170,23 @@ public sealed class HttpUrlReservationsTests : IDisposable
     }
 
     [Fact]
+    public void AReservationTheSystemWritesBackWithAnAliasIsStillTheAgents()
+    {
+        // Windows writes a well-known account back by its alias (the machine's own Administrator is "LA"), not by the
+        // security identifier it was given: the agent compares the form the system writes.
+        _acls.Aliases[GameSid] = "LA";
+        var urls = Reservations();
+
+        Assert.Empty(urls.Reserve("abcd1234", [7669], Account("game")));
+        Assert.Empty(urls.Reserve("abcd1234", [7669], Account("game")));
+        Assert.Equal(1, _acls.Added);
+        Assert.Equal("D:(A;;GX;;;LA)", _acls.Reserved["http://+:7669/"]);
+
+        urls.Remove("abcd1234");
+        Assert.Empty(_acls.Reserved);
+    }
+
+    [Fact]
     public void AnUnreadableRecordReleasesNothingAndIsSetAside()
     {
         _acls.Reserved["http://+:7669/"] = "D:(A;;GX;;;S-1-5-21-1-2-3-1001)";
@@ -203,7 +220,13 @@ public sealed class HttpUrlReservationsTests : IDisposable
 
         public Exception? DeleteFailure { get; set; }
 
+        // Security identifiers the system writes back by an alias.
+        public Dictionary<string, string> Aliases { get; } = new(StringComparer.Ordinal);
+
         public string? Find(string url) => Reserved.GetValueOrDefault(url);
+
+        public string Canonical(string securityDescriptor) =>
+            Aliases.Aggregate(securityDescriptor, (d, alias) => d.Replace($";;;{alias.Key})", $";;;{alias.Value})", StringComparison.OrdinalIgnoreCase));
 
         public void Add(string url, string securityDescriptor)
         {
@@ -212,7 +235,7 @@ public sealed class HttpUrlReservationsTests : IDisposable
                 throw Failure;
             }
 
-            Reserved.Add(url, securityDescriptor);
+            Reserved.Add(url, Canonical(securityDescriptor));
             Added++;
         }
 

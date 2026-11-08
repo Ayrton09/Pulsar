@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using Pulsar.Agent.Core.Processes;
 using Windows.Win32;
@@ -58,10 +59,27 @@ public sealed unsafe class HttpServiceUrlAcls : IHttpUrlAcls
                     }
 
                     var found = (HTTP_SERVICE_CONFIG_URLACL_SET*)output;
-                    return found->ParamDesc.pStringSecurityDescriptor.ToString();
+                    return Canonical(found->ParamDesc.pStringSecurityDescriptor.ToString());
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Through Windows' own conversion both ways, as the HTTP Server API stores a descriptor and writes it back. One it
+    /// cannot read stays as it is: it then matches nothing the agent made.
+    /// </summary>
+    public string Canonical(string securityDescriptor)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(securityDescriptor);
+        try
+        {
+            return new RawSecurityDescriptor(securityDescriptor).GetSddlForm(AccessControlSections.All);
+        }
+        catch (ArgumentException)
+        {
+            return securityDescriptor;
+        }
     }
 
     public void Add(string url, string securityDescriptor)
