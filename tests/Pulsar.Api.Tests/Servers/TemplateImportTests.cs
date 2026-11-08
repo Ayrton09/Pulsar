@@ -311,6 +311,37 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
+    public async Task Ao2027GoesOnlyToAgentsThatReserveItsWebPortAndKeepItsSettings()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "ao2027" && t.Source == TemplateSource.Bundled);
+
+        // Before 1.0.35 an agent would run the game answering on the node only, and an update would put back Server.ini's defaults.
+        string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands,
+            AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall];
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("ao2027-old", older, true),
+            ("ao2027-no-keep", [.. older, AgentCapabilities.HttpUrls], true),
+            ("ao2027-no-urls", [.. older, AgentCapabilities.ReleaseKeep], true),
+            ("ao2027-new", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep], false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers",
+                new CreateServerRequest(node.Node.Id, template.Id, "AO2027", null, new Dictionary<string, string?>()));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
+    [DatabaseFact]
     public async Task MinecraftWithServerTypesGoesOnlyToAgentsThatInstallThem()
     {
         using var admin = await factory.CreateAdminClientAsync();

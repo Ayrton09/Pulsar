@@ -437,7 +437,13 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     /// A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>, by any case or
     /// by a first segment shaped like its 8.3 short name: addon files are written as SYSTEM).
     /// </summary>
-    private static bool IsAddonPath(string path) => ManifestValidator.IsValidRelativePath(path) && !FileCommands.IsPulsarFolder(path);
+    // No segment shaped like an 8.3 short name (COVERA~1, SERVER~1.INI), anywhere: on a volume that keeps them it names
+    // another file than it reads as, so it could write a file a release step keeps, or Pulsar's own folder.
+    private static bool IsAddonPath(string path) =>
+        ManifestValidator.IsValidRelativePath(path) && !FileCommands.IsPulsarFolder(path) && !path.Split('/').Any(s => ShortNameSegment().IsMatch(s));
+
+    [GeneratedRegex(@"^[^.~]{1,6}~[0-9]+(\.[^.]{1,3})?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ShortNameSegment();
 
     private static IEnumerable<string> Parents(string path)
     {

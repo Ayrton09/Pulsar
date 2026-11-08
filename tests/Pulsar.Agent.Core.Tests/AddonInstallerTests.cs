@@ -288,6 +288,8 @@ public sealed class AddonInstallerTests : IDisposable
     [InlineData("../outside.dll")]
     [InlineData(".pulsar/addons/oxide.json")]
     [InlineData("PULSAR~1/addons/metamod.json")] // .pulsar's 8.3 short name, on volumes that keep them
+    [InlineData("COVERA~1/Server.ini")] // another folder's short name: around a file a release step keeps
+    [InlineData("CoverAO-win-x64/SERVER~1.INI")]
     [InlineData("C:/Windows/evil.dll")]
     public async Task AnArchiveCannotWriteOutsideItsPlace(string entry)
     {

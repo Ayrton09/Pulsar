@@ -52,17 +52,33 @@ public interface IHttpUrlAcls
 
 /// <summary>
 /// <see cref="IHttpUrlReservations"/> over the system's reservations (<paramref name="acls"/>). Each server's are recorded
-/// in <paramref name="recordFile"/> (the agent's state, out of the servers' reach), so only what the agent made, with the
-/// descriptor it made, is ever released or replaced: a URL reserved by anyone else stays as it is, and the server's
-/// console says why its game answers on the node only. Reserving and releasing take turns.
+/// in <paramref name="recordFile"/> (the agent's state, out of the servers' reach), each with the descriptor it was made
+/// with, so only what the agent made, as it made it, is ever released or replaced: a URL reserved by anyone else stays as
+/// it is, and the server's console says why its game answers on the node only. Reserving and releasing take turns.
 /// </summary>
 /// <param name="sidOf">The security identifier of the account a server's game runs as.</param>
+/// <param name="isServer">
+/// Whether a short id is a server of this agent now: a reservation the agent made for one that is not (deleted while its
+/// reservation could not be released) is taken over by the server that has the port now, never a live server's. Without
+/// it, none is taken over.
+/// </param>
 public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessIdentity, string> sidOf, string recordFile,
-    ILogger<HttpUrlReservations> logger) : IHttpUrlReservations
+    ILogger<HttpUrlReservations> logger, Func<string, bool>? isServer = null) : IHttpUrlReservations
 {
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly Lock _lock = new();
+
+    private enum Released
+    {
+        Done,
+
+        // Not the agent's (any more): someone else's, or gone.
+        NotOurs,
+
+        // The system refused: still the agent's, kept in the record to be released later.
+        Failed,
+    }
 
     /// <summary>The URL a game listens on, on every address, at <paramref name="port"/>.</summary>
     public static string Url(int port) => $"http://+:{port}/";
@@ -88,45 +104,66 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
                 return wanted.Count == 0 ? [] : [$"The game's web ports could not be opened to other machines: the server's account was not found ({ex.Message})."];
             }
 
-            // What this server had and no longer has goes first: another server may get that port now.
-            if (records.TryGetValue(shortId, out var earlier))
+            var mine = new List<Entry>(records.GetValueOrDefault(shortId) ?? []);
+
+            // Recorded before anything is reserved: a stop in between leaves a record of what may be the agent's (released
+            // later only if it still has that descriptor), never a reservation of the agent's that no record knows.
+            records[shortId] = [.. mine, .. wanted.Where(url => !mine.Any(e => e.Is(url, descriptor))).Select(url => new Entry(url, descriptor))];
+            TrySave(records);
+
+            // What this server had and no longer has (or had for an account it no longer runs as) goes first: another server
+            // may get that port now. What the system refuses to release stays recorded.
+            foreach (var entry in mine.Where(e => !e.Is(e.Url, descriptor) || !wanted.Contains(e.Url, StringComparer.OrdinalIgnoreCase)).ToList())
             {
-                foreach (var url in earlier.Urls.Except(wanted, StringComparer.OrdinalIgnoreCase))
+                if (Release(entry) != Released.Failed)
                 {
-                    Release(url, earlier.Descriptor);
+                    mine.Remove(entry);
                 }
             }
 
-            var reserved = new List<string>();
+            // Only a server's own account's reservation made by someone else is taken as the agent's (Pulsar made that
+            // account, and deletes it with the server); one for the agent's own user (a development agent's) never is.
+            var adopt = identity is ProcessIdentity.AccountIdentity;
             foreach (var url in wanted)
             {
+                if (mine.Any(e => e.Is(url, descriptor)) && Present(url, descriptor) is true)
+                {
+                    continue;
+                }
+
                 try
                 {
                     var found = acls.Find(url);
                     if (found is not null && !Same(found, descriptor))
                     {
-                        // Another server's, left by one deleted while this agent was away: the port is this server's now.
-                        var stale = records.FirstOrDefault(r => r.Key != shortId && r.Value.Urls.Contains(url, StringComparer.OrdinalIgnoreCase)
-                            && Same(found, r.Value.Descriptor));
-                        if (stale.Key is null)
+                        var owner = records.FirstOrDefault(r => r.Key != shortId && r.Value.Any(e => e.Is(url, found)));
+                        if (owner.Key is not null && isServer?.Invoke(owner.Key) == false)
                         {
-                            problems.Add($"{url} is reserved for another account on this machine ({found}), so the game answers there on this machine only. " +
-                                $"Remove that reservation (netsh http delete urlacl url={url}) or give the server another port.");
+                            // A server this agent no longer has, whose reservation could not be released: the port is this one's now.
+                            acls.Delete(url);
+                            records[owner.Key] = [.. owner.Value.Where(e => !e.Is(url, found))];
+                            found = null;
+                        }
+                        else
+                        {
+                            problems.Add(owner.Key is not null
+                                ? $"{url} is reserved for another game server of this machine that has port {url[9..^1]} on another address, so this game answers there on this machine only. Give one of them another port."
+                                : $"{url} is reserved for another account on this machine ({found}), so the game answers there on this machine only. " +
+                                    $"Remove that reservation (netsh http delete urlacl url={url}) or give the server another port.");
                             continue;
                         }
-
-                        acls.Delete(url);
-                        records[stale.Key] = stale.Value with { Urls = [.. stale.Value.Urls.Where(u => !u.Equals(url, StringComparison.OrdinalIgnoreCase))] };
-                        found = null;
                     }
 
                     if (found is null)
                     {
                         acls.Add(url, descriptor);
                         LogReserved(shortId, url);
+                        mine.Add(new Entry(url, descriptor));
                     }
-
-                    reserved.Add(url);
+                    else if (adopt && !mine.Any(e => e.Is(url, descriptor)))
+                    {
+                        mine.Add(new Entry(url, descriptor));
+                    }
                 }
                 catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
                 {
@@ -134,16 +171,8 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
                 }
             }
 
-            if (reserved.Count > 0)
-            {
-                records[shortId] = new Record(descriptor, reserved);
-            }
-            else
-            {
-                records.Remove(shortId);
-            }
-
-            Save(records);
+            Keep(records, shortId, mine);
+            TrySave(records);
             return problems;
         }
     }
@@ -153,17 +182,14 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
         lock (_lock)
         {
             var records = Load();
-            if (!records.Remove(shortId, out var record))
+            if (!records.TryGetValue(shortId, out var entries))
             {
                 return;
             }
 
-            foreach (var url in record.Urls)
-            {
-                Release(url, record.Descriptor);
-            }
-
-            Save(records);
+            // What the system refused to release stays recorded, to be released another time.
+            Keep(records, shortId, [.. entries.Where(e => Release(e) == Released.Failed)]);
+            TrySave(records);
         }
     }
 
@@ -173,71 +199,130 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
         {
             var records = Load();
             var count = 0;
-            foreach (var record in records.Values)
+            foreach (var (shortId, entries) in records.ToList())
             {
-                foreach (var url in record.Urls)
+                var left = new List<Entry>();
+                foreach (var entry in entries)
                 {
-                    count += Release(url, record.Descriptor) ? 1 : 0;
+                    switch (Release(entry))
+                    {
+                        case Released.Done:
+                            count++;
+                            break;
+                        case Released.Failed:
+                            left.Add(entry);
+                            break;
+                    }
                 }
+
+                Keep(records, shortId, left);
             }
 
-            Save([]);
+            TrySave(records);
             return count;
         }
     }
 
-    // Only the reservation the agent made: one changed since (someone else's now) stays.
-    private bool Release(string url, string descriptor)
+    private static void Keep(Dictionary<string, IReadOnlyList<Entry>> records, string shortId, List<Entry> entries)
+    {
+        if (entries.Count > 0)
+        {
+            records[shortId] = entries;
+        }
+        else
+        {
+            records.Remove(shortId);
+        }
+    }
+
+    // Whether the URL is reserved with the descriptor now (null: the system could not say).
+    private bool? Present(string url, string descriptor)
     {
         try
         {
-            if (acls.Find(url) is { } found && Same(found, descriptor))
-            {
-                acls.Delete(url);
-                LogReleased(url);
-                return true;
-            }
+            return acls.Find(url) is { } found && Same(found, descriptor);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
         {
-            LogReleaseFailed(ex, url);
+            return null;
         }
-
-        return false;
     }
 
-    private static bool Same(string found, string descriptor) => string.Equals(found.Trim(), descriptor, StringComparison.OrdinalIgnoreCase);
-
-    private Dictionary<string, Record> Load()
+    // Only the reservation the agent made, as it made it: one changed since (someone else's now) stays.
+    private Released Release(Entry entry)
     {
         try
         {
-            if (!File.Exists(recordFile))
+            if (acls.Find(entry.Url) is not { } found || !Same(found, entry.Descriptor))
             {
-                return new Dictionary<string, Record>(StringComparer.Ordinal);
+                return Released.NotOurs;
             }
 
-            var read = JsonSerializer.Deserialize<Dictionary<string, Record>>(File.ReadAllBytes(recordFile), s_json);
-            return new Dictionary<string, Record>(read ?? [], StringComparer.Ordinal);
+            acls.Delete(entry.Url);
+            LogReleased(entry.Url);
+            return Released.Done;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            LogReleaseFailed(ex, entry.Url);
+            return Released.Failed;
+        }
+    }
+
+    private static bool Same(string found, string descriptor) => string.Equals(found.Trim(), descriptor.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private Dictionary<string, IReadOnlyList<Entry>> Load()
+    {
+        if (!File.Exists(recordFile))
+        {
+            return new Dictionary<string, IReadOnlyList<Entry>>(StringComparer.Ordinal);
+        }
+
+        try
+        {
+            var read = JsonSerializer.Deserialize<Dictionary<string, List<Entry>>>(File.ReadAllBytes(recordFile), s_json) ?? [];
+            return read.Where(r => r.Value is not null).ToDictionary(r => r.Key,
+                r => (IReadOnlyList<Entry>)[.. r.Value.Where(e => e is { Url: not null, Descriptor: not null })], StringComparer.Ordinal);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            // Unreadable: nothing is known to be the agent's, so nothing is released or replaced.
+            // Unreadable: nothing in it is taken as the agent's, and it is set aside (not written over) for whoever looks.
             LogRecordUnreadable(ex, recordFile);
-            return new Dictionary<string, Record>(StringComparer.Ordinal);
+            try
+            {
+                File.Move(recordFile, $"{recordFile}.unreadable-{DateTime.UtcNow:yyyyMMddHHmmss}", overwrite: true);
+            }
+            catch (Exception moveFailed) when (moveFailed is IOException or UnauthorizedAccessException)
+            {
+                LogRecordUnreadable(moveFailed, recordFile);
+            }
+
+            return new Dictionary<string, IReadOnlyList<Entry>>(StringComparer.Ordinal);
         }
     }
 
-    private void Save(Dictionary<string, Record> records)
+    // A record that cannot be written stops nothing (a start, a deletion): a server's reservations are found again by
+    // their descriptor at its next start.
+    private void TrySave(Dictionary<string, IReadOnlyList<Entry>> records)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(recordFile)!);
-        var temporary = recordFile + ".tmp";
-        File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(records, s_json));
-        File.Move(temporary, recordFile, overwrite: true);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(recordFile)!);
+            var temporary = recordFile + ".tmp";
+            File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(records, s_json));
+            File.Move(temporary, recordFile, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogRecordNotSaved(ex, recordFile);
+        }
     }
 
-    /// <summary>What the agent reserved for one server: the descriptor and the URLs.</summary>
-    public sealed record Record(string Descriptor, IReadOnlyList<string> Urls);
+    /// <summary>One URL the agent reserved, with the descriptor it reserved it with.</summary>
+    public sealed record Entry(string Url, string Descriptor)
+    {
+        public bool Is(string url, string descriptor) => Url.Equals(url, StringComparison.OrdinalIgnoreCase) && Same(Descriptor, descriptor);
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Reserved {Url} for server {ShortId}'s account")]
     private partial void LogReserved(string shortId, string url);
@@ -245,9 +330,12 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
     [LoggerMessage(Level = LogLevel.Information, Message = "Released {Url}")]
     private partial void LogReleased(string url);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not release {Url}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not release {Url}: it stays recorded, to be released later")]
     private partial void LogReleaseFailed(Exception ex, string url);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The record of reserved URLs ({Path}) could not be read: nothing is released")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The record of reserved URLs ({Path}) could not be read: it is set aside and nothing in it is released")]
     private partial void LogRecordUnreadable(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The record of reserved URLs ({Path}) could not be written")]
+    private partial void LogRecordNotSaved(Exception ex, string path);
 }

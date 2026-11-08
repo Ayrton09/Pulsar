@@ -1002,7 +1002,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             // be done is said in its console, and the game starts anyway (answering on this machine only there).
             foreach (var problem in _urls.Reserve(_definition.ShortId, [.. plan.Ports.Where(p => p.Http).Select(p => p.Port)], _definition.Identity))
             {
-                _console.Write($"[Pulsar] {problem}\r\n", _clock.GetUtcNow());
+                _console.Note(problem, _clock.GetUtcNow());
             }
         }
         catch (LaunchPlanException ex)

@@ -555,10 +555,18 @@ internal static class AgentCommands
         var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
         var accountNames = deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName).ToList();
         // Before the state goes: it records which reservations are the agent's.
-        var urls = removeHttpUrls?.Invoke() ?? 0;
-        if (urls > 0)
+        try
         {
-            output.WriteLine($"Released {urls} HTTP URL reservation(s) of the game servers.");
+            var urls = removeHttpUrls?.Invoke() ?? 0;
+            if (urls > 0)
+            {
+                output.WriteLine($"Released {urls} HTTP URL reservation(s) of the game servers.");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            errors.WriteLine($"The HTTP URL reservations of the game servers could not be released ({ex.Message}); " +
+                "list them with netsh http show urlacl and remove those of the servers' accounts from an elevated prompt.");
         }
 
         if (serviceStillStopping)

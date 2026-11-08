@@ -137,6 +137,8 @@ public sealed class ServerHostTests : IAsyncDisposable
         // Answered at once: the check reports what it found later.
         Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CheckGameUpdateCommand(steam), null))).Status);
         Assert.Contains(AgentCapabilities.CheckGameUpdate, host.Capabilities);
+        Assert.Contains(AgentCapabilities.HttpUrls, host.Capabilities);
+        Assert.Contains(AgentCapabilities.ReleaseKeep, host.Capabilities);
     }
 
     [Fact]

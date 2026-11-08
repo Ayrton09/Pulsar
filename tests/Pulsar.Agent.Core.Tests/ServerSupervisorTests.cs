@@ -43,6 +43,40 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheGamesWebPortsAreReservedBeforeItStartsAndWhatCouldNotBeIsSaidInItsConsole()
+    {
+        var urls = new RecordingUrls("http://+:7669/ is reserved for another account");
+        var supervisor = Supervisor(plan => plan with
+        {
+            Ports = [new BoundPort("game", "0.0.0.0", 7669, [PortProtocol.Tcp], Http: true), new BoundPort("query", "0.0.0.0", 7670, [PortProtocol.Udp])],
+        }, urls: urls);
+
+        await Started(supervisor);
+        await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.Requested);
+
+        Assert.Equal([("abcd1234", 7669)], urls.Reserved);
+        Assert.Contains("[Pulsar] http://+:7669/ is reserved for another account",
+            string.Concat(supervisor.Console.Buffer.Read(null, int.MaxValue).Select(e => e.Text)), StringComparison.Ordinal);
+    }
+
+    private sealed class RecordingUrls(string problem) : IHttpUrlReservations
+    {
+        public List<(string ShortId, int Port)> Reserved { get; } = [];
+
+        public IReadOnlyList<string> Reserve(string shortId, IReadOnlyList<int> ports, ProcessIdentity identity)
+        {
+            Reserved.AddRange(ports.Select(p => (shortId, p)));
+            return [problem];
+        }
+
+        public void Remove(string shortId)
+        {
+        }
+
+        public int RemoveAll() => 0;
+    }
+
+    [Fact]
     public async Task AStartIsAcknowledgedBeforeTheProcessExists()
     {
         var supervisor = Supervisor();
@@ -971,7 +1005,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null,
-        ProcessLimits? limits = null, string directory = @"C:\servers\abcd1234")
+        ProcessLimits? limits = null, string directory = @"C:\servers\abcd1234", IHttpUrlReservations? urls = null)
     {
         var plan = new LaunchPlan("bin/game.exe", "", ["--ready-after", "0"], new Dictionary<string, string>(),
             new ConsoleDefinition(ManifestConsoleMode.Pty, InputNewline: "\r\n"),
@@ -980,7 +1014,8 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", directory, ProcessIdentity.CurrentUser,
             change?.Invoke(plan) ?? plan, AutoStart: false, RestartOnCrash: restartOnCrash, limits);
         _definition = definition;
-        _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance, query: query);
+        _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance, query: query,
+            urls: urls);
         return _supervisor;
     }
 }

@@ -57,13 +57,82 @@ public sealed class HttpUrlReservationsTests : IDisposable
     [Fact]
     public void AReservationOfAServerDeletedMeanwhileGoesToTheOneThatHasThePortNow()
     {
-        var urls = Reservations();
+        var urls = Reservations(isServer: shortId => shortId != "dead0000");
         urls.Reserve("dead0000", [7669], Account("old"));
 
         Assert.Empty(urls.Reserve("abcd1234", [7669], Account("game")));
         urls.Remove("dead0000");
 
         Assert.Equal("D:(A;;GX;;;S-1-5-21-1-2-3-1001)", _acls.Reserved["http://+:7669/"]);
+    }
+
+    [Fact]
+    public void ALiveServersReservationIsNeverTakenOver()
+    {
+        // Two servers of one node with the same port on two of its addresses: both games ask for http://+:7669/.
+        var urls = Reservations(isServer: _ => true);
+        urls.Reserve("first000", [7669], Account("old"));
+
+        var problems = urls.Reserve("abcd1234", [7669], Account("game"));
+
+        Assert.Contains("another game server of this machine", Assert.Single(problems), StringComparison.Ordinal);
+        Assert.Equal("D:(A;;GX;;;S-1-5-21-1-2-3-1002)", _acls.Reserved["http://+:7669/"]);
+        urls.Remove("abcd1234");
+        Assert.Single(_acls.Reserved);
+    }
+
+    [Fact]
+    public void AnAccountWithANewIdentifierGetsItsOwnReservationBack()
+    {
+        Reservations().Reserve("abcd1234", [7669], Account("game"));
+
+        // The server's account was made again (another security identifier): the agent's reservation for the old one is its own.
+        var renewed = new HttpUrlReservations(_acls, _ => "S-1-5-21-1-2-3-2000", Path.Combine(_root, "http-urls.json"),
+            NullLogger<HttpUrlReservations>.Instance);
+
+        Assert.Empty(renewed.Reserve("abcd1234", [7669], Account("game")));
+        Assert.Equal("D:(A;;GX;;;S-1-5-21-1-2-3-2000)", _acls.Reserved["http://+:7669/"]);
+    }
+
+    [Fact]
+    public void ADevelopmentAgentsOwnUsersReservationIsUsedButNeverTakenAsTheAgents()
+    {
+        // A development agent's servers run as its own user, for whom the developer may have reserved the URL by hand.
+        _acls.Reserved["http://+:7669/"] = "D:(A;;GX;;;S-1-5-21-1-2-3-1002)";
+        var urls = Reservations();
+
+        Assert.Empty(urls.Reserve("abcd1234", [7669], ProcessIdentity.CurrentUser));
+        urls.Remove("abcd1234");
+
+        Assert.Single(_acls.Reserved);
+    }
+
+    [Fact]
+    public void APortChangeWhoseOldReservationTheSystemRefusesToReleaseIsReleasedLater()
+    {
+        var urls = Reservations();
+        urls.Reserve("abcd1234", [7669], Account("game"));
+        _acls.DeleteFailure = new Win32Exception(1, "Incorrect function");
+
+        urls.Reserve("abcd1234", [7679], Account("game"));
+        _acls.DeleteFailure = null;
+        urls.Remove("abcd1234");
+
+        Assert.Empty(_acls.Reserved);
+    }
+
+    [Fact]
+    public void AReleaseTheSystemRefusesStaysRecordedForNextTime()
+    {
+        var urls = Reservations();
+        urls.Reserve("abcd1234", [7669], Account("game"));
+        _acls.DeleteFailure = new Win32Exception(1, "Incorrect function");
+
+        urls.Remove("abcd1234");
+        _acls.DeleteFailure = null;
+        urls.Remove("abcd1234");
+
+        Assert.Empty(_acls.Reserved);
     }
 
     [Fact]
@@ -101,20 +170,26 @@ public sealed class HttpUrlReservationsTests : IDisposable
     }
 
     [Fact]
-    public void AnUnreadableRecordReleasesNothing()
+    public void AnUnreadableRecordReleasesNothingAndIsSetAside()
     {
         _acls.Reserved["http://+:7669/"] = "D:(A;;GX;;;S-1-5-21-1-2-3-1001)";
         File.WriteAllText(Path.Combine(_root, "http-urls.json"), "{ not json");
 
         Assert.Equal(0, Reservations().RemoveAll());
         Assert.Single(_acls.Reserved);
+        Assert.Single(Directory.GetFiles(_root, "http-urls.json.unreadable-*"));
+
+        // The same server's next start finds its own reservation by its descriptor, and records it again.
+        Assert.Empty(Reservations().Reserve("abcd1234", [7669], Account("game")));
+        Reservations().Remove("abcd1234");
+        Assert.Empty(_acls.Reserved);
     }
 
-    private HttpUrlReservations Reservations() => new(_acls, identity => identity switch
+    private HttpUrlReservations Reservations(Func<string, bool>? isServer = null) => new(_acls, identity => identity switch
     {
         ProcessIdentity.AccountIdentity { Name: "game" } => GameSid,
         _ => OtherSid,
-    }, Path.Combine(_root, "http-urls.json"), NullLogger<HttpUrlReservations>.Instance);
+    }, Path.Combine(_root, "http-urls.json"), NullLogger<HttpUrlReservations>.Instance, isServer);
 
     private static ProcessIdentity Account(string name) => ProcessIdentity.Account(name);
 
@@ -125,6 +200,8 @@ public sealed class HttpUrlReservationsTests : IDisposable
         public int Added { get; private set; }
 
         public Exception? Failure { get; set; }
+
+        public Exception? DeleteFailure { get; set; }
 
         public string? Find(string url) => Reserved.GetValueOrDefault(url);
 
@@ -139,6 +216,14 @@ public sealed class HttpUrlReservationsTests : IDisposable
             Added++;
         }
 
-        public void Delete(string url) => Reserved.Remove(url);
+        public void Delete(string url)
+        {
+            if (DeleteFailure is not null)
+            {
+                throw DeleteFailure;
+            }
+
+            Reserved.Remove(url);
+        }
     }
 }

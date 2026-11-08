@@ -154,6 +154,40 @@ public sealed class UnenrollTests : IDisposable
     }
 
     [Fact]
+    public void TheServersHttpUrlsAreReleasedBeforeTheStateThatRecordsThemGoes()
+    {
+        new SteamLoginStore(_paths, new PlainStateProtector()).Save(new SteamLogin(Guid.NewGuid(), "builder", "password"), "cached"u8.ToArray());
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+        var stateThere = false;
+
+        AgentCommands.RemoveServers(_paths, _servers, _paths.BackupsDirectory, new PlainStateProtector(), deleteAccount: null, _ => 0, output, errors,
+            removeHttpUrls: () =>
+            {
+                stateThere = Directory.Exists(_paths.SteamLoginsDirectory);
+                return 2;
+            });
+
+        Assert.True(stateThere);
+        Assert.Contains("Released 2 HTTP URL reservation(s)", output.ToString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(_paths.SteamLoginsDirectory));
+    }
+
+    [Fact]
+    public void HttpUrlsThatCannotBeReleasedAreReportedAndTheRestGoesOn()
+    {
+        new SteamLoginStore(_paths, new PlainStateProtector()).Save(new SteamLogin(Guid.NewGuid(), "builder", "password"), "cached"u8.ToArray());
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+
+        AgentCommands.RemoveServers(_paths, _servers, _paths.BackupsDirectory, new PlainStateProtector(), deleteAccount: null, _ => 0, output, errors,
+            removeHttpUrls: () => throw new UnauthorizedAccessException("Access is denied."));
+
+        Assert.Contains("netsh http show urlacl", errors.ToString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(_paths.SteamLoginsDirectory));
+    }
+
+    [Fact]
     public void AServiceStillStoppingKeepsTheAccountsAndTheStateItMayStillUse()
     {
         // The service could still save a server record (secrets included) or log on as a server account meanwhile.
