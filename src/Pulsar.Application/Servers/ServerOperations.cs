@@ -101,16 +101,11 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
     }
 
     /// <summary>
-    /// The node accepted: the operation is running (<see cref="Operation.Started"/>), unless it is no longer queued (the
-    /// agent reported its result already: a quick operation's result wins over "started"). One statement on its row, so
-    /// the agent's reports on it meanwhile (each new stage of a backup changes the row) can neither make it fail nor be
-    /// overwritten; the operation is then read back as it is.
-    /// </summary>
-    /// <summary>
     /// The first save of a begun operation. An agent's report that saved the same server row in between (its version
     /// moved on) is not the user's error: when the caller had not changed the server itself, the operation is begun
-    /// again on the fresh row, its checks run again, and what the caller added stays to be saved with it. When it still cannot be, nothing of it is left tracked for a later save
-    /// of the same context (a scheduled run records its outcome after this) and the server is said to be busy.
+    /// again on the fresh row, its checks run again, and what the caller added stays to be saved with it. When it still
+    /// cannot be, nothing of it is left tracked for a later save of the same context (a scheduled run records its outcome
+    /// after this) and the server is said to be busy.
     /// </summary>
     private async Task<DomainError?> SaveBegunAsync(Server server, Operation operation, HashSet<object> before, bool untouched,
         CancellationToken cancellationToken)
@@ -144,6 +139,12 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         }
     }
 
+    /// <summary>
+    /// The node accepted: the operation is running (<see cref="Operation.Started"/>), unless it is no longer queued (the
+    /// agent reported its result already: a quick operation's result wins over "started"). One statement on its row, so
+    /// the agent's reports on it meanwhile (each new stage of a backup changes the row) can neither make it fail nor be
+    /// overwritten; the operation is then read back as it is.
+    /// </summary>
     private async Task StartedAsync(Operation operation, DateTimeOffset now)
     {
         await db.Operations.Where(o => o.Id == operation.Id && o.Status == OperationStatus.Queued)
