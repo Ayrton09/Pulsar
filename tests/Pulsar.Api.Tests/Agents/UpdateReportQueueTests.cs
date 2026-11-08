@@ -22,6 +22,7 @@ public sealed class UpdateReportQueueTests
         var queue = new UpdateReportQueue(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             NullLogger<UpdateReportQueue>.Instance)
         {
+            RetryDelay = TimeSpan.FromMilliseconds(10),
             Handler = async (node, report) =>
             {
                 if (node == other)
@@ -43,7 +44,7 @@ public sealed class UpdateReportQueueTests
 
                 if (report.Status == UpdateStatuses.Succeeded)
                 {
-                    throw new InvalidOperationException("A failing report ends only itself.");
+                    throw new InvalidOperationException("A failing report is tried again, then ends only itself.");
                 }
             },
         };
@@ -64,10 +65,11 @@ public sealed class UpdateReportQueueTests
         {
             lock (handled)
             {
-                return handled.Count == 4;
+                return handled.Count == 3 + UpdateReportQueue.Attempts;
             }
         });
-        Assert.Equal([UpdateStatuses.Downloading, UpdateStatuses.Installing, UpdateStatuses.Succeeded, UpdateStatuses.Failed], handled);
+        Assert.Equal([UpdateStatuses.Downloading, UpdateStatuses.Installing, .. Enumerable.Repeat(UpdateStatuses.Succeeded, UpdateReportQueue.Attempts),
+            UpdateStatuses.Failed], handled);
     }
 
     private static UpdateReport Report(string status) => new(status, "1.0.0", "1.0.1", null, null, DateTimeOffset.UtcNow);

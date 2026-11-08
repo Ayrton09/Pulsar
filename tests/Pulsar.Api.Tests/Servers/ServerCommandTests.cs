@@ -140,6 +140,28 @@ public sealed class ServerCommandTests(PulsarApiFactory factory) : IClassFixture
 
         Assert.True(made.IsSuccess, made.Error?.Code);
         await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "the backup ended");
+
+        // A caller that changed the server itself first (a game change, say) is not begun again on the fresh row, which
+        // would drop its change and keep the rest: it sees the conflict, and nothing of it is saved.
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Operation>().Any(e => e.State == EntityState.Added && e.Entity.ServerId == new ServerId(server)),
+            () => SetAsync(server, "UPDATE servers SET updated_at = now() WHERE id = {0}"));
+        var refused = Operation.Create(OperationType.BackupCreate, new NodeId(created.Node.Id), new ServerId(server), null, OperationRequester.User,
+            DateTimeOffset.UtcNow);
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct);
+            Assert.True(row.SetExternalId("changed-first", DateTimeOffset.UtcNow).IsSuccess);
+            await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => scope.ServiceProvider.GetRequiredService<ServerOperations>()
+                .RunAsync(row, refused, new CreateBackupCommand(server, Guid.NewGuid()), beforeSave: null, Ct));
+        }
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            Assert.Null((await db.Servers.AsNoTracking().SingleAsync(s => s.Id == new ServerId(server), Ct)).ExternalId);
+            Assert.False(await db.Operations.AnyAsync(o => o.Id == refused.Id, Ct));
+        }
     }
 
     [DatabaseFact]

@@ -35,6 +35,10 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
             return ServerErrors.Transferring;
         }
 
+        // Whether the caller changed the server itself before (a game change, a spec sync): then a save that lost the race
+        // to an agent's report is not begun again on the fresh row, which would drop those changes (the caller sees the
+        // conflict, as before).
+        var untouched = db.Entry(server).State == EntityState.Unchanged;
         var taken = server.BeginOperation(operation, clock.GetUtcNow());
         if (!taken.IsSuccess)
         {
@@ -44,7 +48,7 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         var before = db.ChangeTracker.Entries().Select(e => e.Entity).ToHashSet(ReferenceEqualityComparer.Instance);
         db.Operations.Add(operation);
         beforeSave?.Invoke();
-        if (await SaveBegunAsync(server, operation, before, cancellationToken) is { } notBegun)
+        if (await SaveBegunAsync(server, operation, before, untouched, cancellationToken) is { } notBegun)
         {
             return notBegun;
         }
@@ -104,11 +108,12 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
     /// </summary>
     /// <summary>
     /// The first save of a begun operation. An agent's report that saved the same server row in between (its version
-    /// moved on) is not the user's error: the operation is begun again on the fresh row, its checks run again, and what
-    /// the caller added stays to be saved with it. When it still cannot be, nothing of it is left tracked for a later save
+    /// moved on) is not the user's error: when the caller had not changed the server itself, the operation is begun
+    /// again on the fresh row, its checks run again, and what the caller added stays to be saved with it. When it still cannot be, nothing of it is left tracked for a later save
     /// of the same context (a scheduled run records its outcome after this) and the server is said to be busy.
     /// </summary>
-    private async Task<DomainError?> SaveBegunAsync(Server server, Operation operation, HashSet<object> before, CancellationToken cancellationToken)
+    private async Task<DomainError?> SaveBegunAsync(Server server, Operation operation, HashSet<object> before, bool untouched,
+        CancellationToken cancellationToken)
     {
         for (var attempt = 1; ; attempt++)
         {
@@ -117,7 +122,7 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
                 await db.SaveChangesAsync(cancellationToken);
                 return null;
             }
-            catch (DbUpdateConcurrencyException ex) when (ex.Entries.All(e => e.Entity is Server))
+            catch (DbUpdateConcurrencyException ex) when (untouched && ex.Entries.All(e => e.Entity is Server))
             {
                 await db.Entry(server).ReloadAsync(cancellationToken);
                 var again = attempt < 3 ? server.BeginOperation(operation, clock.GetUtcNow()) : Result.Failure(ServerErrors.Busy);

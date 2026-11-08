@@ -17,8 +17,14 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
     private readonly Dictionary<NodeId, Line> _lines = [];
     private readonly Lock _lock = new();
 
+    /// <summary>How many times a report is tried before its failure is only logged.</summary>
+    internal const int Attempts = 3;
+
     /// <summary>Tests: what handles a report (the scoped <see cref="PanelUpdates.ReportAsync"/> by default).</summary>
     internal Func<NodeId, UpdateReport, Task>? Handler { get; init; }
+
+    /// <summary>The wait between two tries of a report (shorter in tests).</summary>
+    internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     public void Enqueue(NodeId nodeId, UpdateReport report)
     {
@@ -42,14 +48,29 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
         await previous;
         try
         {
-            if (Handler is { } handler)
+            // The agent took the report as delivered once it was queued: a failure to keep it (the database, say) is tried
+            // again a few times before it is only logged.
+            for (var attempt = 1; ; attempt++)
             {
-                await handler(nodeId, report);
-            }
-            else
-            {
-                await using var scope = scopes.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(nodeId, report, CancellationToken.None);
+                try
+                {
+                    if (Handler is { } handler)
+                    {
+                        await handler(nodeId, report);
+                    }
+                    else
+                    {
+                        await using var scope = scopes.CreateAsyncScope();
+                        await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(nodeId, report, CancellationToken.None);
+                    }
+
+                    break;
+                }
+                catch (Exception ex) when (attempt < Attempts && ex is not OutOfMemoryException)
+                {
+                    LogReportRetried(ex, nodeId, report.Status, attempt);
+                    await Task.Delay(RetryDelay);
+                }
             }
         }
         catch (Exception ex)
@@ -67,6 +88,9 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Node {NodeId}'s update report ({Status}) could not be kept (try {Attempt}): trying again")]
+    private partial void LogReportRetried(Exception exception, NodeId nodeId, string? status, int attempt);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Node {NodeId}'s update report ({Status}) could not be kept")]
     private partial void LogReportFailed(Exception exception, NodeId nodeId, string? status);
