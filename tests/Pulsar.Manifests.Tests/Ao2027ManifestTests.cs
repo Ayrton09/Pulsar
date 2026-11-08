@@ -14,7 +14,8 @@ public sealed class Ao2027ManifestTests
         var manifest = TestManifests.Load("ao2027");
         var release = manifest.Install!.Steps.OfType<GitHubReleaseStep>().Single();
 
-        Assert.Equal("Ayrton09/CoverAO", release.Repo);
+        Assert.Equal("Ayrton09/AO-2027", release.Repo);
+        Assert.Equal(release.Repo, manifest.Update!.Steps.OfType<GitHubReleaseStep>().Single().Repo);
         Assert.Equal(["CoverAO-win-x64/Server.ini"], release.KeepList);
         Assert.Equal(release.KeepList, manifest.Update!.Steps.OfType<GitHubReleaseStep>().Single().KeepList);
         Assert.Equal(["game"], manifest.PortList.Where(p => p.Http).Select(p => p.Name));

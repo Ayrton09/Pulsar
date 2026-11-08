@@ -3,8 +3,11 @@
 Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`CoverAO-servidor-win-x64.zip`, about
 300 MB, 415 MB installed), through a development panel and agent:
 
-- The install takes the latest release of `Ayrton09/CoverAO` from GitHub, checked against the SHA-256 GitHub publishes
-  for the asset, and unpacks its `CoverAO-win-x64` folder (3,547 files) in about 30 s. The update check compares the
+- The install takes the latest release of `Ayrton09/AO-2027` from GitHub, checked against the SHA-256 GitHub publishes
+  for the asset, and unpacks its `CoverAO-win-x64` folder (3,547 files) in about 30 s. Until 1.0.8 the releases were on
+  `Ayrton09/CoverAO`; from 1.0.9 (2026-11-08) code and downloads are in `Ayrton09/AO-2027` alone, with the same server
+  asset: the 1.0.9 zip was checked by its contents (the same folder, program, `Server.ini` and `data` as before; 3,548
+  files, 435 MB unpacked), and template 1.0.1 takes it from the new repository. The update check compares the
   latest release's asset with the installed one; the game's own `BuscarActualizaciones` only says in the console that
   there is a new version and downloads nothing.
 - `Server.ini` (`[INIT]`) gets `StartPort` from the base port; the other options (player limit, experience and gold,
@@ -28,7 +31,13 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   back) and through a move to a new version of the template.
 - Backups take `data` (the SQLite database `coverao.db` with its `-wal` and `-shm` files), `gamedata` and `Server.ini`,
   without the game's own backups and logs in `data/backups` and `data/logs`, and without `data/*.lock`, which the game
-  holds open while it runs.
+  holds open while it runs. SQLite is the game's default (`[BASEDEDATOS]` in `Server.ini`); with `Tipo=postgres` the
+  characters and accounts are in that PostgreSQL server instead, outside the server's folder, so Pulsar's backups do
+  not have them. The game's own backups still do (every 30 minutes in `data/backups`, with Postgres a zip of every
+  table), on the same disk as the server.
+- An update unpacks the whole release again: a map in `gamedata` edited by hand is replaced by the release's (the
+  game's own updater, `Actualizar.bat`, would keep it). `Server.ini` is the only file kept, so take a backup before
+  updating a server whose maps were changed.
 - The game reads no commands from its console: it is run from its admin panel and with the game masters' commands in
   the game. Its admin panel's token is printed in the console at every start, so whoever can read the server's console
   in Pulsar sees it; the panel answers on the machine only.
