@@ -47,6 +47,17 @@ internal sealed partial class ConsoleMirrors(
                     continue;
                 }
 
+                if (mirror.Node != node)
+                {
+                    // The server moved to another node (a transfer): its old node's copy (that node's sequences, its
+                    // subscription) gives way to a new one, which whoever still watches the old one watches too.
+                    var moved = new Mirror(server, node);
+                    moved.Watchers.UnionWith(mirror.Watchers);
+                    mirror.Generation++; // the old copy's pending unsubscribe or removal is off: it is no longer there
+                    _mirrors.TryUpdate(server, moved, mirror);
+                    continue;
+                }
+
                 mirror.Watchers.Add(connectionId);
                 mirror.Generation++; // a pending unsubscribe or removal is off
                 subscribe = !mirror.Subscribed;
