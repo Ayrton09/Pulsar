@@ -66,6 +66,9 @@ public sealed class AgentPaths(string root)
     /// </summary>
     public string LogonLocksDirectory => Path.Combine(Root, "state", "logon-locks");
 
+    /// <summary>The HTTP URLs the agent reserved for each server's account (<see cref="Processes.HttpUrlReservations"/>).</summary>
+    public string HttpUrlsFile => Path.Combine(Root, "state", "http-urls.json");
+
     /// <summary>The addresses the panel's names resolved to, which the game servers' accounts stay blocked from (PanelAddressBook).</summary>
     public string PanelAddressesFile => Path.Combine(Root, "state", "panel-addresses.json");
 

@@ -1,0 +1,79 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "ao2027",
+  "version": "1.0.0",
+  "name": "AO2027",
+  "description": "AO2027, Argentum Online's world on a modern server (CoverAO, its port to .NET with a web client), installed from its GitHub releases. Players play from a browser at the server's Web client port; game masters and the other settings are in CoverAO-win-x64/Server.ini.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 3, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "maxUsers", "label": "Player limit", "type": "integer", "min": 0, "max": 5000,
+      "description": "0 for none. Left empty, MaxUsers stays as Server.ini has it." },
+    { "key": "exp", "label": "Experience multiplier", "type": "integer", "min": 1, "max": 1000,
+      "description": "How many times the experience each creature gives: 1 is normal. Left empty, Exp stays as Server.ini has it." },
+    { "key": "gold", "label": "Gold multiplier", "type": "integer", "min": 1, "max": 1000,
+      "description": "How many times the gold each creature gives: 1 is normal. Left empty, Oro stays as Server.ini has it." },
+    { "key": "newCharacters", "label": "New characters", "type": "enum",
+      "options": [ { "value": "1", "label": "Allowed" }, { "value": "0", "label": "Not allowed" } ],
+      "description": "Whether players may create characters. Left empty, PuedeCrearPersonajes stays as Server.ini has it." },
+    { "key": "maintenance", "label": "Game masters only", "type": "enum",
+      "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On (maintenance)" } ],
+      "description": "Only game masters can log in. Left empty, ServerSoloGMs stays as Server.ini has it." }
+  ],
+
+  "ports": [
+    { "name": "base", "label": "Base port", "protocols": ["tcp"], "default": 7666, "internal": true,
+      "description": "StartPort in Server.ini: the other three follow it. The classic Windows client cannot log in to this server, so it stays closed." },
+    { "name": "websocket", "label": "WebSocket", "protocols": ["tcp"], "default": 7667, "internal": true,
+      "follows": { "port": "base", "offset": 1 },
+      "description": "Kept for older web clients: the web client plays through the Web client port." },
+    { "name": "admin", "label": "Admin panel", "protocols": ["tcp"], "default": 7668, "internal": true,
+      "follows": { "port": "base", "offset": 2 },
+      "description": "The game's own admin panel, on this machine only. Its token is in the console at every start." },
+    { "name": "game", "label": "Web client", "protocols": ["tcp"], "default": 7669, "http": true,
+      "follows": { "port": "base", "offset": 3 },
+      "description": "Players open http://<address>:<port>/ in a browser to play." }
+  ],
+
+  "install": { "steps": [
+    { "type": "githubRelease", "repo": "Ayrton09/CoverAO", "asset": "^CoverAO-servidor-win-x64\\.zip$", "keep": ["CoverAO-win-x64/Server.ini"] }
+  ] },
+  "update": { "steps": [
+    { "type": "githubRelease", "repo": "Ayrton09/CoverAO", "asset": "^CoverAO-servidor-win-x64\\.zip$", "keep": ["CoverAO-win-x64/Server.ini"] }
+  ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "CoverAO-win-x64/CoverAO.Server.exe",
+      "workingDirectory": "CoverAO-win-x64",
+      "arguments": [],
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "CoverAO-win-x64/Server.ini", "format": "unreal-ini", "mode": "patch", "section": "INIT",
+      "set": {
+        "StartPort": "{{port.base}}",
+        "MaxUsers": "{{var.maxUsers}}",
+        "Exp": "{{var.exp}}",
+        "Oro": "{{var.gold}}",
+        "PuedeCrearPersonajes": "{{var.newCharacters}}",
+        "ServerSoloGMs": "{{var.maintenance}}"
+      },
+      "keepIfEmpty": ["MaxUsers", "Exp", "Oro", "PuedeCrearPersonajes", "ServerSoloGMs"] }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Puertos:", "timeoutSeconds": 300 },
+
+  "stop": { "steps": [ { "type": "ctrlC" } ], "timeoutSeconds": 120 },
+
+  "backup": {
+    "include": ["CoverAO-win-x64/data/**", "CoverAO-win-x64/gamedata/**", "CoverAO-win-x64/Server.ini"],
+    "exclude": ["CoverAO-win-x64/data/backups/**", "CoverAO-win-x64/data/logs/**"]
+  }
+}

@@ -59,7 +59,8 @@ public sealed record PortAssignment(string IpAddress, int Port)
         && ip.ToString() == IpAddress;
 }
 
-public sealed record BoundPort(string Name, string IpAddress, int Port, IReadOnlyList<PortProtocol> Protocols);
+/// <param name="Http">The game listens there with Windows' HTTP Server API (<see cref="PortDefinition.Http"/>).</param>
+public sealed record BoundPort(string Name, string IpAddress, int Port, IReadOnlyList<PortProtocol> Protocols, bool Http = false);
 
 /// <param name="Address">Loopback when the game listens on every interface.</param>
 public sealed record RconEndpoint(RconProtocol Protocol, string Address, int Port, string Password)
@@ -501,7 +502,7 @@ public static partial class LaunchPlanRenderer
         return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
         {
             // Internal ports (a console only the agent uses) are never opened in the firewall.
-            Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name) && !p.Internal).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols))],
+            Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name) && !p.Internal).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols, p.Http))],
             ConfigFiles = configFiles,
             Rcon = rcon,
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,

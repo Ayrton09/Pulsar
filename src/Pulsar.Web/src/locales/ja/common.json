@@ -7790,6 +7790,57 @@
           "description": "プレイヤーは UDP で接続し、サーバーはそこで RCON にも応答します (パスワードを知っているのは Pulsar だけです)。すべてのアドレスかネットワークアドレスに割り当ててください。127.0.0.1 ではゲームを起動できません。"
         }
       }
+    },
+    "ao2027": {
+      "description": "AO2027。Argentum Online の世界を最新のサーバーで動かします（CoverAO：Web クライアント付きの .NET への移植）。GitHub のリリースからインストールされます。プレイヤーはサーバーの「Web クライアント」ポートでブラウザからプレイします。ゲームマスターなどの設定は CoverAO-win-x64/Server.ini にあります。",
+      "variables": {
+        "maxUsers": {
+          "label": "プレイヤー上限",
+          "description": "0 で無制限。空欄なら Server.ini の MaxUsers のままです。"
+        },
+        "exp": {
+          "label": "経験値の倍率",
+          "description": "各クリーチャーがくれる経験値の倍数：1 が通常です。空欄なら Server.ini の Exp のままです。"
+        },
+        "gold": {
+          "label": "ゴールドの倍率",
+          "description": "各クリーチャーがくれるゴールドの倍数：1 が通常です。空欄なら Server.ini の Oro のままです。"
+        },
+        "newCharacters": {
+          "label": "新しいキャラクター",
+          "description": "プレイヤーがキャラクターを作成できるか。空欄なら Server.ini の PuedeCrearPersonajes のままです。",
+          "options": {
+            "1": "許可",
+            "0": "不許可"
+          }
+        },
+        "maintenance": {
+          "label": "ゲームマスターのみ",
+          "description": "ゲームマスターだけがログインできます。空欄なら Server.ini の ServerSoloGMs のままです。",
+          "options": {
+            "0": "オフ",
+            "1": "オン（メンテナンス）"
+          }
+        }
+      },
+      "ports": {
+        "base": {
+          "label": "ベースポート",
+          "description": "Server.ini の StartPort：ほかの 3 つはこれに続きます。Windows のクラシッククライアントはこのサーバーにログインできないため、閉じたままです。"
+        },
+        "websocket": {
+          "label": "WebSocket",
+          "description": "古い Web クライアントのために残しています。Web クライアントは「Web クライアント」ポートでプレイします。"
+        },
+        "admin": {
+          "label": "管理パネル",
+          "description": "ゲーム自体の管理パネル。このマシンからのみ使えます。トークンは起動のたびにコンソールに表示されます。"
+        },
+        "game": {
+          "label": "Web クライアント",
+          "description": "プレイヤーはブラウザで http://<アドレス>:<ポート>/ を開いてプレイします。"
+        }
+      }
     }
   },
   "gameUpdates": {

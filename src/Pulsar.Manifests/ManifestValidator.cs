@@ -754,6 +754,11 @@ public static partial class ManifestValidator
             {
                 error($"{path}.default", "Between 1 and 65535.");
             }
+
+            if (port.Http && !port.Protocols.Contains(PortProtocol.Tcp))
+            {
+                error($"{path}.http", "HTTP is TCP: 'tcp' must be among the port's protocols.");
+            }
         }
 
         if (ports.Select(p => p.Default).Distinct().Count() != ports.Count)
@@ -900,6 +905,7 @@ public static partial class ManifestValidator
                         context.Error($"{path}.repo", "One 'githubRelease' step per repository.");
                     }
 
+                    ValidateKeep(path, step, context.Error);
                     break;
                 case DotnetRuntimeStep step:
                     if (!DotnetChannelPattern().IsMatch(step.Channel))
@@ -951,6 +957,39 @@ public static partial class ManifestValidator
     /// <summary>Whether <paramref name="path"/> is <paramref name="folder"/> or inside it ("" is the server's folder, above it).</summary>
     private static bool IsUnder(string path, string folder) =>
         path.Equals(folder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A release step's <c>keep</c>: at most <see cref="GitHubReleaseStep.MaxKeep"/> files of the server's folder, each once,
+    /// inside the step's target (a file the release may ship), none in Pulsar's own folder.
+    /// </summary>
+    private static void ValidateKeep(string path, GitHubReleaseStep step, Action<string, string> error)
+    {
+        if (step.Keep is null)
+        {
+            return;
+        }
+
+        if (step.Keep.Count is 0 or > GitHubReleaseStep.MaxKeep)
+        {
+            error($"{path}.keep", $"From 1 to {GitHubReleaseStep.MaxKeep} files.");
+            return;
+        }
+
+        if (step.Keep.Distinct(StringComparer.OrdinalIgnoreCase).Count() != step.Keep.Count)
+        {
+            error($"{path}.keep", "Each file once.");
+        }
+
+        for (var i = 0; i < step.Keep.Count; i++)
+        {
+            var file = step.Keep[i];
+            ValidateRelativePath($"{path}.keep[{i}]", file, error);
+            if (step.Target.Length > 0 && !file.StartsWith(step.Target + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                error($"{path}.keep[{i}]", $"A file inside the step's target, '{step.Target}/'.");
+            }
+        }
+    }
 
     /// <summary>A version a download step puts in an address: a non-secret enum, or a string the panel checks with a pattern.</summary>
     private static bool IsVersionVariable(string key, Context context) =>

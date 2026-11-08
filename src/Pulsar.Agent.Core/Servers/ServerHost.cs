@@ -89,8 +89,11 @@ public sealed partial class ServerHost(
     AgentShutdown? shutdown = null,
     IVolumeSnapshots? snapshots = null,
     PanelBlockKeeper? panelBlock = null,
-    FileArchives? archives = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
+    FileArchives? archives = null,
+    IHttpUrlReservations? urls = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
 {
+    private readonly IHttpUrlReservations _urls = urls ?? new NoHttpUrlReservations();
+
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
 
@@ -172,6 +175,8 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.TarAddons;
             yield return AgentCapabilities.TextConfig;
             yield return AgentCapabilities.GitHubReleaseInstall;
+            yield return AgentCapabilities.ReleaseKeep;
+            yield return AgentCapabilities.HttpUrls;
             yield return AgentCapabilities.DotnetRuntime;
             yield return AgentCapabilities.MinecraftTypes;
             yield return AgentCapabilities.ChangeMods;
@@ -872,6 +877,7 @@ public sealed partial class ServerHost(
                 // Another game: nothing of the old one stays, its files nor its account (a process of it either).
                 TerminateStrays(command.ServerId, provisioner.Describe(root, spec.ShortId).Identity);
                 firewall.Remove(spec.ShortId);
+                _urls.Remove(spec.ShortId);
                 await Task.Run(() => provisioner.Deprovision(root, spec.ShortId), CancellationToken.None); // never left half done
                 LogCleaned(command.ServerId, spec.ShortId);
             }
@@ -1493,6 +1499,7 @@ public sealed partial class ServerHost(
         // Before the account goes: a process of a deleted account would keep running unnoticed.
         TerminateStrays(serverId, provisioner.Describe(root, shortId).Identity);
         firewall.Remove(shortId);
+        _urls.Remove(shortId);
         await Task.Run(() => provisioner.Deprovision(root, shortId), CancellationToken.None); // never left half done
         DeleteBackups(shortId);
         ForgetHost(serverId);
@@ -1975,7 +1982,7 @@ public sealed partial class ServerHost(
         var console = new ServerConsole(new ConsoleBuffer(clock, options.ConsoleBufferCapacity), log);
         // Games run in host processes when the agent has them; installs keep running SteamCMD itself (doc 06).
         var supervisor = new ServerSupervisor(definition, (IGameProcessManager?)Hosts ?? processes, this, clock, supervisorOptions,
-            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console, query);
+            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console, query, _urls);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
     }

@@ -105,6 +105,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly IRconConnector _rcon;
     private readonly IServerQuery _query;
     private readonly IServerFirewall _firewall;
+    private readonly IHttpUrlReservations _urls;
     private readonly IServerEventSink _events;
     private readonly ServerConsole _console;
     private readonly RecentLog _recentLog = new();
@@ -157,7 +158,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
         SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null,
-        ServerConsole? console = null, IServerQuery? query = null)
+        ServerConsole? console = null, IServerQuery? query = null, IHttpUrlReservations? urls = null)
     {
         _definition = definition;
         _processes = processes;
@@ -165,6 +166,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _rcon = rcon ?? new RconConnectors();
         _query = query ?? new ServerQuery(clock);
         _firewall = firewall ?? new UnmanagedFirewall();
+        _urls = urls ?? new NoHttpUrlReservations();
         _console = console ?? new ServerConsole(new ConsoleBuffer(clock));
         _events = events;
         _clock = clock;
@@ -996,6 +998,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
             _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports,
                 _definition.Identity);
+            // The game's web ports, open to other machines for its account (docs/architecture/06, "HTTP URLs"): what could not
+            // be done is said in its console, and the game starts anyway (answering on this machine only there).
+            foreach (var problem in _urls.Reserve(_definition.ShortId, [.. plan.Ports.Where(p => p.Http).Select(p => p.Port)], _definition.Identity))
+            {
+                _console.Write($"[Pulsar] {problem}\r\n", _clock.GetUtcNow());
+            }
         }
         catch (LaunchPlanException ex)
         {

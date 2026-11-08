@@ -7790,6 +7790,57 @@
           "description": "플레이어는 UDP로 접속하며, 서버는 이곳에서 RCON에도 응답합니다(비밀번호는 Pulsar만 압니다). 모든 주소나 네트워크 주소에 할당하세요. 127.0.0.1에서는 게임을 시작할 수 없습니다."
         }
       }
+    },
+    "ao2027": {
+      "description": "AO2027. 최신 서버에서 돌아가는 Argentum Online의 세계(CoverAO: 웹 클라이언트가 있는 .NET 포트)로, GitHub 릴리스에서 설치됩니다. 플레이어는 서버의 웹 클라이언트 포트로 브라우저에서 플레이합니다. 게임 마스터와 나머지 설정은 CoverAO-win-x64/Server.ini에 있습니다.",
+      "variables": {
+        "maxUsers": {
+          "label": "플레이어 제한",
+          "description": "0이면 제한 없음. 비워 두면 Server.ini의 MaxUsers가 그대로 유지됩니다."
+        },
+        "exp": {
+          "label": "경험치 배율",
+          "description": "각 크리처가 주는 경험치의 배수: 1이 기본입니다. 비워 두면 Server.ini의 Exp가 그대로 유지됩니다."
+        },
+        "gold": {
+          "label": "골드 배율",
+          "description": "각 크리처가 주는 골드의 배수: 1이 기본입니다. 비워 두면 Server.ini의 Oro가 그대로 유지됩니다."
+        },
+        "newCharacters": {
+          "label": "새 캐릭터",
+          "description": "플레이어가 캐릭터를 만들 수 있는지. 비워 두면 Server.ini의 PuedeCrearPersonajes가 그대로 유지됩니다.",
+          "options": {
+            "1": "허용",
+            "0": "허용 안 함"
+          }
+        },
+        "maintenance": {
+          "label": "게임 마스터만",
+          "description": "게임 마스터만 로그인할 수 있습니다. 비워 두면 Server.ini의 ServerSoloGMs가 그대로 유지됩니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬(점검)"
+          }
+        }
+      },
+      "ports": {
+        "base": {
+          "label": "기본 포트",
+          "description": "Server.ini의 StartPort: 나머지 세 포트가 이를 따릅니다. Windows 클래식 클라이언트는 이 서버에 로그인할 수 없으므로 닫혀 있습니다."
+        },
+        "websocket": {
+          "label": "WebSocket",
+          "description": "오래된 웹 클라이언트를 위해 유지됩니다. 웹 클라이언트는 웹 클라이언트 포트로 플레이합니다."
+        },
+        "admin": {
+          "label": "관리 패널",
+          "description": "게임 자체의 관리 패널로, 이 컴퓨터에서만 쓸 수 있습니다. 토큰은 시작할 때마다 콘솔에 표시됩니다."
+        },
+        "game": {
+          "label": "웹 클라이언트",
+          "description": "플레이어는 브라우저에서 http://<주소>:<포트>/를 열어 플레이합니다."
+        }
+      }
     }
   },
   "gameUpdates": {

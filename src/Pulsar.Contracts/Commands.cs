@@ -834,6 +834,18 @@ public static class AgentCapabilities
     public const string GitHubReleaseInstall = "install.github_release";
 
     /// <summary>
+    /// Not a command: the agent keeps the files a <c>githubRelease</c> step names in <c>keep</c> once they exist (Pulsar
+    /// 1.0.35); an older one refuses manifests that name any.
+    /// </summary>
+    public const string ReleaseKeep = "install.release_keep";
+
+    /// <summary>
+    /// Not a command: the agent reserves <c>http://+:port/</c> with Windows' HTTP Server API for the server's account on its
+    /// ports marked <c>http</c> (Pulsar 1.0.35); an older one refuses manifests that mark any.
+    /// </summary>
+    public const string HttpUrls = "manifest.http_urls";
+
+    /// <summary>
     /// Not a command: the agent installs Microsoft's .NET runtime in the server's folder for the game (Pulsar 1.0.12, the
     /// <c>dotnetRuntime</c> install step); an older one refuses manifests that use it.
     /// </summary>

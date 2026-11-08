@@ -7790,6 +7790,57 @@
           "description": "Los jugadores se conectan por UDP, y el servidor atiende RCON ahí (solo Pulsar conoce su contraseña). Asignalo en todas las direcciones o en una dirección de red: el juego no puede arrancar en 127.0.0.1."
         }
       }
+    },
+    "ao2027": {
+      "description": "AO2027, el mundo de Argentum Online en un servidor moderno (CoverAO, su port a .NET con cliente web), instalado desde sus releases de GitHub. Se juega desde el navegador en el puerto Cliente web del servidor; los game masters y el resto de la configuración están en CoverAO-win-x64/Server.ini.",
+      "variables": {
+        "maxUsers": {
+          "label": "Límite de jugadores",
+          "description": "0 para ninguno. Si lo dejás vacío, MaxUsers queda como está en Server.ini."
+        },
+        "exp": {
+          "label": "Multiplicador de experiencia",
+          "description": "Cuántas veces la experiencia que da cada criatura: 1 es lo normal. Si lo dejás vacío, Exp queda como está en Server.ini."
+        },
+        "gold": {
+          "label": "Multiplicador de oro",
+          "description": "Cuántas veces el oro que da cada criatura: 1 es lo normal. Si lo dejás vacío, Oro queda como está en Server.ini."
+        },
+        "newCharacters": {
+          "label": "Personajes nuevos",
+          "description": "Si los jugadores pueden crear personajes. Si lo dejás vacío, PuedeCrearPersonajes queda como está en Server.ini.",
+          "options": {
+            "1": "Permitidos",
+            "0": "No permitidos"
+          }
+        },
+        "maintenance": {
+          "label": "Solo game masters",
+          "description": "Solo los game masters pueden entrar. Si lo dejás vacío, ServerSoloGMs queda como está en Server.ini.",
+          "options": {
+            "0": "Apagado",
+            "1": "Encendido (mantenimiento)"
+          }
+        }
+      },
+      "ports": {
+        "base": {
+          "label": "Puerto base",
+          "description": "StartPort en Server.ini: los otros tres lo siguen. El cliente clásico de Windows no puede entrar a este servidor, así que queda cerrado."
+        },
+        "websocket": {
+          "label": "WebSocket",
+          "description": "Se mantiene para clientes web viejos: el cliente web juega por el puerto Cliente web."
+        },
+        "admin": {
+          "label": "Panel de administración",
+          "description": "El panel de administración propio del juego, solo en esta máquina. Su token aparece en la consola en cada arranque."
+        },
+        "game": {
+          "label": "Cliente web",
+          "description": "Los jugadores abren http://<dirección>:<puerto>/ en el navegador para jugar."
+        }
+      }
     }
   },
   "gameUpdates": {

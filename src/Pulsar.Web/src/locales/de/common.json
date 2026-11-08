@@ -7790,6 +7790,57 @@
           "description": "Spieler verbinden sich über UDP, und der Server beantwortet dort RCON (nur Pulsar kennt das Passwort). Weise ihn allen Adressen oder einer Netzwerkadresse zu: Das Spiel kann nicht auf 127.0.0.1 starten."
         }
       }
+    },
+    "ao2027": {
+      "description": "AO2027, die Welt von Argentum Online auf einem modernen Server (CoverAO, seine Portierung nach .NET mit Web-Client), aus seinen GitHub-Releases installiert. Gespielt wird im Browser über den Port Web-Client des Servers; Spielleiter und die übrigen Einstellungen stehen in CoverAO-win-x64/Server.ini.",
+      "variables": {
+        "maxUsers": {
+          "label": "Spielerlimit",
+          "description": "0 für keines. Leer bleibt MaxUsers, wie es in Server.ini steht."
+        },
+        "exp": {
+          "label": "Erfahrungsmultiplikator",
+          "description": "Wie oft die Erfahrung, die jede Kreatur gibt: 1 ist normal. Leer bleibt Exp, wie es in Server.ini steht."
+        },
+        "gold": {
+          "label": "Goldmultiplikator",
+          "description": "Wie oft das Gold, das jede Kreatur gibt: 1 ist normal. Leer bleibt Oro, wie es in Server.ini steht."
+        },
+        "newCharacters": {
+          "label": "Neue Charaktere",
+          "description": "Ob Spieler Charaktere erstellen dürfen. Leer bleibt PuedeCrearPersonajes, wie es in Server.ini steht.",
+          "options": {
+            "1": "Erlaubt",
+            "0": "Nicht erlaubt"
+          }
+        },
+        "maintenance": {
+          "label": "Nur Spielleiter",
+          "description": "Nur Spielleiter können sich anmelden. Leer bleibt ServerSoloGMs, wie es in Server.ini steht.",
+          "options": {
+            "0": "Aus",
+            "1": "An (Wartung)"
+          }
+        }
+      },
+      "ports": {
+        "base": {
+          "label": "Basisport",
+          "description": "StartPort in Server.ini: die anderen drei folgen ihm. Der klassische Windows-Client kann sich bei diesem Server nicht anmelden, daher bleibt er geschlossen."
+        },
+        "websocket": {
+          "label": "WebSocket",
+          "description": "Für ältere Web-Clients beibehalten: der Web-Client spielt über den Port Web-Client."
+        },
+        "admin": {
+          "label": "Admin-Panel",
+          "description": "Das eigene Admin-Panel des Spiels, nur auf diesem Rechner. Sein Token steht bei jedem Start in der Konsole."
+        },
+        "game": {
+          "label": "Web-Client",
+          "description": "Spieler öffnen http://<Adresse>:<Port>/ im Browser, um zu spielen."
+        }
+      }
     }
   },
   "gameUpdates": {

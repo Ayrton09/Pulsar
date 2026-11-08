@@ -62,9 +62,13 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     /// Installs <paramref name="addon"/>'s release, or brings it to the latest one; nothing is downloaded when the same
     /// asset is installed and <paramref name="force"/> is off (a game update overwrote it: force).
     /// </summary>
+    /// <param name="keep">
+    /// Files of the release written only while they are missing (a <see cref="GitHubReleaseStep"/>'s <c>keep</c>): once they
+    /// exist, a new release neither replaces nor removes them.
+    /// </param>
     /// <exception cref="GameProcessException">With an <c>addon.*</c> code.</exception>
     public async Task<AddonRecord> InstallAsync(string serverDirectory, AddonDefinition addon, bool force, Func<string, double?, Task> progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IReadOnlyCollection<string>? keep = null)
     {
         ArgumentNullException.ThrowIfNull(addon);
         ArgumentNullException.ThrowIfNull(progress);
@@ -93,7 +97,7 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             await using var download = await client.DownloadAsync(VerifiedDownloader.Https(url, "addon"), HashAlgorithmName.SHA256, sha256,
                 percent => progress(InstallStages.Downloading, percent), cancellationToken);
             await progress(InstallStages.Installing, null);
-            var record = Unpack(serverDirectory, addon, release, name, sha256, download, previous);
+            var record = Unpack(serverDirectory, addon, release, name, sha256, download, previous, keep: keep);
             Write(serverDirectory, record);
             return record;
         }
@@ -311,9 +315,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     }
 
     /// <param name="within">Only this folder of the archive, unpacked as its root (a Thunderstore package's); all of it when null or empty.</param>
+    /// <param name="keep">Files written only while they are missing, and never removed (<see cref="InstallAsync"/>).</param>
     private AddonRecord Unpack(string serverDirectory, AddonDefinition addon, string release, string asset, string sha256, Stream download,
-        AddonRecord? previous, string? within = null)
+        AddonRecord? previous, string? within = null, IReadOnlyCollection<string>? keep = null)
     {
+        var kept = new HashSet<string>(keep ?? [], StringComparer.OrdinalIgnoreCase);
         using var archive = IsTarGz(asset) ? (AddonArchive)new TarGzArchive(download, asset) : new ZipAddonArchive(download, within);
         var entries = new List<string>();
         long total = 0;
@@ -340,12 +346,19 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         var replacedBefore = new HashSet<string>(previous?.Replaced ?? [], StringComparer.OrdinalIgnoreCase);
         var added = new List<string>();
         var replaced = new List<string>();
-        foreach (var path in entries)
+        var skipped = new HashSet<int>();
+        for (var index = 0; index < entries.Count; index++)
         {
+            var path = entries[index];
             bool existed;
             using (var existing = files.OpenRead(serverDirectory, path))
             {
                 existed = existing is not null;
+            }
+
+            if (existed && kept.Contains(path))
+            {
+                skipped.Add(index);
             }
 
             if (replacedBefore.Contains(path) || (existed && !ownedBefore.Contains(path)))
@@ -365,11 +378,17 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         // trusts: what this attempt adds stays the addon's. No asset: a retry never takes it as installed.
         Write(serverDirectory, new AddonRecord(addon.Key, previous?.Release ?? "", "", "",
             [.. ownedBefore.Union(added, StringComparer.OrdinalIgnoreCase).Except(replacing, StringComparer.OrdinalIgnoreCase)], replacing));
-        archive.Extract((index, content) => files.Write(serverDirectory, entries[index], content));
+        archive.Extract((index, content) =>
+        {
+            if (!skipped.Contains(index))
+            {
+                files.Write(serverDirectory, entries[index], content);
+            }
+        });
 
-        // Files of the previous release the new one does not have.
+        // Files of the previous release the new one does not have (the kept ones stay).
         var current = entries.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var old in ownedBefore.Where(p => !current.Contains(p)))
+        foreach (var old in ownedBefore.Where(p => !current.Contains(p) && !kept.Contains(p)))
         {
             Delete(serverDirectory, old);
         }

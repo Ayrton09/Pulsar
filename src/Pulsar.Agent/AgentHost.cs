@@ -130,6 +130,10 @@ internal static class AgentHost
                 System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => keeper.Request();
                 return keeper;
             });
+            // A game that listens with HttpListener gets its web ports reserved for its own account, which is no administrator
+            // (docs/architecture/06, "HTTP URLs").
+            builder.Services.AddSingleton<IHttpUrlReservations>(services => new HttpUrlReservations(new HttpServiceUrlAcls(),
+                HttpServiceUrlAcls.SidOf, paths.HttpUrlsFile, services.GetRequiredService<ILogger<HttpUrlReservations>>()));
             // Development and CI only: enables the pulsar-test manifest.
             builder.Services.AddSingleton(new InstallOptions
             {

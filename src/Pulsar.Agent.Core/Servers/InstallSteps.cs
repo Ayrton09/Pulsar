@@ -90,7 +90,8 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 
         if (step is GitHubReleaseStep release)
         {
-            var record = await Releases.InstallAsync(serverDirectory, AsAddon(release), force: false, progress, cancellationToken);
+            var record = await Releases.InstallAsync(serverDirectory, AsAddon(release), force: false, progress, cancellationToken,
+                keep: release.KeepList);
             return record.Release;
         }
 

@@ -349,6 +349,38 @@ public sealed class AddonInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task AReleaseStepsKeptFilesAreWrittenOnceAndNeverReplacedOrRemoved()
+    {
+        // AO2027's layout: one folder, with the settings the release ships a default of (Pulsar 1.0.35).
+        var step = new GitHubReleaseStep("OxideMod/Oxide.Rust", @"^Oxide\.Rust\.zip$", Keep: ["CoverAO-win-x64/Server.ini"]);
+        var steps = new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles());
+        var ini = Path.Combine(_root, "CoverAO-win-x64", "Server.ini");
+        var program = Path.Combine(_root, "CoverAO-win-x64", "CoverAO.Server.exe");
+        Release("v1.0.5", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.5"), ("CoverAO-win-x64/Server.ini", "[INIT]\r\nStartPort=7666\r\n")));
+        await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.Equal("[INIT]\r\nStartPort=7666\r\n", File.ReadAllText(ini)); // missing: written
+
+        // The administrator's settings (a game master named) survive a new release with another default...
+        File.WriteAllText(ini, "[INIT]\r\nStartPort=7666\r\n[Dioses]\r\nDios1=Rugura\r\n");
+        Release("v1.0.6", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.6"), ("CoverAO-win-x64/Server.ini", "[INIT]\r\nStartPort=7666\r\nNuevo=1\r\n")));
+        await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.Equal("1.0.6", File.ReadAllText(program));
+        Assert.Contains("Dios1=Rugura", File.ReadAllText(ini), StringComparison.Ordinal);
+
+        // ...and one that no longer ships the file.
+        Release("v1.0.7", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.7")));
+        await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.Equal("1.0.7", File.ReadAllText(program));
+        Assert.Contains("Dios1=Rugura", File.ReadAllText(ini), StringComparison.Ordinal);
+
+        // Without keep, the release's own file is put back, as before.
+        Release("v1.0.8", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.8"), ("CoverAO-win-x64/Server.ini", "[INIT]\r\nStartPort=7666\r\n")));
+        await steps.RunAsync(step with { Keep = null }, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("Dios1", File.ReadAllText(ini), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnUpdateCheckOfAReleaseComparesItsAssetWithTheInstalledOne()
     {
         var source = (GitHubReleaseSource)s_oxide.Source;

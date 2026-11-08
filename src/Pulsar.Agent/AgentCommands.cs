@@ -454,7 +454,9 @@ internal static class AgentCommands
             : new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance, paths.LogonLocksDirectory);
         RemoveServers(paths, config?.ServersRootOrDefault(paths) ?? (service ? AgentConfig.DefaultServersRoot(paths, development: false) : null),
             config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
-            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping);
+            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping,
+            () => new HttpUrlReservations(new HttpServiceUrlAcls(), HttpServiceUrlAcls.SidOf, paths.HttpUrlsFile,
+                NullLogger<HttpUrlReservations>.Instance).RemoveAll());
 
         return FinishUnenrollment(paths, config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, service, Console.Out, Console.Error);
     }
@@ -523,9 +525,10 @@ internal static class AgentCommands
     /// <param name="deleteAccount">Deletes a server account (false: there was none); null when there are none to delete (a development agent's servers run as the current user).</param>
     /// <param name="removeFirewallRules">Removes the rules of the servers with these short ids; returns how many.</param>
     /// <param name="serviceStillStopping">The service has not stopped yet: the accounts and the state are kept, and said so.</param>
+    /// <param name="removeHttpUrls">Releases the HTTP URLs reserved for the servers' accounts (Pulsar 1.0.35); returns how many.</param>
     internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
         Func<string, bool>? deleteAccount, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter output, TextWriter errors,
-        bool serviceStillStopping = false)
+        bool serviceStillStopping = false, Func<int>? removeHttpUrls = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(removeFirewallRules);
@@ -551,6 +554,13 @@ internal static class AgentCommands
         // stay, said so, rather than come back after this said they were removed.
         var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
         var accountNames = deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName).ToList();
+        // Before the state goes: it records which reservations are the agent's.
+        var urls = removeHttpUrls?.Invoke() ?? 0;
+        if (urls > 0)
+        {
+            output.WriteLine($"Released {urls} HTTP URL reservation(s) of the game servers.");
+        }
+
         if (serviceStillStopping)
         {
             var rulesRemoved = RemoveFirewallRules(shortIds, removeFirewallRules, errors);

@@ -269,6 +269,11 @@ public enum PortProtocol
 /// <param name="Follows">A port the game opens at a fixed distance from another (Valheim: the game port + 1): the panel
 /// gives it the allocation of the same address at that port, never one of its own choosing.</param>
 /// <param name="Internal">Only the agent uses it, on the node (7 Days to Die's telnet console): never opened in the firewall.</param>
+/// <param name="Http">
+/// The game listens there with Windows' HTTP Server API (.NET's <c>HttpListener</c>) on every address,
+/// <c>http://+:port/</c> (Pulsar 1.0.35): the agent reserves that URL for the server's account, which is no administrator
+/// and could not take it otherwise (the game would be reached from the node only).
+/// </param>
 public sealed record PortDefinition(
     string Name,
     string Label,
@@ -277,7 +282,8 @@ public sealed record PortDefinition(
     bool Required = true,
     string? Description = null,
     PortFollow? Follows = null,
-    bool Internal = false);
+    bool Internal = false,
+    bool Http = false);
 
 /// <summary>This port is always <see cref="Port"/>'s port number plus <see cref="Offset"/>, on the same address.</summary>
 public sealed record PortFollow(string Port, int Offset);
@@ -400,8 +406,19 @@ public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallSt
 /// <param name="Asset">A regular expression the asset's file name must match (one asset of the release).</param>
 /// <param name="Prerelease">Take the newest release even when it is marked as a pre-release.</param>
 /// <param name="Target">The folder of the server it is unpacked into ("" for the server's own folder).</param>
-public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "") : InstallStep
+/// <param name="Keep">
+/// Files of the release (paths of the server's folder, inside <paramref name="Target"/>) that are written only while they
+/// are missing (Pulsar 1.0.35): an update never replaces or removes them once they exist, so the settings a release ships
+/// a default of (AO2027's <c>Server.ini</c>, its game masters among them) stay as the server's administrators left them.
+/// </param>
+public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "",
+    IReadOnlyList<string>? Keep = null) : InstallStep
 {
+    /// <summary>At most this many <see cref="Keep"/> paths.</summary>
+    public const int MaxKeep = 16;
+
+    public IReadOnlyList<string> KeepList => Keep ?? [];
+
     /// <summary>Where the agent records what each such step installed (not an addon: the addons' records are elsewhere).</summary>
     public const string RecordDirectory = ".pulsar/releases";
 

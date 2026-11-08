@@ -165,3 +165,12 @@ VSS_E_MAXIMUM_NUMBER_OF_SNAPSHOTS_REACHED
 VSS_E_MAXIMUM_DIFFAREA_ASSOCIATIONS_REACHED
 VSS_S_ASYNC_PENDING
 E_ACCESSDENIED
+
+// HTTP Server API: URL reservations for games that listen with HttpListener (docs/architecture/06, "HTTP URLs")
+HttpInitialize
+HttpTerminate
+HttpSetServiceConfiguration
+HttpDeleteServiceConfiguration
+HttpQueryServiceConfiguration
+HTTP_SERVICE_CONFIG_URLACL_SET
+HTTP_SERVICE_CONFIG_URLACL_QUERY

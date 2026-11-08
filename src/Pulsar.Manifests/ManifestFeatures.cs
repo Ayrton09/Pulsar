@@ -144,6 +144,20 @@ public static class ManifestFeatures
         return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any();
     }
 
+    /// <summary>A port the game listens on with Windows' HTTP Server API, its URL reserved by the agent (Pulsar 1.0.35).</summary>
+    public static bool UsesHttpUrls(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.PortList.Any(p => p.Http);
+    }
+
+    /// <summary>A release step with files an update keeps (<see cref="GitHubReleaseStep.Keep"/>, Pulsar 1.0.35).</summary>
+    public static bool UsesReleaseKeep(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any(s => s.Keep is not null);
+    }
+
     /// <summary>A .NET runtime in the server's folder (<see cref="DotnetRuntimeStep"/>, Pulsar 1.0.12).</summary>
     public static bool UsesDotnetRuntime(GameManifest manifest)
     {

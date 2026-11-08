@@ -7790,6 +7790,57 @@
           "description": "玩家通过 UDP 连接，服务器也在此端口响应 RCON（只有 Pulsar 知道其密码）。请将其分配到所有地址或某个网络地址：游戏无法在 127.0.0.1 上启动。"
         }
       }
+    },
+    "ao2027": {
+      "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，带网页客户端的 .NET 移植），从其 GitHub 发布版本安装。玩家通过浏览器访问服务器的“网页客户端”端口来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。",
+      "variables": {
+        "maxUsers": {
+          "label": "玩家上限",
+          "description": "0 表示不限。留空则保留 Server.ini 中的 MaxUsers。"
+        },
+        "exp": {
+          "label": "经验倍率",
+          "description": "每个生物给予经验的倍数：1 为正常。留空则保留 Server.ini 中的 Exp。"
+        },
+        "gold": {
+          "label": "金币倍率",
+          "description": "每个生物给予金币的倍数：1 为正常。留空则保留 Server.ini 中的 Oro。"
+        },
+        "newCharacters": {
+          "label": "新角色",
+          "description": "玩家是否可以创建角色。留空则保留 Server.ini 中的 PuedeCrearPersonajes。",
+          "options": {
+            "1": "允许",
+            "0": "不允许"
+          }
+        },
+        "maintenance": {
+          "label": "仅限游戏管理员",
+          "description": "只有游戏管理员可以登录。留空则保留 Server.ini 中的 ServerSoloGMs。",
+          "options": {
+            "0": "关闭",
+            "1": "开启（维护）"
+          }
+        }
+      },
+      "ports": {
+        "base": {
+          "label": "基础端口",
+          "description": "Server.ini 中的 StartPort：其他三个端口跟随它。Windows 经典客户端无法登录此服务器，因此保持关闭。"
+        },
+        "websocket": {
+          "label": "WebSocket",
+          "description": "为旧版网页客户端保留：网页客户端通过“网页客户端”端口游玩。"
+        },
+        "admin": {
+          "label": "管理面板",
+          "description": "游戏自带的管理面板，仅限本机使用。每次启动时其令牌会显示在控制台中。"
+        },
+        "game": {
+          "label": "网页客户端",
+          "description": "玩家在浏览器中打开 http://<地址>:<端口>/ 即可游玩。"
+        }
+      }
     }
   },
   "gameUpdates": {
