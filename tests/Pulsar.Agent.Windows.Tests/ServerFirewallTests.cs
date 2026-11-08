@@ -107,14 +107,27 @@ public sealed class ServerFirewallTests
 
             // So does unenroll, whether managing the firewall is on or not.
             Firewall(enabled: true).BlockPanel([server], s_targets);
-            Assert.Equal(1, WindowsServerFirewall.RemoveAll([shortId]));
+            Assert.Equal(1, WindowsServerFirewall.RemoveWhere(name => WindowsServerFirewall.IsRuleOf(shortId, name)));
             Assert.Null(Rule(WindowsServerFirewall.PanelBlockName(shortId)));
         }
         finally
         {
-            WindowsServerFirewall.RemoveAll([shortId]);
+            WindowsServerFirewall.RemoveWhere(name => WindowsServerFirewall.IsRuleOf(shortId, name));
             accounts.Delete(name);
         }
+    }
+
+    [Theory]
+    [InlineData("Pulsar abcd2345 game udp", true)]
+    [InlineData("Pulsar zzzz9999 panel block", true)]
+    [InlineData("Pulsar x", true)]
+    [InlineData("Pulsar", false)]
+    [InlineData("PulsarX abcd2345 game udp", false)]
+    [InlineData("pulsar abcd2345 game udp", false)]
+    [InlineData("Core Networking - DNS (UDP-Out)", false)]
+    public void UnenrollRemovesEveryRuleNamedLikeTheAgentsWhateverServerItWasFor(string name, bool agents)
+    {
+        Assert.Equal(agents, WindowsServerFirewall.IsAgentRule(name));
     }
 
     [Theory]

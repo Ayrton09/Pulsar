@@ -46,6 +46,9 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
 
     private static readonly WindowsServerFiles s_files = new();
 
+    /// <summary>How long <see cref="EndProcessesOf"/> waits for a process it ended to be gone.</summary>
+    private static readonly TimeSpan s_endWait = TimeSpan.FromSeconds(10);
+
     // Variables the server cannot override: the agent owns them (docs/architecture/04, "Environment").
     private static readonly HashSet<string> s_reserved = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -403,17 +406,66 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
     }
 
     /// <summary>
+    /// Ends every process running as the account and waits for each to be gone (unenroll: the account and its profile are
+    /// deleted next, which a process still holding them would keep from). Returns how many could not be ended.
+    /// </summary>
+    public static int EndProcessesOf(string accountName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(accountName);
+        if (!WindowsServerAccounts.Exists(accountName))
+        {
+            return 0;
+        }
+
+        var sid = (SecurityIdentifier)new NTAccount(accountName).Translate(typeof(SecurityIdentifier));
+        var left = 0;
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (EndIfRunningAs(process.Id, sid, s_endWait) == StrayEnd.Remains)
+                {
+                    left++;
+                }
+            }
+        }
+
+        return left;
+    }
+
+    /// <summary>
     /// Ends the process if it runs as <paramref name="user"/>. One handle serves both the check and the kill: a process
     /// that ended meanwhile cannot have its identifier reused by another account's process between the two.
     /// </summary>
-    internal static bool TerminateIfRunningAs(int processId, SecurityIdentifier user)
+    internal static bool TerminateIfRunningAs(int processId, SecurityIdentifier user) =>
+        EndIfRunningAs(processId, user, TimeSpan.Zero) == StrayEnd.Ended;
+
+    /// <summary>What <see cref="EndIfRunningAs"/> found and did.</summary>
+    internal enum StrayEnd
+    {
+        /// <summary>Gone already, protected, or another account's: nothing was done.</summary>
+        NotTheirs,
+
+        /// <summary>It ran as the account and is ended (or, with no wait, was told to end).</summary>
+        Ended,
+
+        /// <summary>It ran as the account and is still there after the wait.</summary>
+        Remains,
+    }
+
+    /// <summary>
+    /// <see cref="TerminateIfRunningAs"/> that, given a <paramref name="wait"/>, also waits for the process to be gone
+    /// (its handles closed) before it reports it ended.
+    /// </summary>
+    internal static StrayEnd EndIfRunningAs(int processId, SecurityIdentifier user, TimeSpan wait)
     {
         // Gone already, or a protected process (never a server account's): nothing to open.
-        using var process = PInvoke.OpenProcess_SafeHandle(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE,
+        using var process = PInvoke.OpenProcess_SafeHandle(
+            PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE | PROCESS_ACCESS_RIGHTS.PROCESS_SYNCHRONIZE,
             false, (uint)processId);
         if (process.IsInvalid || !PInvoke.OpenProcessToken(process, TOKEN_ACCESS_MASK.TOKEN_QUERY, out var token))
         {
-            return false;
+            return StrayEnd.NotTheirs;
         }
 
         using (token)
@@ -421,12 +473,18 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         {
             if (identity.User != user)
             {
-                return false;
+                return StrayEnd.NotTheirs;
             }
         }
 
         // Fails only when the process is already ending.
-        return PInvoke.TerminateProcess(process, 1);
+        var terminated = PInvoke.TerminateProcess(process, 1);
+        if (wait == TimeSpan.Zero)
+        {
+            return terminated ? StrayEnd.Ended : StrayEnd.NotTheirs;
+        }
+
+        return PInvoke.WaitForSingleObject(process, (uint)wait.TotalMilliseconds) == WAIT_EVENT.WAIT_OBJECT_0 ? StrayEnd.Ended : StrayEnd.Remains;
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Killed process {ProcessId} ({ProcessName}) running as {Account} outside its server's job")]

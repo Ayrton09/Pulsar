@@ -398,6 +398,42 @@ public sealed class GameProcessTests : IDisposable
     }
 
     [WindowsFact]
+    public void AProcessOfAnAccountIsEndedAndWaitedForOneThatRemainsIsReported()
+    {
+        using var process = Process.Start(new ProcessStartInfo("ping.exe", ["-n", "60", "127.0.0.1"])
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true,
+        })!;
+        try
+        {
+            var other = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalServiceSid, null);
+            Assert.Equal(WindowsGameProcessManager.StrayEnd.NotTheirs,
+                WindowsGameProcessManager.EndIfRunningAs(process.Id, other, TimeSpan.FromSeconds(5)));
+            Assert.False(process.WaitForExit(200));
+
+            // Gone when it reports so: the account's profile can be deleted next.
+            Assert.Equal(WindowsGameProcessManager.StrayEnd.Ended,
+                WindowsGameProcessManager.EndIfRunningAs(process.Id, System.Security.Principal.WindowsIdentity.GetCurrent().User!, TimeSpan.FromSeconds(10)));
+            Assert.True(process.HasExited);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill();
+            }
+        }
+    }
+
+    [WindowsFact]
+    public void AnAccountThatIsNotThereHasNoProcessesToEnd()
+    {
+        Assert.Equal(0, WindowsGameProcessManager.EndProcessesOf("pulsar_nonexist1"));
+    }
+
+    [WindowsFact]
     public void AnExecutableWhoseFinalPathIsLongerThan1024CharactersResolves()
     {
         // Windows paths reach 32,767 characters: an administrator's junction can lead the servers root somewhere deep.

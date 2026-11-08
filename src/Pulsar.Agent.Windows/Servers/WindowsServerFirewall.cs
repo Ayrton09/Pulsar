@@ -148,14 +148,15 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     }
 
     /// <summary>
-    /// Removes every rule the agent made for these servers (by its grouping and their names), whatever ports they had and
-    /// whether managing the firewall is on now or not: unenroll leaves none behind. Returns how many were removed.
+    /// Removes every rule the agent made (its grouping, and a name <see cref="IsAgentRule"/>), for whatever server and
+    /// ports, and whether managing the firewall is on now or not: unenroll leaves none behind, also those of a server with
+    /// no record or folder left (a delete that failed and was finished by hand), and those a delete left because the
+    /// firewall could not be reached. Returns how many were removed.
     /// </summary>
-    public static int RemoveAll(IReadOnlyCollection<string> shortIds)
-    {
-        ArgumentNullException.ThrowIfNull(shortIds);
-        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => IsRuleOf(id, name)));
-    }
+    public static int RemoveAll() => RemoveWhere(IsAgentRule);
+
+    /// <summary>Whether a rule (of the agent's grouping, which the caller has checked) is named like the agent names its own: <c>Pulsar …</c>.</summary>
+    internal static bool IsAgentRule(string name) => name.StartsWith($"{Grouping} ", StringComparison.Ordinal);
 
     /// <summary>
     /// Whether a rule (of the agent's grouping, which the caller has checked) is one the agent made for the server: named
@@ -411,10 +412,12 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
 
     private static void Use(Action<dynamic> change)
     {
-        var policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2", throwOnError: true)!)!;
+        object? policy = null;
         object? rules = null;
         try
         {
+            // The policy object itself is made inside the try: with the firewall service stopped, that is what fails.
+            policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2", throwOnError: true)!)!;
             rules = ((dynamic)policy).Rules;
             change(rules!);
         }
@@ -429,7 +432,10 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
                 Marshal.FinalReleaseComObject(rules);
             }
 
-            Marshal.FinalReleaseComObject(policy);
+            if (policy is not null)
+            {
+                Marshal.FinalReleaseComObject(policy);
+            }
         }
     }
 

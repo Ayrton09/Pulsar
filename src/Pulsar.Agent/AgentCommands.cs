@@ -2,10 +2,12 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Agent.Windows;
 using Pulsar.Agent.Windows.Processes;
 using Pulsar.Agent.Windows.Servers;
@@ -456,7 +458,8 @@ internal static class AgentCommands
             config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
             WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping,
             () => new HttpUrlReservations(new HttpServiceUrlAcls(), HttpServiceUrlAcls.SidOf, paths.HttpUrlsFile,
-                NullLogger<HttpUrlReservations>.Instance).RemoveAll());
+                NullLogger<HttpUrlReservations>.Instance).RemoveAll(),
+            accounts is null ? null : WindowsGameProcessManager.EndProcessesOf, new WindowsServerFiles());
 
         return FinishUnenrollment(paths, config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, service, Console.Out, Console.Error);
     }
@@ -523,12 +526,14 @@ internal static class AgentCommands
     /// </summary>
     /// <param name="serversRoot">Null when it is not known (an unreadable configuration): the server records name the servers then.</param>
     /// <param name="deleteAccount">Deletes a server account (false: there was none); null when there are none to delete (a development agent's servers run as the current user).</param>
-    /// <param name="removeFirewallRules">Removes the rules of the servers with these short ids; returns how many.</param>
+    /// <param name="removeFirewallRules">Removes every rule of the agent's own group (whether or not a record or folder names its server); returns how many.</param>
     /// <param name="serviceStillStopping">The service has not stopped yet: the accounts and the state are kept, and said so.</param>
     /// <param name="removeHttpUrls">Releases the HTTP URLs reserved for the servers' accounts (Pulsar 1.0.35); returns how many.</param>
+    /// <param name="endProcesses">Ends the processes still running as a server account, before it is deleted; returns how many could not be ended (that account is kept).</param>
+    /// <param name="files">The agent's access to server folders, to take back a Steam login lent to a server's SteamCMD by an agent that never ran again.</param>
     internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
-        Func<string, bool>? deleteAccount, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter output, TextWriter errors,
-        bool serviceStillStopping = false, Func<int>? removeHttpUrls = null)
+        Func<string, bool>? deleteAccount, Func<int> removeFirewallRules, TextWriter output, TextWriter errors,
+        bool serviceStillStopping = false, Func<int>? removeHttpUrls = null, Func<string, int>? endProcesses = null, IServerFiles? files = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(removeFirewallRules);
@@ -571,7 +576,7 @@ internal static class AgentCommands
 
         if (serviceStillStopping)
         {
-            var rulesRemoved = RemoveFirewallRules(shortIds, removeFirewallRules, errors);
+            var rulesRemoved = RemoveFirewallRules(removeFirewallRules, errors);
             output.WriteLine($"Removed {rulesRemoved} firewall rule(s).");
             var keptAccounts = accountNames.Count > 0 ? $"the server accounts ({string.Join(", ", accountNames)}) and " : string.Empty;
             errors.WriteLine($"The {AgentService.Name} service was still stopping, so {keptAccounts}{state} (the servers' passwords and the " +
@@ -581,20 +586,38 @@ internal static class AgentCommands
             return;
         }
 
+        // Before the accounts go: a Steam login the agent lent to a server's SteamCMD and never took back (it stopped during
+        // the run and did not start again) must not outlive the node.
+        if (files is not null && serversRoot is not null)
+        {
+            foreach (var shortId in shortIds)
+            {
+                DeleteLentSteamLogin(files, Path.Combine(serversRoot, shortId), shortId, errors);
+            }
+        }
+
         var accounts = 0;
         foreach (var account in accountNames)
         {
             try
             {
+                // Before the account goes: a process of a deleted account would keep running unnoticed (docs/architecture/08, T20).
+                if (endProcesses?.Invoke(account) is > 0 and var left)
+                {
+                    errors.WriteLine($"The account {account} was kept: {left} process(es) running as it could not be ended. End them (Task Manager, " +
+                        "Details tab, User name column) and delete the account in Computer Management (Local Users and Groups).");
+                    continue;
+                }
+
                 accounts += deleteAccount!(account) ? 1 : 0;
             }
-            catch (System.ComponentModel.Win32Exception ex)
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or System.Security.Principal.IdentityNotMappedException)
             {
                 errors.WriteLine($"The account {account} could not be deleted ({ex.Message}); delete it in Computer Management (Local Users and Groups).");
             }
         }
 
-        var rules = RemoveFirewallRules(shortIds, removeFirewallRules, errors);
+        var rules = RemoveFirewallRules(removeFirewallRules, errors);
 
         // Nothing reads the agent's state once the node is gone, and it holds secrets.
         try
@@ -613,11 +636,37 @@ internal static class AgentCommands
         WriteKept(paths, serversRoot, backupsRoot, output);
     }
 
-    private static int RemoveFirewallRules(IReadOnlyCollection<string> shortIds, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter errors)
+    /// <summary>
+    /// Takes back the Steam login a server's SteamCMD may still hold (<see cref="SteamCmdRunner.LentLogin"/>), and its folder
+    /// once empty: through the agent's own file access, which never follows a link out of the server's folder.
+    /// </summary>
+    private static void DeleteLentSteamLogin(IServerFiles files, string serverDirectory, string shortId, TextWriter errors)
+    {
+        if (!Directory.Exists(serverDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            files.Delete(serverDirectory, SteamCmdRunner.LentLogin);
+            files.DeleteEmptyDirectory(serverDirectory, ServerFileRules.SteamLoginFolder);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Never ran SteamCMD with a login (most games): nothing was lent.
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+        {
+            errors.WriteLine($"The Steam login lent to server {shortId} could not be deleted ({ex.Message}); delete {SteamCmdRunner.LentLogin} in {serverDirectory} by hand.");
+        }
+    }
+
+    private static int RemoveFirewallRules(Func<int> removeFirewallRules, TextWriter errors)
     {
         try
         {
-            return removeFirewallRules(shortIds);
+            return removeFirewallRules();
         }
         catch (Exception ex) when (ex is GameProcessException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
         {

@@ -168,6 +168,29 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AServerIsDeletedAndItsGameChangedCleanWhileTheFirewallCannotBeReached()
+    {
+        // The firewall service is stopped: its rules stay (unenroll removes them), but the account, folder and record go.
+        var serverId = Stored("abcd2345");
+        var firewall = new UnreachableFirewall();
+        var host = Host(firewall: firewall);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var spec = _store.Load(serverId)!.Spec;
+
+        var change = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new ProvisionServerCommand(serverId, spec, Clean: true), change))).Status);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(change)).Outcome);
+        Assert.Equal(1, _provisioner.Deprovisions);
+
+        var delete = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), delete))).Status);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(delete)).Outcome);
+        Assert.Equal(2, _provisioner.Deprovisions);
+        Assert.Equal(2, firewall.Removals);
+        Assert.False(_store.Exists(serverId));
+    }
+
+    [Fact]
     public async Task AResultThatCannotBeSavedStaysInFlightAndIsSavedLater()
     {
         var serverId = Stored("abcd2345");
@@ -1286,6 +1309,32 @@ public sealed class ServerHostTests : IAsyncDisposable
 
         public void Remove(string shortId)
         {
+        }
+
+        public void Provisioned(string shortId)
+        {
+        }
+    }
+
+    /// <summary>A managed firewall whose rules cannot be reached (the Windows Firewall service is stopped).</summary>
+    private sealed class UnreachableFirewall : IServerFirewall
+    {
+        public bool Enabled => true;
+
+        public int Removals { get; private set; }
+
+        public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, ProcessIdentity identity)
+        {
+        }
+
+        public void BlockPanel(IReadOnlyCollection<ServerAccount> servers, PanelTargets targets)
+        {
+        }
+
+        public void Remove(string shortId)
+        {
+            Removals++;
+            throw new GameProcessException("firewall.failed", "The Windows Firewall rules could not be changed: the service is not running.");
         }
 
         public void Provisioned(string shortId)

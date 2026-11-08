@@ -876,7 +876,7 @@ public sealed partial class ServerHost(
             {
                 // Another game: nothing of the old one stays, its files nor its account (a process of it either).
                 TerminateStrays(command.ServerId, provisioner.Describe(root, spec.ShortId).Identity);
-                firewall.Remove(spec.ShortId);
+                RemoveFirewallRules(command.ServerId, spec.ShortId);
                 _urls.Remove(spec.ShortId);
                 await Task.Run(() => provisioner.Deprovision(root, spec.ShortId), CancellationToken.None); // never left half done
                 LogCleaned(command.ServerId, spec.ShortId);
@@ -1434,6 +1434,23 @@ public sealed partial class ServerHost(
         }
     }
 
+    /// <summary>
+    /// The server's firewall rules go with it, but a firewall that cannot be reached (its service stopped) must not keep it
+    /// from being deleted or its game changed: the failure is logged and the rules stay, inert (they name an executable
+    /// and an account that are gone), until unenroll removes every rule of the agent (docs/architecture/06).
+    /// </summary>
+    private void RemoveFirewallRules(Guid serverId, string shortId)
+    {
+        try
+        {
+            firewall.Remove(shortId);
+        }
+        catch (GameProcessException ex) when (ex.Code == "firewall.failed")
+        {
+            LogFirewallRulesNotRemoved(serverId, shortId, ex.Message);
+        }
+    }
+
     private CommandAck Delete(CommandEnvelope envelope, DeleteServerCommand command)
     {
         if (envelope.OperationId is not { } operationId)
@@ -1501,7 +1518,7 @@ public sealed partial class ServerHost(
         var root = _config!.ServersRootOrDefault(configs.Paths);
         // Before the account goes: a process of a deleted account would keep running unnoticed.
         TerminateStrays(serverId, provisioner.Describe(root, shortId).Identity);
-        firewall.Remove(shortId);
+        RemoveFirewallRules(serverId, shortId);
         _urls.Remove(shortId);
         await Task.Run(() => provisioner.Deprovision(root, shortId), CancellationToken.None); // never left half done
         DeleteBackups(shortId);
@@ -2218,6 +2235,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: killed {Count} processes its account ran outside the server's job")]
     private partial void LogStraysKilled(Guid serverId, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} ({ShortId}): its firewall rules could not be removed ({Reason}); they stay until unenroll removes the agent's rules")]
+    private partial void LogFirewallRulesNotRemoved(Guid serverId, string shortId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The console history of deleted server {ShortId} could not be removed: {Reason}")]
     private partial void LogConsoleLogsNotDeleted(string shortId, string reason);
