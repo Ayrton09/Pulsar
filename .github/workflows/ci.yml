@@ -25,9 +25,9 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6.1.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
@@ -127,9 +127,9 @@ jobs:
       run:
         working-directory: src/Pulsar.Web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
@@ -158,9 +158,9 @@ jobs:
     runs-on: windows-latest
     needs: [dotnet]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6.1.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
@@ -190,7 +190,7 @@ jobs:
           Get-Content artifacts/agent-install-ci/report/summary.txt -ErrorAction SilentlyContinue
           Get-Content artifacts/agent-install-ci/report/summary.txt -ErrorAction SilentlyContinue | Out-File -Append $env:GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: agent-install-report
@@ -206,13 +206,13 @@ jobs:
     runs-on: windows-2022
     needs: [dotnet, web]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6.1.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
@@ -241,7 +241,7 @@ jobs:
           Get-Content artifacts/install-ci/report/summary.txt -ErrorAction SilentlyContinue
           Get-Content artifacts/install-ci/report/summary.txt -ErrorAction SilentlyContinue | Out-File -Append $env:GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: install-report
@@ -259,9 +259,9 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [dotnet]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6.1.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
@@ -289,7 +289,7 @@ jobs:
           sudo journalctl -u pulsar-panel --no-pager 2>/dev/null | sudo tee "$RUNNER_TEMP/linux-install-report/journal.txt" >/dev/null || true
           sudo chmod -R a+rX "$RUNNER_TEMP/linux-install-report" || true
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: linux-install-report
@@ -309,13 +309,13 @@ jobs:
       run:
         working-directory: src/Pulsar.Web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6.1.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
@@ -343,7 +343,7 @@ jobs:
         env:
           PULSAR_E2E_POSTGRES: Host=localhost;Port=5432;Database=pulsar_e2e;Username=pulsar_ci;Password=pulsar_ci
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.os }}

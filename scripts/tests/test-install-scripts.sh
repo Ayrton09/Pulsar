@@ -168,8 +168,18 @@ results=$(
     private_ipv4 192.168.0.4 && private_ipv4 10.1.2.3 && private_ipv4 172.31.0.1 && ! private_ipv4 172.32.0.1 && ! private_ipv4 100.64.0.1
     echo "private addresses are RFC 1918's only|$?"
     pg_target 'Host=db.example.com;Port=6543;Database=pulsar;Username=panel;Password=p@ss;word;SSL Mode=VerifyFull'
-    [[ $PG_TARGET == 'host=db.example.com port=6543 dbname=pulsar user=panel' && $PG_SSLMODE == verify-full ]]
+    [[ $PG_TARGET == "host='db.example.com' port='6543' dbname='pulsar' user='panel'" && $PG_SSLMODE == verify-full && $PG_PASSWORD == 'p@ss' ]]
     echo "a connection string becomes libpq's, without its password|$?"
+    # A value with a space or a quote stays one value (libpq's quoting), and a '*' or '?' is never a file name.
+    globs=$scratch/globs
+    mkdir -p "$globs"
+    touch "$globs/Database=dx" "$globs/Password=pxy"
+    (
+        cd "$globs" || exit 1
+        pg_target "Host=h;Database=d*;Username=o'x\\y z;Password=p*?[a]"
+        [[ $PG_TARGET == "host='h' port='5432' dbname='d*' user='o\\'x\\\\y z'" && $PG_PASSWORD == 'p*?[a]' ]]
+    )
+    echo "a connection string with *, ?, a space and a quote is read as written and quoted|$?"
     if [[ $(id -u) == 0 ]]; then
         root_folder=$(mktemp -d /root/pulsar-test.XXXXXX)
         path_owned_by_root "$root_folder"
@@ -201,6 +211,97 @@ results=$(
     fi
 )
 while IFS='|' read -r name status; do [[ -n $name ]] && check "installer: $name" "$status"; done <<<"$results"
+
+# --- install-pulsar.sh: update backups and roll back -------------------------------------------------------------------
+# The script's folders are readonly: a copy of it points them into the scratch folder, and what a roll back runs on the
+# machine (systemd, PostgreSQL, the panel) is replaced by stubs that note their calls.
+# shellcheck disable=SC2034,SC2317 # the stubs and variables are the sourced installer's, called and read by it
+results=$(
+    root=$scratch/machine
+    mkdir -p "$root"
+    sed -E "s#^(readonly (INSTALL_ROOT|CONFIG_DIR|DATA_ROOT|LOG_ROOT))=/#\\1=$root/#" "$installer" >"$scratch/installer-copy.sh"
+    # shellcheck source=/dev/null
+    source "$scratch/installer-copy.sh"
+    set +e
+    trap - EXIT
+    mkdir -p "$UPDATE_ROOT/backups" "$UPDATE_ROOT/previous/panel" "$PANEL_DIR" "$CONFIG_DIR"
+    calls=$scratch/calls
+    : >"$calls"
+    LOG_FILE=$scratch/setup.log
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    write_unit() { :; }
+    panel_client() { :; }
+    panel_pin_from_settings() { :; }
+    wait_panel_ready() { :; }
+    applied_migrations() { echo 002; }
+    restore_database_dump() { echo "restore $1" >>"$calls"; [[ $RESTORE_WORKS == true ]]; }
+
+    backup=$UPDATE_ROOT/backups/1.0.0-20260101-000000
+    mkdir -p "$backup"
+    echo dump >"$backup/pulsar.dump"
+    echo 001 >"$backup/migrations.txt"
+
+    # roll_back_update turns errexit back on when it ends: a failing status must not end this subshell.
+    rolls_back() {
+        local status=0
+        roll_back_update "$backup" "$backup/migrations.txt" >/dev/null 2>&1 || status=$?
+        set +e
+        return "$status"
+    }
+    RESTORE_WORKS=false
+    ! rolls_back
+    echo "a roll back whose database could not be put back fails|$?"
+    [[ -f $backup/.keep ]]
+    echo "and keeps that backup from pruning|$?"
+    ! grep -q 'systemctl start' "$calls"
+    echo "and leaves the panel stopped, not on an empty database|$?"
+
+    rm -f "$backup/.keep"
+    mkdir -p "$UPDATE_ROOT/previous/panel"
+    : >"$calls"
+    RESTORE_WORKS=true
+    rolls_back
+    [[ $? == 0 && ! -e $backup/.keep ]] && grep -q 'systemctl start' "$calls"
+    echo "a roll back that puts the database back succeeds and starts the panel|$?"
+
+    # Five backups, newest last; the oldest one is marked.
+    rm -rf "$UPDATE_ROOT/backups"
+    for n in 1 2 3 4 5; do
+        mkdir -p "$UPDATE_ROOT/backups/b$n"
+        touch -d "2026-01-0$n" "$UPDATE_ROOT/backups/b$n"
+    done
+    : >"$UPDATE_ROOT/backups/b1/.keep"
+    touch -d 2026-01-01 "$UPDATE_ROOT/backups/b1"
+    prune_update_backups
+    [[ -d $UPDATE_ROOT/backups/b1 && ! -d $UPDATE_ROOT/backups/b2 && -d $UPDATE_ROOT/backups/b3 && -d $UPDATE_ROOT/backups/b5 ]]
+    echo "pruning keeps the three newest backups and any marked .keep|$?"
+
+    # The EXIT trap of an update cut off after the panel was stopped.
+    roll_back_update() { echo "roll_back $1" >>"$calls"; [[ $ROLL_BACK_WORKS == true ]]; }
+    guard_run() (
+        : >"$calls"
+        rm -f "$JOURNAL" "$UPDATE_ROOT/last-update.json"
+        [[ $1 == journal ]] && echo '{}' >"$JOURNAL"
+        UPDATE_GUARD=("$backup" 1.0.0 1.0.1)
+        trap roll_back_cut_off_update EXIT
+        exit 1
+    )
+    ROLL_BACK_WORKS=true
+    guard_run journal >/dev/null 2>&1
+    status=$?
+    [[ $status == "$EXIT_ROLLED_BACK" && $(jq -r .status "$UPDATE_ROOT/last-update.json") == rolled_back ]] && grep -q "roll_back $backup" "$calls"
+    echo "an update cut off with its journal left is rolled back, exit 7|$?"
+    ROLL_BACK_WORKS=false
+    guard_run journal >/dev/null 2>&1
+    status=$?
+    [[ $status == "$EXIT_FAILED" && $(jq -r .status "$UPDATE_ROOT/last-update.json") == failed ]]
+    echo "and when that fails it is reported as failed, exit 1|$?"
+    guard_run none >/dev/null 2>&1
+    status=$?
+    [[ $status == 1 && ! -s $calls ]]
+    echo "with no journal left (already rolled back or done) nothing is rolled back|$?"
+)
+while IFS='|' read -r name status; do [[ -n $name ]] && check "update: $name" "$status"; done <<<"$results"
 
 if command -v shellcheck >/dev/null 2>&1; then
     (cd "$repo" && shellcheck -x scripts/install/install-pulsar.sh scripts/install/backup-pulsar.sh scripts/release/install.sh scripts/tests/test-install-scripts.sh)

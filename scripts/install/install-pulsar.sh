@@ -447,13 +447,21 @@ drop_panel_database() {
     fi
 }
 
+# A value as libpq's conninfo reads it: in single quotes, with \ and ' escaped (a space or a quote cannot split it).
+conninfo_value() {
+    local value=${1//\\/\\\\}
+    printf "'%s'" "${value//\'/\\\'}"
+}
+
 # The panel's database as libpq reads it, for pg_dump, pg_restore and psql (backups and updates): a key=value string,
 # and PGPASSWORD/PGSSLMODE in the environment of the call (never on a command line).
 pg_target() {
     local connection=$1 key value part
     local host='' port='' database='' user='' password='' sslmode=''
-    local IFS=';'
-    for part in $connection; do
+    local IFS=';' parts=()
+    # read, not an unquoted expansion: a '*', '?' or '[' in a password must not be expanded as a file name.
+    read -r -a parts <<<"$connection"
+    for part in "${parts[@]}"; do
         key=${part%%=*}
         value=${part#*=}
         key=$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
@@ -466,7 +474,7 @@ pg_target() {
         sslmode) sslmode=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]') ;;
         esac
     done
-    PG_TARGET="host=$host port=${port:-5432} dbname=$database user=$user"
+    PG_TARGET="host=$(conninfo_value "$host") port=$(conninfo_value "${port:-5432}") dbname=$(conninfo_value "$database") user=$(conninfo_value "$user")"
     PG_PASSWORD=$password
     case $sslmode in
     require | verifyca | verify-ca) PG_SSLMODE=require ;;
@@ -1361,11 +1369,13 @@ copy_plain_files() {
     done < <(find "$from" -mindepth 1 -maxdepth 1 -print0)
 }
 
+# Keeps the newest backups; one marked .keep (the only good copy of a database a roll back could not put back) is never
+# deleted and does not count among them.
 prune_update_backups() {
     local old
     while read -r old; do
         [[ -n $old ]] && rm -rf -- "$old"
-    done < <(find "$UPDATE_ROOT/backups" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | tail -n +$((UPDATE_BACKUPS_KEPT + 1)) | cut -d' ' -f2-)
+    done < <(find "$UPDATE_ROOT/backups" -mindepth 1 -maxdepth 1 -type d '!' -exec test -e '{}/.keep' ';' -printf '%T@ %p\n' | sort -rn | tail -n +$((UPDATE_BACKUPS_KEPT + 1)) | cut -d' ' -f2-)
 }
 
 restore_database_dump() {
@@ -1380,9 +1390,11 @@ restore_database_dump() {
     fi
 }
 
-# Puts the previous programs back (and the database, when the update changed it) and starts them.
+# Puts the previous programs back (and the database, when the update changed it) and starts them. It fails when the
+# database could not be put back: the panel is then left stopped (on an empty database it would offer its first-run
+# setup to whoever reaches it), and the backup is marked .keep so no later update deletes it.
 roll_back_update() {
-    local backup=$1 before_file=$2
+    local backup=$1 before_file=$2 database_back=true
     set +e
     step 'Putting the previous version back'
     systemctl stop "$SERVICE" >/dev/null 2>&1
@@ -1398,14 +1410,22 @@ roll_back_update() {
     after=$(applied_migrations 2>/dev/null) || after=unknown
     if [[ -n $backup && -f $backup/pulsar.dump && $after != "$(cat "$before_file" 2>/dev/null)" ]]; then
         step 'Putting the database back as it was before the update'
-        restore_database_dump "$backup/pulsar.dump" || warn "The database could not be put back: restore it from $backup/pulsar.dump (docs/guides/backup.md)."
+        if ! restore_database_dump "$backup/pulsar.dump"; then
+            database_back=false
+            : >"$backup/.keep"
+            warn "The database could not be put back and the panel is left stopped: restore it from $backup/pulsar.dump (docs/guides/backup.md). That backup is kept: later updates never delete it."
+        fi
     fi
     if [[ -f $backup/appsettings.Production.json ]]; then install -m 0640 -o root -g "$ACCOUNT" "$backup/appsettings.Production.json" "$SETTINGS"; fi
     write_unit
-    systemctl start "$SERVICE"
-    panel_client "$(panel_pin_from_settings)"
     local ok=true
-    wait_panel_ready || ok=false
+    if [[ $database_back == true ]]; then
+        systemctl start "$SERVICE"
+        panel_client "$(panel_pin_from_settings)"
+        wait_panel_ready || ok=false
+    else
+        ok=false
+    fi
     rm -f -- "$JOURNAL"
     set -e
     [[ $ok == true ]]
@@ -1439,6 +1459,32 @@ resume_interrupted_update() {
     fi
 }
 
+# What update_panel's EXIT trap rolls back while it is armed: the backup, the version it updates from and to.
+UPDATE_GUARD=()
+
+# update_panel's EXIT trap from the moment the panel is stopped: should a step between (a full disk) end the script while
+# the journal is still there, the panel would stay stopped and maybe half swapped, so the previous version is put back
+# here, as after a failed start. A roll back removes the journal, which disarms this.
+roll_back_cut_off_update() {
+    local status=$?
+    if ((status != 0 && ${#UPDATE_GUARD[@]} == 3)) && [[ -f $JOURNAL ]]; then
+        local backup=${UPDATE_GUARD[0]} from=${UPDATE_GUARD[1]} to=${UPDATE_GUARD[2]}
+        UPDATE_GUARD=()
+        warn "The update to $to stopped before it was finished (exit code $status): putting $from back."
+        if roll_back_update "$backup" "$backup/migrations.txt"; then
+            write_update_result rolled_back "$from" "$to" 'a step of the update failed'
+            warn "Pulsar $from is back and runs. The update's log: $LOG_FILE."
+            status=$EXIT_ROLLED_BACK
+        else
+            write_update_result failed "$from" "$to" 'a step of the update failed, and putting the previous version back failed too'
+            warn "Putting $from back failed (see above). The backup is in $backup (docs/guides/backup.md)."
+            status=$EXIT_FAILED
+        fi
+    fi
+    cleanup
+    exit "$status"
+}
+
 update_panel() {
     # An update cut off between moving the programs away and putting the new ones in place left no programs' folder:
     # its journal is resumed (rolled back) first.
@@ -1469,6 +1515,8 @@ update_panel() {
     local staged
     staged=$(stage_programs)
     systemctl stop "$SERVICE"
+    UPDATE_GUARD=("$backup" "$from" "$to")
+    trap roll_back_cut_off_update EXIT
     rm -rf -- "$UPDATE_ROOT/previous"
     mkdir -m 0700 "$UPDATE_ROOT/previous"
     write_journal "$(jq '.stage = "swapping"' "$JOURNAL")"
@@ -1497,6 +1545,7 @@ update_panel() {
         fail "$EXIT_FAILED" "The update to $to failed ($failure), and putting $from back failed too (see above). The backup is in $backup (docs/guides/backup.md)."
     fi
     rm -f -- "$JOURNAL"
+    UPDATE_GUARD=()
     jq --arg version "$to" '.version = $version' "$STATE" >"$WORK/state.json" && write_state "$(cat "$WORK/state.json")"
     write_update_result succeeded "$from" "$to"
     prune_update_backups

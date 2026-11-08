@@ -75,7 +75,10 @@ kept), stops the panel, moves its programs to `/var/lib/pulsar/updates/previous`
 prepares the database, starts the panel and waits up to three minutes for it to answer. When the new version does not
 prepare the database, start or answer, it stops it, puts the previous programs back, and the database from the backup
 when the new version changed it, starts the previous version and ends with exit code `7`; the result is in
-`/var/lib/pulsar/updates/last-update.json`. A release older than the installed panel is refused (exit code `2`, nothing
+`/var/lib/pulsar/updates/last-update.json`. The same roll back runs when a step of the update itself fails after the
+panel was stopped (a full disk). When the database cannot be put back, the panel is left stopped, the script ends with
+exit code `1` and `failed`, and that backup gets a `.keep` marker so no later update deletes it: restore it as
+[backup.md](backup.md) shows. A release older than the installed panel is refused (exit code `2`, nothing
 changed). An update cut off half way (the machine lost power) is rolled back by the next run of the script, or, with
 `--discard-interrupted-update`, left as it is.
 
