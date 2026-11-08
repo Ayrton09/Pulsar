@@ -849,6 +849,8 @@
       "user_invalid": "El usuario tiene de 1 a 80 caracteres, sin comillas ni barras invertidas.",
       "user_host_invalid": "Conexiones desde es %, una dirección o un patrón como 10.0.0.% (letras, dígitos, . : - _ %).",
       "password_required": "Falta la contraseña.",
+      "engine_invalid": "Un servidor de bases de datos corre MySQL (o MariaDB) o PostgreSQL.",
+      "engine_fixed": "Lo que corre un servidor de bases de datos se elige al agregarlo: agregá otro en su lugar.",
       "password_unreadable": "La contraseña del servidor no se puede leer con las claves de este panel: cargala de nuevo.",
       "in_use": "Hay servidores con bases en este host: borralas primero.",
       "too_many": "El panel tiene como máximo 20 servidores de bases de datos.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Servidores de bases de datos",
-    "description": "Servidores MySQL o MariaDB donde los servidores de juego tienen sus bases. El panel se conecta con una cuenta que puede crear bases y usuarios.",
+    "description": "Servidores MySQL, MariaDB o PostgreSQL donde los servidores de juego tienen sus bases. El panel se conecta con una cuenta que puede crear bases y usuarios.",
     "add": "Agregar servidor de bases de datos",
     "edit": "Editar servidor de bases de datos",
     "empty": "Todavía no hay servidores de bases de datos.",
     "name": "Nombre",
+    "engine": "Motor",
+    "engines": {
+      "mysql": "MySQL o MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Se elige al agregar el servidor.",
+      "postgres": "Se elige al agregar el servidor. Su cuenta necesita CREATEDB y CREATEROLE (no hace falta un superusuario), por ejemplo CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. Desde dónde se conectan los servidores de juego se configura en el pg_hba.conf de PostgreSQL."
+    },
     "where": "Conexión",
     "use": "Uso",
     "forServers": "Los servidores de juego se conectan a {{address}}",

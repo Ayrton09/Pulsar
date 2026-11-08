@@ -849,6 +849,8 @@
       "user_invalid": "Il nome utente è di 1-80 caratteri, senza virgolette né barre rovesciate.",
       "user_host_invalid": "Connessioni da è %, un indirizzo o un pattern come 10.0.0.% (lettere, cifre, . : - _ %).",
       "password_required": "La password è obbligatoria.",
+      "engine_invalid": "Un host di database esegue MySQL (o MariaDB) o PostgreSQL.",
+      "engine_fixed": "Cosa esegue un host di database si sceglie quando lo si aggiunge: aggiungi invece un altro host.",
       "password_unreadable": "La password dell'host non può essere letta con le chiavi di questo pannello: impostarla di nuovo.",
       "in_use": "Dei server hanno database su questo host: eliminarli prima.",
       "too_many": "Il pannello può avere al massimo 20 host di database.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Host di database",
-    "description": "Server MySQL o MariaDB in cui i server ottengono i propri database. Il pannello si connette a essi con un account che può creare database e utenti.",
+    "description": "Server MySQL, MariaDB o PostgreSQL in cui i server ottengono i propri database. Il pannello si connette a essi con un account che può creare database e utenti.",
     "add": "Aggiungi host di database",
     "edit": "Modifica host di database",
     "empty": "Ancora nessun host di database.",
     "name": "Nome",
+    "engine": "Motore",
+    "engines": {
+      "mysql": "MySQL o MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Si sceglie quando si aggiunge il server.",
+      "postgres": "Si sceglie quando si aggiunge il server. Il suo account ha bisogno di CREATEDB e CREATEROLE (non serve un superutente), per esempio CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. Da dove possono connettersi i server di gioco si imposta nel pg_hba.conf di PostgreSQL."
+    },
     "where": "Connessione",
     "use": "Utilizzo",
     "forServers": "I server di gioco si connettono a {{address}}",

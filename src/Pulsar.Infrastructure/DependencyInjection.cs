@@ -64,7 +64,9 @@ public static class DependencyInjection
         services.AddSingleton<IBackupStorageSecretProtector, DataProtectionBackupStorageSecretProtector>();
         services.AddSingleton<ISteamAccountSecretProtector, DataProtectionSteamAccountSecretProtector>();
         services.AddSingleton<IDatabaseSecretProtector, DataProtectionDatabaseSecretProtector>();
-        services.AddSingleton<IDatabaseHostClient, MySqlDatabaseHostClient>();
+        services.AddSingleton<MySqlDatabaseHostClient>();
+        services.AddSingleton<PostgresDatabaseHostClient>();
+        services.AddSingleton<IDatabaseHostClient, DatabaseHostClient>();
         services.AddScoped<IRowLocks, RowLocks>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddScoped<IServerSequenceClaims, ServerSequenceClaims>();

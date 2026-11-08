@@ -6,6 +6,7 @@ export type ServerDatabase = Schemas['ServerDatabaseView'];
 export type ServerDatabaseCredentials = Schemas['ServerDatabaseCredentials'];
 export type DatabaseHost = Schemas['DatabaseHostView'];
 export type DatabaseHostRequest = Schemas['DatabaseHostRequest'];
+export type DatabaseEngine = Schemas['DatabaseEngine'];
 
 export const databaseKeys = {
   server: (serverId: string) => ['servers', serverId, 'databases'] as const,

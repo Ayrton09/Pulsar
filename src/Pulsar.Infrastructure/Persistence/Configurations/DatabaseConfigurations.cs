@@ -13,10 +13,14 @@ internal sealed class DatabaseHostConfiguration : IEntityTypeConfiguration<Datab
         {
             t.HasCheckConstraint("ck_database_hosts_port", "port BETWEEN 1 AND 65535");
             t.HasCheckConstraint("ck_database_hosts_server_port", "server_port IS NULL OR server_port BETWEEN 1 AND 65535");
+            t.HasCheckConstraint("ck_database_hosts_engine", "engine IN ('mysql', 'postgres')");
         });
 
         builder.HasKey(h => h.Id);
         builder.Property(h => h.Id).ValueGeneratedNever();
+        // Hosts added before 1.0.37 are MySQL/MariaDB ones.
+        builder.Property(h => h.Engine).HasConversion<SnakeCaseEnumConverter<DatabaseEngine>>().HasMaxLength(16).HasDefaultValue(DatabaseEngine.Mysql)
+            .HasSentinel((DatabaseEngine)(-1));
         builder.Property(h => h.Name).HasMaxLength(DatabaseHost.MaxNameLength);
         builder.HasIndex(h => h.Name).IsUnique();
         builder.Property(h => h.Host).HasMaxLength(DatabaseHost.MaxHostLength);

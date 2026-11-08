@@ -60,6 +60,12 @@ runs never collide. Without it they are skipped, unless `PULSAR_REQUIRE_MYSQL=tr
 throwaway MariaDB container runs them and they fail rather than skip when it is missing. Give these tests a server of
 their own: they create and drop databases and users on it.
 
+The PostgreSQL game database tests need a role that may create databases and roles, on the same server as
+`PULSAR_TEST_POSTGRES`: set `PULSAR_TEST_POSTGRES_ADMIN` to its connection string (without a database), for example
+after `CREATE ROLE pulsar_games_test LOGIN CREATEDB CREATEROLE PASSWORD '…';` as a superuser:
+`Host=localhost;Port=5432;Username=pulsar_games_test;Password=…`. Without it they are skipped, unless
+`PULSAR_REQUIRE_POSTGRES_ADMIN=true` is set, as in CI.
+
 The install scripts' checks (`scripts\tests\Test-InstallScripts.ps1`, Windows PowerShell 5.1) change nothing outside
 folders of their own under `-Scratch`; a few need an elevated PowerShell and are skipped without one. CI runs them
 elevated on its Windows runner with `-RequireElevation`, which fails rather than skips them. The tests that make Windows

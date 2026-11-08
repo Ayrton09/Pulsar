@@ -849,6 +849,8 @@
       "user_invalid": "Der Benutzername hat 1 bis 80 Zeichen, ohne Anführungszeichen oder Backslashes.",
       "user_host_invalid": "Verbindungen von ist %, eine Adresse oder ein Muster wie 10.0.0.% (Buchstaben, Ziffern, . : - _ %).",
       "password_required": "Das Passwort wird benötigt.",
+      "engine_invalid": "Ein Datenbank-Host läuft mit MySQL (oder MariaDB) oder PostgreSQL.",
+      "engine_fixed": "Was ein Datenbank-Host ausführt, wird beim Hinzufügen festgelegt: Fügen Sie stattdessen einen anderen Host hinzu.",
       "password_unreadable": "Das Passwort des Hosts kann mit den Schlüsseln dieses Panels nicht gelesen werden: Legen Sie es erneut fest.",
       "in_use": "Server haben Datenbanken auf diesem Host: Löschen Sie diese zuerst.",
       "too_many": "Das Panel hat höchstens 20 Datenbank-Hosts.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Datenbank-Hosts",
-    "description": "MySQL- oder MariaDB-Server, auf denen Server ihre Datenbanken erhalten. Das Panel verbindet sich mit einem Konto, das Datenbanken und Benutzer erstellen darf.",
+    "description": "MySQL-, MariaDB- oder PostgreSQL-Server, auf denen Server ihre Datenbanken erhalten. Das Panel verbindet sich mit einem Konto, das Datenbanken und Benutzer erstellen darf.",
     "add": "Datenbank-Host hinzufügen",
     "edit": "Datenbank-Host bearbeiten",
     "empty": "Noch keine Datenbank-Hosts.",
     "name": "Name",
+    "engine": "System",
+    "engines": {
+      "mysql": "MySQL oder MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Wird beim Hinzufügen festgelegt.",
+      "postgres": "Wird beim Hinzufügen festgelegt. Das Konto braucht CREATEDB und CREATEROLE (kein Superuser nötig), zum Beispiel CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. Von wo sich Spielserver verbinden dürfen, steht in der pg_hba.conf von PostgreSQL."
+    },
     "where": "Verbindung",
     "use": "Verwendung",
     "forServers": "Spielserver verbinden sich mit {{address}}",

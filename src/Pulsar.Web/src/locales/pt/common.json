@@ -849,6 +849,8 @@
       "user_invalid": "O nome de usuário tem de 1 a 80 caracteres, sem aspas nem barras invertidas.",
       "user_host_invalid": "Conexões de é %, um endereço ou um padrão como 10.0.0.% (letras, dígitos, . : - _ %).",
       "password_required": "A senha é obrigatória.",
+      "engine_invalid": "Um host de banco de dados executa MySQL (ou MariaDB) ou PostgreSQL.",
+      "engine_fixed": "O que um host de banco de dados executa é escolhido ao adicioná-lo: adicione outro host em vez disso.",
       "password_unreadable": "A senha do host não pode ser lida com as chaves deste painel: defina-a novamente.",
       "in_use": "Há servidores com bancos de dados neste host: exclua-os primeiro.",
       "too_many": "O painel tem no máximo 20 hosts de banco de dados.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Hosts de banco de dados",
-    "description": "Servidores MySQL ou MariaDB onde os servidores obtêm seus bancos de dados. O painel se conecta a eles com uma conta que pode criar bancos de dados e usuários.",
+    "description": "Servidores MySQL, MariaDB ou PostgreSQL onde os servidores obtêm seus bancos de dados. O painel se conecta a eles com uma conta que pode criar bancos de dados e usuários.",
     "add": "Adicionar host de banco de dados",
     "edit": "Editar host de banco de dados",
     "empty": "Nenhum host de banco de dados ainda.",
     "name": "Nome",
+    "engine": "Motor",
+    "engines": {
+      "mysql": "MySQL ou MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Escolhido ao adicionar o servidor.",
+      "postgres": "Escolhido ao adicionar o servidor. Sua conta precisa de CREATEDB e CREATEROLE (não precisa ser superusuário), por exemplo CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. De onde os servidores de jogo podem se conectar fica no pg_hba.conf do PostgreSQL."
+    },
     "where": "Conexão",
     "use": "Uso",
     "forServers": "Os servidores de jogos se conectam a {{address}}",

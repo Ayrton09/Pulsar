@@ -10,11 +10,13 @@ using Pulsar.Domain.Servers;
 
 namespace Pulsar.Application.Databases;
 
+/// <param name="Engine">What its host runs.</param>
 /// <param name="Host">The host's name in the panel.</param>
 /// <param name="Address">Where the game server connects (the host's address for servers).</param>
-/// <param name="UserHost">Where its user may connect from.</param>
+/// <param name="UserHost">Where its user may connect from (MySQL; % on PostgreSQL, whose own settings say).</param>
 public sealed record ServerDatabaseView(
     Guid Id,
+    DatabaseEngine Engine,
     string Name,
     string UserName,
     Guid HostId,
@@ -28,13 +30,13 @@ public sealed record ServerDatabaseView(
 /// <param name="Hosts">The hosts the server's node may use (for creating one).</param>
 public sealed record ServerDatabaseList(int Limit, IReadOnlyList<ServerDatabaseView> Databases, IReadOnlyList<DatabaseHostChoice> Hosts);
 
-public sealed record DatabaseHostChoice(Guid Id, string Name);
+public sealed record DatabaseHostChoice(Guid Id, string Name, DatabaseEngine Engine);
 
 /// <summary>A database with its password: when it was created, its password rotated, or asked for.</summary>
 public sealed record ServerDatabaseCredentials(ServerDatabaseView Database, string Password);
 
 /// <summary>
-/// A server's MySQL/MariaDB databases (Phase 13): <c>server.databases.view</c> lists them, <c>server.databases.manage</c>
+/// A server's MySQL/MariaDB (Phase 13) and PostgreSQL (1.0.37) databases: <c>server.databases.view</c> lists them, <c>server.databases.manage</c>
 /// creates, deletes and rotates them and reads their passwords. Each one is created on its host first and kept only
 /// when that worked; the server's limit is checked with its row locked, so two requests cannot both take the last one.
 /// </summary>
@@ -59,7 +61,7 @@ public sealed partial class ServerDatabases(
         var all = await db.DatabaseHosts.AsNoTracking().OrderBy(h => h.Name).ToListAsync(cancellationToken);
         var databases = await db.ServerDatabases.AsNoTracking().Where(d => d.ServerId == serverId).OrderBy(d => d.Name).ToListAsync(cancellationToken);
         return new ServerDatabaseList(server.DatabaseLimit, [.. databases.Select(d => View(d, all.Single(h => h.Id == d.HostId)))],
-            [.. all.Where(h => h.Serves(server.NodeId)).Select(h => new DatabaseHostChoice(h.Id.Value, h.Name))]);
+            [.. all.Where(h => h.Serves(server.NodeId)).Select(h => new DatabaseHostChoice(h.Id.Value, h.Name, h.Engine))]);
     }
 
     public async Task<Result<ServerDatabaseCredentials>> CreateAsync(ServerId serverId, Guid hostId, string name, CancellationToken cancellationToken)
@@ -366,7 +368,7 @@ public sealed partial class ServerDatabases(
     private static ServerDatabaseView View(ServerDatabase database, DatabaseHost host)
     {
         var (address, port) = host.AddressForServers;
-        return new ServerDatabaseView(database.Id.Value, database.Name, database.Name, host.Id.Value, host.Name, address, port, database.UserHost,
+        return new ServerDatabaseView(database.Id.Value, host.Engine, database.Name, database.Name, host.Id.Value, host.Name, address, port, database.UserHost,
             database.CreatedAt, database.PasswordChangedAt);
     }
 

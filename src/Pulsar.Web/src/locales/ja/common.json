@@ -849,6 +849,8 @@
       "user_invalid": "ユーザー名は、引用符やバックスラッシュを含まない1~80文字で入力してください。",
       "user_host_invalid": "接続元には、%、アドレス、または10.0.0.%のようなパターンを指定してください(英字、数字、. : - _ %)。",
       "password_required": "パスワードが必要です。",
+      "engine_invalid": "データベースホストは MySQL（または MariaDB）か PostgreSQL です。",
+      "engine_fixed": "データベースホストの種類は追加するときに決まります。代わりに別のホストを追加してください。",
       "password_unreadable": "このパネルのキーでは、ホストのパスワードを読み取れません。もう一度設定してください。",
       "in_use": "このホスト上にサーバーのデータベースがあります。先にそれらを削除してください。",
       "too_many": "パネルに登録できるデータベースホストは最大20件です。",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "データベースホスト",
-    "description": "サーバーのデータベースを置くMySQLまたはMariaDBサーバーです。パネルは、データベースとユーザーを作成できるアカウントで接続します。",
+    "description": "サーバーのデータベースを置くMySQL、MariaDB、またはPostgreSQLサーバーです。パネルは、データベースとユーザーを作成できるアカウントで接続します。",
     "add": "データベースホストを追加",
     "edit": "データベースホストを編集",
     "empty": "データベースホストはまだありません。",
     "name": "名前",
+    "engine": "種類",
+    "engines": {
+      "mysql": "MySQL または MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "追加するときに選びます。",
+      "postgres": "追加するときに選びます。アカウントには CREATEDB と CREATEROLE が必要です（スーパーユーザーは不要）。例: CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'。ゲームサーバーがどこから接続できるかは PostgreSQL の pg_hba.conf で設定します。"
+    },
     "where": "接続",
     "use": "使用状況",
     "forServers": "ゲームサーバーの接続先: {{address}}",

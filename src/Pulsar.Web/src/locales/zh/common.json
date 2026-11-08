@@ -849,6 +849,8 @@
       "user_invalid": "用户名为 1 到 80 个字符，不含引号或反斜杠。",
       "user_host_invalid": "“允许连接的来源”可填 %、某个地址，或 10.0.0.% 这样的模式（字母、数字、. : - _ %）。",
       "password_required": "必须填写密码。",
+      "engine_invalid": "数据库主机运行 MySQL（或 MariaDB）或 PostgreSQL。",
+      "engine_fixed": "数据库主机的类型在添加时选定：请改为添加另一个主机。",
       "password_unreadable": "无法用此面板的密钥读取该主机的密码：请重新设置。",
       "in_use": "有服务器在此主机上建有数据库：请先删除它们。",
       "too_many": "面板最多只能有 20 个数据库主机。",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "数据库主机",
-    "description": "为服务器提供数据库的 MySQL 或 MariaDB 服务器。面板使用有权创建数据库和用户的账户连接它们。",
+    "description": "为服务器提供数据库的 MySQL、MariaDB 或 PostgreSQL 服务器。面板使用有权创建数据库和用户的账户连接它们。",
     "add": "添加数据库主机",
     "edit": "编辑数据库主机",
     "empty": "还没有数据库主机。",
     "name": "名称",
+    "engine": "类型",
+    "engines": {
+      "mysql": "MySQL 或 MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "添加时选定。",
+      "postgres": "添加时选定。其账户需要 CREATEDB 和 CREATEROLE（不需要超级用户），例如 CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'。游戏服务器可以从哪里连接，在 PostgreSQL 的 pg_hba.conf 中设置。"
+    },
     "where": "连接",
     "use": "用途",
     "forServers": "游戏服务器连接到 {{address}}",

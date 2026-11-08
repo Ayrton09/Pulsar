@@ -807,6 +807,14 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Engine")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("mysql")
+                        .HasColumnName("engine");
+
                     b.Property<string>("Host")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -877,6 +885,8 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("database_hosts", null, t =>
                         {
+                            t.HasCheckConstraint("ck_database_hosts_engine", "engine IN ('mysql', 'postgres')");
+
                             t.HasCheckConstraint("ck_database_hosts_port", "port BETWEEN 1 AND 65535");
 
                             t.HasCheckConstraint("ck_database_hosts_server_port", "server_port IS NULL OR server_port BETWEEN 1 AND 65535");

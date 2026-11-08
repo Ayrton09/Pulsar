@@ -6,10 +6,10 @@ using Pulsar.Domain.Common;
 namespace Pulsar.Domain.Databases;
 
 /// <summary>
-/// A MySQL or MariaDB server the panel creates game databases on (Phase 13), with an account allowed to create
-/// databases and users. The panel connects to it itself; game servers connect to <see cref="ServerAddress"/>, which may
-/// differ (the database on the node itself is 127.0.0.1 for its games). The password is a secret: the application
-/// encrypts it before it reaches the storage.
+/// A MySQL or MariaDB server (Phase 13), or a PostgreSQL one (1.0.37), the panel creates game databases on, with an
+/// account allowed to create databases and users (roles). The panel connects to it itself; game servers connect to
+/// <see cref="ServerAddress"/>, which may differ (the database on the node itself is 127.0.0.1 for its games). The
+/// password is a secret: the application encrypts it before it reaches the storage.
 /// </summary>
 public sealed partial class DatabaseHost
 {
@@ -42,6 +42,9 @@ public sealed partial class DatabaseHost
 
     public DatabaseHostId Id { get; private set; }
 
+    /// <summary>What it runs, fixed when it is added.</summary>
+    public DatabaseEngine Engine { get; private set; }
+
     public string Name { get; private set; }
 
     /// <summary>The address the panel connects to.</summary>
@@ -58,7 +61,10 @@ public sealed partial class DatabaseHost
 
     public int? ServerPort { get; private set; }
 
-    /// <summary>Where the users it creates may connect from (<c>%</c>, an address, or a pattern such as <c>10.0.0.%</c>).</summary>
+    /// <summary>
+    /// Where the users it creates may connect from (<c>%</c>, an address, or a pattern such as <c>10.0.0.%</c>). MySQL
+    /// only: PostgreSQL says where roles connect from in its own <c>pg_hba.conf</c>, so a PostgreSQL host keeps <c>%</c>.
+    /// </summary>
     public string UserHost { get; private set; }
 
     /// <summary>The nodes whose servers may use it; empty: every node.</summary>
@@ -76,14 +82,20 @@ public sealed partial class DatabaseHost
 
     /// <param name="requireTls">Null: required unless <paramref name="host"/> is on this machine or a private network.</param>
     public static Result<DatabaseHost> Create(string name, string host, int port, string userName, byte[]? passwordProtected, string? serverAddress,
-        int? serverPort, string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null)
+        int? serverPort, string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null,
+        DatabaseEngine engine = DatabaseEngine.Mysql)
     {
         if (passwordProtected is null)
         {
             return DatabaseErrors.HostPasswordRequired;
         }
 
-        var created = new DatabaseHost(now);
+        if (!Enum.IsDefined(engine))
+        {
+            return DatabaseErrors.HostEngineInvalid;
+        }
+
+        var created = new DatabaseHost(now) { Engine = engine };
         var set = created.Change(name, host, port, userName, passwordProtected, serverAddress, serverPort, userHost, nodeIds, now,
             requireTls ?? !IsLocalAddress(host?.Trim() ?? string.Empty));
         return set.IsSuccess ? created : set.Error!;
@@ -121,7 +133,7 @@ public sealed partial class DatabaseHost
             return DatabaseErrors.HostUserInvalid;
         }
 
-        var from = string.IsNullOrWhiteSpace(userHost) ? AnyHost : userHost.Trim();
+        var from = Engine == DatabaseEngine.Postgres || string.IsNullOrWhiteSpace(userHost) ? AnyHost : userHost.Trim();
         if (!UserHostPattern().IsMatch(from))
         {
             return DatabaseErrors.UserHostInvalid;
@@ -227,6 +239,11 @@ public static class DatabaseErrors
         new("database_host.user_host_invalid", "Connections from is %, an address or a pattern such as 10.0.0.% (letters, digits, . : - _ %).");
 
     public static DomainError HostPasswordRequired { get; } = new("database_host.password_required", "The password is needed.");
+
+    public static DomainError HostEngineInvalid { get; } = new("database_host.engine_invalid", "A database host runs MySQL (or MariaDB) or PostgreSQL.");
+
+    public static DomainError HostEngineFixed { get; } =
+        new("database_host.engine_fixed", "What a database host runs is chosen when it is added: add another host instead.");
 
     public static DomainError HostInUse { get; } =
         new("database_host.in_use", "Servers have databases on this host: delete them first.");

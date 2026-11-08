@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Pulsar.Domain\Pulsar.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Api.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -19,18 +19,22 @@ public interface IDatabaseSecretProtector
 
 /// <summary>How the panel reaches a database host (the password in clear, for this call only).</summary>
 /// <param name="RequireTls">Refuse to connect without TLS (otherwise TLS when the server offers it).</param>
-public sealed record DatabaseHostConnection(string Host, int Port, string UserName, string Password, bool RequireTls)
+/// <param name="Engine">What it runs: which client talks to it.</param>
+public sealed record DatabaseHostConnection(string Host, int Port, string UserName, string Password, bool RequireTls,
+    DatabaseEngine Engine = DatabaseEngine.Mysql)
 {
     // Never in logs or exception messages.
     public override string ToString() => $"{UserName}@{Host}:{Port}";
 }
 
-/// <summary>A MySQL/MariaDB server's answer the panel could not work with (unreachable, refused, not allowed…).</summary>
+/// <summary>A database server's answer the panel could not work with (unreachable, refused, not allowed…).</summary>
 public sealed class DatabaseHostException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 /// <summary>
-/// Talks to MySQL/MariaDB (Infrastructure, MySqlConnector). Names come from <see cref="ServerDatabase.NameFor"/> and
-/// passwords from <see cref="ServerDatabase.NewPassword"/>; the client checks them again before quoting them into SQL.
+/// Talks to MySQL/MariaDB (MySqlConnector) or PostgreSQL (Npgsql), as the connection's <see cref="DatabaseHostConnection.Engine"/>
+/// says (Infrastructure). Names come from <see cref="ServerDatabase.NameFor"/> and passwords from
+/// <see cref="ServerDatabase.NewPassword"/>; the client checks them again before quoting them into SQL. The user host is
+/// MySQL's alone (PostgreSQL ignores it).
 /// </summary>
 public interface IDatabaseHostClient
 {
@@ -53,6 +57,7 @@ public interface IDatabaseHostClient
 /// <param name="Password">Null on an update keeps the current password.</param>
 /// <param name="NodeIds">The nodes whose servers may use it; empty: every node.</param>
 /// <param name="RequireTls">Null: on a new host, required unless its address is local or private; on an update, unchanged.</param>
+/// <param name="Engine">What it runs: MySQL when a new host leaves it out; on an update, null or the host's own.</param>
 public sealed record DatabaseHostDefinition(
     string Name,
     string Host,
@@ -63,11 +68,13 @@ public sealed record DatabaseHostDefinition(
     int? ServerPort,
     string? UserHost,
     IReadOnlyList<Guid> NodeIds,
-    bool? RequireTls = null);
+    bool? RequireTls = null,
+    DatabaseEngine? Engine = null);
 
 /// <param name="Databases">Databases servers have on it.</param>
 public sealed record DatabaseHostView(
     Guid Id,
+    DatabaseEngine Engine,
     string Name,
     string Host,
     int Port,
@@ -83,7 +90,7 @@ public sealed record DatabaseHostView(
 
 public sealed record DatabaseHostList(IReadOnlyList<DatabaseHostView> Hosts);
 
-/// <param name="Version">What the server says it is (e.g. "12.3.3-MariaDB").</param>
+/// <param name="Version">What the server says it is (e.g. "12.3.3-MariaDB", "PostgreSQL 18.6 on x86_64-windows…").</param>
 public sealed record DatabaseHostCheck(string Version);
 
 /// <summary>
@@ -112,7 +119,7 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         var password = Password(definition);
         var created = DatabaseHost.Create(definition.Name, definition.Host, definition.Port, definition.UserName,
             password is null ? null : secrets.Protect(password), definition.ServerAddress, definition.ServerPort, definition.UserHost,
-            definition.NodeIds ?? [], clock.GetUtcNow(), definition.RequireTls);
+            definition.NodeIds ?? [], clock.GetUtcNow(), definition.RequireTls, definition.Engine ?? DatabaseEngine.Mysql);
         if (!created.IsSuccess)
         {
             return created.Error!;
@@ -124,7 +131,8 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
             return DatabaseErrors.HostNameTaken;
         }
 
-        if (await CheckAsync(new DatabaseHostConnection(host.Host, host.Port, host.UserName, password!, host.RequireTls), cancellationToken) is { } refused)
+        if (await CheckAsync(new DatabaseHostConnection(host.Host, host.Port, host.UserName, password!, host.RequireTls, host.Engine), cancellationToken)
+            is { } refused)
         {
             return refused;
         }
@@ -161,6 +169,11 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         if (host is null)
         {
             return DatabaseErrors.HostNotFound;
+        }
+
+        if (definition.Engine is { } engine && engine != host.Engine)
+        {
+            return DatabaseErrors.HostEngineFixed;
         }
 
         var password = Password(definition);
@@ -250,7 +263,7 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         ArgumentNullException.ThrowIfNull(host);
         try
         {
-            return new DatabaseHostConnection(host.Host, host.Port, host.UserName, secrets.Unprotect(host.PasswordProtected), host.RequireTls);
+            return new DatabaseHostConnection(host.Host, host.Port, host.UserName, secrets.Unprotect(host.PasswordProtected), host.RequireTls, host.Engine);
         }
         catch (CryptographicException)
         {
@@ -278,8 +291,21 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
     private static string? Password(DatabaseHostDefinition definition) => string.IsNullOrEmpty(definition.Password) ? null : definition.Password;
 
     private static object Metadata(DatabaseHost host, bool passwordChanged) =>
-        new { host.Name, host.Host, host.Port, host.UserName, host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, host.RequireTls, passwordChanged };
+        new
+        {
+            host.Name,
+            Engine = host.Engine.ToString().ToLowerInvariant(),
+            host.Host,
+            host.Port,
+            host.UserName,
+            host.ServerAddress,
+            host.ServerPort,
+            host.UserHost,
+            host.NodeIds,
+            host.RequireTls,
+            passwordChanged
+        };
 
-    private static DatabaseHostView View(DatabaseHost host, int databases) => new(host.Id.Value, host.Name, host.Host, host.Port, host.UserName,
+    private static DatabaseHostView View(DatabaseHost host, int databases) => new(host.Id.Value, host.Engine, host.Name, host.Host, host.Port, host.UserName,
         host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, host.RequireTls, databases, host.CreatedAt, host.UpdatedAt);
 }

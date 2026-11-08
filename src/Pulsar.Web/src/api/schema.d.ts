@@ -17015,6 +17015,8 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        /** @enum {unknown} */
+        DatabaseEngine: "mysql" | "postgres";
         DatabaseHostCheck: {
             version: string;
         };
@@ -17022,6 +17024,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            engine: components["schemas"]["DatabaseEngine"];
         };
         DatabaseHostList: {
             hosts: components["schemas"]["DatabaseHostView"][];
@@ -17039,10 +17042,12 @@ export interface components {
             userHost: null | string;
             nodeIds: null | string[];
             requireTls?: null | boolean;
+            engine?: null | components["schemas"]["DatabaseEngine"];
         };
         DatabaseHostView: {
             /** Format: uuid */
             id: string;
+            engine: components["schemas"]["DatabaseEngine"];
             name: string;
             host: string;
             /** Format: int32 */
@@ -17948,6 +17953,7 @@ export interface components {
         ServerDatabaseView: {
             /** Format: uuid */
             id: string;
+            engine: components["schemas"]["DatabaseEngine"];
             name: string;
             userName: string;
             /** Format: uuid */

@@ -18646,6 +18646,12 @@
           }
         }
       },
+      "DatabaseEngine": {
+        "enum": [
+          "mysql",
+          "postgres"
+        ]
+      },
       "DatabaseHostCheck": {
         "required": [
           "version"
@@ -18660,7 +18666,8 @@
       "DatabaseHostChoice": {
         "required": [
           "id",
-          "name"
+          "name",
+          "engine"
         ],
         "type": "object",
         "properties": {
@@ -18670,6 +18677,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/DatabaseEngine"
           }
         }
       },
@@ -18771,12 +18781,23 @@
               "null",
               "boolean"
             ]
+          },
+          "engine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabaseEngine"
+              }
+            ]
           }
         }
       },
       "DatabaseHostView": {
         "required": [
           "id",
+          "engine",
           "name",
           "host",
           "port",
@@ -18795,6 +18816,9 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/DatabaseEngine"
           },
           "name": {
             "type": "string"
@@ -22461,6 +22485,7 @@
       "ServerDatabaseView": {
         "required": [
           "id",
+          "engine",
           "name",
           "userName",
           "hostId",
@@ -22476,6 +22501,9 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/DatabaseEngine"
           },
           "name": {
             "type": "string"

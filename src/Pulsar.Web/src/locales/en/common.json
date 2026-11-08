@@ -849,6 +849,8 @@
       "user_invalid": "The user name is 1 to 80 characters, without quotes or backslashes.",
       "user_host_invalid": "Connections from is %, an address or a pattern such as 10.0.0.% (letters, digits, . : - _ %).",
       "password_required": "The password is needed.",
+      "engine_invalid": "A database host runs MySQL (or MariaDB) or PostgreSQL.",
+      "engine_fixed": "What a database host runs is chosen when it is added: add another host instead.",
       "password_unreadable": "The host's password cannot be read with this panel's keys: set it again.",
       "in_use": "Servers have databases on this host: delete them first.",
       "too_many": "The panel has at most 20 database hosts.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Database hosts",
-    "description": "MySQL or MariaDB servers where servers get their databases. The panel connects to them with an account that may create databases and users.",
+    "description": "MySQL, MariaDB or PostgreSQL servers where servers get their databases. The panel connects to them with an account that may create databases and users.",
     "add": "Add database host",
     "edit": "Edit database host",
     "empty": "No database hosts yet.",
     "name": "Name",
+    "engine": "Runs",
+    "engines": {
+      "mysql": "MySQL or MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Chosen when the host is added.",
+      "postgres": "Chosen when the host is added. Its account needs CREATEDB and CREATEROLE (no superuser needed), for example CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. Where game servers may connect from is in PostgreSQL's pg_hba.conf."
+    },
     "where": "Connection",
     "use": "Use",
     "forServers": "Game servers connect to {{address}}",

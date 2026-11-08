@@ -4,8 +4,8 @@ using Pulsar.Domain.Common;
 namespace Pulsar.Domain.Databases;
 
 /// <summary>
-/// A MySQL/MariaDB database of one server, on a <see cref="DatabaseHost"/>, with a user of the same name that may use
-/// it alone. The name is <c>s{server short id}_{suffix}</c>: the suffix is what the server's owner chose (lowercase
+/// A MySQL/MariaDB or PostgreSQL database of one server, on a <see cref="DatabaseHost"/>, with a user (a role, in
+/// PostgreSQL) of the same name that may use it alone. The name is <c>s{server short id}_{suffix}</c>: the suffix is what the server's owner chose (lowercase
 /// letters, digits and underscores only), and the prefix keeps every server's databases apart on a shared host.
 /// </summary>
 public sealed class ServerDatabase

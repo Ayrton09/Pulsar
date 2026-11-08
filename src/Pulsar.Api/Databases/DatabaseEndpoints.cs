@@ -20,6 +20,10 @@ public sealed record CreateDatabaseRequest(Guid HostId, [property: Required, Str
 /// Refuse to connect without TLS. Left out: on a new host, required unless its address is localhost, a loopback, private
 /// or link-local address; on an update, unchanged.
 /// </param>
+/// <param name="Engine">
+/// What it runs: <c>mysql</c> (MySQL or MariaDB, when a new host leaves it out) or <c>postgres</c> (PostgreSQL, whose
+/// account needs CREATEDB and CREATEROLE). Chosen when the host is added: an update leaves it out or repeats it.
+/// </param>
 public sealed record DatabaseHostRequest(
     [property: Required, StringLength(DatabaseHost.MaxNameLength)] string Name,
     [property: Required, StringLength(DatabaseHost.MaxHostLength)] string Host,
@@ -30,15 +34,16 @@ public sealed record DatabaseHostRequest(
     [property: Range(1, 65535)] int? ServerPort,
     [property: StringLength(DatabaseHost.MaxHostLength)] string? UserHost,
     [property: MaxLength(500)] IReadOnlyList<Guid>? NodeIds,
-    bool? RequireTls = null)
+    bool? RequireTls = null,
+    DatabaseEngine? Engine = null)
 {
     internal DatabaseHostDefinition ToDefinition() =>
-        new(Name, Host, Port, UserName, Password, ServerAddress, ServerPort, UserHost, NodeIds ?? [], RequireTls);
+        new(Name, Host, Port, UserName, Password, ServerAddress, ServerPort, UserHost, NodeIds ?? [], RequireTls, Engine);
 }
 
 /// <summary>
-/// Game databases (docs/architecture/07, "Databases"): a server's MySQL/MariaDB databases, and the database hosts they
-/// are created on (panel settings: their accounts are the panel's).
+/// Game databases (docs/architecture/07, "Databases"): a server's MySQL/MariaDB and PostgreSQL databases, and the
+/// database hosts they are created on (panel settings: their accounts are the panel's).
 /// </summary>
 public static class DatabaseEndpoints
 {

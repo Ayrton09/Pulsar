@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MySqlConnector;
+using Npgsql;
 using Pulsar.Api.Databases;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
@@ -21,7 +22,9 @@ using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
 
-/// <summary>Database hosts and servers' MySQL/MariaDB databases, against a real server (Phase 13).</summary>
+/// <summary>
+/// Database hosts and servers' MySQL/MariaDB databases (Phase 13) and PostgreSQL ones (1.0.37), against real servers.
+/// </summary>
 public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<PulsarApiFactory>
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -702,6 +705,149 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         db.DatabaseHosts.Add(host);
         await db.SaveChangesAsync(Ct);
         return host;
+    }
+
+    [Fact]
+    public void ARolesPasswordGoesToPostgresAsTheVerifierItKeeps()
+    {
+        // Worked out with Python's hashlib and hmac for RFC 7677's password and salt (an implementation of its own).
+        Assert.Equal(
+            "SCRAM-SHA-256$4096:W22ZaJ0SNY7soEsUEjb6gQ==$WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=:wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU=",
+            Pulsar.Infrastructure.Databases.PostgresDatabaseHostClient.ScramVerifier("pencil", Convert.FromBase64String("W22ZaJ0SNY7soEsUEjb6gQ==")));
+    }
+
+    [DatabaseFact]
+    public async Task ThePanelsOwnDatabaseLetsNoOtherRoleIn()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var open = await db.Database.SqlQueryRaw<bool>(
+                """SELECT has_database_privilege('public', current_database(), 'CONNECT') OR has_database_privilege('public', current_database(), 'TEMPORARY') AS "Value" """)
+            .SingleAsync(Ct);
+        Assert.False(open);
+    }
+
+    [DatabaseFact]
+    public async Task ThePostgresClientChecksWhatItQuotesAndSaysWhenAHostIsAway()
+    {
+        var client = factory.Services.GetRequiredService<IDatabaseHostClient>();
+        var away = new DatabaseHostConnection("127.0.0.1", 1, "pulsar", "password", RequireTls: false, DatabaseEngine.Postgres);
+        var password = ServerDatabase.NewPassword();
+
+        // Checked before connecting: nothing that could leave its quotes reaches a statement.
+        await Assert.ThrowsAsync<ArgumentException>(() => client.CreateAsync(away, "sabc_x\"; DROP DATABASE postgres; --", "%", password, Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.CreateAsync(away, "postgres", "%", password, Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.CreateAsync(away, "sabc_main", "%", "short'password", Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.DropAsync(away, "pg_monitor", "%", Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.SetPasswordAsync(away, "sabc_main", "%", "x", Ct));
+
+        // A host that does not answer is a DatabaseHostException, whatever the step.
+        await Assert.ThrowsAsync<DatabaseHostException>(() => client.CheckAsync(away, Ct));
+        await Assert.ThrowsAsync<DatabaseHostException>(() => client.CreateAsync(away, "sabc_main", "%", password, Ct));
+        await Assert.ThrowsAsync<DatabaseHostException>(() => client.DropAsync(away, "sabc_main", "%", Ct));
+    }
+
+    [PostgresHostFact]
+    public async Task APostgresDatabaseIsItsRolesAloneAndGoesWithTheServer()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var admin = scenario.Admin;
+        var settings = TestPostgresHost.Settings;
+        var request = new DatabaseHostRequest("postgres", settings.Host!, settings.Port, settings.Username!, settings.Password, null, null, "10.0.0.%", [],
+            Engine: DatabaseEngine.Postgres);
+
+        using (var refused = await admin.PostAsync("/api/v1/database-hosts", request with { Password = "certainly-not-the-password" }))
+        {
+            Assert.Equal(HttpStatusCode.BadGateway, refused.StatusCode);
+        }
+
+        DatabaseHostView host;
+        using (var response = await admin.PostAsync("/api/v1/database-hosts", request))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+            host = (await response.Content.ReadFromJsonAsync<DatabaseHostView>(AccessScenario.Json, Ct))!;
+        }
+
+        Assert.Equal(DatabaseEngine.Postgres, host.Engine);
+        Assert.Equal(DatabaseHost.AnyHost, host.UserHost); // PostgreSQL's own pg_hba.conf says where roles connect from
+        using (var test = await admin.PostAsync($"/api/v1/database-hosts/{host.Id}/test"))
+        {
+            await AccessScenario.EnsureSuccessAsync(test);
+            Assert.StartsWith("PostgreSQL", (await test.Content.ReadFromJsonAsync<DatabaseHostCheck>(AccessScenario.Json, Ct))!.Version, StringComparison.Ordinal);
+        }
+
+        // What a host runs is fixed.
+        using (var changed = await admin.PutAsync($"/api/v1/database-hosts/{host.Id}", request with { Password = null, Engine = DatabaseEngine.Mysql }))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, changed.StatusCode);
+            Assert.Contains("database_host.engine_fixed", await changed.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        await using var agent = await ConnectedAgentAsync(admin, "postgres");
+        var server = await InstalledServerAsync(admin, agent, "pg-own");
+        var other = await InstalledServerAsync(admin, agent, "pg-other");
+        var main = await CreateDatabaseAsync(admin, server, host.Id, "main");
+        var otherMain = await CreateDatabaseAsync(admin, other, host.Id, "main");
+        Assert.Equal(DatabaseEngine.Postgres, main.Database.Engine);
+        Assert.Equal(main.Database.Name, main.Database.UserName);
+
+        // The role works in its own database, may do nothing else, and cannot get into anyone else's, nor the panel's.
+        await using (var game = await TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, main.Database.Name))
+        {
+            await TestPostgresHost.ScalarAsync(game, "CREATE TABLE players (name text); INSERT INTO players VALUES ('ada')");
+            Assert.Equal("ada", await TestPostgresHost.ScalarAsync(game, "SELECT name FROM players"));
+            Assert.Equal(main.Database.Name, await TestPostgresHost.ScalarAsync(game,
+                "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()"));
+            Assert.False((bool)(await TestPostgresHost.ScalarAsync(game,
+                "SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit FROM pg_roles WHERE rolname = current_user"))!);
+            Assert.False((bool)(await TestPostgresHost.ScalarAsync(game, "SELECT has_database_privilege('public', current_database(), 'CONNECT')"))!);
+        }
+
+        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, otherMain.Database.Name));
+        string panelDatabase;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            panelDatabase = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database.GetDbConnection().Database;
+        }
+
+        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, panelDatabase));
+
+        // A rotated password locks the old one out.
+        ServerDatabaseCredentials rotated;
+        using (var response = await admin.PostAsync($"/api/v1/servers/{server}/databases/{main.Database.Id}/rotate-password"))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+            rotated = (await response.Content.ReadFromJsonAsync<ServerDatabaseCredentials>(AccessScenario.Json, Ct))!;
+        }
+
+        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, main.Database.Name));
+        await using (var again = await TestPostgresHost.OpenAsync(main.Database.UserName, rotated.Password, main.Database.Name))
+        {
+            Assert.Equal("ada", await TestPostgresHost.ScalarAsync(again, "SELECT name FROM players"));
+        }
+
+        // Deleting it drops the database and the role, even with a session still open; so does deleting a server.
+        await using (var open = await TestPostgresHost.OpenAsync(main.Database.UserName, rotated.Password, main.Database.Name))
+        {
+            using var deleted = await admin.DeleteAsync($"/api/v1/servers/{server}/databases/{main.Database.Id}");
+            Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        }
+
+        await DeleteServerAsync(admin, other);
+        await using (var root = await TestPostgresHost.OpenAsync())
+        {
+            foreach (var name in new[] { main.Database.Name, otherMain.Database.Name })
+            {
+                Assert.Null(await TestPostgresHost.ScalarAsync(root, "SELECT 1 FROM pg_database WHERE datname = $1", name));
+                Assert.Null(await TestPostgresHost.ScalarAsync(root, "SELECT 1 FROM pg_roles WHERE rolname = $1", name));
+            }
+        }
+
+        await DeleteServerAsync(admin, server);
+        using (var deleted = await admin.DeleteAsync($"/api/v1/database-hosts/{host.Id}"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        }
     }
 
     private static ServerDatabases DatabasesWith(IServiceProvider services, IDatabaseHostClient client) => new(

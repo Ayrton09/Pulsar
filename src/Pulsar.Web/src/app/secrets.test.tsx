@@ -242,6 +242,7 @@ describe('one-time secrets', () => {
     };
     const database: Schemas['ServerDatabaseView'] = {
       id: '0192f1a0-0000-7000-8000-0000000000c1',
+      engine: 'mysql',
       name: 'sk3x7m2qa_main',
       userName: 'sk3x7m2qa_main',
       hostId,
@@ -259,7 +260,7 @@ describe('one-time secrets', () => {
       }),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
       [`GET /api/v1/servers/${serverId}/databases`]: () =>
-        json({ limit: 2, databases: [database], hosts: [{ id: hostId, name: 'LAN MariaDB' }] }),
+        json({ limit: 2, databases: [database], hosts: [{ id: hostId, name: 'LAN MariaDB', engine: 'mysql' }] }),
       [`GET /api/v1/servers/${serverId}/databases/${database.id}/password`]: () =>
         json({ database, password: 'Kq7mPz2xVb9nRt4wLs8yHc3d' }),
     });

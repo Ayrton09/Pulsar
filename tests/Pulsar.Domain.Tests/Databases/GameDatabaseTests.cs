@@ -58,6 +58,23 @@ public sealed class GameDatabaseTests
         Assert.Equal(error, result.IsSuccess ? null : result.Error!.Code);
     }
 
+    [Fact]
+    public void APostgresHostLeavesWhereRolesConnectFromToPostgres()
+    {
+        var host = DatabaseHost.Create("Games", "127.0.0.1", 5432, "pulsar_games", s_password, null, null, "10.0.0.%", [], s_now,
+            engine: DatabaseEngine.Postgres).Value;
+        Assert.Equal(DatabaseEngine.Postgres, host.Engine);
+        Assert.Equal(DatabaseHost.AnyHost, host.UserHost);
+        Assert.True(host.Change("Games", "127.0.0.1", 5432, "pulsar_games", null, null, null, "x' OR 1", [], s_now).IsSuccess);
+        Assert.Equal(DatabaseHost.AnyHost, host.UserHost);
+
+        // MySQL stays the default, and each engine has its own port.
+        Assert.Equal(DatabaseEngine.Mysql, Host().Engine);
+        Assert.Equal((3306, 5432), (DatabaseEngine.Mysql.DefaultPort(), DatabaseEngine.Postgres.DefaultPort()));
+        Assert.Equal(DatabaseErrors.HostEngineInvalid,
+            DatabaseHost.Create("x", "db.lan", 3306, "root", s_password, null, null, null, [], s_now, engine: (DatabaseEngine)7).Error);
+    }
+
     [Theory]
     [InlineData("127.0.0.1", false)]
     [InlineData("localhost", false)]

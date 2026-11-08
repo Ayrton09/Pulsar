@@ -6,18 +6,24 @@ import { api, unwrap } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, EmptyState, PageHeader, Table, Td, Th } from '../../components/ui/Display';
-import { Checkbox, Field, Input } from '../../components/ui/Form';
+import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useNodes } from '../nodes/api';
 import {
   isLocalAddress,
   useDatabaseHosts,
   useDatabaseHostsChanged,
+  type DatabaseEngine,
   type DatabaseHost,
   type DatabaseHostRequest,
 } from './api';
 
-/** MySQL/MariaDB servers game databases are created on (settings.manage); servers create theirs in their Databases tab. */
+const defaultPorts: Record<DatabaseEngine, number> = { mysql: 3306, postgres: 5432 };
+
+/**
+ * MySQL/MariaDB and PostgreSQL servers game databases are created on (settings.manage); servers create theirs in their
+ * Databases tab.
+ */
 export function DatabaseHostsPage() {
   const { t } = useTranslation();
   const hosts = useDatabaseHosts();
@@ -60,7 +66,10 @@ export function DatabaseHostsPage() {
           <tbody>
             {hosts.data.hosts.map((host) => (
               <tr key={host.id}>
-                <Td className="font-medium">{host.name}</Td>
+                <Td>
+                  <p className="font-medium">{host.name}</p>
+                  <p className="text-xs text-muted">{t(`databaseHosts.engines.${host.engine}`)}</p>
+                </Td>
                 <Td>
                   <p className="font-mono">
                     {host.userName}@{host.host}:{host.port}
@@ -122,9 +131,11 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
       onClose();
     },
   });
+  // What a host runs is chosen when it is added.
+  const [engine, setEngine] = useState<DatabaseEngine>(host?.engine ?? 'mysql');
   const [name, setName] = useState(host?.name ?? '');
   const [address, setAddress] = useState(host?.host ?? '');
-  const [port, setPort] = useState(String(host?.port ?? 3306));
+  const [port, setPort] = useState(String(host?.port ?? defaultPorts.mysql));
   const [userName, setUserName] = useState(host?.userName ?? '');
   const [password, setPassword] = useState('');
   const [serverAddress, setServerAddress] = useState(host?.serverAddress ?? '');
@@ -146,9 +157,10 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
       password: password || null,
       serverAddress: serverAddress.trim() || null,
       serverPort: serverPort.trim() === '' ? null : Number(serverPort),
-      userHost: userHost.trim() || null,
+      userHost: engine === 'mysql' ? userHost.trim() || null : null,
       nodeIds,
       requireTls,
+      engine,
     });
   };
 
@@ -160,6 +172,26 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
       size="lg"
     >
       <form className="space-y-4" onSubmit={submit} noValidate>
+        <Field label={t('databaseHosts.engine')} hint={t(`databaseHosts.engineHint.${engine}`)}>
+          {(control) => (
+            <Select
+              {...control}
+              value={engine}
+              disabled={host !== null}
+              onChange={(e) => {
+                const next = e.target.value as DatabaseEngine;
+                // The port follows while it is the other engine's default.
+                if (port === String(defaultPorts[engine])) {
+                  setPort(String(defaultPorts[next]));
+                }
+                setEngine(next);
+              }}
+            >
+              <option value="mysql">{t('databaseHosts.engines.mysql')}</option>
+              <option value="postgres">{t('databaseHosts.engines.postgres')}</option>
+            </Select>
+          )}
+        </Field>
         <Field label={t('databaseHosts.name')}>
           {(control) => <Input {...control} value={name} maxLength={64} onChange={(e) => setName(e.target.value)} />}
         </Field>
@@ -235,9 +267,12 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
             )}
           </Field>
         </div>
-        <Field label={t('databaseHosts.userHost')} hint={t('databaseHosts.userHostHint')}>
-          {(control) => <Input {...control} value={userHost} onChange={(e) => setUserHost(e.target.value)} />}
-        </Field>
+        {/* PostgreSQL says where roles connect from in its own pg_hba.conf. */}
+        {engine === 'mysql' && (
+          <Field label={t('databaseHosts.userHost')} hint={t('databaseHosts.userHostHint')}>
+            {(control) => <Input {...control} value={userHost} onChange={(e) => setUserHost(e.target.value)} />}
+          </Field>
+        )}
         <div className="space-y-1">
           <Checkbox
             label={t('databaseHosts.requireTls')}

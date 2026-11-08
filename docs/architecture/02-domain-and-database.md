@@ -18,7 +18,7 @@
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
 | Steam accounts | **SteamAccount** | Accounts SteamCMD signs in with for servers whose game needs one (Phase 13); a server points at one or none. |
-| Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
+| Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB (and, 1.0.37, PostgreSQL: `engine`, fixed when added) servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun, **ServerSequence** | Typed action + cron + IANA time zone; sequences of steps the panel moves on (1.0.9). |
 | Game updates | **GameUpdateWatch** | How a server follows its game's updates and what the last check found (1.0.9), and the newer versions of its game's template (1.0.10). |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
@@ -641,6 +641,7 @@ CREATE TABLE steam_accounts (
 -- ===================== Game databases (Phase 13) =====================
 CREATE TABLE database_hosts (
     id                  uuid PRIMARY KEY,
+    engine              varchar(16) NOT NULL DEFAULT 'mysql' CHECK (engine IN ('mysql', 'postgres')), -- 1.0.37, fixed
     name                varchar(64) NOT NULL UNIQUE,
     host                varchar(255) NOT NULL,        -- where the panel connects
     port                integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
@@ -648,7 +649,7 @@ CREATE TABLE database_hosts (
     password_protected  bytea NOT NULL,               -- Data Protection; never returned
     server_address      varchar(255),                 -- where game servers connect, when not host
     server_port         integer CHECK (server_port BETWEEN 1 AND 65535),
-    user_host           varchar(255) NOT NULL,        -- the users' host part: '%' or an address/pattern
+    user_host           varchar(255) NOT NULL,        -- the users' host part: '%' or an address/pattern (MySQL; '%' on PostgreSQL)
     node_ids            uuid[] NOT NULL,              -- nodes whose servers may use it; empty: all
     require_tls         boolean NOT NULL,             -- refuse to connect without TLS (else TLS when offered)
     created_at          timestamptz NOT NULL,
@@ -895,4 +896,4 @@ CREATE TABLE panel_signing_keys (
 - Individual samples (memory only; the metric history keeps one-minute and one-hour aggregates).
 - Console output (ring buffers and rotated log files on the node).
 - Backup archives (on the node).
-- The game databases themselves (on their MySQL/MariaDB hosts): Pulsar keeps only their names, hosts and encrypted passwords.
+- The game databases themselves (on their MySQL/MariaDB or PostgreSQL hosts): Pulsar keeps only their names, hosts and encrypted passwords.

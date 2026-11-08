@@ -1,10 +1,11 @@
 # Game databases
 
 Many game plugins keep their data in MySQL or MariaDB (Oxide and Carbon plugins for Rust, CounterStrikeSharp plugins for
-CS2, Minecraft plugins). Pulsar creates a database and a user for each server that needs one, on a database server you
-run yourself; it does not install MySQL or MariaDB.
+CS2, Minecraft plugins), and some games in PostgreSQL. Pulsar creates a database and a user for each server that needs
+one, on a database server you run yourself (or, for PostgreSQL, the one Pulsar's installer put on the panel's machine);
+it does not install MySQL or MariaDB.
 
-## Add a database host
+## Add a MySQL or MariaDB host
 
 1. Run MySQL 8 or MariaDB 10.6 or newer where both the panel and the game servers can reach it: on the panel's machine,
    on a node, or anywhere on your network. **Use a database server for Pulsar's game databases only**, never one that
@@ -43,7 +44,7 @@ run yourself; it does not install MySQL or MariaDB.
    REVOKE ALL PRIVILEGES ON `test\_%`.* FROM PUBLIC;
    DROP DATABASE IF EXISTS test;
    ```
-4. In the panel, open **Database hosts** (it needs `settings.manage`) and add it. Pulsar connects before saving: a wrong
+4. In the panel, open **Database hosts** (it needs `settings.manage`) and add it, as **MySQL or MariaDB**. Pulsar connects before saving: a wrong
    address or password is refused with what the database server said.
    - **Address for game servers**: when game servers reach it at another address than the panel does. A database on a
      node is `127.0.0.1` for that node's games.
@@ -58,7 +59,32 @@ run yourself; it does not install MySQL or MariaDB.
    - **Nodes**: tick some to offer the host to their servers only.
 
    Editing a host, an empty password keeps the saved one, as long as the address, port and user stay the same; change
-   any of them and type the password again.
+   any of them and type the password again. What a host runs is chosen when it is added.
+
+## Add a PostgreSQL host
+
+PostgreSQL 16 or newer. The one Pulsar's installer puts on the panel's machine (18) does: game servers on that same
+machine reach it at `127.0.0.1`.
+
+1. As a superuser (`postgres`), give Pulsar a role that may create databases and roles, and nothing more:
+
+   ```sql
+   CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '<a long random password>';
+   ```
+
+   Not a superuser, and not the panel's own role (`pulsar`). From PostgreSQL 16, a role with `CREATEROLE` may change
+   only the roles it created (older versions let it change every role but the superusers, the panel's included: Pulsar
+   refuses them). Pulsar makes, for each server's database, a role of the same name that may sign in and nothing else
+   (no superuser, no creating databases or roles), the owner of a database made from `template0` that no other role
+   may connect to; it sets the role's password as a SCRAM-SHA-256 verifier, never in clear. The panel's own database
+   is closed to other roles too: Pulsar takes `PUBLIC`'s right to connect to it away when it updates (an external
+   database whose owner is not the panel's account: do it yourself, `REVOKE CONNECT, TEMPORARY ON DATABASE pulsar FROM
+   PUBLIC;`). Every role can still see the names of the server's databases and roles (PostgreSQL shows them to all).
+2. Where game servers may connect from is PostgreSQL's own `pg_hba.conf`: the installer's PostgreSQL takes connections
+   from the machine itself only, which suits games on the panel's machine. Game servers on other nodes need lines for
+   their addresses there (and `listen_addresses`), with `scram-sha-256`, and the port open to those nodes alone.
+3. In **Database hosts**, add it as **PostgreSQL** (port 5432) with that role and its password. **Require TLS** works as
+   for MySQL; the installer's PostgreSQL has no TLS, which is fine on `127.0.0.1`.
 
 ## Databases of a server
 
@@ -78,4 +104,4 @@ behind, to drop by hand.
 ## Backups
 
 Pulsar's backups hold the server's files, not its databases. Back up your database server with its own tools
-(`mariadb-dump`, `mysqldump`, or your hosting's snapshots).
+(`mariadb-dump`, `mysqldump`, `pg_dump`, or your hosting's snapshots).

@@ -53,6 +53,7 @@ const details: Schemas['ServerDetails'] = {
 
 const main: Schemas['ServerDatabaseView'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',
+  engine: 'mysql',
   name: 'sk3x7m2qa_main',
   userName: 'sk3x7m2qa_main',
   hostId,
@@ -65,7 +66,7 @@ const main: Schemas['ServerDatabaseView'] = {
 };
 
 function list(databases: Schemas['ServerDatabaseView'][], limit = 2): Schemas['ServerDatabaseList'] {
-  return { limit, databases, hosts: [{ id: hostId, name: 'LAN MariaDB' }] };
+  return { limit, databases, hosts: [{ id: hostId, name: 'LAN MariaDB', engine: 'mysql' }] };
 }
 
 function renderAt(
@@ -238,6 +239,7 @@ describe('database hosts page', () => {
         hosts = [
           {
             id: hostId,
+            engine: 'mysql',
             name: 'LAN MariaDB',
             host: '10.0.0.5',
             port: 3306,
@@ -282,6 +284,7 @@ describe('database hosts page', () => {
         userHost: '%',
         nodeIds: [],
         requireTls: null,
+        engine: 'mysql',
       },
     ]);
 
@@ -289,10 +292,43 @@ describe('database hosts page', () => {
     expect(await screen.findByText('Connected: 12.3.3-MariaDB.')).toBeInTheDocument();
   });
 
+  it('adds a PostgreSQL host on its own port, without the connections-from setting of MySQL', async () => {
+    const bodies: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
+      'GET /api/v1/nodes': () => json([]),
+      'GET /api/v1/database-hosts': () => json({ hosts: [] }),
+      'POST /api/v1/database-hosts': async (request) => {
+        bodies.push(await request.json());
+        return problem(502, 'database_host.unreachable', 'refused');
+      },
+    });
+    renderAt('/admin/database-hosts');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add database host' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add database host' });
+    expect(within(dialog).getByLabelText('Port')).toHaveValue(3306);
+    expect(within(dialog).getByLabelText('Connections from')).toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText('Runs'), 'postgres');
+    expect(within(dialog).getByLabelText('Port')).toHaveValue(5432);
+    expect(within(dialog).queryByLabelText('Connections from')).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/CREATEDB and CREATEROLE/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Name'), 'Panel PostgreSQL');
+    await user.type(within(dialog).getByLabelText('Address'), '127.0.0.1');
+    await user.type(within(dialog).getByLabelText('User'), 'pulsar_games');
+    await user.type(within(dialog).getByLabelText('Password'), 'host password');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await vi.waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ engine: 'postgres', port: 5432, userHost: null, host: '127.0.0.1' });
+  });
+
   it('requires TLS by default outside the local network, and sends a choice made', async () => {
     const bodies: unknown[] = [];
     const host: Schemas['DatabaseHostView'] = {
       id: hostId,
+      engine: 'mysql',
       name: 'Cloud MySQL',
       host: 'db.example.com',
       port: 3306,
@@ -342,6 +378,7 @@ describe('database hosts page', () => {
     const bodies: unknown[] = [];
     const host: Schemas['DatabaseHostView'] = {
       id: hostId,
+      engine: 'mysql',
       name: 'LAN MariaDB',
       host: '10.0.0.5',
       port: 3306,
@@ -390,6 +427,7 @@ describe('database hosts page', () => {
   it('says when the nodes cannot be listed, and what the host then applies to', async () => {
     const host: Schemas['DatabaseHostView'] = {
       id: hostId,
+      engine: 'mysql',
       name: 'LAN MariaDB',
       host: '10.0.0.5',
       port: 3306,

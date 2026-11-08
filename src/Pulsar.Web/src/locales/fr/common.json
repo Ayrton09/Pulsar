@@ -849,6 +849,8 @@
       "user_invalid": "Le nom d'utilisateur compte de 1 à 80 caractères, sans guillemets ni barres obliques inverses.",
       "user_host_invalid": "Connexions depuis est %, une adresse ou un motif comme 10.0.0.% (lettres, chiffres, . : - _ %).",
       "password_required": "Le mot de passe est obligatoire.",
+      "engine_invalid": "Un hôte de bases de données exécute MySQL (ou MariaDB) ou PostgreSQL.",
+      "engine_fixed": "Ce qu'exécute un hôte de bases de données se choisit à son ajout : ajoutez plutôt un autre hôte.",
       "password_unreadable": "Le mot de passe de l'hôte ne peut pas être lu avec les clés de ce panneau : définissez-le de nouveau.",
       "in_use": "Des serveurs ont des bases de données sur cet hôte : supprimez-les d'abord.",
       "too_many": "Le panneau compte au plus 20 hôtes de bases de données.",
@@ -2397,11 +2399,20 @@
   },
   "databaseHosts": {
     "title": "Hôtes de bases de données",
-    "description": "Des serveurs MySQL ou MariaDB où les serveurs obtiennent leurs bases de données. Le panneau s'y connecte avec un compte autorisé à créer des bases de données et des utilisateurs.",
+    "description": "Des serveurs MySQL, MariaDB ou PostgreSQL où les serveurs obtiennent leurs bases de données. Le panneau s'y connecte avec un compte autorisé à créer des bases de données et des utilisateurs.",
     "add": "Ajouter un hôte de bases de données",
     "edit": "Modifier l'hôte de bases de données",
     "empty": "Aucun hôte de bases de données pour l'instant.",
     "name": "Nom",
+    "engine": "Moteur",
+    "engines": {
+      "mysql": "MySQL ou MariaDB",
+      "postgres": "PostgreSQL"
+    },
+    "engineHint": {
+      "mysql": "Choisi à l'ajout du serveur.",
+      "postgres": "Choisi à l'ajout du serveur. Son compte a besoin de CREATEDB et CREATEROLE (pas besoin d'un superutilisateur), par exemple CREATE ROLE pulsar_games LOGIN CREATEDB CREATEROLE PASSWORD '…'. D'où les serveurs de jeu peuvent se connecter se règle dans le pg_hba.conf de PostgreSQL."
+    },
     "where": "Connexion",
     "use": "Utilisation",
     "forServers": "Les serveurs de jeu se connectent à {{address}}",
