@@ -574,6 +574,19 @@ A comparison with AMP, Pterodactyl/Pelican, TCAdmin and WindowsGSM gave fifteen 
 - A Counter-Strike 2 server with a Workshop map did not load it: the template passed `+host_workshop_map` instead of `+map`, and the Workshop download needs a server already up on a map. It now starts on the starting map and changes to the Workshop map or collection after (template 1.5.1).
 - The agent asks a game host again when it closes the connection at once on reattach, instead of ending the host with its game (doc 06).
 
+## 1.0.36 — Audit and dependencies (2026-11-08, at the user's request)
+
+Every dependency at its latest version (i18next 27 and react-i18next 18, @hookform/resolvers 7, jsdom 31, the NuGet and
+build tooling patches, minimatch 11 for the linters), then a full audit in eight areas (identity and access, servers and
+nodes, protocol and updates, the agent's runtime, its files, backups and SFTP, its Windows side, the web app, the
+installers and CI): no high finding, two medium, twenty-six low, all fixed and reviewed. The medium ones: an API key
+is made only with its user's password and two-factor code, and every key of a user is revoked when the password changes
+or is reset or two-factor authentication is reset (signing out everywhere leaves them, a decision of the user's: doc 02,
+"API keys"); nothing changes a server's files while it moves to another node (`TransferGate`). Also: disabled users
+refused on the next request, retention bounded for failed backups and old operations and kept off a copy's backup, web
+ports never sharing a number across a node's addresses, update reports off the hub call, the Windows unenroll and the
+Linux installer's roll backs made complete, every GitHub Action pinned to a commit.
+
 ## 1.0.35 — AO2027 (2026-11-08, at the user's request)
 
 The user's own game, AO2027 (CoverAO: Argentum Online's world on a .NET server, played with its own desktop app), bundled for everyone, installed from its public releases (`Ayrton09/CoverAO`). Two things Pulsar did not have: ports marked `http`, whose `http://+:port/` the agent reserves for the server's account (the game uses `HttpListener`, which otherwise answers on `localhost` only for an account that is no administrator), and a release step's `keep`, files an update writes only while they are missing (its `Server.ini`, where the game masters are). Its four ports follow the base one (`StartPort`, set in `Server.ini`); only the Game port, the one the app connects to, is opened and shown as the server's address. The file manager's editor got an Edit button.
