@@ -7,6 +7,7 @@ import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
+import { webLink } from '../../lib/webLink';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import { serverActions } from '../servers/serverStatus';
@@ -135,7 +136,7 @@ function AddonCard({
         <div className="min-w-0">
           <h3 className="font-semibold">
             <a
-              href={addon.url}
+              href={webLink(addon.url)}
               target="_blank"
               rel="noreferrer noopener"
               aria-describedby={noteId}

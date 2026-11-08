@@ -10,6 +10,7 @@ using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
+using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Security;
 
@@ -60,8 +61,10 @@ internal sealed class TwoFactorRequirement : IAuthorizationRequirement
     public static TwoFactorRequirement Instance { get; } = new();
 }
 
-internal sealed class TwoFactorAuthorizationHandler(IPermissionEvaluator evaluator) : AuthorizationHandler<TwoFactorRequirement>
+internal sealed class TwoFactorAuthorizationHandler(IPermissionEvaluator evaluator, PulsarDbContext db) : AuthorizationHandler<TwoFactorRequirement>
 {
+    public const string EndedReason = "auth.session_ended";
+
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, TwoFactorRequirement requirement)
     {
         if (context.User.GetUserId() is not { } user)
@@ -70,6 +73,15 @@ internal sealed class TwoFactorAuthorizationHandler(IPermissionEvaluator evaluat
         }
 
         var http = context.Resource as HttpContext;
+        // A user disabled or deleted is refused from that moment, not when the session's security stamp is next checked
+        // (up to a minute later): every request of a signed-in user passes here. An API key's user is checked by its own
+        // handler on every request.
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == user && !u.IsDisabled, http?.RequestAborted ?? CancellationToken.None))
+        {
+            context.Fail(new AuthorizationFailureReason(this, EndedReason));
+            return;
+        }
+
         if (context.User.HasClaim(PulsarClaimsPrincipalFactory.TwoFactorClaim, "true")
             || http?.GetEndpoint()?.Metadata.GetMetadata<AllowWithoutTwoFactorMetadata>() is not null
             || !(await evaluator.GetAsync(user, http?.RequestAborted ?? CancellationToken.None)).RequiresTwoFactor)
@@ -89,6 +101,14 @@ internal sealed class PulsarAuthorizationResultHandler : IAuthorizationMiddlewar
 
     public Task HandleAsync(RequestDelegate next, HttpContext context, AuthorizationPolicy policy, PolicyAuthorizationResult authorizeResult)
     {
+        if (authorizeResult.Forbidden
+            && authorizeResult.AuthorizationFailure?.FailureReasons.Any(r => r.Message == TwoFactorAuthorizationHandler.EndedReason) == true)
+        {
+            // Disabled or deleted meanwhile: answered as signed out, so the SPA goes back to the sign-in page.
+            return ApiProblems.Create(StatusCodes.Status401Unauthorized, TwoFactorAuthorizationHandler.EndedReason,
+                "The session has ended.").ExecuteAsync(context);
+        }
+
         if (authorizeResult.Forbidden
             && authorizeResult.AuthorizationFailure?.FailureReasons.Any(r => r.Message == TwoFactorRequirement.FailureReason) == true)
         {

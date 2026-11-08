@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatFileSize } from '../../lib/format';
 import { visibleName } from '../../lib/visibleText';
+import { webLink } from '../../lib/webLink';
 import type { TemplateVariable } from './api';
 import type { Catalog, CatalogItem } from './catalogs';
 
@@ -278,7 +279,7 @@ function ItemRow({
         {item?.url ? (
           <>
             <a
-              href={item.url}
+              href={webLink(item.url)}
               aria-describedby={noteId}
               target="_blank"
               rel="noreferrer noopener"

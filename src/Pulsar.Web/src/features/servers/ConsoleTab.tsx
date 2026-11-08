@@ -29,6 +29,7 @@ import { Input } from '../../components/ui/Form';
 import { commandLine } from '../../lib/commandLine';
 import { errorMessage } from '../../lib/errors';
 import { canOnServer, Permission } from '../../lib/permissions';
+import { webLink } from '../../lib/webLink';
 import { useCurrentUser } from '../auth/api';
 import { useLiveStatus, useServerConsole } from '../live/hooks';
 import type { ConsoleEntry } from '../live/types';
@@ -468,13 +469,9 @@ function CommandInput({
 
 /** Web links open in a new tab without access to this one; anything else (file:, javascript:, …) is ignored. */
 function openWebLink(uri: string) {
-  try {
-    const url = new URL(uri);
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      window.open(url.href, '_blank', 'noopener,noreferrer');
-    }
-  } catch {
-    // Not a URL.
+  const href = webLink(uri);
+  if (href) {
+    window.open(href, '_blank', 'noopener,noreferrer');
   }
 }
 

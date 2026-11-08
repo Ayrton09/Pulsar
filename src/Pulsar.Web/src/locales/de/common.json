@@ -2021,7 +2021,6 @@
       "nodeOnly": "Nirgendwohin (nur auf dem Node)",
       "saved": "Gespeichert.",
       "statuses": {
-        "none": "",
         "pending": "Wird in den Remote-Speicher kopiert…",
         "copied": "In den Remote-Speicher kopiert",
         "failed": "Nicht in den Remote-Speicher kopiert"

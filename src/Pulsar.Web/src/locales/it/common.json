@@ -2021,7 +2021,6 @@
       "nodeOnly": "Da nessuna parte (solo sul nodo)",
       "saved": "Salvato.",
       "statuses": {
-        "none": "",
         "pending": "Copia nell'archiviazione remota…",
         "copied": "Copiato nell'archiviazione remota",
         "failed": "Non copiato nell'archiviazione remota"

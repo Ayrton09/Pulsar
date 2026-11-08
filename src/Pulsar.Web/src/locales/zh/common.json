@@ -2021,7 +2021,6 @@
       "nodeOnly": "不复制（仅保存在节点上）",
       "saved": "已保存。",
       "statuses": {
-        "none": "",
         "pending": "正在复制到远程存储…",
         "copied": "已复制到远程存储",
         "failed": "未复制到远程存储"

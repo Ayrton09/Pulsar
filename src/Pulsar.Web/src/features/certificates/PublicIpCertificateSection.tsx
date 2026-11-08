@@ -6,6 +6,7 @@ import { Alert, Badge, Card } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
+import { webLink } from '../../lib/webLink';
 import {
   checkPublicIp,
   usePublicIpCertificate,
@@ -132,7 +133,7 @@ function PublicIpCertificateForm({ saved }: { saved: PublicIpCertificate }) {
       <p className="text-sm">
         {t('publicIpCertificate.terms')}{' '}
         <a
-          href={saved.termsOfServiceUrl}
+          href={webLink(saved.termsOfServiceUrl)}
           target="_blank"
           rel="noreferrer noopener"
           className="text-accent hover:underline"

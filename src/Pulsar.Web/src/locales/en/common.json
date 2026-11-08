@@ -2021,7 +2021,6 @@
       "nodeOnly": "Nowhere (on the node only)",
       "saved": "Saved.",
       "statuses": {
-        "none": "",
         "pending": "Copying to remote storage…",
         "copied": "Copied to remote storage",
         "failed": "Not copied to remote storage"

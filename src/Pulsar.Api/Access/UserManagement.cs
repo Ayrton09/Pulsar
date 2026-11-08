@@ -109,9 +109,23 @@ public sealed class UserManagement(
         {
             created = await users.CreateAsync(user, input.Password);
         }
-        catch (DbUpdateException) when (input.ExternalId is not null)
+        catch (DbUpdateException)
         {
-            return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken); // taken at the same moment (unique index)
+            // The name or the external id taken at the same moment by another request (the unique indexes): answered as
+            // the checks before would have answered, from what is there now.
+            await transaction.RollbackAsync(ct);
+            db.Entry(user).State = EntityState.Detached;
+            if (await users.FindByNameAsync(user.UserName) is not null)
+            {
+                return IdentityProblems.Validation(IdentityResult.Failed(users.ErrorDescriber.DuplicateUserName(user.UserName)));
+            }
+
+            if (input.ExternalId is not null && await db.Users.AnyAsync(u => u.ExternalId == input.ExternalId, ct))
+            {
+                return ApiProblems.FromDomainError(AccessErrors.UserExternalIdTaken);
+            }
+
+            throw;
         }
 
         if (!created.Succeeded)

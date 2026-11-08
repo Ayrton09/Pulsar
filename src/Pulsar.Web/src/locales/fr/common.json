@@ -2021,7 +2021,6 @@
       "nodeOnly": "Nulle part (sur le nœud uniquement)",
       "saved": "Enregistré.",
       "statuses": {
-        "none": "",
         "pending": "Copie vers le stockage distant…",
         "copied": "Copiée vers le stockage distant",
         "failed": "Non copiée vers le stockage distant"

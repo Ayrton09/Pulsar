@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Domain.Audit;
@@ -76,6 +77,32 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
         using var response = await client.LoginAsync("disabled-user", Password);
 
         await SetupTests.AssertProblemAsync(response, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
+    }
+
+    [DatabaseFact]
+    public async Task ADisabledUsersSessionEndsAtOnce()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var id = await CreateUserAsync("soon-disabled");
+        using var client = await PanelClient.CreateAsync(factory);
+        using (var login = await client.LoginAsync("soon-disabled", Password))
+        {
+            Assert.True(login.IsSuccessStatusCode);
+        }
+
+        using (var before = await client.GetAsync("/api/v1/account/api-keys"))
+        {
+            Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        }
+
+        using (var disable = await admin.PutAsync($"/api/v1/users/{id}", new UpdateUserRequest(null, null, IsDisabled: true)))
+        {
+            Assert.Equal(HttpStatusCode.OK, disable.StatusCode);
+        }
+
+        // Well within the minute after which the session's security stamp is checked again: it ends now, not then.
+        using var after = await client.GetAsync("/api/v1/account/api-keys");
+        await SetupTests.AssertProblemAsync(after, HttpStatusCode.Unauthorized, "auth.session_ended");
     }
 
     [DatabaseFact]
@@ -194,7 +221,7 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
         Assert.Contains("\"notRecordedBefore\": 3", nextMinute, StringComparison.Ordinal);
     }
 
-    private async Task CreateUserAsync(string userName, Action<PulsarUser>? configure = null)
+    private async Task<UserId> CreateUserAsync(string userName, Action<PulsarUser>? configure = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<PulsarUser>>();
@@ -202,5 +229,6 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
         configure?.Invoke(user);
         var result = await users.CreateAsync(user, Password);
         Assert.True(result.Succeeded, string.Join(", ", result.Errors.Select(e => e.Code)));
+        return user.Id;
     }
 }
