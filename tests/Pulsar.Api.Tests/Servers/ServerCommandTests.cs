@@ -110,6 +110,39 @@ public sealed class ServerCommandTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task AnOperationBegunWhileTheServerIsSavedMeanwhileStillBegins()
+    {
+        // The agent connects to the panel whose saves are hooked: the operation's command goes to it.
+        (await factory.CreateAdminClientAsync()).Dispose();
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        using var admin = await PanelClient.CreateAsync(app);
+        using (var login = await admin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            Assert.True(login.IsSuccessStatusCode);
+        }
+
+        var created = await NodeApi.CreateAsync(admin, "commands-begun-meanwhile");
+        await using var agent = new InProcessAgent(app);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, created.Node.Id)).Node.Connected, "agent connected");
+        var server = await InstalledServerAsync(admin, agent, "Begun meanwhile");
+
+        // Right before a backup's operation is first saved, the agent's report saves the same server row.
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Operation>().Any(e => e.State == EntityState.Added && e.Entity.ServerId == new ServerId(server)),
+            () => SetAsync(server, "UPDATE servers SET updated_at = now() WHERE id = {0}"));
+        Result<BackupView> made;
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            made = await scope.ServiceProvider.GetRequiredService<ServerBackups>().CreateAsync(new ServerId(server), "meanwhile", OperationRequester.Schedule, Ct);
+        }
+
+        Assert.True(made.IsSuccess, made.Error?.Code);
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "the backup ended");
+    }
+
+    [DatabaseFact]
     public async Task AHelloLeavesAnInstallThatIsQueuedOrRunningAlone()
     {
         using var admin = await factory.CreateAdminClientAsync();
