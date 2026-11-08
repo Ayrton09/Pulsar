@@ -2171,6 +2171,7 @@
     "empty": "You have no API keys.",
     "name": "Name",
     "nameHint": "What uses it, e.g. \"Discord bot\".",
+    "passwordHint": "Your password confirms it is you. Changing your password, or a reset of your two-factor authentication, revokes your keys.",
     "expiry": "Expires",
     "expiries": {
       "30": "In 30 days",

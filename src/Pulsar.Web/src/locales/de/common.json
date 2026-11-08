@@ -2171,6 +2171,7 @@
     "empty": "Sie haben keine API-Schlüssel.",
     "name": "Name",
     "nameHint": "Was ihn verwendet, z. B. „Discord-Bot“.",
+    "passwordHint": "Ihr Passwort bestätigt, dass Sie es sind. Eine Passwortänderung oder das Zurücksetzen Ihrer Zwei-Faktor-Authentifizierung widerruft Ihre Schlüssel.",
     "expiry": "Läuft ab",
     "expiries": {
       "30": "In 30 Tagen",

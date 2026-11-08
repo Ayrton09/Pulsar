@@ -62,7 +62,7 @@ public static class AuthEndpoints
     /// </summary>
     private static async Task<Results<NoContent, ProblemHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
         ChangePasswordRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        SignInLocks locks, IAuditLog audit, BrowserConnections connections, CancellationToken ct)
+        SignInLocks locks, IAuditLog audit, BrowserConnections connections, ApiKeys apiKeys, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -83,6 +83,8 @@ public static class AuthEndpoints
 
         audit.Record(AuditActions.Auth.PasswordChanged).WithTarget("user", user.Id.ToString());
         await db.SaveChangesAsync(ct);
+        // Whoever had the old password may have made keys with it: they go with it (1.0.36).
+        await apiKeys.RevokeAllAsync(user.Id, ct, because: "password_changed");
         connections.EndUser(user.Id); // this browser's own channel reconnects with the renewed cookie
         await signIn.RefreshSignInAsync(user);
         http.User = await signIn.CreateUserPrincipalAsync(user);

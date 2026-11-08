@@ -16891,6 +16891,8 @@ export interface components {
             permissions: null | string[];
             /** Format: int32 */
             expiresInDays: null | number;
+            password: string;
+            code: null | string;
         };
         CreateBackupRequest: {
             name: null | string;

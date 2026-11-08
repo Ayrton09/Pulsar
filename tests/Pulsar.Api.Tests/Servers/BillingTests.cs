@@ -151,7 +151,7 @@ public sealed class BillingTests(PulsarApiFactory factory) : IClassFixture<Pulsa
     /// <summary>The billing system's key: the administrator's, as such modules are set up.</summary>
     private async Task<HttpClient> KeyAsync(PanelClient admin)
     {
-        using var response = await admin.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Billing", null, null));
+        using var response = await admin.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Billing", null, null, PulsarApiFactory.AdminPassword, null));
         await AccessScenario.EnsureSuccessAsync(response);
         var key = (await response.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
         var client = factory.CreateDefaultClient(new Uri("https://localhost"));

@@ -159,6 +159,10 @@ function ApiKeyForm({
   const [expiry, setExpiry] = useState<(typeof expiries)[number]>('90');
   const [limited, setLimited] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // A key works on its own: making one takes the password and, with two-factor authentication on, the code (1.0.36).
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const cleanCode = code.replace(/[\s-]/g, '');
   // Only what the user holds somewhere can do anything through a key.
   const held = new Set([
     ...me.permissions,
@@ -190,6 +194,8 @@ function ApiKeyForm({
             name: name.trim(),
             permissions: limited ? [...selected] : null,
             expiresInDays: expiry === 'never' ? null : Number(expiry),
+            password,
+            code: me.twoFactorEnabled ? cleanCode : null,
           },
           { onSuccess: onCreated },
         );
@@ -234,11 +240,45 @@ function ApiKeyForm({
           ))}
         </fieldset>
       )}
+      <Field label={t('account.currentPassword')} hint={t('apiKeys.passwordHint')}>
+        {(ids) => (
+          <Input
+            {...ids}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        )}
+      </Field>
+      {me.twoFactorEnabled && (
+        <Field label={t('twoFactor.appCode')} hint={t('sshKeys.codeHint')}>
+          {(ids) => (
+            <Input
+              {...ids}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={9}
+            />
+          )}
+        </Field>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" disabled={create.isPending} onClick={onCancel}>
           {t('actions.cancel')}
         </Button>
-        <Button type="submit" busy={create.isPending} disabled={name.trim() === '' || (limited && selected.size === 0)}>
+        <Button
+          type="submit"
+          busy={create.isPending}
+          disabled={
+            name.trim() === '' ||
+            (limited && selected.size === 0) ||
+            password.length === 0 ||
+            (me.twoFactorEnabled && cleanCode.length !== 6)
+          }
+        >
           {t('apiKeys.create')}
         </Button>
       </div>

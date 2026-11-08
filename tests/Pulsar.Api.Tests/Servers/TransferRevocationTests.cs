@@ -40,7 +40,7 @@ public sealed class TransferRevocationTests(KestrelPanelFactory factory) : IClas
         var transfers = factory.Services.GetRequiredService<FileTransfers>();
 
         using var user = await UserAsync(admin, "trickling-user");
-        using var keyCreated = await admin.Http.PostAsJsonAsync("api/v1/account/api-keys", new CreateApiKeyRequest("trickling key", null, null), AccessScenario.Json, Ct);
+        using var keyCreated = await admin.Http.PostAsJsonAsync("api/v1/account/api-keys", new CreateApiKeyRequest("trickling key", null, null, PulsarApiFactory.AdminPassword, null), AccessScenario.Json, Ct);
         keyCreated.EnsureSuccessStatusCode();
         var key = (await keyCreated.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
         using var script = new HttpClient(factory.Handler()) { BaseAddress = factory.MainUrl, Timeout = TimeSpan.FromMinutes(5) };

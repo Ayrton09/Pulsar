@@ -37,6 +37,22 @@ public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         return [.. keys.Select(View)];
     }
 
+    /// <summary>
+    /// Whether a key like this could be made now (its name, its permissions, the user's number of keys), before the
+    /// password is checked: a mistake in the request costs no password attempt. <see cref="CreateAsync"/> checks again.
+    /// </summary>
+    public async Task<Result> ValidateAsync(UserId user, string? name, IReadOnlyCollection<string>? permissions, DateTimeOffset? expiresAt,
+        CancellationToken cancellationToken)
+    {
+        if (await db.ApiKeys.CountAsync(k => k.UserId == user && k.RevokedAt == null, cancellationToken) >= ApiKey.MaxPerUser)
+        {
+            return AccessErrors.ApiKeyTooMany;
+        }
+
+        var made = ApiKey.Create(user, name, permissions, expiresAt, clock.GetUtcNow());
+        return made.IsSuccess ? Result.Success() : made.Error!;
+    }
+
     /// <summary>Counted with the user's row locked: requests made at the same moment cannot all take the last place.</summary>
     public async Task<Result<CreatedApiKey>> CreateAsync(UserId user, string? name, IReadOnlyCollection<string>? permissions, DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
@@ -78,17 +94,29 @@ public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         return Result.Success();
     }
 
-    /// <summary>Revokes every key of <paramref name="user"/> (an administrator's response to a leak); returns how many.</summary>
-    public async Task<int> RevokeAllAsync(UserId user, CancellationToken cancellationToken)
+    /// <summary>
+    /// Revokes every key of <paramref name="user"/> (an administrator's response to a leak); returns how many.
+    /// </summary>
+    /// <param name="because">
+    /// Revoked with a change of the user's credentials (1.0.36: a password changed or reset, two-factor reset), recorded
+    /// with the entry; a user without keys then leaves none.
+    /// </param>
+    public async Task<int> RevokeAllAsync(UserId user, CancellationToken cancellationToken, string? because = null)
     {
         var keys = await db.ApiKeys.Where(k => k.UserId == user && k.RevokedAt == null).ToListAsync(cancellationToken);
+        if (keys.Count == 0 && because is not null)
+        {
+            return 0;
+        }
+
         var now = clock.GetUtcNow();
         foreach (var key in keys)
         {
             key.Revoke(now);
         }
 
-        audit.Record(AuditActions.User.ApiKeysRevoked, metadata: new { user = user.Value, count = keys.Count }).WithTarget("user", user.Value.ToString());
+        object metadata = because is null ? new { user = user.Value, count = keys.Count } : new { user = user.Value, count = keys.Count, because };
+        audit.Record(AuditActions.User.ApiKeysRevoked, metadata: metadata).WithTarget("user", user.Value.ToString());
         await db.SaveChangesAsync(cancellationToken);
         transfers.EndApiKeys(user);
         return keys.Count;

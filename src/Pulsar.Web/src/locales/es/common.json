@@ -2171,6 +2171,7 @@
     "empty": "No tenés API keys.",
     "name": "Nombre",
     "nameHint": "Qué la usa, por ejemplo \"Bot de Discord\".",
+    "passwordHint": "Tu contraseña confirma que sos vos. Cambiar la contraseña, o que te reseteen la autenticación en dos pasos, revoca tus API keys.",
     "expiry": "Vence",
     "expiries": {
       "30": "En 30 días",

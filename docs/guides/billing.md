@@ -8,7 +8,9 @@ described in full at `/api/v1/openapi.json` on your panel.
 ## The key
 
 Create an API key from **My account → API keys** while signed in as an administrator, and give it to the billing
-module. Requests carry it as `Authorization: Bearer pulsar_…`. Keep it like a password: it acts as you.
+module. Requests carry it as `Authorization: Bearer pulsar_…`. Keep it like a password: it acts as you. Creating it
+asks for your password (and your two-factor code, when it is on), and changing that administrator's password, or a
+reset of their two-factor authentication, revokes it: make a new one for the module then.
 
 A key can be narrowed to some permissions, but a module that gives servers to customers needs a key that holds, on
 the servers it creates, everything an owner may do (giving someone more than you hold is refused): use an

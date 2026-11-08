@@ -73,10 +73,19 @@ describe('API keys', () => {
     // Only what the user has: server.start is in the catalog but not among their permissions.
     expect(within(dialog).queryByLabelText('Start')).not.toBeInTheDocument();
     await user.click(within(dialog).getByLabelText('View the audit log'));
+    // A key works on its own: making one takes the password.
+    expect(within(dialog).getByRole('button', { name: 'Create key' })).toBeDisabled();
+    await user.type(within(dialog).getByLabelText('Current password'), 'my password');
     await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
 
     expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
-    expect(sent).toEqual({ name: 'Discord bot', permissions: ['audit.view'], expiresInDays: 90 });
+    expect(sent).toEqual({
+      name: 'Discord bot',
+      permissions: ['audit.view'],
+      expiresInDays: 90,
+      password: 'my password',
+      code: null,
+    });
     // A browser that refuses the clipboard (plain HTTP, no permission) says so: the value is shown only now.
     vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
     await user.click(within(dialog).getByRole('button', { name: 'Copy' }));
@@ -128,6 +137,7 @@ describe('API keys', () => {
     await user.click(await screen.findByRole('button', { name: 'Create key' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Name'), 'Bot');
+    await user.type(within(dialog).getByLabelText('Current password'), 'my password');
     await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
     await user.keyboard('{Escape}');
 
@@ -169,6 +179,7 @@ describe('API keys', () => {
     await user.click(await screen.findByRole('button', { name: 'Create key' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Name'), 'Bot');
+    await user.type(within(dialog).getByLabelText('Current password'), 'my password');
     await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
     answerFirst(json([])); // late, and without the new key

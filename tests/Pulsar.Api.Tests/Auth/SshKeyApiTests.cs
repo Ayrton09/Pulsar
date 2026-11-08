@@ -197,7 +197,7 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
         using var key = TestSshKey.Rsa(2048);
         var added = await key.AddAsync(account, "Workstation");
 
-        using (var created = await account.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Script", null, null)))
+        using (var created = await account.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Script", null, null, AccessScenario.Password, null)))
         {
             await AccessScenario.EnsureSuccessAsync(created);
             var value = (await created.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!.Value;

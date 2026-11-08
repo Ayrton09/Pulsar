@@ -2171,6 +2171,7 @@
     "empty": "Vous n'avez aucune clé d'API.",
     "name": "Nom",
     "nameHint": "Ce qui l'utilise, p. ex. « Bot Discord ».",
+    "passwordHint": "Votre mot de passe confirme que c'est bien vous. Changer de mot de passe, ou une réinitialisation de votre double authentification, révoque vos clés.",
     "expiry": "Expire",
     "expiries": {
       "30": "Dans 30 jours",

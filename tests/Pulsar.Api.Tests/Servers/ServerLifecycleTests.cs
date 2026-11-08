@@ -222,7 +222,7 @@ public sealed class ServerLifecycleTests(PulsarApiFactory factory) : IClassFixtu
         await using var agent = await ConnectedAgentAsync(admin, "api-key");
         var server = await InstalledServerAsync(admin, agent, "Started by a script");
         CreatedApiKey key;
-        using (var created = await admin.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Start script", [Permissions.Server.Start], 1)))
+        using (var created = await admin.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Start script", [Permissions.Server.Start], 1, PulsarApiFactory.AdminPassword, null)))
         {
             await AccessScenario.EnsureSuccessAsync(created);
             key = (await created.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;

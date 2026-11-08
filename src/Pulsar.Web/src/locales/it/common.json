@@ -2171,6 +2171,7 @@
     "empty": "Non hai chiavi API.",
     "name": "Nome",
     "nameHint": "Cosa la usa, ad es. \"Bot Discord\".",
+    "passwordHint": "La password conferma che sei tu. Cambiare la password, o un reset della tua autenticazione a due fattori, revoca le tue chiavi.",
     "expiry": "Scadenza",
     "expiries": {
       "30": "Tra 30 giorni",

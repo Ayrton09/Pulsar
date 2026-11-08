@@ -2171,6 +2171,7 @@
     "empty": "Você não tem chaves de API.",
     "name": "Nome",
     "nameHint": "O que a usa, p. ex. \"Bot do Discord\".",
+    "passwordHint": "Sua senha confirma que é você. Trocar a senha, ou um reset da sua autenticação em dois fatores, revoga suas chaves.",
     "expiry": "Expira",
     "expiries": {
       "30": "Em 30 dias",

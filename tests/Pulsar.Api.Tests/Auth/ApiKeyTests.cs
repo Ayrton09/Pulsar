@@ -31,7 +31,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-owner", Permissions.Audit.View, Permissions.User.View, Permissions.Role.Manage);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Reports", [Permissions.Audit.View, Permissions.Role.Manage], 30));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Reports", [Permissions.Audit.View, Permissions.Role.Manage], 30, AccessScenario.Password, null));
         Assert.StartsWith("pulsar_", created.Value, StringComparison.Ordinal);
         Assert.Equal(created.Value[..ApiKey.VisiblePrefixLength], created.Key.Prefix);
         using var script = Bearer(created.Value);
@@ -70,7 +70,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-limits", Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Everything I have", null, null));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Everything I have", null, null, AccessScenario.Password, null));
         using var script = Bearer(created.Value);
 
         foreach (var path in new[] { "/api/v1/account/api-keys", "/api/v1/auth/me" })
@@ -80,7 +80,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
         }
 
         using (var create = await script.PostAsJsonAsync(new Uri("/api/v1/account/api-keys", UriKind.Relative),
-                   new CreateApiKeyRequest("Child", null, null), Ct))
+                   new CreateApiKeyRequest("Child", null, null, AccessScenario.Password, null), Ct))
         {
             Assert.NotEqual(HttpStatusCode.Created, create.StatusCode);
         }
@@ -97,9 +97,9 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-revoked", Permissions.Audit.View);
-        var first = await CreateAsync(owner, new CreateApiKeyRequest("First", null, null));
-        var second = await CreateAsync(owner, new CreateApiKeyRequest("Second", null, null));
-        var third = await CreateAsync(owner, new CreateApiKeyRequest("Third", null, null));
+        var first = await CreateAsync(owner, new CreateApiKeyRequest("First", null, null, AccessScenario.Password, null));
+        var second = await CreateAsync(owner, new CreateApiKeyRequest("Second", null, null, AccessScenario.Password, null));
+        var third = await CreateAsync(owner, new CreateApiKeyRequest("Third", null, null, AccessScenario.Password, null));
         Assert.Equal(["Third", "Second", "First"], (await ListAsync(owner)).Select(k => k.Name));
 
         using (var revoke = await owner.DeleteAsync($"/api/v1/account/api-keys/{first.Key.Id}"))
@@ -124,7 +124,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
         await AssertStatusAsync(third.Value, HttpStatusCode.Unauthorized);
 
         // A disabled user's keys stop too.
-        var fourth = await CreateAsync(owner, new CreateApiKeyRequest("Fourth", null, null));
+        var fourth = await CreateAsync(owner, new CreateApiKeyRequest("Fourth", null, null, AccessScenario.Password, null));
         await AssertStatusAsync(fourth.Value, HttpStatusCode.OK);
         using (var disable = await scenario.Admin.PutAsync($"/api/v1/users/{user.Id}", new UpdateUserRequest(null, null, true)))
         {
@@ -140,7 +140,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-and-cookie", Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Audit only", null, null));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Audit only", null, null, AccessScenario.Password, null));
 
         // The administrator's session cookie, sent along with a key of a user who may only read the audit log.
         Assert.Equal(HttpStatusCode.OK, await SendAsync(scenario.Admin.Http, "/api/v1/users", bearer: null));
@@ -152,11 +152,63 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     }
 
     [DatabaseFact]
+    public async Task AKeyIsMadeOnlyWithThePasswordAndGoesWhenThePasswordChanges()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var owner = await scenario.SignedInWithAsync("key-password", Permissions.Audit.View);
+
+        // A session alone (a copied cookie) makes no key.
+        using (var refused = await owner.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Stolen", null, null, "not the password", null)))
+        {
+            await SetupTests.AssertProblemAsync(refused, HttpStatusCode.BadRequest, "auth.wrong_current_password");
+        }
+
+        Assert.Empty(await ListAsync(owner));
+
+        // A mistake in the request costs no password attempt: it is refused before the password is checked.
+        using (var invalid = await owner.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Bad", ["no.such.permission"], null, "not the password", null)))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            Assert.DoesNotContain("auth.wrong_current_password", await invalid.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        // Whoever had the old password may have made keys with it: changing it revokes them.
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Script", null, null, AccessScenario.Password, null));
+        using var script = Bearer(created.Value);
+        Assert.Equal(HttpStatusCode.OK, (await script.GetAsync(new Uri("/api/v1/audit", UriKind.Relative), Ct)).StatusCode);
+        using (var changed = await owner.PostAsync("/api/v1/auth/password", new ChangePasswordRequest(AccessScenario.Password, "a brand new password for tests")))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await script.GetAsync(new Uri("/api/v1/audit", UriKind.Relative), Ct)).StatusCode);
+        Assert.Empty(await ListAsync(owner));
+    }
+
+    [DatabaseFact]
+    public async Task AnAdministratorsPasswordResetRevokesTheUsersKeys()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var owner = await scenario.SignedInWithAsync("key-reset", Permissions.Audit.View);
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Script", null, null, AccessScenario.Password, null));
+        var id = (await scenario.Admin.Http.GetFromJsonAsync<List<UserResponse>>(new Uri("/api/v1/users", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(u => u.UserName == "key-reset").Id;
+
+        using (var reset = await scenario.Admin.PostAsync($"/api/v1/users/{id}/password", new ResetPasswordRequest("an administrator's new password")))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        }
+
+        using var script = Bearer(created.Value);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await script.GetAsync(new Uri("/api/v1/audit", UriKind.Relative), Ct)).StatusCode);
+    }
+
+    [DatabaseFact]
     public async Task AnExpiredKeyIsRefused()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-expired", Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Expiring", null, 1));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Expiring", null, 1, AccessScenario.Password, null));
         await AssertStatusAsync(created.Value, HttpStatusCode.OK);
 
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -174,7 +226,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-roles", Permissions.Role.Manage, Permissions.User.View, Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Roles", [Permissions.Role.Manage], null));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Roles", [Permissions.Role.Manage], null, AccessScenario.Password, null));
         using var script = Bearer(created.Value);
 
         // Its user holds user.view; the key does not, so it cannot give it either.
@@ -197,8 +249,8 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
         using var limited = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:Auth:ApiKeyPermitLimit", "3"));
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-budget", Permissions.Audit.View);
-        var first = await CreateAsync(owner, new CreateApiKeyRequest("Busy", null, null));
-        var second = await CreateAsync(owner, new CreateApiKeyRequest("Quiet", null, null));
+        var first = await CreateAsync(owner, new CreateApiKeyRequest("Busy", null, null, AccessScenario.Password, null));
+        var second = await CreateAsync(owner, new CreateApiKeyRequest("Quiet", null, null, AccessScenario.Password, null));
 
         using var busy = Bearer(limited, first.Value);
         for (var i = 0; i < 3; i++)
@@ -224,7 +276,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
             .UseSetting("RateLimiting:Auth:ApiKeyLookupPermitLimit", "4"));
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-refused-budget", Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("Prober", null, null));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("Prober", null, null, AccessScenario.Password, null));
 
         // Each refused request still costs the panel a key, a user and their permissions: it is counted.
         using var prober = Bearer(limited, created.Value);
@@ -254,7 +306,7 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
             .ConfigureTestServices(services => services.ConfigureDbContext<PulsarDbContext>(options => options.AddInterceptors(keyQueries))));
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-guessed-near", Permissions.Audit.View);
-        var created = await CreateAsync(owner, new CreateApiKeyRequest("In use", null, null));
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("In use", null, null, AccessScenario.Password, null));
 
         // A script in use behind the same address as the guesser (one household, one office): its first request is
         // one of the address's lookups.

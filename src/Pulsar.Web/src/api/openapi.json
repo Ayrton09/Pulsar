@@ -18072,7 +18072,9 @@
         "required": [
           "name",
           "permissions",
-          "expiresInDays"
+          "expiresInDays",
+          "password",
+          "code"
         ],
         "type": "object",
         "properties": {
@@ -18098,6 +18100,19 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 0,
+            "type": "string"
+          },
+          "code": {
+            "maxLength": 16,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

@@ -230,6 +230,8 @@ public sealed class UserManagement(
 
         await users.ResetAccessFailedCountAsync(user);
         await users.SetLockoutEndDateAsync(user, null);
+        // Whoever had the old password may have made keys with it: they go with it (1.0.36).
+        await apiKeys.RevokeAllAsync(user.Id, ct, because: "password_reset");
         connections.EndUser(user.Id);
         return TypedResults.NoContent();
     }
@@ -308,6 +310,7 @@ public sealed class UserManagement(
 
         audit.Record(AuditActions.User.TwoFactorReset, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
         await TwoFactorEndpoints.TurnOffAsync(users, user); // also renews the security stamp and saves the audit entry
+        await apiKeys.RevokeAllAsync(user.Id, ct, because: "two_factor_reset");
         connections.EndUser(user.Id);
         return TypedResults.NoContent();
     }

@@ -259,7 +259,7 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
 
         // An API key, even one with settings.manage, never updates: the session cookie and the password are needed.
         using var manager = await scenario.SignedInWithAsync("updates-manager", Permissions.Settings.Manage);
-        using var created = await manager.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("updates", null, null));
+        using var created = await manager.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("updates", null, null, AccessScenario.Password, null));
         await AccessScenario.EnsureSuccessAsync(created);
         var key = (await created.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
         using var script = factory.CreateDefaultClient(new Uri("https://localhost"));

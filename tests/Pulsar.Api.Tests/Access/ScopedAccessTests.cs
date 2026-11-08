@@ -618,7 +618,7 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     /// <summary>Creates a key for the user <paramref name="client"/> is signed in as; null permissions: all of theirs.</summary>
     private static async Task<CreatedApiKey> CreateKeyAsync(PanelClient client, string name, List<string>? permissions)
     {
-        using var response = await client.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest(name, permissions, null));
+        using var response = await client.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest(name, permissions, null, AccessScenario.Password, null));
         await AccessScenario.EnsureSuccessAsync(response);
         return (await response.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
     }

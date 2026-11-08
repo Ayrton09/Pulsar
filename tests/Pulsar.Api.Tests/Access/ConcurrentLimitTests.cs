@@ -20,7 +20,7 @@ public sealed class ConcurrentLimitTests(PulsarApiFactory factory) : IClassFixtu
     public async Task AUsersLastApiKeyGoesToOneRequest()
     {
         using var admin = await factory.CreateAdminClientAsync();
-        await RaceForTheLastAsync(admin, "/api/v1/account/api-keys", ApiKey.MaxPerUser, i => new CreateApiKeyRequest($"Key {i}", null, null));
+        await RaceForTheLastAsync(admin, "/api/v1/account/api-keys", ApiKey.MaxPerUser, i => new CreateApiKeyRequest($"Key {i}", null, null, PulsarApiFactory.AdminPassword, null));
     }
 
     [DatabaseFact]
