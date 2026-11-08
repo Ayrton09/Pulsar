@@ -57,10 +57,26 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
             await AccessScenario.EnsureSuccessAsync(moving);
         }
 
-        // Nothing else happens to it meanwhile.
+        // Nothing else happens to it meanwhile: no start, and no file changed (it would stay on the copy being left, or land
+        // in the new one's restore), directly or by an operation; reading goes on.
         using (var start = await admin.PostAsync($"/api/v1/servers/{server}/start"))
         {
             Assert.Equal(HttpStatusCode.Conflict, start.StatusCode);
+        }
+
+        using (var folder = await admin.PostAsync($"/api/v1/servers/{server}/files/directories", new FilePathRequest("cstrike/maps")))
+        {
+            await Auth.SetupTests.AssertProblemAsync(folder, HttpStatusCode.Conflict, "server.transferring");
+        }
+
+        using (var zip = await admin.PostAsync($"/api/v1/servers/{server}/files/compress", new CompressFilesRequest("cstrike", ["cfg"], "cstrike/cfg.zip")))
+        {
+            await Auth.SetupTests.AssertProblemAsync(zip, HttpStatusCode.Conflict, "server.transferring");
+        }
+
+        using (var listing = await admin.GetAsync($"/api/v1/servers/{server}/files?path=cstrike"))
+        {
+            Assert.Equal(HttpStatusCode.OK, listing.StatusCode);
         }
 
         var transfer = await EndedAsync(server);

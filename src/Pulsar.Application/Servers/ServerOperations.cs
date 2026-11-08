@@ -28,6 +28,13 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         // A provisioning and a settings sync share the turn: no spec read before a reinstall can arrive after it,
         // even when it uses the same manifest. Saves are committed before the agent is called, as for every operation.
         using var turn = command is ProvisionServerCommand ? await specTurns.AcquireAsync(server.Id, cancellationToken) : null;
+        // While a transfer runs only its own operations (the panel's) change the server: a restore, a mod or a zip
+        // otherwise lands on a copy the transfer is leaving or still filling.
+        if (operation.RequestedVia != OperationRequester.System && await TransferGate.RunningAsync(db, server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
         var taken = server.BeginOperation(operation, clock.GetUtcNow());
         if (!taken.IsSuccess)
         {

@@ -133,6 +133,5 @@ public sealed partial class ServerManagement
     }
 
     /// <summary>A transfer of the server runs: nothing else may change it (it would start, or change ports, on the wrong node).</summary>
-    private Task<bool> TransferringAsync(ServerId id, CancellationToken cancellationToken) =>
-        db.ServerSequences.AnyAsync(s => s.ServerId == id && s.Origin == SequenceOrigin.Transfer && s.Status == SequenceStatus.Running, cancellationToken);
+    private Task<bool> TransferringAsync(ServerId id, CancellationToken cancellationToken) => TransferGate.RunningAsync(db, id, cancellationToken);
 }

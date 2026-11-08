@@ -252,7 +252,7 @@ public sealed class ServerFiles(
             return ServerErrors.FileTooLarge;
         }
 
-        var target = await TargetAsync(id, cancellationToken);
+        var target = await TargetAsync(id, cancellationToken, changes: true);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -300,7 +300,7 @@ public sealed class ServerFiles(
             return Hidden(path);
         }
 
-        var target = await TargetAsync(id, cancellationToken, sftp: true);
+        var target = await TargetAsync(id, cancellationToken, sftp: true, changes: true);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -469,7 +469,7 @@ public sealed class ServerFiles(
             return Hidden(path);
         }
 
-        var target = await TargetAsync(id, cancellationToken, sftp: true);
+        var target = await TargetAsync(id, cancellationToken, sftp: true, changes: true);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -566,7 +566,7 @@ public sealed class ServerFiles(
             return ServerErrors.FilePathInvalid(error);
         }
 
-        var target = await TargetAsync(id, cancellationToken, sftp);
+        var target = await TargetAsync(id, cancellationToken, sftp, changes: true);
         if (!target.IsSuccess)
         {
             return target.Error!;
@@ -583,12 +583,20 @@ public sealed class ServerFiles(
     /// What SFTP needs: refused for an agent that does not announce <see cref="AgentCapabilities.SftpFiles"/>, which would
     /// ignore the new fields of the file commands and do something else than asked.
     /// </param>
-    private async Task<Result<Server>> TargetAsync(ServerId id, CancellationToken cancellationToken, bool sftp = false)
+    /// <param name="changes">
+    /// The command changes files: refused while a transfer of the server runs (<see cref="TransferGate"/>). Reading goes on.
+    /// </param>
+    private async Task<Result<Server>> TargetAsync(ServerId id, CancellationToken cancellationToken, bool sftp = false, bool changes = false)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
+        }
+
+        if (changes && await TransferGate.RunningAsync(db, id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
         }
 
         if (connections.Find(server.NodeId) is not { } live || !sessions.IsActive(live.SessionId))

@@ -102,8 +102,7 @@ public sealed partial class ServerBackups(
         }
 
         // A transfer's own backups are the panel's; others wait until it ends (1.0.16).
-        if (via != OperationRequester.System && await db.ServerSequences.AnyAsync(q => q.ServerId == id
-                && q.Origin == Domain.Scheduling.SequenceOrigin.Transfer && q.Status == Domain.Scheduling.SequenceStatus.Running, cancellationToken))
+        if (via != OperationRequester.System && await TransferGate.RunningAsync(db, id, cancellationToken))
         {
             return ServerErrors.Transferring;
         }
