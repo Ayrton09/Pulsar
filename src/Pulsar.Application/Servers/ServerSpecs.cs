@@ -298,8 +298,15 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         NodeAllocation? FollowerOf(NodeAllocation followed, PortFollow follow) => nodeAllocations.FirstOrDefault(a =>
             a.IpAddress == followed.IpAddress && a.Port == followed.Port + follow.Offset && (a.ServerId is null || a.ServerId == server.Id));
 
+        // A web port (1.0.35) is taken on every address of the node (the HTTP Server API's http://+:port/): its number on any
+        // address of another server's would keep one of the two from it.
+        NodeAllocation? WebPortClash(PortDefinition port, NodeAllocation candidate) => port is { Http: true, Internal: false }
+            ? nodeAllocations.FirstOrDefault(a => a.ServerId is not null && a.ServerId != server.Id && a.Port == candidate.Port)
+            : null;
+
         bool FollowersFit(PortDefinition port, NodeAllocation candidate) =>
-            followers.Where(f => f.Follows!.Port == port.Name).All(f => FollowerOf(candidate, f.Follows!) is { } next && !chosen.ContainsValue(next));
+            followers.Where(f => f.Follows!.Port == port.Name).All(f => FollowerOf(candidate, f.Follows!) is { } next && !chosen.ContainsValue(next)
+                && WebPortClash(f, next) is null);
 
         foreach (var port in manifest.PortList.Where(p => p.Follows is null))
         {
@@ -328,7 +335,7 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
                 if (allocation is null && port.Required)
                 {
                     var free = nodeAllocations.Where(a => a.ServerId is null && !chosen.ContainsValue(a) && chosen.Values.All(c => c.Port != a.Port)
-                            && FollowersFit(port, a))
+                            && WebPortClash(port, a) is null && FollowersFit(port, a))
                         .OrderBy(a => prefer?.Contains(a.Id) == true ? 0 : 1).ThenBy(a => a.Port == port.Default ? 0 : 1).ThenBy(a => a.Port).ThenBy(a => a.IpAddress, StringComparer.Ordinal);
                     allocation = free.FirstOrDefault();
                     if (allocation is null)
@@ -367,6 +374,15 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
             }
 
             chosen[port.Name] = next;
+        }
+
+        foreach (var (name, allocation) in chosen)
+        {
+            if (WebPortClash(definitions[name], allocation) is { } taken)
+            {
+                return ServerErrors.InvalidSettings(
+                    $"{definitions[name].Label} answers on every address of the node, and port {allocation.Port} is another server's on {taken.IpAddress}: give it another port.");
+            }
         }
 
         foreach (var allocation in mine.Where(a => !chosen.ContainsValue(a)))

@@ -342,6 +342,42 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
+    public async Task AWebPortIsNeverOnANumberAnotherServerHasOnAnyAddress()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "ao2027" && t.Source == TemplateSource.Bundled);
+        var node = await NodeApi.CreateAsync(admin, "ao2027-two-addresses");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings,
+            AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands, AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall,
+            AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep]);
+        await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.5", "7666-7669");
+        await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.6", "7666-7669");
+
+        using (var first = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "AO2027 one", null)))
+        {
+            Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        }
+
+        // The other address has the same numbers free, but its web port would be 7669, which the first game takes on every
+        // address (http://+:7669/).
+        using (var second = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "AO2027 two", null)))
+        {
+            await Auth.SetupTests.AssertProblemAsync(second, HttpStatusCode.Conflict, ServerErrors.NoFreeAllocation.Code);
+        }
+
+        await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.6", "7676-7679");
+        using (var other = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "AO2027 two", null)))
+        {
+            Assert.Equal(HttpStatusCode.Created, other.StatusCode);
+            var created = await other.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct);
+            Assert.Equal(7679, created!.Ports.Single(p => p.Name == "game").Port);
+        }
+    }
+
+    [DatabaseFact]
     public async Task MinecraftWithServerTypesGoesOnlyToAgentsThatInstallThem()
     {
         using var admin = await factory.CreateAdminClientAsync();
