@@ -37,6 +37,25 @@ public static class TestPostgresHost
         return connection;
     }
 
+    /// <summary>
+    /// Asserts that <paramref name="user"/> cannot sign in to <paramref name="database"/>. The server says why (an
+    /// authorization or authentication error), except that on Windows it can close the connection before its answer is read,
+    /// which Npgsql reports as a broken stream while signing in: both are a refusal.
+    /// </summary>
+    public static async Task AssertRefusedAsync(string user, string? password, string database)
+    {
+        var refused = await Assert.ThrowsAnyAsync<NpgsqlException>(() => OpenAsync(user, password, database));
+        if (refused is PostgresException answer)
+        {
+            Assert.True(answer.SqlState.StartsWith("28", StringComparison.Ordinal) || answer.SqlState is "42501" or "3D000",
+                $"Unexpected refusal: {answer.SqlState} {answer.MessageText}");
+        }
+        else
+        {
+            Assert.IsAssignableFrom<IOException>(refused.InnerException);
+        }
+    }
+
     public static async Task<object?> ScalarAsync(NpgsqlConnection connection, string sql, params object[] parameters)
     {
         await using var command = new NpgsqlCommand(sql, connection);

@@ -810,14 +810,14 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Assert.Equal(16, (int)(await TestPostgresHost.ScalarAsync(game, "SELECT rolconnlimit FROM pg_roles WHERE rolname = current_user"))!);
         }
 
-        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, otherMain.Database.Name));
+        await TestPostgresHost.AssertRefusedAsync(main.Database.UserName, main.Password, otherMain.Database.Name);
         string panelDatabase;
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             panelDatabase = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database.GetDbConnection().Database;
         }
 
-        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, panelDatabase));
+        await TestPostgresHost.AssertRefusedAsync(main.Database.UserName, main.Password, panelDatabase);
 
         // A rotated password locks the old one out.
         ServerDatabaseCredentials rotated;
@@ -827,7 +827,7 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             rotated = (await response.Content.ReadFromJsonAsync<ServerDatabaseCredentials>(AccessScenario.Json, Ct))!;
         }
 
-        await Assert.ThrowsAsync<PostgresException>(() => TestPostgresHost.OpenAsync(main.Database.UserName, main.Password, main.Database.Name));
+        await TestPostgresHost.AssertRefusedAsync(main.Database.UserName, main.Password, main.Database.Name);
         await using (var again = await TestPostgresHost.OpenAsync(main.Database.UserName, rotated.Password, main.Database.Name))
         {
             Assert.Equal("ada", await TestPostgresHost.ScalarAsync(again, "SELECT name FROM players"));
