@@ -32,7 +32,7 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
 - Backups take `data` (the SQLite database `coverao.db` with its `-wal` and `-shm` files), `gamedata` and `Server.ini`,
   without the game's own backups and logs in `data/backups` and `data/logs`, and without `data/*.lock`, which the game
   holds open while it runs. SQLite is the game's default.
-- The characters and accounts can be in PostgreSQL instead (template 1.0.1, Pulsar 1.0.37): in the server's
+- The characters and accounts can be in PostgreSQL instead (template 1.0.2, Pulsar 1.0.37): in the server's
   **Databases** tab, choose a PostgreSQL host for the game's database. Pulsar makes `s<short id>_game` there and starts
   the game with `COVERAO_BASEDEDATOS_TIPO`, `_SERVIDOR`, `_PUERTO`, `_BASE`, `_USUARIO` and `_CLAVE` in its environment,
   which the game reads instead of `Server.ini`'s `[BASEDEDATOS]` (it says so at start: `[ini] pisado por el entorno:`
@@ -41,6 +41,9 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   instead (`Tipo=postgres` and the rest), the database is outside what Pulsar knows: its backups would not have it.
 - With its database chosen in Pulsar, Pulsar's backups hold it (a `pg_dump` the panel makes, kept in the archive), and a
   full restore puts it back first. The game's own backups in `data/backups` stay out of Pulsar's either way.
+- Checked with v1.0.10 on PostgreSQL 18: at its first start on the chosen database the game took the 6 characters and
+  accounts of its SQLite file; a backup held the database (`.pulsar/database.dump`, 75 KB); after the characters were
+  changed by hand, a full restore put them back as they were in the backup, and the game started on them again.
 - An update unpacks the whole release again: a map in `gamedata` edited by hand is replaced by the release's (the
   game's own updater, `Actualizar.bat`, would keep it). `Server.ini` is the only file kept, so take a backup before
   updating a server whose maps were changed.

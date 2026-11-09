@@ -1263,7 +1263,7 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
             {
                 Assert.Equal(2L, await TestPostgresHost.ScalarAsync(game, "SELECT count(*) FROM players"));
-                Assert.Null(await TestPostgresHost.ScalarAsync(game, "SELECT to_regclass('later')::text"));
+                Assert.Equal(DBNull.Value, await TestPostgresHost.ScalarAsync(game, "SELECT to_regclass('later')::text"));
                 Assert.Equal(name, await TestPostgresHost.ScalarAsync(game, "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()"));
                 Assert.False((bool)(await TestPostgresHost.ScalarAsync(game, "SELECT has_database_privilege('public', current_database(), 'CONNECT')"))!);
             }
