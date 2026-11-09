@@ -99,10 +99,33 @@ public sealed partial class ServerDatabases(
     /// host the first time (not counted in the server's limit), and used again when the game goes back to it, with the
     /// data it had; going back to the game's own files keeps it, as one of the server's databases (counted again).
     /// </summary>
-    /// <returns>Whether anything changed, and the database the game used before (to put back if its node does not take it).</returns>
-    public async Task<Result<GameDatabaseChange>> SetGameDatabaseAsync(ServerId serverId, Guid? hostId, CancellationToken cancellationToken)
+    /// <param name="applied">
+    /// Sends the server's spec to its node once the choice changed anything: null when the node took it, otherwise why
+    /// not, and the choice is undone. Within the server's turn, so another choice sees the outcome.
+    /// </param>
+    /// <returns>Whether anything changed.</returns>
+    public async Task<Result<bool>> SetGameDatabaseAsync(ServerId serverId, Guid? hostId, Func<Task<DomainError?>> applied,
+        CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(applied);
         using var turn = await turns.Turns.AcquireAsync(serverId, cancellationToken);
+        var set = await ChooseGameDatabaseAsync(serverId, hostId, cancellationToken);
+        if (!set.IsSuccess || !set.Value.Changed)
+        {
+            return set.IsSuccess ? false : set.Error!;
+        }
+
+        if (await applied() is { } refused)
+        {
+            await RevertGameDatabaseAsync(serverId, set.Value.Previous);
+            return refused;
+        }
+
+        return true;
+    }
+
+    private async Task<Result<GameDatabaseChange>> ChooseGameDatabaseAsync(ServerId serverId, Guid? hostId, CancellationToken cancellationToken)
+    {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken);
         if (server is null)
         {
@@ -222,7 +245,7 @@ public sealed partial class ServerDatabases(
     }
 
     /// <summary>Puts back the database the game used before a choice its node did not take (<see cref="SetGameDatabaseAsync"/>).</summary>
-    public async Task RevertGameDatabaseAsync(ServerId serverId, ServerDatabaseId? previous)
+    private async Task RevertGameDatabaseAsync(ServerId serverId, ServerDatabaseId? previous)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
         await locks.LockServerAsync(serverId, CancellationToken.None);

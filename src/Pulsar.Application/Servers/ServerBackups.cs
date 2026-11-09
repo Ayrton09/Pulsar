@@ -242,6 +242,13 @@ public sealed partial class ServerBackups(
 
         var receiving = database.Value;
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
+        if (receiving is { } waiting)
+        {
+            // Waited for until it comes, or its restore ends without it (GameDatabaseRestores.Ended), however soon that is.
+            waitingRestores.Add(operation.Id, waiting.Download);
+            _ = RestoreGameDatabaseAsync(server.Id, operation.Id, waiting.Download, backup.GameDatabaseBytes!.Value, waiting.Target, waiting.Admin);
+        }
+
         var remote = await RemoteOfAsync(backup, cancellationToken);
         var run = await operations.RunAsync(server, operation,
             new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes, Paths: paths,
@@ -251,18 +258,9 @@ public sealed partial class ServerBackups(
                     : new { backup = backup.Id.Value, backup.Name, clean, paths = paths.Take(MaxAuditedPaths).ToList(), pathCount = paths.Count })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);
-        if (receiving is { } started)
+        if (receiving is not null && (!run.IsSuccess || run.Value.Status is not (OperationStatus.Queued or OperationStatus.Running)))
         {
-            if (run.IsSuccess && run.Value.Status != OperationStatus.Failed)
-            {
-                // Waited for until it comes, or its restore ends without it (GameDatabaseRestores.Ended).
-                waitingRestores.Add(operation.Id, started.Download);
-                _ = RestoreGameDatabaseAsync(server.Id, operation.Id, started.Download, backup.GameDatabaseBytes!.Value, started.Target, started.Admin);
-            }
-            else
-            {
-                started.Download.Dispose();
-            }
+            waitingRestores.Ended(operation.Id);
         }
 
         return run.IsSuccess ? Result.Success() : run.Error!;

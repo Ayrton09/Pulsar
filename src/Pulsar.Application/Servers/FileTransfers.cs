@@ -232,6 +232,7 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
         private readonly CancellationTokenSource _aborted = new();
         private readonly Lock _lock = new();
         private ITimer? _deadline;
+        private bool _unbound;
         private int _state; // 0 waiting, 1 claimed, 2 abandoned
         private int _ended;
 
@@ -320,18 +321,39 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
             {
                 if (_deadline is null && Volatile.Read(ref _ended) == 0)
                 {
-                    _deadline = _owner._clock.CreateTimer(static state => ((Transfer)state!).Abort(), this, MaxDuration(size), Timeout.InfiniteTimeSpan);
+                    _deadline = _owner._clock.CreateTimer(static state => ((Transfer)state!).Expired(), this, MaxDuration(size), Timeout.InfiniteTimeSpan);
                 }
             }
         }
 
-        /// <summary>The time limit <see cref="Bound"/> set no longer applies.</summary>
-        internal void Unbound()
+        /// <summary>The time limit <see cref="Bound"/> set no longer applies: false when the transfer had already ended.</summary>
+        internal bool Unbound()
         {
             lock (_lock)
             {
+                if (_aborted.IsCancellationRequested)
+                {
+                    return false;
+                }
+
+                _unbound = true;
                 _deadline?.Dispose();
+                return true;
             }
+        }
+
+        /// <summary>The time limit ran out, unless the transfer was let off it (<see cref="Unbound"/>) meanwhile.</summary>
+        private void Expired()
+        {
+            lock (_lock)
+            {
+                if (_unbound)
+                {
+                    return;
+                }
+            }
+
+            Abort();
         }
 
         private protected abstract void Aborting();
@@ -478,9 +500,10 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
 
         /// <summary>
         /// All of the agent's content is in (1.0.37): the transfer's own time limit ends, and the agent's request waits for
-        /// what the panel does with it (the game's database restored).
+        /// what the panel does with it (the game's database restored). False when it was ended first (the agent's request
+        /// gone): then nothing is to be done with the content.
         /// </summary>
-        public void ContentReceived() => Unbound();
+        public bool ContentReceived() => Unbound();
 
         /// <summary>The panel did not take the content (1.0.37: the game's database it could not restore), saying why.</summary>
         public void Refuse(string reason)

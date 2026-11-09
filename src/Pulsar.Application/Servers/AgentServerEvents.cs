@@ -374,6 +374,10 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             {
                 await BackupEndedAsync(server, operation, null, now, cancellationToken);
             }
+            else if (operation.Type == OperationType.BackupRestore)
+            {
+                databaseRestores.Ended(operation.Id);
+            }
 
             LogInterrupted(operation.Id, nodeId);
         }

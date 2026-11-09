@@ -94,19 +94,8 @@ public static class DatabaseEndpoints
     private static async Task<Results<NoContent, ProblemHttpResult>> SetGameAsync(Guid id, GameDatabaseRequest request, ServerDatabases databases,
         ServerManagement servers, CancellationToken ct)
     {
-        var set = await databases.SetGameDatabaseAsync(new ServerId(id), request.HostId, ct);
-        if (!set.IsSuccess)
-        {
-            return ApiProblems.FromDomainError(set.Error!);
-        }
-
-        if (set.Value.Changed && await SyncAsync(servers, new ServerId(id)) is { } refused)
-        {
-            await databases.RevertGameDatabaseAsync(new ServerId(id), set.Value.Previous);
-            return ApiProblems.FromDomainError(refused);
-        }
-
-        return TypedResults.NoContent();
+        var set = await databases.SetGameDatabaseAsync(new ServerId(id), request.HostId, () => SyncAsync(servers, new ServerId(id)), ct);
+        return set.IsSuccess ? TypedResults.NoContent() : ApiProblems.FromDomainError(set.Error!);
     }
 
     /// <summary>A new password for the game's database reaches its node with the server's spec (the game uses it from its next start).</summary>

@@ -1252,7 +1252,7 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
                 await using var lingering = await TestPostgresHost.OpenAsync(name, password, name);
                 await using (var content = File.OpenRead(dump.Path))
                 {
-                    await dumps.RestoreAsync(target, admin, content, dump.Size, () => { }, Ct);
+                    await dumps.RestoreAsync(target, admin, content, dump.Size, () => true, Ct);
                 }
             }
             finally
@@ -1276,7 +1276,7 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             // A dump that is not whole changes nothing.
             await using (var cut = new MemoryStream([1, 2, 3]))
             {
-                await Assert.ThrowsAsync<GameDatabaseDumpException>(() => dumps.RestoreAsync(target, admin, cut, 10, () => { }, Ct));
+                await Assert.ThrowsAsync<GameDatabaseDumpException>(() => dumps.RestoreAsync(target, admin, cut, 10, () => true, Ct));
             }
 
             await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
@@ -1355,12 +1355,15 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             return new GameDatabaseDump(file, Next.Length, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Next)));
         }
 
-        public async Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Action received,
+        public async Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Func<bool> received,
             CancellationToken receiving)
         {
             using var copy = new MemoryStream();
             await content.CopyToAsync(copy, receiving);
-            received();
+            if (!received())
+            {
+                throw new GameDatabaseDumpException("given up");
+            }
             if (Refuse)
             {
                 throw new GameDatabaseDumpException("pg_restore failed (1): refused for the test");

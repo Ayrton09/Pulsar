@@ -91,7 +91,7 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         }
     }
 
-    public async Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Action received,
+    public async Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Func<bool> received,
         CancellationToken receiving)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -124,8 +124,13 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
                 }
             }
 
-            // Received: the transfer's own time limit ends here; the restore has the configured one.
-            received();
+            // Received: the transfer's own time limit ends here; the restore has the configured one. Whoever sent it may have
+            // given up just before: then nothing is restored.
+            if (!received())
+            {
+                throw new GameDatabaseDumpException("The dump arrived after its sender gave up.");
+            }
+
             await RestoreFileAsync(target, admin, file, CancellationToken.None);
         }
         finally
@@ -181,6 +186,16 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
                 }
                 catch (Exception swap) when (swap is NpgsqlException or InvalidOperationException)
                 {
+                    // Done after all, its answer lost with the connection: the restore stands.
+                    var done = false;
+                    await AdminAsync(admin, async other =>
+                        done = await ExistsAsync(other, name, CancellationToken.None) && !await ExistsAsync(other, name + "-r", CancellationToken.None),
+                        CancellationToken.None);
+                    if (done)
+                    {
+                        return;
+                    }
+
                     // The old data takes its name back, on a new connection if this one is gone; failing that, the next
                     // restore gives it back before anything else (above), and never drops it.
                     try
@@ -352,7 +367,9 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
     /// </summary>
     private string DumpFolder()
     {
-        var folder = Path.GetFullPath(options.Value.DumpDirectory ?? Path.Combine(Path.GetTempPath(), "pulsar-dumps"));
+        var folder = Path.GetFullPath(string.IsNullOrWhiteSpace(options.Value.DumpDirectory)
+            ? Path.Combine(Path.GetTempPath(), "pulsar-dumps")
+            : options.Value.DumpDirectory);
         DataProtectionSetup.CreatePrivate(new DirectoryInfo(folder));
         foreach (var stale in new DirectoryInfo(folder).EnumerateFiles("*.dump").Where(f => DateTime.UtcNow - f.LastWriteTimeUtc > s_leftOver))
         {

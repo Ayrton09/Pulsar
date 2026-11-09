@@ -29,9 +29,10 @@ public interface IGameDatabaseDumps
     /// Replaces the database with the dump <paramref name="content"/> holds (exactly <paramref name="length"/> bytes), never
     /// leaving it half restored: the dump goes into a new database first, which takes the old one's place once whole.
     /// <paramref name="admin"/> is the host's account. <paramref name="receiving"/> covers the content's arrival only,
-    /// and <paramref name="received"/> is called once all of it is in; the restore then has its own time limit.
+    /// and <paramref name="received"/> is asked once all of it is in: false (whoever sent it gave up) restores nothing;
+    /// otherwise the restore has its own time limit.
     /// </summary>
     /// <exception cref="GameDatabaseDumpException">It could not be restored; the database is as it was.</exception>
-    Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Action received,
+    Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Func<bool> received,
         CancellationToken receiving);
 }
