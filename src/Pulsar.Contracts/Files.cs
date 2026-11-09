@@ -297,6 +297,12 @@ public static class BackupErrors
 
     /// <summary>Remote storage refused or failed (credentials, bucket, network); the message says what it answered.</summary>
     public const string RemoteFailed = "backups.remote_failed";
+
+    /// <summary>
+    /// The game's database (Pulsar 1.0.37) did not go with the backup or come back with the restore: the dump the panel
+    /// handed was not the one announced, the archive holds none, or the panel could not restore it (its message says why).
+    /// </summary>
+    public const string DatabaseFailed = "backups.database_failed";
 }
 
 /// <summary>Why a backup read a running game's files live instead of from a snapshot (<see cref="BackupCapture.SnapshotError"/>).</summary>

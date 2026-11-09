@@ -23,8 +23,10 @@ internal static class DataProtectionSetup
     public const string CertificatePathKey = "DataProtection:CertificatePath";
     public const string CertificatePasswordKey = "DataProtection:CertificatePassword";
 
-    public static void AddPulsarDataProtection(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>The key ring's folder: <c>DataProtection:KeysPath</c>, or the default for this system.</summary>
+    public static string KeysPath(IConfiguration configuration)
     {
+        ArgumentNullException.ThrowIfNull(configuration);
         var path = configuration[KeysPathKey];
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -33,7 +35,31 @@ internal static class DataProtectionSetup
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pulsar", "keys");
         }
 
-        var directory = new DirectoryInfo(Path.GetFullPath(path));
+        return Path.GetFullPath(path);
+    }
+
+    /// <summary>
+    /// Creates <paramref name="directory"/> for the panel's account alone (and SYSTEM and Administrators on Windows; the
+    /// owner only elsewhere), or makes an existing one so.
+    /// </summary>
+    public static void CreatePrivate(DirectoryInfo directory)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        if (OperatingSystem.IsWindows())
+        {
+            directory.Create();
+            Restrict(directory);
+        }
+        else
+        {
+            Directory.CreateDirectory(directory.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(directory.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    public static void AddPulsarDataProtection(this IServiceCollection services, IConfiguration configuration)
+    {
+        var directory = new DirectoryInfo(KeysPath(configuration));
         if (!directory.Exists)
         {
             if (OperatingSystem.IsWindows())

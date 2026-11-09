@@ -30,6 +30,9 @@ public static class BackupStages
     public const string Restoring = "restoring";
     public const string Uploading = "uploading";
     public const string Downloading = "downloading";
+
+    /// <summary>The game's database (Pulsar 1.0.37): its dump fetched from the panel for a backup, or given back by a restore.</summary>
+    public const string Database = "database";
 }
 
 /// <summary>Reports a stage and, when known, how far it got (0–100).</summary>
@@ -107,8 +110,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// Every file of the server, whatever its rules, and the records of Pulsar's that go with them (a clone's or a
     /// transfer's copy, 1.0.17): <paramref name="rules"/> play no part.
     /// </param>
+    /// <param name="database">
+    /// A checked dump of the game's database (1.0.37), kept as <see cref="BackupDatabaseDump.Entry"/> after the files: among
+    /// Pulsar's own, which no file of the server can be, and no restore writes.
+    /// </param>
     public async Task<BackupResult> CreateAsync(BackupLocation location, ProvisionedServer server, BackupDefinition? rules, BackupProgress progress,
-        CancellationToken cancellationToken, bool whole = false)
+        CancellationToken cancellationToken, bool whole = false, string? database = null)
     {
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
@@ -224,6 +231,17 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
                 meter.Complete();
                 await meter.ReportAsync(force: true);
+                if (database is not null)
+                {
+                    // Already PostgreSQL's compressed format: stored as it is.
+                    await progress(BackupStages.Database, null);
+                    var entry = archive.CreateEntry(BackupDatabaseDump.Entry, CompressionLevel.NoCompression);
+                    entry.LastWriteTime = ZipTime(DateTimeOffset.UtcNow);
+                    await using var target = await entry.OpenAsync(cancellationToken);
+                    await using var dump = new FileStream(database, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, FileOptions.Asynchronous);
+                    await dump.CopyToAsync(target, BufferSize, cancellationToken);
+                }
+
                 if (RulesComment(rules) is { } comment)
                 {
                     archive.Comment = comment;
@@ -261,12 +279,18 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// The archive came from another node (a clone, Pulsar 1.0.16): a clean restore deletes by this server's manifest's
     /// rules only, never by those the archive records, and what it holds must fit on the drive before anything is written.
     /// </param>
+    /// <param name="database">
+    /// Given the archive's dump of the game's database (1.0.37) once the archive is checked, before anything is deleted or
+    /// written: what it throws ends the restore with the server's files untouched. An archive without one refuses the
+    /// restore. Null: the dump, if any, stays in the archive.
+    /// </param>
     /// <param name="paths">
     /// Only these files and folders (Pulsar 1.0.18), each one the backup has, never Pulsar's own: a clean restore then
     /// deletes newer files only under them. Null: all of the backup.
     /// </param>
     public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
-        CancellationToken cancellationToken, bool received = false, IReadOnlyList<string>? paths = null)
+        CancellationToken cancellationToken, bool received = false, IReadOnlyList<string>? paths = null,
+        Func<ZipArchiveEntry, CancellationToken, Task>? database = null)
     {
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
@@ -285,10 +309,17 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             // Its list of entries bounded before .NET reads it: an archive can come from another node (a clone, a transfer).
             await FileArchives.CheckDirectoryAsync(input, cancellationToken);
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
-            var entries = Check(archive);
+            var entries = Check(archive, out var dump);
             if (paths is not null)
             {
                 entries = Pick(entries, paths);
+            }
+
+            if (database is not null)
+            {
+                await progress(BackupStages.Database, null);
+                await database(dump ?? throw new BackupException(BackupErrors.DatabaseFailed, "The backup holds no dump of the game's database."),
+                    cancellationToken);
             }
 
             if (received)
@@ -740,13 +771,21 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     }
 
     /// <summary>Every entry, checked before anything is written: a restore may only write plain paths below the server directory.</summary>
-    private static List<(ZipArchiveEntry Entry, string Path, bool Directory)> Check(ZipArchive archive)
+    /// <param name="database">The dump of the game's database (1.0.37), which is no file of the server's; null without one.</param>
+    private static List<(ZipArchiveEntry Entry, string Path, bool Directory)> Check(ZipArchive archive, out ZipArchiveEntry? database)
     {
+        database = null;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var entries = new List<(ZipArchiveEntry, string, bool)>();
         foreach (var entry in archive.Entries)
         {
             var name = entry.FullName;
+            if (string.Equals(name, BackupDatabaseDump.Entry, StringComparison.Ordinal))
+            {
+                database = database is null ? entry : throw Corrupt(name, "it appears twice");
+                continue;
+            }
+
             var directory = name.EndsWith('/');
             var path = directory ? name[..^1] : name;
             if (ServerFilePath.Error(path) is { } error)
@@ -841,7 +880,7 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             var folders = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
             var found = new List<FileEntry>();
             var exists = path.Length == 0;
-            foreach (var (entry, entryPath, directory) in Check(archive))
+            foreach (var (entry, entryPath, directory) in Check(archive, out _))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (IsPulsars(entryPath))

@@ -768,7 +768,9 @@
       "clean_incomplete": "Este backup deixou de fora arquivos que o jogo mantinha abertos: restaurar com limpeza os excluiria. Restaure sem limpar.",
       "in_use": "O backup está sendo baixado ou restaurado. Tente novamente quando isso terminar.",
       "corrupt": "Não é possível restaurar o backup: {{detail}}",
-      "remote_failed": "O armazenamento remoto falhou: {{detail}}"
+      "remote_failed": "O armazenamento remoto falhou: {{detail}}",
+      "game_database_unsupported": "O agente deste nó não consegue guardar o banco do jogo em um backup: atualize-o.",
+      "database_failed": "Não foi possível exportar ou restaurar o banco do jogo. Um administrador vê o motivo no log do painel."
     },
     "http": {
       "network": "Não foi possível acessar o painel. Verifique sua conexão."
@@ -1421,7 +1423,8 @@
       "saving": "pedindo ao jogo que salve",
       "snapshotting": "criando um instantâneo do disco",
       "cleaning": "excluindo arquivos mais novos",
-      "uploading": "copiando para o armazenamento remoto"
+      "uploading": "copiando para o armazenamento remoto",
+      "database": "o banco do jogo"
     },
     "settings": {
       "title": "Configurações",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} arquivo deixado de fora (em uso)",
     "skipped_other": "{{count}} arquivos deixados de fora (em uso)",
     "locked": "Bloqueado",
+    "gameDatabase": "Com o banco do jogo",
     "download": "Baixar",
     "downloadNamed": "Baixar {{name}}",
     "restore": "Restaurar",
@@ -2036,7 +2040,9 @@
         "copied": "Copiado para o armazenamento remoto",
         "failed": "Não copiado para o armazenamento remoto"
       }
-    }
+    },
+    "restoreDatabase": "O banco do jogo volta primeiro, como estava no backup; se não puder, nenhum arquivo é restaurado. Outro programa conectado a ele (um site) impede isso.",
+    "restoreSomeNoDatabase": "Restaurar alguns arquivos deixa o banco do jogo como está."
   },
   "schedules": {
     "title": "Tarefas agendadas",

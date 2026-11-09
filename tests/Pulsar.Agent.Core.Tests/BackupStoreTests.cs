@@ -228,6 +228,65 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task TheGamesDatabaseGoesInAsPulsarsOwnAndComesBackBeforeAnyFile()
+    {
+        // 1.0.37: the dump the panel hands a backup, given back by a full restore before a file is written, never as a file.
+        Write("cfg/server.cfg", "hostname old");
+        var dump = Path.Combine(_root, "game.dump");
+        byte[] dumped = [.. Enumerable.Range(0, 300_000).Select(i => (byte)(i * 7))];
+        await File.WriteAllBytesAsync(dump, dumped, TestContext.Current.CancellationToken);
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken, database: dump);
+        Assert.Equal([BackupDatabaseDump.Entry, "cfg/server.cfg"], Entries(location.Archive));
+        Assert.Equal(1, backup.FileCount);
+        var top = await BackupStore.ListAsync(location, ServerFilePath.Root, TestContext.Current.CancellationToken);
+        Assert.Equal(["cfg"], top.Entries.Select(e => e.Name));
+
+        Write("cfg/server.cfg", "hostname changed");
+        byte[]? given = null;
+        string? onDisk = null;
+        await _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken,
+            database: async (entry, token) =>
+            {
+                onDisk = ReadServer("cfg/server.cfg");
+                await using var content = await entry.OpenAsync(token);
+                using var copy = new MemoryStream();
+                await content.CopyToAsync(copy, token);
+                given = copy.ToArray();
+            });
+
+        Assert.Equal(dumped, given);
+        Assert.Equal("hostname changed", onDisk); // before the files
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+        Assert.False(Directory.Exists(Path.Combine(_serverDirectory, ".pulsar")));
+
+        // Its refusal leaves every file as it was; without it asked for, the dump stays in the archive; a restore of some
+        // files never gives it.
+        Write("cfg/server.cfg", "hostname changed again");
+        await Assert.ThrowsAsync<BackupException>(() => _store.RestoreAsync(location, _server, backup.Sha256, null, Progress,
+            TestContext.Current.CancellationToken, database: (_, _) => throw new BackupException(BackupErrors.DatabaseFailed, "refused")));
+        Assert.Equal("hostname changed again", ReadServer("cfg/server.cfg"));
+        await _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken);
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+        Assert.False(Directory.Exists(Path.Combine(_serverDirectory, ".pulsar")));
+    }
+
+    [Fact]
+    public async Task ARestoreThatShouldGiveBackTheGamesDatabaseRefusesABackupWithoutOne()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", "hostname changed");
+
+        var refused = await Assert.ThrowsAsync<BackupException>(() => _store.RestoreAsync(location, _server, backup.Sha256, null, Progress,
+            TestContext.Current.CancellationToken, database: (_, _) => Task.CompletedTask));
+
+        Assert.Equal(BackupErrors.DatabaseFailed, refused.Code);
+        Assert.Equal("hostname changed", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
     public async Task ARestoreOfSomeFilesWritesOnlyThoseAndWhatIsInTheFoldersPicked()
     {
         Write("cfg/server.cfg", "hostname old");

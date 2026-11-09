@@ -768,7 +768,9 @@
       "clean_incomplete": "Questo backup ha escluso file che il gioco teneva aperti: un ripristino pulito li eliminerebbe. Ripristinarlo senza pulizia.",
       "in_use": "Il backup è in fase di download o ripristino. Riprovare quando termina.",
       "corrupt": "Il backup non può essere ripristinato: {{detail}}",
-      "remote_failed": "L'archiviazione remota non è riuscita: {{detail}}"
+      "remote_failed": "L'archiviazione remota non è riuscita: {{detail}}",
+      "game_database_unsupported": "L'agente di questo nodo non può tenere il database del gioco in un backup: aggiornalo.",
+      "database_failed": "Il database del gioco non è stato salvato o ripristinato. Un amministratore trova il motivo nel log del pannello."
     },
     "http": {
       "network": "Impossibile raggiungere il pannello. Verificare la connessione."
@@ -1421,7 +1423,8 @@
       "saving": "richiesta di salvataggio al gioco",
       "snapshotting": "creazione di uno snapshot del disco",
       "cleaning": "eliminazione dei file più recenti",
-      "uploading": "copia nell'archiviazione remota"
+      "uploading": "copia nell'archiviazione remota",
+      "database": "il database del gioco"
     },
     "settings": {
       "title": "Impostazioni",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} file escluso (in uso)",
     "skipped_other": "{{count}} file esclusi (in uso)",
     "locked": "Bloccato",
+    "gameDatabase": "Con il database del gioco",
     "download": "Scarica",
     "downloadNamed": "Scarica {{name}}",
     "restore": "Ripristina",
@@ -2036,7 +2040,9 @@
         "copied": "Copiato nell'archiviazione remota",
         "failed": "Non copiato nell'archiviazione remota"
       }
-    }
+    },
+    "restoreDatabase": "Il database del gioco torna per primo, com'era nel backup; se non può, nessun file viene ripristinato. Un altro programma connesso (un sito web) lo impedisce.",
+    "restoreSomeNoDatabase": "Ripristinare alcuni file lascia il database del gioco com'è."
   },
   "schedules": {
     "title": "Attività pianificate",

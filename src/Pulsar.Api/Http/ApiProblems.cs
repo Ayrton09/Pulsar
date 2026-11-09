@@ -46,7 +46,7 @@ public static class ApiProblems
             or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many" or "backup_storage.holds_copies"
             or "database_host.in_use" or "database_host.too_many" or "database_host.name_taken" or "database.name_taken" or "database.limit_reached"
             or "database.game_database_set" or "database.in_use_by_game" or "server.game_database_unsupported" or "server.clone_game_database"
-            or "database.game_name_taken" or "database.password_not_given"
+            or "database.game_name_taken" or "database.password_not_given" or "backups.game_database_unsupported"
             or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required" or "steam_account.name_taken"
             or "server.steam_branch_unknown" or "server.steam_branch_password_required" or "server.steam_branch_unsupported" or "server.steam_branch_agent_too_old"
             => StatusCodes.Status409Conflict,
@@ -55,7 +55,7 @@ public static class ApiProblems
         "files.too_large" => StatusCodes.Status413PayloadTooLarge,
         "files.length_required" => StatusCodes.Status411LengthRequired,
         "files.disk_full" or "node.disk_low" => StatusCodes.Status507InsufficientStorage,
-        "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" or "database.host_unreachable"
+        "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" or "database.host_unreachable" or "backups.database_failed"
             or "mods.catalog_unavailable"
             => StatusCodes.Status502BadGateway,
         "mods.catalog_busy" => StatusCodes.Status503ServiceUnavailable,

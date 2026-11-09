@@ -325,6 +325,15 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
             }
         }
 
+        /// <summary>The time limit <see cref="Bound"/> set no longer applies.</summary>
+        internal void Unbound()
+        {
+            lock (_lock)
+            {
+                _deadline?.Dispose();
+            }
+        }
+
         private protected abstract void Aborting();
 
         internal bool TryClaim()
@@ -466,6 +475,22 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
 
         /// <summary>The browser side is done with the content (<paramref name="complete"/>: all of it was sent).</summary>
         public void Finish(bool complete) => _done.TrySetResult(complete);
+
+        /// <summary>
+        /// All of the agent's content is in (1.0.37): the transfer's own time limit ends, and the agent's request waits for
+        /// what the panel does with it (the game's database restored).
+        /// </summary>
+        public void ContentReceived() => Unbound();
+
+        /// <summary>The panel did not take the content (1.0.37: the game's database it could not restore), saying why.</summary>
+        public void Refuse(string reason)
+        {
+            Refusal = reason;
+            _done.TrySetResult(false);
+        }
+
+        /// <summary>Why the panel did not take the content (<see cref="Refuse"/>), for the agent's request to say.</summary>
+        public string? Refusal { get; private set; }
 
         private protected override void Aborting()
         {

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MySqlConnector;
 using Npgsql;
 using Pulsar.Api.Databases;
@@ -21,6 +23,7 @@ using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Databases;
 using Pulsar.Domain.Servers;
+using Pulsar.Infrastructure.Databases;
 
 namespace Pulsar.Api.Tests.Servers;
 
@@ -1080,6 +1083,292 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         await DeleteServerAsync(admin, server);
         await DeleteServerAsync(admin, plain);
         Assert.Contains(game.Name, hosts.Dropped);
+    }
+
+    [DatabaseFact]
+    public async Task TheGamesDatabaseGoesWithItsServersBackupsAndComesBackFirst()
+    {
+        var hosts = new GameHostClient();
+        var dumps = new FakeDumps();
+        await AccessScenario.CreateAsync(factory);
+        using var app = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IDatabaseHostClient>(hosts);
+            services.AddSingleton<IGameDatabaseDumps>(dumps);
+        }));
+        using var admin = await PanelClient.CreateAsync(app);
+        using (var login = await admin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            Assert.True(login.IsSuccessStatusCode);
+        }
+
+        var node = await NodeApi.CreateAsync(admin, "databases-backups");
+        await using var agent = new InProcessAgent(app);
+        await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, node.Node.Id)).Node.Connected, "agent connected");
+        DatabaseHostView host;
+        using (var created = await admin.PostAsync("/api/v1/database-hosts",
+                   new DatabaseHostRequest("backup-postgres", "127.0.0.1", 5432, "pulsar_games", "host password", null, null, null, [], Engine: DatabaseEngine.Postgres)))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            host = (await created.Content.ReadFromJsonAsync<DatabaseHostView>(AccessScenario.Json, Ct))!;
+        }
+
+        using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(DatabaseGameManifest.Replace("\"db-game\"", "\"db-backups\"",
+                   StringComparison.Ordinal))))
+        {
+            await AccessScenario.EnsureSuccessAsync(imported);
+        }
+
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "db-backups");
+        Guid server;
+        using (var created = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "db-backups", null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            server = (await created.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!.Server.Id;
+        }
+
+        var installed = await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
+            "installed");
+        var directory = Path.Combine(agent.ServersRoot, installed.Server.ShortId);
+        var config = Path.Combine(directory, "data", "server.cfg");
+        await File.WriteAllTextAsync(config, "hostname one", Ct);
+        using (var set = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        }
+
+        var game = Assert.Single((await ListAsync(admin, server)).Databases);
+
+        // A backup holds the dump the panel made as the game's role, kept as Pulsar's own (not one of the server's files).
+        dumps.Next = [.. Enumerable.Range(0, 200_000).Select(i => (byte)(i * 13))];
+        var backup = await BackupAsync(admin, server);
+        Assert.True(backup.HasGameDatabase);
+        Assert.Equal(game.Name, Assert.Single(dumps.Dumped).Name);
+        Assert.Equal("127.0.0.1", dumps.Dumped[0].Host); // the address the panel uses
+        using (var zip = ZipFile.OpenRead(Path.Combine(agent.Configs.Paths.BackupsDirectory, installed.Server.ShortId, $"{backup.Id:N}.zip")))
+        {
+            Assert.Contains(zip.Entries, e => e.FullName == "data/server.cfg");
+            var entry = Assert.Single(zip.Entries, e => e.FullName == BackupDatabaseDump.Entry);
+            await using var content = await entry.OpenAsync(Ct);
+            using var copy = new MemoryStream();
+            await content.CopyToAsync(copy, Ct);
+            Assert.Equal(dumps.Next, copy.ToArray());
+        }
+
+        // Its file goes once the node took it.
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(dumps.Files.TrueForAll(f => !File.Exists(f))), "the dump's file deleted");
+
+        // A full restore gives it back to the panel, which restores it before the node writes a file.
+        await File.WriteAllTextAsync(config, "hostname two", Ct);
+        dumps.BeforeRestore = () => dumps.ConfigWhenRestored = File.ReadAllText(config);
+        await RestoreAsync(admin, server, $"/api/v1/servers/{server}/backups/{backup.Id}/restore", OperationStatus.Succeeded);
+        var restored = Assert.Single(dumps.Restored);
+        Assert.Equal(game.Name, restored.Name);
+        Assert.Equal(dumps.Next, restored.Content);
+        Assert.Equal("hostname two", dumps.ConfigWhenRestored);
+        Assert.Equal("hostname one", await File.ReadAllTextAsync(config, Ct));
+        Assert.False(File.Exists(Path.Combine(directory, ".pulsar", "database.dump")));
+
+        // A restore of some files leaves the database.
+        await RestoreAsync(admin, server, $"/api/v1/servers/{server}/backups/{backup.Id}/restore-files", OperationStatus.Succeeded,
+            new RestoreBackupFilesRequest(["data"], false));
+        Assert.Single(dumps.Restored);
+
+        // One the panel cannot restore ends the restore with every file as it was, and says why.
+        await File.WriteAllTextAsync(config, "hostname three", Ct);
+        dumps.Refuse = true;
+        var failed = await RestoreAsync(admin, server, $"/api/v1/servers/{server}/backups/{backup.Id}/restore", OperationStatus.Failed);
+        Assert.Equal(BackupErrors.DatabaseFailed, failed.ErrorCode);
+        Assert.Contains("administrator", failed.ErrorMessage, StringComparison.Ordinal);
+        Assert.Equal("hostname three", await File.ReadAllTextAsync(config, Ct));
+
+        // A restore that ends before giving it back (its archive changed on the node) frees its place among the node's transfers.
+        dumps.Refuse = false;
+        var archive = Path.Combine(agent.Configs.Paths.BackupsDirectory, installed.Server.ShortId, $"{backup.Id:N}.zip");
+        var bytes = await File.ReadAllBytesAsync(archive, Ct);
+        bytes[^40] ^= 0xFF;
+        await File.WriteAllBytesAsync(archive, bytes, Ct);
+        await RestoreAsync(admin, server, $"/api/v1/servers/{server}/backups/{backup.Id}/restore", OperationStatus.Failed);
+        var transfers = app.Services.GetRequiredService<FileTransfers>();
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(transfers.Running(new NodeId(node.Node.Id)) == 0), "the restore's ticket freed");
+        Assert.Single(dumps.Restored, r => r.Name == game.Name);
+
+        // A dump that cannot be made makes no backup; with the game back on its own files, backups hold none.
+        dumps.Refuse = true;
+        using (var refused = await admin.PostAsync($"/api/v1/servers/{server}/backups", new CreateBackupRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.BadGateway, refused.StatusCode);
+            Assert.Contains("backups.database_failed", await refused.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        dumps.Refuse = false;
+        using (var back = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, back.StatusCode);
+        }
+
+        Assert.False((await BackupAsync(admin, server)).HasGameDatabase);
+        Assert.Single(dumps.Dumped);
+        await DeleteServerAsync(admin, server);
+    }
+
+    [PostgresHostFact]
+    public async Task PostgresOwnProgramsDumpAGameDatabaseAndRestoreItWhole()
+    {
+        var settings = TestPostgresHost.Settings;
+        var admin = new DatabaseHostConnection(settings.Host!, settings.Port, settings.Username!, settings.Password!, RequireTls: false,
+            DatabaseEngine.Postgres);
+        var client = factory.Services.GetRequiredService<IDatabaseHostClient>();
+        var name = $"s{Guid.NewGuid().ToString("N")[..8]}_game";
+        var password = ServerDatabase.NewPassword();
+        await client.CreateAsync(admin, name, "%", password, Ct);
+        try
+        {
+            await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
+            {
+                await TestPostgresHost.ScalarAsync(game, "CREATE TABLE players (name text PRIMARY KEY); INSERT INTO players VALUES ('ada'), ('grace')");
+            }
+
+            // The programs of the PostgreSQL the tests use (CI's are where Pulsar looks; a development one names its folder).
+            var dumps = new PostgresDumps(Options.Create(new GameDatabaseOptions
+            {
+                PostgresBin = Environment.GetEnvironmentVariable("PULSAR_TEST_PGBIN"),
+                DumpDirectory = Path.Combine(Path.GetTempPath(), "pulsar-test-dumps"),
+            }), NullLogger<PostgresDumps>.Instance);
+            var target = new GameDatabaseTarget(admin.Host, admin.Port, name, password, RequireTls: false);
+            var dump = await dumps.DumpAsync(target, Ct);
+            try
+            {
+                Assert.True(dump.Size > 0);
+                await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
+                {
+                    await TestPostgresHost.ScalarAsync(game, "DELETE FROM players; CREATE TABLE later (x int)");
+                }
+
+                // A session of the game's still open: ended for the swap.
+                await using var lingering = await TestPostgresHost.OpenAsync(name, password, name);
+                await using (var content = File.OpenRead(dump.Path))
+                {
+                    await dumps.RestoreAsync(target, admin, content, dump.Size, () => { }, Ct);
+                }
+            }
+            finally
+            {
+                File.Delete(dump.Path);
+            }
+
+            await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
+            {
+                Assert.Equal(2L, await TestPostgresHost.ScalarAsync(game, "SELECT count(*) FROM players"));
+                Assert.Null(await TestPostgresHost.ScalarAsync(game, "SELECT to_regclass('later')::text"));
+                Assert.Equal(name, await TestPostgresHost.ScalarAsync(game, "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()"));
+                Assert.False((bool)(await TestPostgresHost.ScalarAsync(game, "SELECT has_database_privilege('public', current_database(), 'CONNECT')"))!);
+            }
+
+            await using (var root = await TestPostgresHost.OpenAsync())
+            {
+                Assert.Equal(0L, await TestPostgresHost.ScalarAsync(root, "SELECT count(*) FROM pg_database WHERE datname IN ($1, $2)", name + "-r", name + "-o"));
+            }
+
+            // A dump that is not whole changes nothing.
+            await using (var cut = new MemoryStream([1, 2, 3]))
+            {
+                await Assert.ThrowsAsync<GameDatabaseDumpException>(() => dumps.RestoreAsync(target, admin, cut, 10, () => { }, Ct));
+            }
+
+            await using (var game = await TestPostgresHost.OpenAsync(name, password, name))
+            {
+                Assert.Equal(2L, await TestPostgresHost.ScalarAsync(game, "SELECT count(*) FROM players"));
+            }
+        }
+        finally
+        {
+            await client.DropAsync(admin, name, "%", CancellationToken.None);
+        }
+    }
+
+    private static async Task<BackupView> BackupAsync(PanelClient client, Guid server)
+    {
+        Guid id;
+        using (var response = await client.PostAsync($"/api/v1/servers/{server}/backups", new CreateBackupRequest(null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+            id = (await response.Content.ReadFromJsonAsync<BackupView>(AccessScenario.Json, Ct))!.Id;
+        }
+
+        BackupView? made = null;
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            made = (await client.Http.GetFromJsonAsync<BackupList>(new Uri($"/api/v1/servers/{server}/backups", UriKind.Relative), AccessScenario.Json, Ct))!
+                .Backups.SingleOrDefault(b => b.Id == id);
+            return made?.Status is BackupStatus.Completed or BackupStatus.Failed;
+        }, () => $"backup made (last: {made?.Status} {made?.ErrorMessage})");
+        Assert.Equal(BackupStatus.Completed, made!.Status);
+        return made;
+    }
+
+    private static async Task<OperationView> RestoreAsync(PanelClient client, Guid server, string path, OperationStatus expected, object? body = null)
+    {
+        using (var response = await client.PostAsync(path, body))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+        }
+
+        var details = await ServerApi.WaitForAsync(client, server, s => s.Server.ActiveOperation is null, "restored");
+        var restore = details.RecentOperations.First(o => o.Type == OperationType.BackupRestore);
+        Assert.Equal(expected, restore.Status);
+        return restore;
+    }
+
+    /// <summary>A database whose dumps are the bytes given, and whose restores are kept (or refused).</summary>
+    private sealed class FakeDumps : IGameDatabaseDumps
+    {
+        public byte[] Next { get; set; } = [1, 2, 3];
+
+        public bool Refuse { get; set; }
+
+        public Action? BeforeRestore { get; set; }
+
+        public string? ConfigWhenRestored { get; set; }
+
+        public List<GameDatabaseTarget> Dumped { get; } = [];
+
+        public List<string> Files { get; } = [];
+
+        public List<(string Name, byte[] Content)> Restored { get; } = [];
+
+        public async Task<GameDatabaseDump> DumpAsync(GameDatabaseTarget target, CancellationToken cancellationToken)
+        {
+            if (Refuse)
+            {
+                throw new GameDatabaseDumpException("pg_dump failed (1): refused for the test");
+            }
+
+            Dumped.Add(target);
+            var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pulsar-dumps")).FullName;
+            var file = Path.Combine(folder, $"{Guid.NewGuid():N}.dump");
+            await File.WriteAllBytesAsync(file, Next, cancellationToken);
+            Files.Add(file);
+            return new GameDatabaseDump(file, Next.Length, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Next)));
+        }
+
+        public async Task RestoreAsync(GameDatabaseTarget target, DatabaseHostConnection admin, Stream content, long length, Action received,
+            CancellationToken receiving)
+        {
+            using var copy = new MemoryStream();
+            await content.CopyToAsync(copy, receiving);
+            received();
+            if (Refuse)
+            {
+                throw new GameDatabaseDumpException("pg_restore failed (1): refused for the test");
+            }
+
+            BeforeRestore?.Invoke();
+            Restored.Add((target.Name, copy.ToArray()));
+        }
     }
 
     private static async Task<ServerDatabaseList> ListAsync(PanelClient client, Guid server) =>

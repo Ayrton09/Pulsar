@@ -768,7 +768,9 @@
       "clean_incomplete": "This backup left out files the game held open: restoring clean would delete them. Restore it without cleaning.",
       "in_use": "The backup is being downloaded or restored. Try again when that ends.",
       "corrupt": "The backup cannot be restored: {{detail}}",
-      "remote_failed": "Remote storage failed: {{detail}}"
+      "remote_failed": "Remote storage failed: {{detail}}",
+      "game_database_unsupported": "This node's agent cannot keep the game's database in a backup: update it.",
+      "database_failed": "The game's database could not be dumped or restored. An administrator finds why in the panel's log."
     },
     "http": {
       "network": "Could not reach the panel. Check your connection."
@@ -1421,7 +1423,8 @@
       "saving": "asking the game to save",
       "snapshotting": "taking a snapshot of the disk",
       "cleaning": "deleting newer files",
-      "uploading": "copying to remote storage"
+      "uploading": "copying to remote storage",
+      "database": "the game's database"
     },
     "settings": {
       "title": "Settings",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} file left out (in use)",
     "skipped_other": "{{count}} files left out (in use)",
     "locked": "Locked",
+    "gameDatabase": "With the game's database",
     "download": "Download",
     "downloadNamed": "Download {{name}}",
     "restore": "Restore",
@@ -2036,7 +2040,9 @@
         "copied": "Copied to remote storage",
         "failed": "Not copied to remote storage"
       }
-    }
+    },
+    "restoreDatabase": "The game's database comes back first, as it was in the backup; if it cannot, no file is restored. Another program connected to it (a website) stops it.",
+    "restoreSomeNoDatabase": "A restore of some files leaves the game's database as it is."
   },
   "schedules": {
     "title": "Scheduled tasks",

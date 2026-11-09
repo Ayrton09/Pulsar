@@ -143,11 +143,20 @@ public sealed class Backup
     /// </summary>
     public string? GameVersion { get; private set; }
 
+    /// <summary>
+    /// The size of the dump of the game's database its archive holds (Pulsar 1.0.37), which a full restore puts back in
+    /// the server's game database (exactly so many bytes); null: none.
+    /// </summary>
+    public long? GameDatabaseBytes { get; private set; }
+
+    public bool HasGameDatabase => GameDatabaseBytes is not null;
+
     /// <summary>How long the node took (from the request to its result).</summary>
     public TimeSpan? Duration => Status == BackupStatus.Completed && CompletedAt is { } end ? end - (StartedAt ?? CreatedAt) : null;
 
+    /// <param name="gameDatabaseBytes">The size of the dump of the game's database the panel hands the node to keep in the archive.</param>
     public static Result<Backup> Create(Server server, string name, Operation operation, UserId? createdBy, OperationRequester createdVia,
-        DateTimeOffset now)
+        DateTimeOffset now, long? gameDatabaseBytes = null)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(operation);
@@ -160,6 +169,7 @@ public sealed class Backup
         return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now)
         {
             GameVersion = server.GameVersion,
+            GameDatabaseBytes = gameDatabaseBytes,
         };
     }
 
@@ -187,6 +197,7 @@ public sealed class Backup
             CopyMode = source.CopyMode,
             GameSave = source.GameSave,
             GameVersion = source.GameVersion,
+            GameDatabaseBytes = source.GameDatabaseBytes,
         };
     }
 

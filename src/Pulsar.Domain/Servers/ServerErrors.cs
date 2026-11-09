@@ -209,6 +209,12 @@ public static class ServerErrors
     public static DomainError CloneGameDatabase { get; } =
         new("server.clone_game_database", "This server's game keeps its data in a database, which a clone does not copy yet: put the game back on its own files to clone it.");
 
+    public static DomainError GameDatabaseBackupsUnsupported { get; } =
+        new("backups.game_database_unsupported", "The node's agent cannot keep the game's database in a backup (update the agent).");
+
+    public static DomainError GameDatabaseBackupFailed { get; } =
+        new("backups.database_failed", "The game's database could not be dumped or restored. An administrator finds why in the panel's log.");
+
     public static DomainError GameDatabaseUnsupported { get; } =
         new("server.game_database_unsupported", "The node's agent cannot give a game a database (connect it, or update it).");
 

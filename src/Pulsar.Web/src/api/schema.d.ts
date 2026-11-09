@@ -16935,6 +16935,8 @@ export interface components {
             snapshotError: null | string;
             gameSave: null | components["schemas"]["GameSaveResult"];
             errorCode?: null | string;
+            /** @default false */
+            hasGameDatabase: boolean;
         };
         CatalogSettingsView: {
             curseForgeConfigured: boolean;

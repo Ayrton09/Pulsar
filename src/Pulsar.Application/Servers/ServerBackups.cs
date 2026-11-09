@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Databases;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
@@ -24,6 +25,7 @@ namespace Pulsar.Application.Servers;
 /// Why a failed backup failed, as its operation's code (the browser shows its translation, <see cref="ErrorMessage"/>
 /// without one); null when the panel ended it itself.
 /// </param>
+/// <param name="HasGameDatabase">It holds the dump of the game's database (1.0.37), which a full restore puts back.</param>
 public sealed record BackupView(
     Guid Id,
     string Name,
@@ -44,7 +46,8 @@ public sealed record BackupView(
     BackupCopyMode? CopyMode,
     string? SnapshotError,
     GameSaveResult? GameSave,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    bool HasGameDatabase = false);
 
 /// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
 /// <summary>A storage a server can copy its backups to (its name only: the rest is the panel's settings).</summary>
@@ -67,6 +70,9 @@ public sealed partial class ServerBackups(
     ServerOperations operations,
     FileTransfers transfers,
     BackupStorages storages,
+    ServerDatabases gameDatabases,
+    IGameDatabaseDumps dumps,
+    GameDatabaseRestores waitingRestores,
     IRowLocks locks,
     IAuditLog audit,
     IRequestContext request,
@@ -90,7 +96,7 @@ public sealed partial class ServerBackups(
     /// <param name="recorded">Called with the operation's id just before it is first saved: what follows it is saved with it.</param>
     /// <param name="whole">
     /// Every file of the server, whatever its game's backup rules (a clone's or a transfer's copy, 1.0.17); kept on its
-    /// node only, never copied to remote storage.
+    /// node only, never copied to remote storage. Never the game's database (1.0.37), which every other backup holds.
     /// </param>
     public async Task<Result<BackupView>> CreateAsync(ServerId id, string? name, OperationRequester via, CancellationToken cancellationToken,
         Action<OperationId>? recorded = null, bool whole = false)
@@ -124,16 +130,31 @@ public sealed partial class ServerBackups(
 
         var now = clock.GetUtcNow();
         var requestedBy = via == OperationRequester.User ? request.UserId : null;
+        // The game's database (1.0.37), dumped first: a backup that should hold it and cannot is not made.
+        BackupDatabaseDump? database = null;
+        if (!whole && server.GameDatabaseId is not null)
+        {
+            var dumped = await GameDatabaseDumpAsync(server, cancellationToken);
+            if (!dumped.IsSuccess)
+            {
+                return dumped.Error!;
+            }
+
+            database = dumped.Value;
+        }
+
         var operation = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, requestedBy, via, now);
-        var created = Backup.Create(server, string.IsNullOrWhiteSpace(name) ? DefaultName(now) : name, operation, requestedBy, via, now);
+        var created = Backup.Create(server, string.IsNullOrWhiteSpace(name) ? DefaultName(now) : name, operation, requestedBy, via, now,
+            database?.SizeBytes);
         if (!created.IsSuccess)
         {
             return created.Error!;
         }
 
         var backup = created.Value;
+
         var remote = whole ? null : await RemoteForNewAsync(server, backup, cancellationToken);
-        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote, whole), () =>
+        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote, whole, database), () =>
         {
             db.Backups.Add(backup);
             recorded?.Invoke(operation.Id);
@@ -212,15 +233,38 @@ public sealed partial class ServerBackups(
             return ServerErrors.PartialRestoreUnsupported;
         }
 
+        // The game's database comes back first with a full restore (1.0.37), through the panel; a partial one leaves it.
+        var database = await GameDatabaseRestoreAsync(server, backup, paths, cancellationToken);
+        if (!database.IsSuccess)
+        {
+            return database.Error!;
+        }
+
+        var receiving = database.Value;
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
         var remote = await RemoteOfAsync(backup, cancellationToken);
         var run = await operations.RunAsync(server, operation,
-            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes, Paths: paths),
+            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes, Paths: paths,
+                DatabaseTicket: receiving?.Download.Ticket),
             () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: paths is null
-                    ? new { backup = backup.Id.Value, backup.Name, clean }
+                    ? new { backup = backup.Id.Value, backup.Name, clean, gameDatabase = receiving is not null }
                     : new { backup = backup.Id.Value, backup.Name, clean, paths = paths.Take(MaxAuditedPaths).ToList(), pathCount = paths.Count })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);
+        if (receiving is { } started)
+        {
+            if (run.IsSuccess && run.Value.Status != OperationStatus.Failed)
+            {
+                // Waited for until it comes, or its restore ends without it (GameDatabaseRestores.Ended).
+                waitingRestores.Add(operation.Id, started.Download);
+                _ = RestoreGameDatabaseAsync(server.Id, operation.Id, started.Download, backup.GameDatabaseBytes!.Value, started.Target, started.Admin);
+            }
+            else
+            {
+                started.Download.Dispose();
+            }
+        }
+
         return run.IsSuccess ? Result.Success() : run.Error!;
     }
 
@@ -731,7 +775,7 @@ public sealed partial class ServerBackups(
 
     internal static BackupView View(Backup b) => new(b.Id.Value, b.Name, b.Status, b.SizeBytes, b.FileCount, b.SkippedFiles,
         b.Sha256 is { } hash ? Convert.ToHexStringLower(hash) : null, b.IsLocked, b.CreatedVia, b.CreatedAt, b.CompletedAt, b.Duration?.TotalSeconds,
-        b.ErrorMessage, b.OperationId?.Value, b.RemoteStatus, b.RemoteError, b.CopyMode, b.SnapshotError, b.GameSave);
+        b.ErrorMessage, b.OperationId?.Value, b.RemoteStatus, b.RemoteError, b.CopyMode, b.SnapshotError, b.GameSave, HasGameDatabase: b.HasGameDatabase);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Retention on server {ServerId} stopped at backup {BackupId}; it continues after the next backup")]
     private partial void LogPruneStopped(ServerId serverId, BackupId backupId);

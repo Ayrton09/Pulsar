@@ -170,30 +170,35 @@ internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabas
             $"SCRAM-SHA-256${iterations}:{Convert.ToBase64String(salt)}${Convert.ToBase64String(storedKey)}:{Convert.ToBase64String(serverKey)}");
     }
 
+    /// <summary>
+    /// How the panel's account connects to <paramref name="host"/>'s <c>postgres</c> database: TLS when offered (required, and
+    /// the sign-in bound to it, when the host requires it), SCRAM-SHA-256 only, no pool.
+    /// </summary>
+    internal static string ConnectionString(DatabaseHostConnection host, TimeSpan commandTimeout) => new NpgsqlConnectionStringBuilder
+    {
+        Host = host.Host,
+        Port = host.Port,
+        Username = host.UserName,
+        Password = host.Password,
+        Database = "postgres",
+        // Neither checks the certificate (self-signed ones are the rule); Require at least never falls back to plain text,
+        // and binds the sign-in to the TLS channel.
+        SslMode = host.RequireTls ? SslMode.Require : SslMode.Prefer,
+        ChannelBinding = host.RequireTls ? ChannelBinding.Require : ChannelBinding.Prefer,
+        RequireAuth = "ScramSHA256",
+        GssEncryptionMode = GssEncryptionMode.Disable,
+        Pooling = false,
+        Timeout = (int)s_timeout.TotalSeconds,
+        CommandTimeout = (int)commandTimeout.TotalSeconds,
+        ApplicationName = "Pulsar",
+        IncludeErrorDetail = false,
+    }.ConnectionString;
+
     private static async Task<T> RunAsync<T>(DatabaseHostConnection host, Func<NpgsqlConnection, Task<T>> work, CancellationToken cancellationToken)
     {
-        var settings = new NpgsqlConnectionStringBuilder
-        {
-            Host = host.Host,
-            Port = host.Port,
-            Username = host.UserName,
-            Password = host.Password,
-            Database = "postgres",
-            // Neither checks the certificate (self-signed ones are the rule); Require at least never falls back to plain text,
-            // and binds the sign-in to the TLS channel.
-            SslMode = host.RequireTls ? SslMode.Require : SslMode.Prefer,
-            ChannelBinding = host.RequireTls ? ChannelBinding.Require : ChannelBinding.Prefer,
-            RequireAuth = "ScramSHA256",
-            GssEncryptionMode = GssEncryptionMode.Disable,
-            Pooling = false,
-            Timeout = (int)s_timeout.TotalSeconds,
-            CommandTimeout = (int)s_timeout.TotalSeconds,
-            ApplicationName = "Pulsar",
-            IncludeErrorDetail = false,
-        };
         try
         {
-            await using var connection = new NpgsqlConnection(settings.ConnectionString);
+            await using var connection = new NpgsqlConnection(ConnectionString(host, s_timeout));
             await connection.OpenAsync(cancellationToken);
             return await work(connection);
         }

@@ -186,6 +186,41 @@ public sealed partial class ServerDatabases(
         return created.IsSuccess ? changed : created.Error!;
     }
 
+    /// <summary>
+    /// The server's game database (1.0.37) as its role reaches it from the panel, for a dump or a restore, and the host's
+    /// account (a restore makes and swaps databases with it); null when the game has none.
+    /// </summary>
+    public async Task<Result<(GameDatabaseTarget Target, DatabaseHostConnection Admin)?>> GameTargetAsync(Server server, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        if (server.GameDatabaseId is not { } id)
+        {
+            return ((GameDatabaseTarget, DatabaseHostConnection)?)null;
+        }
+
+        var database = await db.ServerDatabases.AsNoTracking().SingleOrDefaultAsync(d => d.Id == id, cancellationToken);
+        var host = database is null ? null : await db.DatabaseHosts.AsNoTracking().SingleOrDefaultAsync(h => h.Id == database.HostId, cancellationToken);
+        if (database is null || host is null)
+        {
+            return ((GameDatabaseTarget, DatabaseHostConnection)?)null;
+        }
+
+        if (hosts.Connection(host) is not { } admin)
+        {
+            return DatabaseErrors.HostPasswordUnreadable;
+        }
+
+        try
+        {
+            return ((GameDatabaseTarget, DatabaseHostConnection)?)(
+                new GameDatabaseTarget(host.Host, host.Port, database.Name, secrets.Unprotect(database.PasswordProtected), host.RequireTls), admin);
+        }
+        catch (CryptographicException)
+        {
+            return DatabaseErrors.PasswordUnreadable;
+        }
+    }
+
     /// <summary>Puts back the database the game used before a choice its node did not take (<see cref="SetGameDatabaseAsync"/>).</summary>
     public async Task RevertGameDatabaseAsync(ServerId serverId, ServerDatabaseId? previous)
     {

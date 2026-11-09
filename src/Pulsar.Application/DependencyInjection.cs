@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<DatabaseHosts>();
         services.AddScoped<ServerDatabases>();
         services.AddSingleton<GameDatabaseTurns>();
+        services.AddSingleton<GameDatabaseRestores>();
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerPlayers>();
         services.AddScoped<ServerFiles>();

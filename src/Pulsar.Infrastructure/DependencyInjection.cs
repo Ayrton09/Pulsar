@@ -67,6 +67,9 @@ public static class DependencyInjection
         services.AddSingleton<MySqlDatabaseHostClient>();
         services.AddSingleton<PostgresDatabaseHostClient>();
         services.AddSingleton<IDatabaseHostClient, DatabaseHostClient>();
+        services.AddOptions<GameDatabaseOptions>().Bind(configuration.GetSection(GameDatabaseOptions.SectionName))
+            .PostConfigure(options => options.DumpDirectory ??= Path.Combine(Path.GetDirectoryName(DataProtectionSetup.KeysPath(configuration))!, "game-dumps"));
+        services.AddSingleton<IGameDatabaseDumps, PostgresDumps>();
         services.AddScoped<IRowLocks, RowLocks>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddScoped<IServerSequenceClaims, ServerSequenceClaims>();

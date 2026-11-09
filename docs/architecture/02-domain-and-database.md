@@ -637,6 +637,8 @@ CREATE TABLE steam_accounts (
     updated_at          timestamptz NOT NULL
 );
 -- servers.steam_account_id uuid REFERENCES steam_accounts(id) ON DELETE RESTRICT: NULL signs in anonymously.
+-- backups.game_database_bytes bigint NULL (1.0.37): the size of the dump of the game's database its archive holds (a
+-- restore takes exactly that many bytes back); NULL: none.
 -- servers.game_database_id uuid REFERENCES server_databases(id) ON DELETE SET NULL (1.0.37): the one of its databases its
 -- game keeps its data in; NULL: the game's own files. Not counted in database_limit; the panel refuses to delete it alone.
 

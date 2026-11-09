@@ -513,9 +513,32 @@ public sealed record ForgetSteamLoginCommand(Guid AccountId) : AgentCommand
 /// Every file of the server whatever the manifest's rules, with the records of Pulsar's that go with them (a clone's or a
 /// transfer's copy, Pulsar 1.0.17). Only for agents that announce <see cref="AgentCapabilities.WholeBackup"/>: older ones ignore it.
 /// </param>
-public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null, bool Whole = false) : AgentCommand
+/// <param name="Database">
+/// The game's database, dumped by the panel (Pulsar 1.0.37): the node fetches it first, checks it and keeps it in the
+/// archive as <see cref="BackupDatabaseDump.Entry"/>. Only for agents that announce
+/// <see cref="AgentCapabilities.GameDatabaseBackups"/>.
+/// </param>
+public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null, bool Whole = false,
+    BackupDatabaseDump? Database = null) : AgentCommand
 {
     public const string Type = "server.backup_create";
+}
+
+/// <summary>
+/// A game database's dump the panel hands a backup (Pulsar 1.0.37): fetched with the single-use <see cref="Ticket"/>,
+/// exactly <see cref="SizeBytes"/> bytes hashing to <see cref="Sha256"/> (lowercase hex), at most
+/// <see cref="MaxSizeBytes"/>.
+/// </summary>
+public sealed record BackupDatabaseDump(string Ticket, long SizeBytes, string Sha256)
+{
+    /// <summary>Where an archive keeps it: among Pulsar's own files, which no restore writes to the server's folder.</summary>
+    public const string Entry = ".pulsar/database.dump";
+
+    /// <summary>The largest dump a backup takes (64 GiB).</summary>
+    public const long MaxSizeBytes = 64L * 1024 * 1024 * 1024;
+
+    // The ticket lets its holder fetch the game's data once: never printed.
+    public override string ToString() => $"BackupDatabaseDump {{ SizeBytes = {SizeBytes}, Sha256 = {Sha256} }}";
 }
 
 /// <summary>
@@ -542,8 +565,14 @@ public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 /// Pulsar's own files, that the backup has; a clean restore then deletes newer files only under them. Null: all of it.
 /// Only for agents that announce <see cref="AgentCapabilities.PartialRestore"/>: older ones would restore everything.
 /// </param>
+/// <param name="DatabaseTicket">
+/// The game's database is restored too (Pulsar 1.0.37): once the archive is checked, and before any file is written, the
+/// node sends its <see cref="BackupDatabaseDump.Entry"/> to the panel with this single-use ticket and waits for the
+/// answer: a refusal ends the restore with nothing written. Only for agents that announce
+/// <see cref="AgentCapabilities.GameDatabaseBackups"/>.
+/// </param>
 public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false,
-    long? SizeBytes = null, string? Ticket = null, IReadOnlyList<string>? Paths = null) : AgentCommand
+    long? SizeBytes = null, string? Ticket = null, IReadOnlyList<string>? Paths = null, string? DatabaseTicket = null) : AgentCommand
 {
     public const string Type = "server.backup_restore";
 
@@ -554,7 +583,7 @@ public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string S
     {
         ArgumentNullException.ThrowIfNull(builder);
         builder.Append(System.Globalization.CultureInfo.InvariantCulture,
-            $"ServerId = {ServerId}, BackupId = {BackupId}, Sha256 = {Sha256}, Remote = {Remote}, Clean = {Clean}, SizeBytes = {SizeBytes}, Ticket = {(Ticket is null ? "null" : "***")}, Paths = {(Paths is null ? "null" : Paths.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
+            $"ServerId = {ServerId}, BackupId = {BackupId}, Sha256 = {Sha256}, Remote = {Remote}, Clean = {Clean}, SizeBytes = {SizeBytes}, Ticket = {(Ticket is null ? "null" : "***")}, Paths = {(Paths is null ? "null" : Paths.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))}, DatabaseTicket = {(DatabaseTicket is null ? "null" : "***")}");
         return true;
     }
 }
@@ -923,6 +952,12 @@ public static class AgentCapabilities
 
     /// <summary>A backup takes every file of the server when asked to (<see cref="CreateBackupCommand.Whole"/>, Pulsar 1.0.17).</summary>
     public const string WholeBackup = "backups.whole";
+
+    /// <summary>
+    /// Backups carry the game's database the panel dumps (<see cref="CreateBackupCommand.Database"/>) and restores give it
+    /// back (<see cref="RestoreBackupCommand.DatabaseTicket"/>), Pulsar 1.0.37.
+    /// </summary>
+    public const string GameDatabaseBackups = "backups.game_database";
 
     /// <summary>
     /// The agent lists a backup's files (<see cref="ListBackupFilesCommand"/>) and restores some of them

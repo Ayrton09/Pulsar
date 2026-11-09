@@ -17999,6 +17999,10 @@
               "null",
               "string"
             ]
+          },
+          "hasGameDatabase": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

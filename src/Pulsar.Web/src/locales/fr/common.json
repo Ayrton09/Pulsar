@@ -768,7 +768,9 @@
       "clean_incomplete": "Cette sauvegarde a omis des fichiers que le jeu gardait ouverts : une restauration à l'état propre les supprimerait. Restaurez-la sans nettoyer.",
       "in_use": "La sauvegarde est en cours de téléchargement ou de restauration. Réessayez quand ce sera terminé.",
       "corrupt": "La sauvegarde ne peut pas être restaurée : {{detail}}",
-      "remote_failed": "Le stockage distant a échoué : {{detail}}"
+      "remote_failed": "Le stockage distant a échoué : {{detail}}",
+      "game_database_unsupported": "L'agent de ce nœud ne peut pas garder la base du jeu dans une sauvegarde : mettez-le à jour.",
+      "database_failed": "La base du jeu n'a pas pu être sauvegardée ou restaurée. Un administrateur trouve pourquoi dans le journal du panneau."
     },
     "http": {
       "network": "Le panneau est injoignable. Vérifiez votre connexion."
@@ -1421,7 +1423,8 @@
       "saving": "demande de sauvegarde au jeu",
       "snapshotting": "capture d'un instantané du disque",
       "cleaning": "suppression des fichiers plus récents",
-      "uploading": "copie vers le stockage distant"
+      "uploading": "copie vers le stockage distant",
+      "database": "la base du jeu"
     },
     "settings": {
       "title": "Paramètres",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} fichier omis (en cours d'utilisation)",
     "skipped_other": "{{count}} fichiers omis (en cours d'utilisation)",
     "locked": "Verrouillée",
+    "gameDatabase": "Avec la base du jeu",
     "download": "Télécharger",
     "downloadNamed": "Télécharger {{name}}",
     "restore": "Restaurer",
@@ -2036,7 +2040,9 @@
         "copied": "Copiée vers le stockage distant",
         "failed": "Non copiée vers le stockage distant"
       }
-    }
+    },
+    "restoreDatabase": "La base du jeu revient d'abord, telle qu'elle était dans la sauvegarde ; sinon, aucun fichier n'est restauré. Un autre programme connecté à elle (un site web) l'en empêche.",
+    "restoreSomeNoDatabase": "Restaurer quelques fichiers laisse la base du jeu telle qu'elle est."
   },
   "schedules": {
     "title": "Tâches planifiées",

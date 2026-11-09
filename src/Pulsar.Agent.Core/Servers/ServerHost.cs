@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -97,6 +98,9 @@ public sealed partial class ServerHost(
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
 
+    /// <summary>How long the panel may take to restore the game's database once it has its dump (1.0.37).</summary>
+    private static readonly TimeSpan s_databaseRestoreTimeout = TimeSpan.FromHours(2);
+
     /// <summary>How long reading a backup's index may take: the panel waits for the answer.</summary>
     private static readonly TimeSpan s_backupListTimeout = TimeSpan.FromSeconds(20);
 
@@ -190,6 +194,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.ChangeGame;
             yield return AgentCapabilities.ReceiveBackup;
             yield return AgentCapabilities.WholeBackup;
+            yield return AgentCapabilities.GameDatabaseBackups;
             yield return AgentCapabilities.PartialRestore;
             yield return AgentCapabilities.ListBackupFiles;
             yield return AgentCapabilities.ChosenRconPassword;
@@ -1551,14 +1556,24 @@ public sealed partial class ServerHost(
             var provisioned = Describe(server);
             BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
             BackupResult made;
-            await using (var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
-                options.BackupSnapshots ? snapshots ?? s_noSnapshots : null, store, progress, clock, _logger, cancellationToken))
+            // The game's database first (1.0.37): the panel holds its dump for a short while only.
+            var dump = command.Database is { } database ? await FetchDumpAsync(location, database, progress, cancellationToken) : null;
+            try
             {
+                await using var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
+                    options.BackupSnapshots ? snapshots ?? s_noSnapshots : null, store, progress, clock, _logger, cancellationToken);
                 made = await backups.CreateAsync(location, source.Files, command.Whole ? null : server.Manifest.Backup, progress, cancellationToken,
-                    command.Whole) with
+                    command.Whole, dump) with
                 {
                     Capture = source.CaptureAfterReading(),
                 };
+            }
+            finally
+            {
+                if (dump is not null)
+                {
+                    TryDeleteFile(dump);
+                }
             }
 
             return command.Remote is { } remote ? await backups.CopyToRemoteAsync(location, made, remote, progress, cancellationToken) : made;
@@ -1603,6 +1618,66 @@ public sealed partial class ServerHost(
         });
     }
 
+    /// <summary>
+    /// The dump of the game's database the panel hands a backup (1.0.37), beside the archive being made: exactly the bytes
+    /// announced, hashing as announced, or the backup fails.
+    /// </summary>
+    private async Task<string> FetchDumpAsync(BackupLocation location, BackupDatabaseDump database, BackupProgress progress,
+        CancellationToken cancellationToken)
+    {
+        if (database.SizeBytes is < 0 or > BackupDatabaseDump.MaxSizeBytes || !Sha256Pattern().IsMatch(database.Sha256))
+        {
+            throw new BackupException(BackupErrors.DatabaseFailed, "The game's database dump is not one a backup takes.");
+        }
+
+        await progress(BackupStages.Database, null);
+        System.IO.Directory.CreateDirectory(location.Directory);
+        FileArchives.EnsureSpace(location.Directory, database.SizeBytes);
+        var path = location.Partial + ".database";
+        try
+        {
+            await using (var output = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.Asynchronous))
+            {
+                await fileCommands.ReceiveIntoAsync(database.Ticket, output, database.SizeBytes, _ => Task.CompletedTask, cancellationToken);
+                output.Position = 0;
+                var hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(output, cancellationToken));
+                if (!string.Equals(hash, database.Sha256, StringComparison.Ordinal))
+                {
+                    throw new BackupException(BackupErrors.DatabaseFailed, "The game's database dump is not the one the panel announced (its SHA-256 differs).");
+                }
+            }
+
+            return path;
+        }
+        catch (FileManagerException ex)
+        {
+            TryDeleteFile(path);
+            throw new BackupException(BackupErrors.DatabaseFailed, $"The game's database dump did not arrive: {ex.Message}", ex);
+        }
+        catch
+        {
+            TryDeleteFile(path);
+            throw;
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[0-9a-f]{64}\\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex Sha256Pattern();
+
     /// <summary>A restore needs the server stopped, and nothing else happens to it until the restore ends.</summary>
     private CommandAck RestoreBackup(CommandEnvelope envelope, RestoreBackupCommand command)
     {
@@ -1643,8 +1718,24 @@ public sealed partial class ServerHost(
                 }, token), command.Sha256, size, progress, cancellationToken);
             }
 
+            // The game's database (1.0.37) goes back first, through the panel, which answers once it restored it: a refusal
+            // leaves every file of the server as it was.
+            Func<ZipArchiveEntry, CancellationToken, Task>? database = command.DatabaseTicket is { } databaseTicket && command.Paths is null
+                ? async (entry, token) =>
+                {
+                    try
+                    {
+                        await using var content = await entry.OpenAsync(token);
+                        await fileCommands.DeliverAsync(databaseTicket, content, entry.Length, s_databaseRestoreTimeout, token);
+                    }
+                    catch (FileManagerException ex)
+                    {
+                        throw new BackupException(BackupErrors.DatabaseFailed, $"The game's database was not restored: {ex.Message}", ex);
+                    }
+                }
+            : null;
             await backups.RestoreAsync(location, provisioned, command.Sha256, command.Clean ? new CleanRestore(server.Manifest.Backup) : null,
-                progress, cancellationToken, received: command.Ticket is not null, paths: command.Paths);
+                progress, cancellationToken, received: command.Ticket is not null, paths: command.Paths, database: database);
         });
     }
 

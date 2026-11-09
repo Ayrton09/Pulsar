@@ -2079,6 +2079,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("file_count");
 
+                    b.Property<long?>("GameDatabaseBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("game_database_bytes");
+
                     b.Property<string>("GameSave")
                         .HasColumnType("text")
                         .HasColumnName("game_save");

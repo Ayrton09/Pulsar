@@ -85,6 +85,7 @@ function backup(changes: Partial<Schemas['BackupView']>): Schemas['BackupView'] 
     copyMode: 'stopped',
     snapshotError: null,
     gameSave: null,
+    hasGameDatabase: false,
     ...changes,
   };
 }
@@ -264,6 +265,24 @@ describe('backups tab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete Broken' }));
 
     await waitFor(() => expect(calls).toEqual(['restore ?clean=true', 'lock {"locked":true}', 'delete']));
+  });
+
+  it('says a backup holds the game database, which only a full restore brings back', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () =>
+        json({ ...list, backups: [backup({ hasGameDatabase: true })] }),
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    const table = await screen.findByRole('table', { name: 'Backups' });
+    expect(table).toHaveTextContent("With the game's database");
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    expect(dialog).toHaveTextContent("The game's database comes back first");
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Some files/ }));
+    expect(dialog).toHaveTextContent("A restore of some files leaves the game's database as it is.");
   });
 
   it('restores some files and folders picked from the backup', async () => {

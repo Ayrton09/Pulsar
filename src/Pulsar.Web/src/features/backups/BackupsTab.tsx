@@ -235,6 +235,10 @@ function RestoreBackupDialog({
         ) : (
           <p className="text-sm">{t('backups.restoreText', { server: serverName })}</p>
         )}
+        {/* The game's database (1.0.37) comes back with a full restore only, before any file. */}
+        {backup.hasGameDatabase && (
+          <p className="text-sm text-muted">{t(some ? 'backups.restoreSomeNoDatabase' : 'backups.restoreDatabase')}</p>
+        )}
         <div>
           <Checkbox
             label={t(some ? 'backups.restoreSomeClean' : 'backups.restoreClean')}
@@ -422,6 +426,7 @@ function BackupRow({
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium">{backup.name}</span>
           {backup.locked && <Badge>{t('backups.locked')}</Badge>}
+          {backup.hasGameDatabase && <Badge>{t('backups.gameDatabase')}</Badge>}
           {backup.createdVia !== 'user' && <Badge>{t(`backups.via.${backup.createdVia}`)}</Badge>}
         </span>
         <p className="mt-1 text-xs text-muted md:hidden">{formatDate(backup.createdAt)}</p>

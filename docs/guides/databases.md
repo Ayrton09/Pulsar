@@ -134,5 +134,6 @@ database host serves that node too.
 
 ## Backups
 
-Pulsar's backups hold the server's files, not its databases. Back up your database server with its own tools
-(`mariadb-dump`, `mysqldump`, `pg_dump`, or your hosting's snapshots).
+Pulsar's backups hold the server's files, and the game's own database when it has one (PostgreSQL, see the backup
+guide), not the other databases of a server. Back those up with the database server's own tools (`mariadb-dump`,
+`mysqldump`, `pg_dump`, or your hosting's snapshots).

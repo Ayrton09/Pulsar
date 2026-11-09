@@ -39,6 +39,8 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   and the names, never the values); `Server.ini` keeps no password. At its first start on an empty database the game
   takes the characters of its SQLite file (`data/coverao.db`), which stays as it was. Set by hand in `Server.ini`
   instead (`Tipo=postgres` and the rest), the database is outside what Pulsar knows: its backups would not have it.
+- With its database chosen in Pulsar, Pulsar's backups hold it (a `pg_dump` the panel makes, kept in the archive), and a
+  full restore puts it back first. The game's own backups in `data/backups` stay out of Pulsar's either way.
 - An update unpacks the whole release again: a map in `gamedata` edited by hand is replaced by the release's (the
   game's own updater, `Actualizar.bat`, would keep it). `Server.ini` is the only file kept, so take a backup before
   updating a server whose maps were changed.

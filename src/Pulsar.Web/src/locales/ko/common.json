@@ -768,7 +768,9 @@
       "clean_incomplete": "이 백업에는 게임이 열어 둔 파일이 빠져 있어, 정리 복원하면 해당 파일이 삭제됩니다. 정리하지 않고 복원하세요.",
       "in_use": "백업을 다운로드하거나 복원하는 중입니다. 끝나면 다시 시도하세요.",
       "corrupt": "백업을 복원할 수 없습니다: {{detail}}",
-      "remote_failed": "원격 저장소 오류: {{detail}}"
+      "remote_failed": "원격 저장소 오류: {{detail}}",
+      "game_database_unsupported": "이 노드의 에이전트는 게임 데이터베이스를 백업에 담을 수 없습니다. 업데이트하세요.",
+      "database_failed": "게임 데이터베이스를 덤프하거나 복원하지 못했습니다. 관리자가 패널 로그에서 이유를 확인할 수 있습니다."
     },
     "http": {
       "network": "패널에 연결할 수 없습니다. 연결 상태를 확인하세요."
@@ -1421,7 +1423,8 @@
       "saving": "게임에 저장 요청 중",
       "snapshotting": "디스크 스냅샷 생성 중",
       "cleaning": "더 새로운 파일 삭제 중",
-      "uploading": "원격 저장소로 복사 중"
+      "uploading": "원격 저장소로 복사 중",
+      "database": "게임 데이터베이스"
     },
     "settings": {
       "title": "설정",
@@ -1959,6 +1962,7 @@
     "skipped_one": "파일 {{count}}개 제외됨 (사용 중)",
     "skipped_other": "파일 {{count}}개 제외됨 (사용 중)",
     "locked": "잠김",
+    "gameDatabase": "게임 데이터베이스 포함",
     "download": "다운로드",
     "downloadNamed": "{{name}} 다운로드",
     "restore": "복원",
@@ -2036,7 +2040,9 @@
         "copied": "원격 저장소에 복사됨",
         "failed": "원격 저장소에 복사되지 않음"
       }
-    }
+    },
+    "restoreDatabase": "게임 데이터베이스가 백업 당시 상태로 먼저 복원되며, 그럴 수 없으면 파일은 하나도 복원되지 않습니다. 데이터베이스에 연결된 다른 프로그램(웹사이트 등)이 있으면 복원되지 않습니다.",
+    "restoreSomeNoDatabase": "일부 파일만 복원하면 게임 데이터베이스는 그대로입니다."
   },
   "schedules": {
     "title": "예약 작업",

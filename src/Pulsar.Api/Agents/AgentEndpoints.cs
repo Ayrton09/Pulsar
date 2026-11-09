@@ -122,8 +122,13 @@ internal static class AgentEndpoints
             limit.MaxRequestBodySize = null;
         }
 
-        // The request must stay open until the browser has all of it.
-        return await download.DeliverAsync(http.Request.Body, length) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status410Gone);
+        // The request must stay open until the browser has all of it (or the panel worked on it, and says when it would not).
+        if (await download.DeliverAsync(http.Request.Body, length))
+        {
+            return Results.NoContent();
+        }
+
+        return download.Refusal is { } reason ? Results.Text(reason, "text/plain", statusCode: StatusCodes.Status409Conflict) : Results.StatusCode(StatusCodes.Status410Gone);
     }
 
     private static async Task<Results<Ok<SignedMessage>, BadRequest<AgentError>, JsonHttpResult<AgentError>>> RotateCredentialAsync(

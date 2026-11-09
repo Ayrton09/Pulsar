@@ -768,7 +768,9 @@
       "clean_incomplete": "此备份未包含游戏打开着的文件：清理式还原会删除它们。请选择不清理的还原方式。",
       "in_use": "该备份正在被下载或还原。请在完成后重试。",
       "corrupt": "无法还原该备份：{{detail}}",
-      "remote_failed": "远程存储失败：{{detail}}"
+      "remote_failed": "远程存储失败：{{detail}}",
+      "game_database_unsupported": "此节点的代理无法在备份中保存游戏数据库：请更新它。",
+      "database_failed": "无法导出或恢复游戏数据库。管理员可在面板日志中查看原因。"
     },
     "http": {
       "network": "无法连接到面板。请检查网络连接。"
@@ -1421,7 +1423,8 @@
       "saving": "正在请求游戏保存",
       "snapshotting": "正在创建磁盘快照",
       "cleaning": "正在删除较新的文件",
-      "uploading": "正在复制到远程存储"
+      "uploading": "正在复制到远程存储",
+      "database": "游戏数据库"
     },
     "settings": {
       "title": "设置",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} 个文件未包含（使用中）",
     "skipped_other": "{{count}} 个文件未包含（使用中）",
     "locked": "已锁定",
+    "gameDatabase": "包含游戏数据库",
     "download": "下载",
     "downloadNamed": "下载 {{name}}",
     "restore": "还原",
@@ -2036,7 +2040,9 @@
         "copied": "已复制到远程存储",
         "failed": "未复制到远程存储"
       }
-    }
+    },
+    "restoreDatabase": "游戏数据库会先按备份时的状态恢复；如果无法恢复，则不会恢复任何文件。若有其他程序（如网站）连接着它，恢复会被阻止。",
+    "restoreSomeNoDatabase": "只恢复部分文件时，游戏数据库保持不变。"
   },
   "schedules": {
     "title": "计划任务",

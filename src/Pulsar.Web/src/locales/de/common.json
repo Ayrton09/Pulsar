@@ -768,7 +768,9 @@
       "clean_incomplete": "Dieses Backup enthält Dateien nicht, die das Spiel geöffnet hielt: Eine bereinigte Wiederherstellung würde sie löschen. Stellen Sie es ohne Bereinigung wieder her.",
       "in_use": "Das Backup wird gerade heruntergeladen oder wiederhergestellt. Versuchen Sie es erneut, wenn das beendet ist.",
       "corrupt": "Das Backup kann nicht wiederhergestellt werden: {{detail}}",
-      "remote_failed": "Remote-Speicher fehlgeschlagen: {{detail}}"
+      "remote_failed": "Remote-Speicher fehlgeschlagen: {{detail}}",
+      "game_database_unsupported": "Der Agent dieses Nodes kann die Datenbank des Spiels nicht in einem Backup sichern: Aktualisieren Sie ihn.",
+      "database_failed": "Die Datenbank des Spiels konnte nicht gesichert oder wiederhergestellt werden. Ein Administrator findet den Grund im Log des Panels."
     },
     "http": {
       "network": "Das Panel konnte nicht erreicht werden. Prüfen Sie Ihre Verbindung."
@@ -1421,7 +1423,8 @@
       "saving": "Spiel wird zum Speichern aufgefordert",
       "snapshotting": "Snapshot des Datenträgers wird erstellt",
       "cleaning": "neuere Dateien werden gelöscht",
-      "uploading": "wird in den Remote-Speicher kopiert"
+      "uploading": "wird in den Remote-Speicher kopiert",
+      "database": "die Datenbank des Spiels"
     },
     "settings": {
       "title": "Einstellungen",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} Datei ausgelassen (in Verwendung)",
     "skipped_other": "{{count}} Dateien ausgelassen (in Verwendung)",
     "locked": "Gesperrt",
+    "gameDatabase": "Mit der Datenbank des Spiels",
     "download": "Herunterladen",
     "downloadNamed": "{{name}} herunterladen",
     "restore": "Wiederherstellen",
@@ -2036,7 +2040,9 @@
         "copied": "In den Remote-Speicher kopiert",
         "failed": "Nicht in den Remote-Speicher kopiert"
       }
-    }
+    },
+    "restoreDatabase": "Die Datenbank des Spiels kommt zuerst zurück, wie sie im Backup war; geht das nicht, wird keine Datei wiederhergestellt. Ein anderes damit verbundenes Programm (eine Website) verhindert es.",
+    "restoreSomeNoDatabase": "Werden nur einige Dateien wiederhergestellt, bleibt die Datenbank des Spiels, wie sie ist."
   },
   "schedules": {
     "title": "Geplante Aufgaben",

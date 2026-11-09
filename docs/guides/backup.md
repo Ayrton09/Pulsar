@@ -96,6 +96,17 @@ A new server keeps its last 7 backups (the tab's settings change that, or keep t
 least 15 minutes apart, and the panel makes no backup, and takes no upload, while the node's drive has less than 5 %
 or 2 GB free: free space on it first (deleting old backups, or files in the server's folder).
 
+### The game's database
+
+A server whose game keeps its data in a PostgreSQL database (the server's **Databases** tab, see the databases guide)
+backs it up with its files: the panel dumps it with `pg_dump` on its own machine and the node keeps the dump in the
+backup, which then says *With the game's database*. Restoring all of the backup brings the database back first, as it
+was, and only then the files; if the database cannot come back, no file is restored. Another program connected to the
+database (a website reading it) stops the restore: close it first. Restoring some files leaves the database as it is.
+The panel's machine needs PostgreSQL's `pg_dump` and `pg_restore` (the installers' PostgreSQL has them; elsewhere,
+name their folder in `GameDatabases:PostgresBin`), and the node's agent must be this version or newer. After a restore,
+roles other programs use (a website's) get their grants on the restored tables again from whoever gave them.
+
 ### While the server runs
 
 A backup does not need the server stopped. When the game runs, Pulsar first asks it to save its world (for the games

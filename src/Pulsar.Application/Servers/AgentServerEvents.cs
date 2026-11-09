@@ -33,7 +33,8 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy, Serv
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
 public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier,
-    Notifier notifications, ServerDatabases databases, SequenceSignal sequences, TimeProvider clock, ILogger<AgentServerEvents> logger)
+    Notifier notifications, ServerDatabases databases, SequenceSignal sequences, GameDatabaseRestores databaseRestores, TimeProvider clock,
+    ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
@@ -257,6 +258,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
                     break;
                 case OperationType.BackupRestore:
+                    // 1.0.37: the game's database it never sent back is no longer waited for.
+                    databaseRestores.Ended(operation.Id);
                     // 1.0.16: another node's backup the restore fetched (a clone's) is now this node's, or not.
                     foreach (var received in await db.Backups.Where(b => b.OperationId == operation.Id && b.Status == BackupStatus.Creating)
                                  .ToListAsync(cancellationToken))

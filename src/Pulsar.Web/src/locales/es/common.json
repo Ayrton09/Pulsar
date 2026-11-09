@@ -768,7 +768,9 @@
       "clean_incomplete": "Este backup dejó afuera archivos que el juego tenía abiertos: una restauración limpia los borraría. Restauralo sin limpiar.",
       "in_use": "El backup se está descargando o restaurando. Probá de nuevo cuando termine.",
       "corrupt": "El backup no se puede restaurar: {{detail}}",
-      "remote_failed": "Falló el almacenamiento remoto: {{detail}}"
+      "remote_failed": "Falló el almacenamiento remoto: {{detail}}",
+      "game_database_unsupported": "El agente de este nodo no puede guardar la base del juego en un backup: actualizalo.",
+      "database_failed": "No se pudo volcar o restaurar la base del juego. Un administrador ve por qué en el log del panel."
     },
     "http": {
       "network": "No se pudo contactar al panel. Revisá tu conexión."
@@ -1421,7 +1423,8 @@
       "saving": "pidiéndole al juego que guarde",
       "snapshotting": "haciendo una instantánea del disco",
       "cleaning": "borrando archivos más nuevos",
-      "uploading": "copiando al almacenamiento remoto"
+      "uploading": "copiando al almacenamiento remoto",
+      "database": "la base del juego"
     },
     "settings": {
       "title": "Configuración",
@@ -1959,6 +1962,7 @@
     "skipped_one": "{{count}} archivo quedó afuera (en uso)",
     "skipped_other": "{{count}} archivos quedaron afuera (en uso)",
     "locked": "Bloqueado",
+    "gameDatabase": "Con la base del juego",
     "download": "Descargar",
     "downloadNamed": "Descargar {{name}}",
     "restore": "Restaurar",
@@ -2036,7 +2040,9 @@
         "copied": "Copiado al almacenamiento remoto",
         "failed": "No se copió al almacenamiento remoto"
       }
-    }
+    },
+    "restoreDatabase": "La base del juego vuelve primero, como estaba en el backup; si no puede, no se restaura ningún archivo. Otro programa conectado a ella (una web) lo impide.",
+    "restoreSomeNoDatabase": "Restaurar algunos archivos deja la base del juego como está."
   },
   "schedules": {
     "title": "Tareas programadas",

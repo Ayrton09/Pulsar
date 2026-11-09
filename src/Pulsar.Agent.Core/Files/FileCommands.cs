@@ -433,6 +433,49 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         }
     }
 
+    /// <summary>
+    /// Sends exactly <paramref name="length"/> bytes of <paramref name="content"/> to the panel with its single-use
+    /// <paramref name="ticket"/> and waits up to <paramref name="answer"/> for its answer once they are all sent (the panel
+    /// may work on them first: the game's database restored from them, 1.0.37). A refusal throws with what it said.
+    /// </summary>
+    public async Task DeliverAsync(string ticket, Stream content, long length, TimeSpan answer, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (!TransferTicket.IsWellFormed(ticket) || length < 0)
+        {
+            throw new FileManagerException(FileErrors.TransferFailed, "The transfer ticket is malformed, or the length negative.");
+        }
+
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token, cancellationToken);
+            using var http = panel.CreateHttpClient() ?? throw new HttpRequestException("Not connected to the panel.");
+            using var idle = new IdleTimeout(options.IdleTimeout, linked.Token);
+            using var body = new StreamContent(new BoundedStream(content, length, idle, answer));
+            body.Headers.ContentLength = length;
+            body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            using var response = await http.PutAsync(new Uri(AgentProtocol.Transfer(ticket).TrimStart('/'), UriKind.Relative), body, idle.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            // The panel's reason, short and plain (what it could not do with the content).
+            var said = (await response.Content.ReadAsStringAsync(idle.Token)).Trim();
+            if (said.Length > 500)
+            {
+                said = said[..500];
+            }
+
+            throw new FileManagerException(FileErrors.TransferFailed, said.Length > 0 ? said : $"The panel answered {(int)response.StatusCode}.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw new FileManagerException(FileErrors.TransferFailed, $"The transfer was interrupted: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>The panel is waiting for this result to answer the browser; offered again while the connection is down.</summary>
     private async Task ReportAsync(TransferResult result)
     {
@@ -484,16 +527,40 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
 
         public CancellationToken Token => _source.Token;
 
-        public void Reset() => _source.CancelAfter(_timeout);
+        private volatile bool _answering;
+
+        public void Reset()
+        {
+            if (!_answering)
+            {
+                _source.CancelAfter(_timeout);
+            }
+        }
+
+        /// <summary>All of the content went: from now on the other end has at most <paramref name="timeout"/> to answer.</summary>
+        public void AwaitAnswer(TimeSpan timeout)
+        {
+            _answering = true;
+            _source.CancelAfter(timeout);
+        }
 
         public void Dispose() => _source.Dispose();
     }
 
     /// <summary>Reads at most the announced size (a log the game is writing grows while it is sent).</summary>
-    private sealed class BoundedStream(Stream inner, long length, IdleTimeout idle) : Stream
+    /// <param name="answer">Once all of it is read, how long the panel may take to answer (null: the idle timeout goes on).</param>
+    private sealed class BoundedStream(Stream inner, long length, IdleTimeout idle, TimeSpan? answer = null) : Stream
     {
         private readonly long _length = length;
         private long _remaining = length;
+
+        private void Ended()
+        {
+            if (_remaining == 0 && answer is { } timeout)
+            {
+                idle.AwaitAnswer(timeout);
+            }
+        }
 
         public override bool CanRead => true;
 
@@ -516,6 +583,7 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             idle.Reset();
             var read = inner.Read(buffer[..(int)Math.Min(buffer.Length, _remaining)]);
             _remaining -= read;
+            Ended();
             return read;
         }
 
@@ -524,6 +592,7 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             idle.Reset();
             var read = await inner.ReadAsync(buffer[..(int)Math.Min(buffer.Length, _remaining)], cancellationToken);
             _remaining -= read;
+            Ended();
             return read;
         }
 
