@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Databases;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
@@ -87,8 +88,8 @@ public static class DatabaseEndpoints
     }
 
     /// <summary>
-    /// Where the server's game keeps its data from its next start (1.0.37); its node gets the server's spec at once (when
-    /// it is connected; otherwise when it connects).
+    /// Where the server's game keeps its data from its next start (1.0.37); its node gets the server's spec at once. A
+    /// node that does not take it would go on starting the game as before: the choice is undone, and its answer is said.
     /// </summary>
     private static async Task<Results<NoContent, ProblemHttpResult>> SetGameAsync(Guid id, GameDatabaseRequest request, ServerDatabases databases,
         ServerManagement servers, CancellationToken ct)
@@ -99,9 +100,10 @@ public static class DatabaseEndpoints
             return ApiProblems.FromDomainError(set.Error!);
         }
 
-        if (set.Value)
+        if (set.Value.Changed && await SyncAsync(servers, new ServerId(id)) is { } refused)
         {
-            await servers.SyncSpecAsync(new ServerId(id), CancellationToken.None);
+            await databases.RevertGameDatabaseAsync(new ServerId(id), set.Value.Previous);
+            return ApiProblems.FromDomainError(refused);
         }
 
         return TypedResults.NoContent();
@@ -118,12 +120,27 @@ public static class DatabaseEndpoints
             return ApiProblems.FromDomainError(rotated.Error!);
         }
 
-        if (rotated.Value.Database.ForGame)
+        // The host has the new password now: a node that did not take it is said (Show password gives it again).
+        if (rotated.Value.Database.ForGame && await SyncAsync(servers, new ServerId(id)) is not null)
         {
-            await servers.SyncSpecAsync(new ServerId(id), CancellationToken.None);
+            return ApiProblems.FromDomainError(DatabaseErrors.PasswordNotGiven);
         }
 
         return TypedResults.Ok(rotated.Value);
+    }
+
+    /// <summary>Sends the server's spec to its node: null when it took it, otherwise why not (a spec the panel would not build too).</summary>
+    private static async Task<DomainError?> SyncAsync(ServerManagement servers, ServerId id)
+    {
+        try
+        {
+            var synced = await servers.SyncSpecAsync(id, CancellationToken.None);
+            return synced.IsSuccess ? null : synced.Error;
+        }
+        catch (DomainErrorException ex)
+        {
+            return ex.Error;
+        }
     }
 
     /// <summary>Answers that carry a password are kept by no cache (the browser's included).</summary>

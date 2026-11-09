@@ -288,6 +288,12 @@ public static class DatabaseErrors
     public static DomainError GameDatabaseSet { get; } =
         new("database.game_database_set", "The game uses a database on another host: put it back on its own files first.");
 
+    public static DomainError GameNameTaken { get; } =
+        new("database.game_name_taken", "Another host already has the server's database named for its game: delete it, or choose that host.");
+
+    public static DomainError PasswordNotGiven { get; } =
+        new("database.password_not_given", "The password changed, but the node did not take it: start the server from the panel to give it the new one.");
+
     public static DomainError InUseByGame { get; } =
         new("database.in_use_by_game", "The game keeps its data in this database: put it back on its own files first.");
 }

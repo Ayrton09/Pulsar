@@ -871,7 +871,9 @@
       "game_unsupported": "O jogo deste servidor guarda seus dados apenas nos próprios arquivos.",
       "engine_mismatch": "O jogo deste servidor usa um banco de outro tipo que o desse host.",
       "game_database_set": "O jogo usa um banco em outro host: primeiro volte-o para os próprios arquivos.",
-      "in_use_by_game": "O jogo guarda seus dados neste banco: primeiro volte-o para os próprios arquivos."
+      "in_use_by_game": "O jogo guarda seus dados neste banco: primeiro volte-o para os próprios arquivos.",
+      "game_name_taken": "Outro host já tem o banco do servidor com o nome do jogo: exclua-o, ou escolha esse host.",
+      "password_not_given": "A senha mudou, mas o nó não a recebeu: inicie o servidor pelo painel para entregá-la."
     },
     "steamcmd": {
       "account_required": "Somente uma conta Steam que possui o servidor dedicado deste jogo pode baixá-lo: escolha uma nas configurações do servidor.",

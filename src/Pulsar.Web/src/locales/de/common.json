@@ -871,7 +871,9 @@
       "game_unsupported": "Das Spiel dieses Servers speichert seine Daten nur in seinen eigenen Dateien.",
       "engine_mismatch": "Das Spiel dieses Servers nutzt eine Datenbank anderer Art als die dieses Hosts.",
       "game_database_set": "Das Spiel nutzt eine Datenbank auf einem anderen Host: Stellen Sie es zuerst auf seine eigenen Dateien zurück.",
-      "in_use_by_game": "Das Spiel speichert seine Daten in dieser Datenbank: Stellen Sie es zuerst auf seine eigenen Dateien zurück."
+      "in_use_by_game": "Das Spiel speichert seine Daten in dieser Datenbank: Stellen Sie es zuerst auf seine eigenen Dateien zurück.",
+      "game_name_taken": "Ein anderer Host hat bereits die nach dem Spiel benannte Datenbank des Servers: Löschen Sie sie oder wählen Sie diesen Host.",
+      "password_not_given": "Das Passwort wurde geändert, aber der Node hat es nicht übernommen: Starten Sie den Server im Panel, um es ihm zu geben."
     },
     "steamcmd": {
       "account_required": "Nur ein Steam-Konto, das den Dedicated Server dieses Spiels besitzt, darf ihn herunterladen: Wählen Sie eines in den Servereinstellungen.",

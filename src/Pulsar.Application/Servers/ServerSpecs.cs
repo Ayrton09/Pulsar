@@ -68,9 +68,22 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         var found = await db.ServerDatabases.AsNoTracking().Where(d => d.Id == id)
             .Join(db.DatabaseHosts.AsNoTracking(), d => d.HostId, h => h.Id, (d, h) => new { Database = d, Host = h })
             .SingleOrDefaultAsync(cancellationToken);
-        if (found is null || Parse(template).Database?.Engine != found.Host.Engine.Key())
+        if (found is null)
         {
             return null;
+        }
+
+        // The game must not start on its own files while the panel says its data is in the database: a template that takes
+        // none of its kind, or a host its node may no longer use (its nodes narrowed after the choice), stops the spec.
+        var taken = Parse(template).Database?.Engine;
+        if (taken != found.Host.Engine.Key())
+        {
+            throw new DomainErrorException(taken is null ? DatabaseErrors.GameUnsupported : DatabaseErrors.EngineMismatch(found.Host.Engine));
+        }
+
+        if (!found.Host.Serves(server.NodeId))
+        {
+            throw new DomainErrorException(DatabaseErrors.HostNotAllowed);
         }
 
         string password;

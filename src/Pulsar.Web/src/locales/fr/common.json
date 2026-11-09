@@ -871,7 +871,9 @@
       "game_unsupported": "Le jeu de ce serveur garde ses données dans ses propres fichiers uniquement.",
       "engine_mismatch": "Le jeu de ce serveur utilise une base d'un autre type que celle de cet hôte.",
       "game_database_set": "Le jeu utilise une base sur un autre hôte : remettez-le d'abord sur ses propres fichiers.",
-      "in_use_by_game": "Le jeu garde ses données dans cette base : remettez-le d'abord sur ses propres fichiers."
+      "in_use_by_game": "Le jeu garde ses données dans cette base : remettez-le d'abord sur ses propres fichiers.",
+      "game_name_taken": "Un autre hôte a déjà la base du serveur nommée pour son jeu : supprimez-la, ou choisissez cet hôte.",
+      "password_not_given": "Le mot de passe a changé, mais le nœud ne l'a pas pris : démarrez le serveur depuis le panneau pour le lui donner."
     },
     "steamcmd": {
       "account_required": "Seul un compte Steam qui possède le serveur dédié de ce jeu peut le télécharger : choisissez-en un dans les paramètres du serveur.",

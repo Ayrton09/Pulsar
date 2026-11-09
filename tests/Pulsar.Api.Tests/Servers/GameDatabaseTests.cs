@@ -1014,6 +1014,65 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Assert.Contains("server.clone_game_database", await clone.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
         }
 
+        // A host whose nodes are narrowed after the choice no longer reaches the node: a new password is said not to.
+        var elsewhere = await NodeApi.CreateAsync(admin, "databases-game-elsewhere");
+        using (var narrowed = await admin.PutAsync($"/api/v1/database-hosts/{host.Id}",
+                   new DatabaseHostRequest("game-postgres", "127.0.0.1", 5432, "pulsar_games", null, null, null, null, [elsewhere.Node.Id])))
+        {
+            await AccessScenario.EnsureSuccessAsync(narrowed);
+        }
+
+        using (var rotated = await admin.PostAsync($"/api/v1/servers/{server}/databases/{game.Id}/rotate-password"))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, rotated.StatusCode);
+            Assert.Contains("database.password_not_given", await rotated.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        using (var widened = await admin.PutAsync($"/api/v1/database-hosts/{host.Id}",
+                   new DatabaseHostRequest("game-postgres", "127.0.0.1", 5432, "pulsar_games", null, null, null, null, [])))
+        {
+            await AccessScenario.EnsureSuccessAsync(widened);
+        }
+
+        // Two choices at once (a double click): one database, the game's.
+        var twice = (await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "db-game-twice", null)))
+            is var response && response.IsSuccessStatusCode
+            ? (await response.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!.Server.Id
+            : throw new InvalidOperationException(await response.Content.ReadAsStringAsync(Ct));
+        response.Dispose();
+        await ServerApi.WaitForAsync(admin, twice, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "installed");
+        var both = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ =>
+            admin.PutAsync($"/api/v1/servers/{twice}/databases/game", new GameDatabaseRequest(host.Id))));
+        Assert.All(both, r => Assert.Equal(HttpStatusCode.NoContent, r.StatusCode));
+        foreach (var answer in both)
+        {
+            answer.Dispose();
+        }
+
+        var twiceGame = Assert.Single((await ListAsync(admin, twice)).Databases);
+        Assert.True(twiceGame.ForGame);
+        Assert.Single(hosts.Created, name => name == twiceGame.Name);
+
+        // A database of the server named for its game on another host is not taken over.
+        using (var back = await admin.PutAsync($"/api/v1/servers/{twice}/databases/game", new GameDatabaseRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, back.StatusCode);
+        }
+
+        using (var deleted = await admin.DeleteAsync($"/api/v1/servers/{twice}/databases/{twiceGame.Id}"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        }
+
+        await CreateDatabaseAsync(admin, twice, mysql.Id, "game");
+        using (var taken = await admin.PutAsync($"/api/v1/servers/{twice}/databases/game", new GameDatabaseRequest(host.Id)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+            Assert.Contains("database.game_name_taken", await taken.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        await DeleteServerAsync(admin, twice);
+
         // Audited, never with a password; the server's deletion drops them all.
         var changes = await AuditAsync(AuditActions.Server.GameDatabaseChanged, server);
         Assert.NotEmpty(changes);
@@ -1036,7 +1095,8 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
     private static ServerDatabases DatabasesWith(IServiceProvider services, IDatabaseHostClient client) => new(
         services.GetRequiredService<IPulsarDbContext>(), services.GetRequiredService<DatabaseHosts>(), services.GetRequiredService<IDatabaseSecretProtector>(),
         client, services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), services.GetRequiredService<IAgentConnections>(),
-        services.GetRequiredService<AgentSessionStore>(), TimeProvider.System, NullLogger<ServerDatabases>.Instance);
+        services.GetRequiredService<AgentSessionStore>(), services.GetRequiredService<GameDatabaseTurns>(), TimeProvider.System,
+        NullLogger<ServerDatabases>.Instance);
 
     /// <summary>A host client whose every call fails as given, counting them.</summary>
     private sealed class FailingClient(Exception failure) : IDatabaseHostClient

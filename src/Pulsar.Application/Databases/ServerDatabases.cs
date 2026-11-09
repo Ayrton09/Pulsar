@@ -39,6 +39,10 @@ public sealed record ServerDatabaseView(
 public sealed record ServerDatabaseList(int Limit, IReadOnlyList<ServerDatabaseView> Databases, IReadOnlyList<DatabaseHostChoice> Hosts,
     GameDatabaseChoice? Game = null);
 
+/// <summary>What a choice of a server's game database did (1.0.37).</summary>
+/// <param name="Previous">The database the game used before; null: its own files.</param>
+public sealed record GameDatabaseChange(bool Changed, ServerDatabaseId? Previous);
+
 /// <summary>Where a server's game keeps its data (Pulsar 1.0.37): its own files, or one of the server's databases.</summary>
 /// <param name="Engine">What the game's manifest takes.</param>
 /// <param name="DatabaseId">The database it uses (not counted in the server's limit); null: its own files.</param>
@@ -65,6 +69,7 @@ public sealed partial class ServerDatabases(
     IAuditLog audit,
     IAgentConnections connections,
     AgentSessionStore sessions,
+    GameDatabaseTurns turns,
     TimeProvider clock,
     ILogger<ServerDatabases> logger)
 {
@@ -94,14 +99,24 @@ public sealed partial class ServerDatabases(
     /// host the first time (not counted in the server's limit), and used again when the game goes back to it, with the
     /// data it had; going back to the game's own files keeps it, as one of the server's databases (counted again).
     /// </summary>
-    /// <returns>Whether anything changed.</returns>
-    public async Task<Result<bool>> SetGameDatabaseAsync(ServerId serverId, Guid? hostId, CancellationToken cancellationToken)
+    /// <returns>Whether anything changed, and the database the game used before (to put back if its node does not take it).</returns>
+    public async Task<Result<GameDatabaseChange>> SetGameDatabaseAsync(ServerId serverId, Guid? hostId, CancellationToken cancellationToken)
     {
+        using var turn = await turns.Turns.AcquireAsync(serverId, cancellationToken);
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
         }
+
+        // A server on its way to another node gets the database it had there: the move checked that node can use it.
+        if (await TransferGate.RunningAsync(db, server.Id, cancellationToken))
+        {
+            return ServerErrors.Transferring;
+        }
+
+        var unchanged = new GameDatabaseChange(false, server.GameDatabaseId);
+        var changed = new GameDatabaseChange(true, server.GameDatabaseId);
 
         // The node gets the change with the server's spec right away: one that is away would go on giving the game the
         // database (specs are not sent again when it connects).
@@ -112,7 +127,8 @@ public sealed partial class ServerDatabases(
 
         if (hostId is null)
         {
-            return await LinkAsync(server.Id, null, null, cancellationToken);
+            var unlinked = await LinkAsync(server.Id, null, null, cancellationToken);
+            return unlinked.IsSuccess ? unlinked.Value ? changed : unchanged : unlinked.Error!;
         }
 
         if (server.ActiveOperationType == OperationType.ServerDelete)
@@ -151,17 +167,42 @@ public sealed partial class ServerDatabases(
         var existing = await db.ServerDatabases.AsNoTracking().SingleOrDefaultAsync(d => d.ServerId == server.Id && d.Name == name, cancellationToken);
         if (server.GameDatabaseId is { } current)
         {
-            return existing?.Id == current && existing.HostId == host.Id ? false : DatabaseErrors.GameDatabaseSet;
+            return existing?.Id == current && existing.HostId == host.Id ? unchanged : DatabaseErrors.GameDatabaseSet;
         }
 
         if (existing is not null)
         {
+            if (existing.HostId != host.Id)
+            {
+                return DatabaseErrors.GameNameTaken;
+            }
+
             // The one it had before: its data is there.
-            return existing.HostId == host.Id ? await LinkAsync(server.Id, existing, host, cancellationToken) : DatabaseErrors.NameTaken;
+            var linked = await LinkAsync(server.Id, existing, host, cancellationToken);
+            return linked.IsSuccess ? linked.Value ? changed : unchanged : linked.Error!;
         }
 
         var created = await CreateOnHostAsync(server, host, GameSuffix, forGame: true, cancellationToken);
-        return created.IsSuccess ? true : created.Error!;
+        return created.IsSuccess ? changed : created.Error!;
+    }
+
+    /// <summary>Puts back the database the game used before a choice its node did not take (<see cref="SetGameDatabaseAsync"/>).</summary>
+    public async Task RevertGameDatabaseAsync(ServerId serverId, ServerDatabaseId? previous)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
+        await locks.LockServerAsync(serverId, CancellationToken.None);
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == serverId, CancellationToken.None);
+        if (server is null || server.GameDatabaseId == previous
+            || (previous is { } id && !await db.ServerDatabases.AnyAsync(d => d.Id == id && d.ServerId == serverId, CancellationToken.None)))
+        {
+            return;
+        }
+
+        server.SetGameDatabase(previous, clock.GetUtcNow());
+        audit.Record(AuditActions.Server.GameDatabaseChanged, metadata: new { reverted = true, reason = "node_not_updated" })
+            .WithServer(server.Id, server.NodeId);
+        await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
     }
 
     public async Task<Result<ServerDatabaseCredentials>> CreateAsync(ServerId serverId, Guid hostId, string name, CancellationToken cancellationToken)
@@ -296,6 +337,13 @@ public sealed partial class ServerDatabases(
         if (database is null || host is null)
         {
             return DatabaseErrors.NotFound;
+        }
+
+        // The game's (1.0.37): its node must take the new password with the server's spec, or the game could not sign in.
+        if (await db.Servers.AsNoTracking().Where(s => s.Id == serverId && s.GameDatabaseId == database.Id).Select(s => (NodeId?)s.NodeId)
+                .SingleOrDefaultAsync(cancellationToken) is { } gameNode && !AgentGivesDatabases(gameNode))
+        {
+            return ServerErrors.GameDatabaseUnsupported;
         }
 
         if (hosts.Connection(host) is not { } connection)

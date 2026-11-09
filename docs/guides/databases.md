@@ -124,7 +124,10 @@ That database is not counted in the server's limit and cannot be deleted while t
 game's own files keeps it, with its data, among the server's databases (counted again); choosing that host again uses
 it as it was. Pulsar copies no data between the game's files and the database: AO2027 itself takes its SQLite file's
 characters into an empty database at its first start on it. The node's agent must be connected and up to date
-(Pulsar 1.0.37) for the change, which reaches it at once.
+(Pulsar 1.0.37) for the change, which reaches it at once; a running game keeps what it started with until its next
+start, and a new password for the game's database too. A host whose nodes are narrowed afterwards so that the server's
+node may no longer use it stops the server from starting until the game goes back to its own files or the host serves
+the node again.
 
 A clone of a server whose game uses a database is refused for now; moving the server to another node is allowed when the
 database host serves that node too.

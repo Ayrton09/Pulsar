@@ -381,6 +381,12 @@ public sealed partial class ServerManagement(
             return ServerErrors.MustBeStopped;
         }
 
+        // An agent that would ignore the game's database would start it on its own files (1.0.37).
+        if (server.GameDatabaseId is not null && !Announces(Connection(server.NodeId), AgentCapabilities.GameDatabase))
+        {
+            return ServerErrors.GameDatabaseUnsupported;
+        }
+
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         // The install follows the provisioning: what it would refuse is refused now, while someone is there to read it.
         if (await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(template), Connection(server.NodeId), null, cancellationToken) is { IsSuccess: false } login)

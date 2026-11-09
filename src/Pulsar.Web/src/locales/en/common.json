@@ -871,7 +871,9 @@
       "game_unsupported": "This server's game keeps its data in its own files only.",
       "engine_mismatch": "This server's game takes a database of another kind than that host's.",
       "game_database_set": "The game uses a database on another host: put it back on its own files first.",
-      "in_use_by_game": "The game keeps its data in this database: put it back on its own files first."
+      "in_use_by_game": "The game keeps its data in this database: put it back on its own files first.",
+      "game_name_taken": "Another host already has the server's database named for its game: delete it, or choose that host.",
+      "password_not_given": "The password changed, but the node did not take it: start the server from the panel to give it the new one."
     },
     "steamcmd": {
       "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings.",

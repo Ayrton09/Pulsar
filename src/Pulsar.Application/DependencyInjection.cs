@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddSingleton<SteamGuardCodes>();
         services.AddScoped<DatabaseHosts>();
         services.AddScoped<ServerDatabases>();
+        services.AddSingleton<GameDatabaseTurns>();
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerPlayers>();
         services.AddScoped<ServerFiles>();
