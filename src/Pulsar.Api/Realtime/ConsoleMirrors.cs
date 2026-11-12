@@ -38,6 +38,7 @@ internal sealed partial class ConsoleMirrors(
     {
         Mirror mirror;
         bool subscribe;
+        List<string> left = [];
         while (true)
         {
             mirror = _mirrors.GetOrAdd(server, _ => new Mirror(server, node));
@@ -53,9 +54,11 @@ internal sealed partial class ConsoleMirrors(
                 if (mirror.Node != node)
                 {
                     // The server moved to another node (a transfer): its old node's copy (that node's sequences, its
-                    // subscription) gives way to a new one, which whoever still watches the old one watches too.
+                    // subscription) gives way to a new one. Its watchers do not move with it: they were allowed to see the
+                    // old node's console, so they watch again (which checks again), as the ones of ServerGroup do.
                     var moved = new Mirror(server, node);
-                    moved.Watchers.UnionWith(mirror.Watchers);
+                    left.AddRange(mirror.Watchers);
+                    mirror.Watchers.Clear();
                     mirror.Generation++; // the old copy's pending unsubscribe or removal is off: it is no longer there
                     _mirrors.TryUpdate(server, moved, mirror);
                     continue;
@@ -67,6 +70,17 @@ internal sealed partial class ConsoleMirrors(
                 mirror.Subscribed = true;
                 break;
             }
+        }
+
+        // Before the new copy is subscribed, so nothing of the new node reaches them. Whoever is this very browser is added back.
+        foreach (var other in left)
+        {
+            if (_connections.TryGetValue(other, out var watched))
+            {
+                watched.TryRemove(server, out _);
+            }
+
+            await hub.Groups.RemoveFromGroupAsync(other, Group(server), cancellationToken);
         }
 
         _connections.GetOrAdd(connectionId, _ => new()).TryAdd(server, 0);

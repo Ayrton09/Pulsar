@@ -449,6 +449,22 @@ describe('live updates', () => {
     expect(live.calls('UnwatchServerAtNode')).toHaveLength(1);
   });
 
+  it('watches the console again after the server moves to another node', async () => {
+    const current = { ...details, server: { ...server } };
+    serverApi(operator, current);
+    answerNext({ WatchConsole: () => ({ entries: [entry(7, 'seven\r\n')], nodeConnected: true }) });
+    const live = await renderAt(`/servers/${server.id}?tab=console`);
+    await waitFor(() => expect(consoleText()).toBe('seven\r\n'));
+    expect(live.calls('WatchConsole')).toHaveLength(1);
+
+    current.server = { ...server, nodeId: '0192f1a0-0000-7000-8000-0000000000a2', nodeName: 'Other node' };
+    live.emit('ServersChanged', [server.id]);
+
+    // The new node's output has other sequences: it asks for all of it, and the panel checks the permission again.
+    await waitFor(() => expect(live.calls('WatchConsole')).toHaveLength(2));
+    expect(live.calls('WatchConsole').at(-1)?.args).toEqual([server.id, null]);
+  });
+
   it('shows the usage the agent pushes in the server header', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);

@@ -62,9 +62,15 @@ export interface ConsoleState {
 /**
  * Streams a server's console into <paramref name="write"/>: what the panel holds first, then new output, each
  * sequence once and in order. After a reconnect it asks for what came after the last entry it wrote, so nothing is
- * shown twice or skipped (a gap entry says when the node no longer had some output).
+ * shown twice or skipped (a gap entry says when the node no longer had some output). When the server moves to another
+ * node (a transfer) the panel ends the watch, so it watches again from the start: the new node's sequences are its own,
+ * and the panel checks the permission again.
  */
-export function useServerConsole(serverId: string, write: (entries: ConsoleEntry[]) => void): ConsoleState {
+export function useServerConsole(
+  serverId: string,
+  nodeId: string,
+  write: (entries: ConsoleEntry[]) => void,
+): ConsoleState {
   const live = useLive();
   const writeRef = useRef(write);
   const [state, setState] = useState<ConsoleState>({ joined: false, refused: false, failed: false });
@@ -137,7 +143,7 @@ export function useServerConsole(serverId: string, write: (entries: ConsoleEntry
         void live.invoke('UnwatchConsole', serverId).catch(() => {});
       }
     };
-  }, [live, serverId]);
+  }, [live, serverId, nodeId]);
 
   return state;
 }

@@ -53,7 +53,7 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         var nodeViewer = await scenario.CreateUserAsync("transfer-node-viewer");
         RoleSummary nodeRole;
         using (var role = await admin.PostAsync("/api/v1/roles", new CreateRoleRequest("transfer-node-view", null,
-                   PermissionScope.Node, [Permissions.Server.View])))
+                   PermissionScope.Node, [Permissions.Server.View, Permissions.Server.ConsoleView])))
         {
             await AccessScenario.EnsureSuccessAsync(role);
             nodeRole = (await role.Content.ReadFromJsonAsync<RoleSummary>(AccessScenario.Json, Ct))!;
@@ -65,7 +65,7 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         }
 
         var directViewer = await scenario.CreateUserAsync("transfer-direct-viewer");
-        var directRole = await Sftp.SftpTesting.ServerRoleAsync(scenario, "transfer-direct-view", Permissions.Server.View);
+        var directRole = await Sftp.SftpTesting.ServerRoleAsync(scenario, "transfer-direct-view", Permissions.Server.View, Permissions.Server.ConsoleView);
         await Sftp.SftpTesting.GrantAsync(admin, directViewer.Id, server, directRole.Id);
         using var nodeClient = await scenario.SignInAsync("transfer-node-viewer");
         using var directClient = await scenario.SignInAsync("transfer-direct-viewer");
@@ -73,6 +73,8 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         await using var directWatch = await BrowserHub.ConnectAsync(factory, directClient);
         Assert.NotNull(await oldWatch.Connection.InvokeAsync<ServerWatch?>("WatchServerAtNode", server, first.Config.NodeId, Ct));
         Assert.NotNull(await directWatch.Connection.InvokeAsync<ServerWatch?>("WatchServerAtNode", server, first.Config.NodeId, Ct));
+        Assert.NotNull(await oldWatch.Connection.InvokeAsync<ConsoleSnapshot?>("WatchConsole", server, null, Ct));
+        Assert.NotNull(await directWatch.Connection.InvokeAsync<ConsoleSnapshot?>("WatchConsole", server, null, Ct));
 
         // The old copy is deleted: installing it is not enough.
         using (var installer = await scenario.SignedInWithAsync("installer", Permissions.Server.View, Permissions.Server.Install,
@@ -127,12 +129,21 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         Assert.NotNull(await directWatch.Connection.InvokeAsync<ServerWatch?>("WatchServerAtNode", server, second.Config.NodeId, Ct));
         await directWatch.Connection.InvokeAsync("UnwatchServerAtNode", server, first.Config.NodeId, Ct);
         var before = oldWatch.Metrics.Count;
+        // The console follows the move too: whoever watched it on the old node watches again (which checks again), and
+        // the ones who watched before stop receiving it, whether they would still be allowed to or not.
+        Assert.NotNull(await directWatch.Connection.InvokeAsync<ConsoleSnapshot?>("WatchConsole", server, null, Ct));
+        var consoleBefore = oldWatch.Console.Count;
 
         // It runs on its new node.
         await ServerApi.CommandAsync(admin, server, "start");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running on its new node");
         Assert.Contains(second.Processes.Started, p => !p.IsSteamCmd);
         await InProcessAgent.EventuallyAsync(() => Task.FromResult(directWatch.Metrics.Any(m => m.ServerId == server)), "usage on the moved server");
+        var now = DateTimeOffset.UtcNow;
+        Assert.True(await second.Channel!.DeliverAsync(nameof(IAgentHub.ConsoleOutput),
+            new ServerConsoleOutput(server, [new ConsoleEntry(now.ToUnixTimeMilliseconds() * 1000, now, "printed on the new node\r\n")]), Ct));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(BrowserHub.Text(directWatch.Console).Contains("printed on the new node", StringComparison.Ordinal)),
+            "the moved server's console reached the one who watched it again");
         Assert.True(await second.Channel!.DeliverAsync(nameof(IAgentHub.Metrics),
             new MetricsBatch(DateTimeOffset.UtcNow, [new ServerMetrics(server, 1, 1024, 1, TimeSpan.FromSeconds(1))]), Ct));
         // Finish a marked broadcast, then a later invocation on the old connection. Its invocation dispatcher
@@ -143,6 +154,7 @@ public sealed class ServerTransferTests(PulsarApiFactory factory) : IClassFixtur
         await received.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
         Assert.Null(await oldWatch.Connection.InvokeAsync<ServerWatch?>("WatchServerAtNode", server, second.Config.NodeId, Ct));
         Assert.Equal(before, oldWatch.Metrics.Count);
+        Assert.Equal(consoleBefore, oldWatch.Console.Count);
         await ServerApi.CommandAsync(admin, server, "stop");
     }
 

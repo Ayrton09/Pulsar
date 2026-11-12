@@ -226,7 +226,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
     },
     [filter, show, t],
   );
-  const stream = useServerConsole(server.id, write);
+  const stream = useServerConsole(server.id, server.nodeId, write);
   const running = server.runtimeState === 'starting' || server.runtimeState === 'running';
 
   return (
