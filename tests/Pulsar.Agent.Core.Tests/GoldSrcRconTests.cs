@@ -2,6 +2,8 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Channels;
+using Microsoft.Extensions.Time.Testing;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Manifests;
@@ -103,19 +105,87 @@ public sealed class GoldSrcRconTests
     [Fact]
     public async Task AGameThatNeverStopsAnsweringIsCutAndItsSessionClosed()
     {
-        await using var game = new FakeHlds("secret");
-        // A pause of three seconds ends an answer (the log-on's echo), far longer than the game's 20 ms between pieces: the
-        // trickle must be cut by its time (twice the answer timeout), never end by itself, even when a busy machine holds
-        // the game for a second or two between two pieces.
-        var connector = new GoldSrcRconConnector { AnswerIdle = TimeSpan.FromSeconds(3), AnswerTimeout = TimeSpan.FromSeconds(3) };
-        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        using var pieces = new SemaphoreSlim(0);
+        await using var game = new FakeHlds("secret") { NextTricklePacket = token => pieces.WaitAsync(token) };
+        var clock = new RconTestClock();
+        var idle = TimeSpan.FromSeconds(3);
+        var connector = new GoldSrcRconConnector { AnswerIdle = idle, AnswerTimeout = TimeSpan.FromSeconds(5), Clock = clock };
+        var connecting = connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        await clock.WaitForTimerAsync(idle);
+        clock.Advance(idle); // The authentication echo ends by idle, before its overall deadline.
+        await using var session = await connecting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-        var answer = await session.ExecuteAsync("trickle", TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(20),
-            TestContext.Current.CancellationToken);
+        var answering = session.ExecuteAsync("trickle", TestContext.Current.CancellationToken);
+        for (var i = 0; i < 5; i++)
+        {
+            pieces.Release();
+            await clock.WaitForTimerAsync(idle); // The preceding packet was consumed and its idle wait is armed.
+            clock.Advance(TimeSpan.FromSeconds(2));
+            if (i < 4)
+            {
+                Assert.False(answering.IsCompleted); // No idle gap has expired; the answer must still be open.
+            }
+        }
+
+        // Ten seconds total, while the latest idle deadline is still a second away: only the total limit can end it.
+        var answer = await answering.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(answer);
         var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
         Assert.True(error.NotSent);
+    }
+
+    [Fact]
+    public async Task ACallerCanCancelAnAnswerWithAControlledClock()
+    {
+        using var pieces = new SemaphoreSlim(0);
+        await using var game = new FakeHlds("secret") { NextTricklePacket = token => pieces.WaitAsync(token) };
+        var clock = new RconTestClock();
+        var idle = TimeSpan.FromSeconds(3);
+        var connector = new GoldSrcRconConnector { AnswerIdle = idle, Clock = clock };
+        var connecting = connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        await clock.WaitForTimerAsync(idle);
+        clock.Advance(idle);
+        await using var session = await connecting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var answering = session.ExecuteAsync("trickle", cancelled.Token);
+        pieces.Release();
+        await clock.WaitForTimerAsync(idle);
+        await cancelled.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => answering.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    private sealed class RconTestClock : TimeProvider
+    {
+        private readonly FakeTimeProvider _time = new();
+        private readonly Channel<TimeSpan> _timers = Channel.CreateUnbounded<TimeSpan>();
+
+        public override DateTimeOffset GetUtcNow() => _time.GetUtcNow();
+
+        public override long GetTimestamp() => _time.GetTimestamp();
+
+        public override long TimestampFrequency => _time.TimestampFrequency;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = _time.CreateTimer(callback, state, dueTime, period);
+            _timers.Writer.TryWrite(dueTime);
+            return timer;
+        }
+
+        public void Advance(TimeSpan time) => _time.Advance(time);
+
+        public async Task WaitForTimerAsync(TimeSpan dueTime)
+        {
+            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            waiting.CancelAfter(TimeSpan.FromSeconds(10));
+            while (await _timers.Reader.ReadAsync(waiting.Token) != dueTime)
+            {
+                // Challenge, first-response and total-deadline timers precede the idle wait.
+            }
+        }
     }
 
     [Fact]
@@ -299,6 +369,8 @@ internal sealed class FakeHlds : IAsyncDisposable
 
     public bool ForgetChallenges { get; set; }
 
+    public Func<CancellationToken, Task>? NextTricklePacket { get; init; }
+
     public RconEndpoint Endpoint(string password) =>
         new(RconProtocol.GoldSrc, "127.0.0.1", ((IPEndPoint)_udp.Client.LocalEndPoint!).Port, password);
 
@@ -374,8 +446,16 @@ internal sealed class FakeHlds : IAsyncDisposable
                 case "trickle":
                     for (var i = 0; i < 200 && !_stop.IsCancellationRequested; i++)
                     {
+                        if (NextTricklePacket is { } next)
+                        {
+                            await next(_stop.Token);
+                        }
+
                         await SendAsync(Single("more\n"), to);
-                        await Task.Delay(20, _stop.Token);
+                        if (NextTricklePacket is null)
+                        {
+                            await Task.Delay(20, _stop.Token);
+                        }
                     }
 
                     break;

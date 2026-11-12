@@ -27,6 +27,8 @@ public sealed class GoldSrcRconConnector : IRconConnector
     /// <summary>Who holds which UDP port (Windows' UDP table); null checks nothing (tests).</summary>
     public ILocalPeers? Peers { get; init; }
 
+    internal TimeProvider Clock { get; init; } = TimeProvider.System;
+
     public async Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
@@ -39,7 +41,7 @@ public sealed class GoldSrcRconConnector : IRconConnector
             var peers = Peers;
             void Verify() => RconPeers.VerifyUdp(peers, endpoint, owner);
             Verify();
-            var session = new GoldSrcRconSession(udp, endpoint.Password, AnswerTimeout, AnswerIdle, Verify);
+            var session = new GoldSrcRconSession(udp, endpoint.Password, AnswerTimeout, AnswerIdle, Verify, Clock);
             await session.LogOnAsync(cancellationToken);
             return session;
         }
@@ -57,7 +59,8 @@ public sealed class GoldSrcRconConnector : IRconConnector
 }
 
 /// <param name="verify">Throws unless the game's port is still held by the server's game alone; run before the password is sent.</param>
-internal sealed class GoldSrcRconSession(UdpClient udp, string password, TimeSpan answerTimeout, TimeSpan answerIdle, Action verify) : IRconSession
+internal sealed class GoldSrcRconSession(UdpClient udp, string password, TimeSpan answerTimeout, TimeSpan answerIdle, Action verify,
+    TimeProvider clock) : IRconSession
 {
     private const int SinglePacket = -1;
     private const int SplitPacket = -2;
@@ -347,10 +350,27 @@ internal sealed class GoldSrcRconSession(UdpClient udp, string password, TimeSpa
         _pending.Clear();
     }
 
-    private static CancellationTokenSource Timeout(TimeSpan after, CancellationToken cancellationToken)
+    private TimeoutScope Timeout(TimeSpan after, CancellationToken cancellationToken) => new(after, clock, cancellationToken);
+
+    private sealed class TimeoutScope : IDisposable
     {
-        var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        source.CancelAfter(after);
-        return source;
+        private readonly CancellationTokenSource _elapsed;
+        private readonly CancellationTokenSource _linked;
+
+        public TimeoutScope(TimeSpan after, TimeProvider clock, CancellationToken cancellationToken)
+        {
+            _elapsed = new CancellationTokenSource(after, clock);
+            _linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _elapsed.Token);
+        }
+
+        public CancellationToken Token => _linked.Token;
+
+        public bool IsCancellationRequested => _linked.IsCancellationRequested;
+
+        public void Dispose()
+        {
+            _linked.Dispose();
+            _elapsed.Dispose();
+        }
     }
 }
