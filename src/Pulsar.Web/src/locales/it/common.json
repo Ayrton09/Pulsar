@@ -1381,7 +1381,7 @@
       "range": "Da {{min}} a {{max}}.",
       "secretSet": "Un valore è impostato; digitarne uno nuovo per sostituirlo.",
       "protected": "Solo gli utenti che possono modificare le impostazioni del server possono cambiarlo.",
-      "unset": "Valore del gioco",
+      "unset": "Predefinito",
       "choose": "Scegli…",
       "outOfRange": "Fuori dall'intervallo consentito.",
       "notANumber": "Inserire un numero.",
@@ -7862,6 +7862,186 @@
             "0": "Spento",
             "1": "Acceso (manutenzione)"
           }
+        },
+        "bots": {
+          "label": "Bot",
+          "description": "Personaggi che giocano da soli perché il mondo non sembri vuoto; ognuno occupa un posto da giocatore. 0 per nessuno, fino a 96. Vuoto, Bots resta com'è in Server.ini."
+        },
+        "dayMinutes": {
+          "label": "Durata del giorno (minuti)",
+          "description": "Minuti che dura un giorno intero: alba, giorno, tramonto e notte. Vuoto, MinutosDelDia resta com'è in Server.ini."
+        },
+        "weatherMinutes": {
+          "label": "Cambio del meteo (minuti)",
+          "description": "Minuti tra un cambio del meteo e l'altro. Vuoto, MinutosDeClima resta com'è in Server.ini."
+        },
+        "rainPercent": {
+          "label": "Pioggia (%)",
+          "description": "Quanto spesso un cambio del meteo porta pioggia, da 0 a 100. Vuoto, PorcentajeLluvia resta com'è in Server.ini."
+        },
+        "globalDrop": {
+          "label": "Drop globale",
+          "description": "Una creatura uccisa su questo numero lascia anche un oggetto della tabella del drop globale. 0 lo spegne. Vuoto, DropGlobal resta com'è in Server.ini."
+        },
+        "campfireMinutes": {
+          "label": "Falò (minuti)",
+          "description": "Minuti che un falò resta acceso prima di spegnersi. 0: non si spegne mai, come nell'originale. Vuoto, MinutosDeFogata resta com'è in Server.ini."
+        },
+        "keepFloorItems": {
+          "label": "Gli oggetti a terra restano dopo un riavvio",
+          "description": "Ciò che i giocatori hanno lasciato a terra c'è ancora dopo il riavvio del server. Vuoto, PersistirSuelo resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "sailingToCross": {
+          "label": "Navigazione per attraversare il mare",
+          "description": "Punti di Navigazione richiesti dai passaggi verso un'altra terra. 0 non ne richiede, come nell'originale. Vuoto, NavegacionParaCruzar resta com'è in Server.ini."
+        },
+        "goldOnLevelUp": {
+          "label": "Oro al salire di livello",
+          "description": "Oro regalato a un personaggio ogni volta che sale di livello. 0 non ne dà, come nell'originale. Vuoto, OroAlSubirNivel resta com'è in Server.ini."
+        },
+        "healOnLevelUp": {
+          "label": "Cura completa al salire di livello",
+          "description": "Salire di livello riempie vita, mana ed energia. Spento, come nell'originale, riempie solo la vita. Vuoto, CuraAlSubirNivel resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "Togliere gli oggetti da principiante",
+          "description": "Superato il livello 15 spariscono gli oggetti (Newbies), e solo quelli. Spento, come nell'originale, restano. Vuoto, QuitarEquipoNovato resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "sentinel": {
+          "label": "Sentinella anti-macro",
+          "description": "Una sentinella chiede a chi lavora di scrivere /CENTINELA con un codice; chi non risponde entro due minuti va in prigione. Vuoto, Centinela resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "familiarSeeks": {
+          "label": "Il famiglio cerca nemici",
+          "description": "Il famiglio attacca da solo la creatura ostile più vicina al padrone. Spento, come nell'originale, combatte solo il suo bersaglio. Vuoto, FamiliarBusca resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "druidMorph": {
+          "label": "Metamorfosi del druido",
+          "description": "-1: permanente, come nell'AO classico; 0: spenta; oppure i secondi che dura. Vuoto, MetamorfosisDelDruida resta com'è in Server.ini."
+        },
+        "rinkelPasses": {
+          "label": "Lasciapassare di Rinkel",
+          "description": "I due lasciapassare venduti dal pirata del porto di Rinkel si possono usare. Spento, come nei dati originali, no. Vuoto, PasesDeRinkel resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "seahorses": {
+          "label": "Ippocampi in mare aperto",
+          "description": "Pescare con la rete in mare aperto porta ippocampi invece dei soliti pesci. Vuoto, HipocamposEnMarAbierto resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "guardsAttack": {
+          "label": "Le guardie attaccano",
+          "description": "Le guardie delle città attaccano le fazioni nemiche. Spento, come nell'originale, non attaccano. Vuoto, GuardiasAtacan resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "guardsChase": {
+          "label": "Le guardie inseguono",
+          "description": "La guardia che vede un nemico lo insegue finché resta in città, poi torna al suo posto. Spento, restano ferme. Vuoto, GuardiasPersiguen resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "Le guardie attaccano i principianti",
+          "description": "Le guardie attaccano anche i principianti (fino al livello 15) dell'altra fazione. Vuoto, GuardiasAtacanNewbies resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "Le guardie imperiali attaccano",
+          "description": "Le fazioni che le guardie imperiali attaccano, separate da virgole, come le chiama il gioco: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vuoto, GuardiasImperialesAtacanA resta com'è in Server.ini."
+        },
+        "republicanGuardsAttack": {
+          "label": "Le guardie repubblicane attaccano",
+          "description": "Le fazioni che le guardie repubblicane attaccano, separate da virgole, come le chiama il gioco: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vuoto, GuardiasRepublicanosAtacanA resta com'è in Server.ini."
+        },
+        "chaosGuardsAttack": {
+          "label": "Le guardie del Caos attaccano",
+          "description": "Le fazioni che le guardie del Caos attaccano, separate da virgole, come le chiama il gioco: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vuoto, GuardiasDelCaosAtacanA resta com'è in Server.ini."
+        },
+        "multiLogin": {
+          "label": "Più connessioni per IP",
+          "description": "Spento: una sola connessione per IP. Vuoto, AllowMultiLogins resta com'è in Server.ini.",
+          "options": {
+            "1": "Acceso",
+            "0": "Spento"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "Connessioni per IP",
+          "description": "Massimo di connessioni aperte per IP, comprese quelle non ancora entrate. 0: 10, come nell'originale. Vuoto, LimiteConexionesPorIp resta com'è in Server.ini."
+        },
+        "charactersPerIp": {
+          "label": "Personaggi per IP",
+          "description": "Personaggi della stessa IP che giocano insieme. 0 per nessun limite. Vuoto, MaxPersonajesPorIp resta com'è in Server.ini."
+        },
+        "accountsPerIp": {
+          "label": "Nuovi account per IP",
+          "description": "Account che una IP può creare ogni dieci minuti. 0 per nessun limite. Vuoto, CuentasNuevasPorIp resta com'è in Server.ini."
+        },
+        "idleMinutes": {
+          "label": "Limite di inattività (minuti)",
+          "description": "Minuti senza attività prima di disconnettere un giocatore. 0: mai. Vuoto, IdleLimit resta com'è in Server.ini."
+        },
+        "cheatsToKick": {
+          "label": "Trucchi per espellere",
+          "description": "Trucchi rilevati su un account oltre i quali ogni nuovo lo espelle. 0 spegne questo gradino. Vuoto, TrampasParaEchar resta com'è in Server.ini."
+        },
+        "cheatsToBan": {
+          "label": "Trucchi per bannare",
+          "description": "Trucchi rilevati su un account per bannare l'account e il personaggio. 0 spegne questo gradino. Vuoto, TrampasParaBanear resta com'è in Server.ini."
+        },
+        "minPasswordLength": {
+          "label": "Password più corta",
+          "description": "Lunghezza minima della password di un giocatore. Vuoto, ClaveMinima resta com'è in Server.ini."
+        },
+        "saveMinutes": {
+          "label": "Salvare i personaggi (minuti)",
+          "description": "Minuti tra un salvataggio dei personaggi connessi e l'altro. 0 lo spegne. Vuoto, MinutosGuardarUsuarios resta com'è in Server.ini."
+        },
+        "backupMinutes": {
+          "label": "Copia del mondo del gioco (minuti)",
+          "description": "Minuti tra le copie del mondo fatte dal gioco stesso in data/backups (a parte i backup di Pulsar). 0 le spegne. Vuoto, MinutosBackup resta com'è in Server.ini."
+        },
+        "backupsToKeep": {
+          "label": "Copie del mondo da conservare",
+          "description": "Quante copie del mondo fatte dal gioco tenere. 0 le tiene tutte. Vuoto, BackupsAConservar resta com'è in Server.ini."
+        },
+        "logDays": {
+          "label": "Giorni di log",
+          "description": "Giorni di log del gioco in data/logs da conservare. 0: solo console. Vuoto, LogDias resta com'è in Server.ini."
         }
       },
       "ports": {

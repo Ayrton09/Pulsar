@@ -1381,7 +1381,7 @@
       "range": "From {{min}} to {{max}}.",
       "secretSet": "A value is set; type a new one to replace it.",
       "protected": "Only users who can edit server settings can change it.",
-      "unset": "Game's own",
+      "unset": "Default",
       "choose": "Choose…",
       "outOfRange": "Out of the allowed range.",
       "notANumber": "Type a number.",

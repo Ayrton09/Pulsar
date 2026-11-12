@@ -1381,7 +1381,7 @@
       "range": "De {{min}} à {{max}}.",
       "secretSet": "Une valeur est définie ; saisissez-en une nouvelle pour la remplacer.",
       "protected": "Seuls les utilisateurs autorisés à modifier les paramètres du serveur peuvent le changer.",
-      "unset": "Valeur du jeu",
+      "unset": "Par défaut",
       "choose": "Choisir…",
       "outOfRange": "Hors de la plage autorisée.",
       "notANumber": "Saisissez un nombre.",
@@ -7862,6 +7862,186 @@
             "0": "Désactivé",
             "1": "Activé (maintenance)"
           }
+        },
+        "bots": {
+          "label": "Bots",
+          "description": "Personnages qui jouent seuls pour que le monde ne paraisse pas vide ; chacun prend une place de joueur. 0 pour aucun, jusqu'à 96. Vide, Bots reste tel que Server.ini l'indique."
+        },
+        "dayMinutes": {
+          "label": "Durée du jour (minutes)",
+          "description": "Minutes que dure une journée entière : aube, jour, crépuscule et nuit. Vide, MinutosDelDia reste tel que Server.ini l'indique."
+        },
+        "weatherMinutes": {
+          "label": "Changement de météo (minutes)",
+          "description": "Minutes entre deux changements de météo. Vide, MinutosDeClima reste tel que Server.ini l'indique."
+        },
+        "rainPercent": {
+          "label": "Pluie (%)",
+          "description": "À quelle fréquence un changement de météo apporte la pluie, de 0 à 100. Vide, PorcentajeLluvia reste tel que Server.ini l'indique."
+        },
+        "globalDrop": {
+          "label": "Butin global",
+          "description": "Une créature tuée sur ce nombre laisse aussi un objet de la table du butin global. 0 le désactive. Vide, DropGlobal reste tel que Server.ini l'indique."
+        },
+        "campfireMinutes": {
+          "label": "Feu de camp (minutes)",
+          "description": "Minutes pendant lesquelles un feu de camp brûle avant de s'éteindre. 0 : il ne s'éteint jamais, comme dans l'original. Vide, MinutosDeFogata reste tel que Server.ini l'indique."
+        },
+        "keepFloorItems": {
+          "label": "Les objets au sol survivent aux redémarrages",
+          "description": "Ce que les joueurs ont laissé au sol est toujours là après un redémarrage du serveur. Vide, PersistirSuelo reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "sailingToCross": {
+          "label": "Navigation pour traverser la mer",
+          "description": "Points de Navigation qu'exigent les passages vers une autre terre. 0 n'en exige aucun, comme dans l'original. Vide, NavegacionParaCruzar reste tel que Server.ini l'indique."
+        },
+        "goldOnLevelUp": {
+          "label": "Or au passage de niveau",
+          "description": "Or offert à un personnage à chaque niveau gagné. 0 n'en donne pas, comme dans l'original. Vide, OroAlSubirNivel reste tel que Server.ini l'indique."
+        },
+        "healOnLevelUp": {
+          "label": "Soin complet au passage de niveau",
+          "description": "Gagner un niveau remplit la vie, le mana et l'énergie. Désactivé, comme dans l'original, il ne remplit que la vie. Vide, CuraAlSubirNivel reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "Retirer les objets de débutant",
+          "description": "Après le niveau 15, les objets (Newbies) disparaissent, et seulement eux. Désactivé, comme dans l'original, ils restent. Vide, QuitarEquipoNovato reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "sentinel": {
+          "label": "Sentinelle anti-macro",
+          "description": "Une sentinelle demande à qui travaille de taper /CENTINELA avec un code ; qui ne répond pas en deux minutes va en prison. Vide, Centinela reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "familiarSeeks": {
+          "label": "Le familier cherche les ennemis",
+          "description": "Le familier attaque de lui-même la créature hostile la plus proche de son maître. Désactivé, comme dans l'original, il ne combat que sa cible. Vide, FamiliarBusca reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "druidMorph": {
+          "label": "Métamorphose du druide",
+          "description": "-1 : permanente, comme dans AO classique ; 0 : désactivée ; ou les secondes qu'elle dure. Vide, MetamorfosisDelDruida reste tel que Server.ini l'indique."
+        },
+        "rinkelPasses": {
+          "label": "Laissez-passer de Rinkel",
+          "description": "Les deux laissez-passer vendus par le pirate du port de Rinkel sont utilisables. Désactivé, comme dans les données d'origine, non. Vide, PasesDeRinkel reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "seahorses": {
+          "label": "Hippocampes en haute mer",
+          "description": "Pêcher au filet en haute mer ramène des hippocampes au lieu des poissons habituels. Vide, HipocamposEnMarAbierto reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "guardsAttack": {
+          "label": "Les gardes attaquent",
+          "description": "Les gardes des villes attaquent les camps ennemis. Désactivé, comme dans l'original, ils n'attaquent pas. Vide, GuardiasAtacan reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "guardsChase": {
+          "label": "Les gardes poursuivent",
+          "description": "Un garde qui voit un ennemi le poursuit tant qu'il reste en ville, puis revient à son poste. Désactivé, ils restent sur place. Vide, GuardiasPersiguen reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "Les gardes attaquent les débutants",
+          "description": "Les gardes attaquent aussi les débutants (jusqu'au niveau 15) de l'autre camp. Vide, GuardiasAtacanNewbies reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "Les gardes impériaux attaquent",
+          "description": "Les factions que les gardes impériaux attaquent, séparées par des virgules, comme le jeu les nomme : Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vide, GuardiasImperialesAtacanA reste tel que Server.ini l'indique."
+        },
+        "republicanGuardsAttack": {
+          "label": "Les gardes républicains attaquent",
+          "description": "Les factions que les gardes républicains attaquent, séparées par des virgules, comme le jeu les nomme : Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vide, GuardiasRepublicanosAtacanA reste tel que Server.ini l'indique."
+        },
+        "chaosGuardsAttack": {
+          "label": "Les gardes du Chaos attaquent",
+          "description": "Les factions que les gardes du Chaos attaquent, séparées par des virgules, comme le jeu les nomme : Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Vide, GuardiasDelCaosAtacanA reste tel que Server.ini l'indique."
+        },
+        "multiLogin": {
+          "label": "Plusieurs connexions par IP",
+          "description": "Désactivé : une seule connexion par IP. Vide, AllowMultiLogins reste tel que Server.ini l'indique.",
+          "options": {
+            "1": "Activé",
+            "0": "Désactivé"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "Connexions par IP",
+          "description": "Nombre maximal de connexions ouvertes par IP, y compris celles pas encore connectées. 0 : 10, comme dans l'original. Vide, LimiteConexionesPorIp reste tel que Server.ini l'indique."
+        },
+        "charactersPerIp": {
+          "label": "Personnages par IP",
+          "description": "Personnages d'une même IP qui jouent en même temps. 0 pour aucune limite. Vide, MaxPersonajesPorIp reste tel que Server.ini l'indique."
+        },
+        "accountsPerIp": {
+          "label": "Nouveaux comptes par IP",
+          "description": "Comptes qu'une IP peut créer toutes les dix minutes. 0 pour aucune limite. Vide, CuentasNuevasPorIp reste tel que Server.ini l'indique."
+        },
+        "idleMinutes": {
+          "label": "Limite d'inactivité (minutes)",
+          "description": "Minutes sans activité avant qu'un joueur soit déconnecté. 0 : jamais. Vide, IdleLimit reste tel que Server.ini l'indique."
+        },
+        "cheatsToKick": {
+          "label": "Triches pour expulser",
+          "description": "Triches détectées sur un compte à partir desquelles chaque nouvelle l'expulse. 0 désactive ce palier. Vide, TrampasParaEchar reste tel que Server.ini l'indique."
+        },
+        "cheatsToBan": {
+          "label": "Triches pour bannir",
+          "description": "Triches détectées sur un compte pour bannir le compte et le personnage. 0 désactive ce palier. Vide, TrampasParaBanear reste tel que Server.ini l'indique."
+        },
+        "minPasswordLength": {
+          "label": "Mot de passe le plus court",
+          "description": "Longueur minimale du mot de passe d'un joueur. Vide, ClaveMinima reste tel que Server.ini l'indique."
+        },
+        "saveMinutes": {
+          "label": "Sauvegarder les personnages (minutes)",
+          "description": "Minutes entre deux sauvegardes des personnages connectés. 0 la désactive. Vide, MinutosGuardarUsuarios reste tel que Server.ini l'indique."
+        },
+        "backupMinutes": {
+          "label": "Copie du monde du jeu (minutes)",
+          "description": "Minutes entre les copies du monde faites par le jeu lui-même dans data/backups (à part des sauvegardes de Pulsar). 0 les désactive. Vide, MinutosBackup reste tel que Server.ini l'indique."
+        },
+        "backupsToKeep": {
+          "label": "Copies du monde à conserver",
+          "description": "Combien de copies du monde faites par le jeu conserver. 0 les garde toutes. Vide, BackupsAConservar reste tel que Server.ini l'indique."
+        },
+        "logDays": {
+          "label": "Jours de journaux",
+          "description": "Jours de journaux du jeu à conserver dans data/logs. 0 : console seulement. Vide, LogDias reste tel que Server.ini l'indique."
         }
       },
       "ports": {

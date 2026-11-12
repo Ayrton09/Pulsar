@@ -1381,7 +1381,7 @@
       "range": "范围 {{min}} 到 {{max}}。",
       "secretSet": "已设置值；输入新值可替换。",
       "protected": "只有能编辑服务器设置的用户才能更改。",
-      "unset": "游戏默认值",
+      "unset": "默认",
       "choose": "请选择…",
       "outOfRange": "超出允许范围。",
       "notANumber": "请输入数字。",
@@ -7862,6 +7862,186 @@
             "0": "关闭",
             "1": "开启（维护）"
           }
+        },
+        "bots": {
+          "label": "机器人",
+          "description": "自行游玩的角色，让世界不显得空荡；每个占用一个玩家名额。0 为无，最多 96。留空则保留 Server.ini 中的 Bots。"
+        },
+        "dayMinutes": {
+          "label": "一天时长（分钟）",
+          "description": "完整一天（黎明、白天、黄昏、夜晚）持续的分钟数。留空则保留 Server.ini 中的 MinutosDelDia。"
+        },
+        "weatherMinutes": {
+          "label": "天气变化（分钟）",
+          "description": "天气变化之间的分钟数。留空则保留 Server.ini 中的 MinutosDeClima。"
+        },
+        "rainPercent": {
+          "label": "降雨（%）",
+          "description": "天气变化带来降雨的频率，0 到 100。留空则保留 Server.ini 中的 PorcentajeLluvia。"
+        },
+        "globalDrop": {
+          "label": "全局掉落",
+          "description": "每击杀这么多个生物，就有 1 个额外掉落全局掉落表中的物品。0 为关闭。留空则保留 Server.ini 中的 DropGlobal。"
+        },
+        "campfireMinutes": {
+          "label": "篝火（分钟）",
+          "description": "篝火熄灭前燃烧的分钟数。0：与原版一样永不熄灭。留空则保留 Server.ini 中的 MinutosDeFogata。"
+        },
+        "keepFloorItems": {
+          "label": "地上物品在重启后保留",
+          "description": "玩家扔在地上的物品在服务器重启后仍然存在。留空则保留 Server.ini 中的 PersistirSuelo。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "sailingToCross": {
+          "label": "渡海所需航海",
+          "description": "前往其他大陆的航线所需的航海点数。0 为不需要，与原版相同。留空则保留 Server.ini 中的 NavegacionParaCruzar。"
+        },
+        "goldOnLevelUp": {
+          "label": "升级金币",
+          "description": "角色每次升级获赠的金币。0 为不给，与原版相同。留空则保留 Server.ini 中的 OroAlSubirNivel。"
+        },
+        "healOnLevelUp": {
+          "label": "升级时完全恢复",
+          "description": "升级时生命、法力和体力全满。关闭时与原版相同，只回满生命。留空则保留 Server.ini 中的 CuraAlSubirNivel。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "移除新手物品",
+          "description": "超过 15 级后 (Newbies) 物品会消失，且只有这些。关闭时与原版相同，物品保留。留空则保留 Server.ini 中的 QuitarEquipoNovato。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "sentinel": {
+          "label": "反宏哨兵",
+          "description": "哨兵会要求正在劳作的玩家输入带代码的 /CENTINELA；两分钟内未回应者会被关进监狱。留空则保留 Server.ini 中的 Centinela。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "familiarSeeks": {
+          "label": "使魔主动寻敌",
+          "description": "使魔会主动攻击离主人最近的敌对生物。关闭时与原版相同，只攻击已有的目标。留空则保留 Server.ini 中的 FamiliarBusca。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "druidMorph": {
+          "label": "德鲁伊变形",
+          "description": "-1：永久，与经典 AO 相同；0：关闭；或持续的秒数。留空则保留 Server.ini 中的 MetamorfosisDelDruida。"
+        },
+        "rinkelPasses": {
+          "label": "林克尔通行证",
+          "description": "林克尔港海盗出售的两张通行证可以使用。关闭时与原始数据相同，无法使用。留空则保留 Server.ini 中的 PasesDeRinkel。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "seahorses": {
+          "label": "外海海马",
+          "description": "在外海用渔网捕鱼会捕到海马，而不是平常的鱼。留空则保留 Server.ini 中的 HipocamposEnMarAbierto。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "guardsAttack": {
+          "label": "城市卫兵攻击",
+          "description": "城市卫兵会攻击敌对阵营。关闭时与原版相同，不会攻击。留空则保留 Server.ini 中的 GuardiasAtacan。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "guardsChase": {
+          "label": "卫兵追击",
+          "description": "看到敌人的卫兵会在其留在城中时追击，之后返回岗位。关闭时原地不动。留空则保留 Server.ini 中的 GuardiasPersiguen。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "卫兵攻击新手",
+          "description": "卫兵也会攻击对方阵营的新手（15 级以下）。留空则保留 Server.ini 中的 GuardiasAtacanNewbies。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "帝国卫兵攻击",
+          "description": "帝国卫兵攻击的派系，用逗号分隔，名称与游戏一致：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。留空则保留 Server.ini 中的 GuardiasImperialesAtacanA。"
+        },
+        "republicanGuardsAttack": {
+          "label": "共和国卫兵攻击",
+          "description": "共和国卫兵攻击的派系，用逗号分隔，名称与游戏一致：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。留空则保留 Server.ini 中的 GuardiasRepublicanosAtacanA。"
+        },
+        "chaosGuardsAttack": {
+          "label": "混沌卫兵攻击",
+          "description": "混沌卫兵攻击的派系，用逗号分隔，名称与游戏一致：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。留空则保留 Server.ini 中的 GuardiasDelCaosAtacanA。"
+        },
+        "multiLogin": {
+          "label": "每个 IP 多个连接",
+          "description": "关闭：每个 IP 只能有一个连接。留空则保留 Server.ini 中的 AllowMultiLogins。",
+          "options": {
+            "1": "开启",
+            "0": "关闭"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "每个 IP 的连接数",
+          "description": "每个 IP 可打开的连接上限（包括尚未登录的）。0：10，与原版相同。留空则保留 Server.ini 中的 LimiteConexionesPorIp。"
+        },
+        "charactersPerIp": {
+          "label": "每个 IP 的角色数",
+          "description": "同一 IP 同时游玩的角色数。0 为不限。留空则保留 Server.ini 中的 MaxPersonajesPorIp。"
+        },
+        "accountsPerIp": {
+          "label": "每个 IP 的新账号",
+          "description": "每个 IP 每十分钟可创建的账号数。0 为不限。留空则保留 Server.ini 中的 CuentasNuevasPorIp。"
+        },
+        "idleMinutes": {
+          "label": "闲置限制（分钟）",
+          "description": "玩家无操作多少分钟后断开连接。0：从不。留空则保留 Server.ini 中的 IdleLimit。"
+        },
+        "cheatsToKick": {
+          "label": "踢出所需作弊次数",
+          "description": "账号检测到的作弊达到此数后，之后每次作弊都会被踢出。0 关闭此级。留空则保留 Server.ini 中的 TrampasParaEchar。"
+        },
+        "cheatsToBan": {
+          "label": "封禁所需作弊次数",
+          "description": "账号检测到多少次作弊后封禁账号和角色。0 关闭此级。留空则保留 Server.ini 中的 TrampasParaBanear。"
+        },
+        "minPasswordLength": {
+          "label": "最短密码",
+          "description": "玩家密码的最少字符数。留空则保留 Server.ini 中的 ClaveMinima。"
+        },
+        "saveMinutes": {
+          "label": "保存角色（分钟）",
+          "description": "保存在线角色的间隔分钟数。0 为关闭。留空则保留 Server.ini 中的 MinutosGuardarUsuarios。"
+        },
+        "backupMinutes": {
+          "label": "游戏世界副本（分钟）",
+          "description": "游戏自己在 data/backups 中保存世界副本的间隔分钟数（与 Pulsar 的备份无关）。0 为关闭。留空则保留 Server.ini 中的 MinutosBackup。"
+        },
+        "backupsToKeep": {
+          "label": "保留的世界副本数",
+          "description": "保留多少个游戏自己的世界副本。0 为全部保留。留空则保留 Server.ini 中的 BackupsAConservar。"
+        },
+        "logDays": {
+          "label": "日志天数",
+          "description": "在 data/logs 中保留游戏日志的天数。0：仅控制台。留空则保留 Server.ini 中的 LogDias。"
         }
       },
       "ports": {

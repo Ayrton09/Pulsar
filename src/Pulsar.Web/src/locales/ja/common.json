@@ -1381,7 +1381,7 @@
       "range": "{{min}}~{{max}}。",
       "secretSet": "値が設定されています。置き換えるには新しい値を入力してください。",
       "protected": "サーバー設定を編集できるユーザーのみ変更できます。",
-      "unset": "ゲームの既定値",
+      "unset": "デフォルト",
       "choose": "選択…",
       "outOfRange": "許可された範囲外です。",
       "notANumber": "数値を入力してください。",
@@ -7862,6 +7862,186 @@
             "0": "オフ",
             "1": "オン（メンテナンス）"
           }
+        },
+        "bots": {
+          "label": "ボット",
+          "description": "世界が空に見えないよう自分で遊ぶキャラクター。それぞれプレイヤー枠を 1 つ使います。0 でなし、最大 96。空欄なら Server.ini の Bots のままです。"
+        },
+        "dayMinutes": {
+          "label": "1 日の長さ（分）",
+          "description": "夜明け・昼・夕方・夜を合わせた 1 日の長さ（分）。空欄なら Server.ini の MinutosDelDia のままです。"
+        },
+        "weatherMinutes": {
+          "label": "天候の変化（分）",
+          "description": "天候が変わる間隔（分）。空欄なら Server.ini の MinutosDeClima のままです。"
+        },
+        "rainPercent": {
+          "label": "雨（%）",
+          "description": "天候の変化で雨になる頻度（0〜100）。空欄なら Server.ini の PorcentajeLluvia のままです。"
+        },
+        "globalDrop": {
+          "label": "グローバルドロップ",
+          "description": "倒したクリーチャーのこの数に 1 体が、グローバルドロップ表のアイテムも落とします。0 で無効。空欄なら Server.ini の DropGlobal のままです。"
+        },
+        "campfireMinutes": {
+          "label": "たき火（分）",
+          "description": "たき火が消えるまでの時間（分）。0 なら元のゲームと同じく消えません。空欄なら Server.ini の MinutosDeFogata のままです。"
+        },
+        "keepFloorItems": {
+          "label": "床のアイテムを再起動後も残す",
+          "description": "プレイヤーが床に置いたものが、サーバーの再起動後も残ります。空欄なら Server.ini の PersistirSuelo のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "sailingToCross": {
+          "label": "海を渡るのに必要な航海",
+          "description": "別の大陸への渡航に必要な航海ポイント。0 なら元のゲームと同じく不要です。空欄なら Server.ini の NavegacionParaCruzar のままです。"
+        },
+        "goldOnLevelUp": {
+          "label": "レベルアップ時のゴールド",
+          "description": "キャラクターがレベルアップするたびにもらえるゴールド。0 なら元のゲームと同じくなし。空欄なら Server.ini の OroAlSubirNivel のままです。"
+        },
+        "healOnLevelUp": {
+          "label": "レベルアップで全回復",
+          "description": "レベルアップで HP・マナ・スタミナが満タンになります。オフなら元のゲームと同じく HP のみ。空欄なら Server.ini の CuraAlSubirNivel のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "初心者アイテムを外す",
+          "description": "レベル 15 を超えると (Newbies) アイテムだけが消えます。オフなら元のゲームと同じく残ります。空欄なら Server.ini の QuitarEquipoNovato のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "sentinel": {
+          "label": "アンチマクロの番人",
+          "description": "作業中のプレイヤーに番人がコード付きの /CENTINELA の入力を求め、2 分以内に答えないと投獄されます。空欄なら Server.ini の Centinela のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "familiarSeeks": {
+          "label": "使い魔が敵を探す",
+          "description": "使い魔が主人に最も近い敵対クリーチャーに自分から向かいます。オフなら元のゲームと同じく標的だけと戦います。空欄なら Server.ini の FamiliarBusca のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "druidMorph": {
+          "label": "ドルイドの変身",
+          "description": "-1：クラシック AO と同じく永続、0：無効、またはその持続秒数。空欄なら Server.ini の MetamorfosisDelDruida のままです。"
+        },
+        "rinkelPasses": {
+          "label": "リンケルの通行証",
+          "description": "リンケル港の海賊が売る 2 枚の通行証が使えます。オフなら元のデータと同じく使えません。空欄なら Server.ini の PasesDeRinkel のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "seahorses": {
+          "label": "外洋のヒッポカンポス",
+          "description": "外洋で網を使うと、いつもの魚の代わりにヒッポカンポスが獲れます。空欄なら Server.ini の HipocamposEnMarAbierto のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "guardsAttack": {
+          "label": "衛兵が攻撃する",
+          "description": "街の衛兵が敵対する陣営を攻撃します。オフなら元のゲームと同じく攻撃しません。空欄なら Server.ini の GuardiasAtacan のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "guardsChase": {
+          "label": "衛兵が追跡する",
+          "description": "敵を見つけた衛兵は街にいる間追いかけ、その後持ち場に戻ります。オフなら動きません。空欄なら Server.ini の GuardiasPersiguen のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "衛兵が初心者を攻撃する",
+          "description": "衛兵は相手陣営の初心者（レベル 15 まで）も攻撃します。空欄なら Server.ini の GuardiasAtacanNewbies のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "帝国の衛兵が攻撃する相手",
+          "description": "帝国の衛兵が攻撃する勢力。ゲーム内の名前をカンマ区切りで：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。空欄なら Server.ini の GuardiasImperialesAtacanA のままです。"
+        },
+        "republicanGuardsAttack": {
+          "label": "共和国の衛兵が攻撃する相手",
+          "description": "共和国の衛兵が攻撃する勢力。ゲーム内の名前をカンマ区切りで：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。空欄なら Server.ini の GuardiasRepublicanosAtacanA のままです。"
+        },
+        "chaosGuardsAttack": {
+          "label": "混沌の衛兵が攻撃する相手",
+          "description": "混沌の衛兵が攻撃する勢力。ゲーム内の名前をカンマ区切りで：Renegado, Ciudadano, Republicano, Caos, Armada, Milicia。空欄なら Server.ini の GuardiasDelCaosAtacanA のままです。"
+        },
+        "multiLogin": {
+          "label": "IP ごとの複数接続",
+          "description": "オフ：IP ごとに接続は 1 つだけ。空欄なら Server.ini の AllowMultiLogins のままです。",
+          "options": {
+            "1": "オン",
+            "0": "オフ"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "IP ごとの接続数",
+          "description": "1 つの IP が開ける接続の上限（まだログインしていないものも含む）。0 なら元のゲームと同じく 10。空欄なら Server.ini の LimiteConexionesPorIp のままです。"
+        },
+        "charactersPerIp": {
+          "label": "IP ごとのキャラクター数",
+          "description": "同じ IP から同時にプレイできるキャラクター数。0 で無制限。空欄なら Server.ini の MaxPersonajesPorIp のままです。"
+        },
+        "accountsPerIp": {
+          "label": "IP ごとの新規アカウント",
+          "description": "1 つの IP が 10 分ごとに作れるアカウント数。0 で無制限。空欄なら Server.ini の CuentasNuevasPorIp のままです。"
+        },
+        "idleMinutes": {
+          "label": "放置制限（分）",
+          "description": "プレイヤーを切断するまでの無操作時間（分）。0 なら切断しません。空欄なら Server.ini の IdleLimit のままです。"
+        },
+        "cheatsToKick": {
+          "label": "キックまでの不正回数",
+          "description": "アカウントで検出された不正がこの数に達すると、以後の不正ごとにキックします。0 でこの段階を無効。空欄なら Server.ini の TrampasParaEchar のままです。"
+        },
+        "cheatsToBan": {
+          "label": "BAN までの不正回数",
+          "description": "アカウントとキャラクターを BAN するまでに検出される不正の数。0 でこの段階を無効。空欄なら Server.ini の TrampasParaBanear のままです。"
+        },
+        "minPasswordLength": {
+          "label": "パスワードの最短長",
+          "description": "プレイヤーのパスワードの最小文字数。空欄なら Server.ini の ClaveMinima のままです。"
+        },
+        "saveMinutes": {
+          "label": "キャラクター保存（分）",
+          "description": "オンラインのキャラクターを保存する間隔（分）。0 で無効。空欄なら Server.ini の MinutosGuardarUsuarios のままです。"
+        },
+        "backupMinutes": {
+          "label": "ゲームのワールドコピー（分）",
+          "description": "ゲーム自身が data/backups に作るワールドのコピーの間隔（分）。Pulsar のバックアップとは別です。0 で無効。空欄なら Server.ini の MinutosBackup のままです。"
+        },
+        "backupsToKeep": {
+          "label": "保持するワールドコピー数",
+          "description": "ゲーム自身のワールドコピーをいくつ残すか。0 ですべて残します。空欄なら Server.ini の BackupsAConservar のままです。"
+        },
+        "logDays": {
+          "label": "ログの保存日数",
+          "description": "data/logs に残すゲームのログの日数。0 ならコンソールのみ。空欄なら Server.ini の LogDias のままです。"
         }
       },
       "ports": {

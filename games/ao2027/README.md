@@ -10,8 +10,15 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   files, 435 MB unpacked), and template 1.0.1 takes it from the new repository. The update check compares the
   latest release's asset with the installed one; the game's own `BuscarActualizaciones` only says in the console that
   there is a new version and downloads nothing.
-- `Server.ini` (`[INIT]`) gets `StartPort` from the base port; the other options (player limit, experience and gold,
-  new characters, game masters only) are written only when set in the panel, and every other line stays as it is.
+- `Server.ini` (`[INIT]`) gets `StartPort` from the base port; the other options are written only when set in the
+  panel, and every other line stays as it is. From template 1.0.3 (checked against CoverAO 1.0.14's `ServerIni.cs`)
+  they are: player limit, experience and gold, new characters, game masters only; bots, day and weather length,
+  rain, global drop, campfires, items on the floor, sailing to cross; gold and full heal on level up, newbie items,
+  the anti-macro sentinel, the familiar, the druid's metamorphosis, Rinkel passes, seahorses; whether guards attack,
+  chase and attack newbies, and whom each side's guards attack; connections, characters and new accounts per IP,
+  idle limit, cheats to kick and to ban, shortest password; saving characters, the game's own world copies and how
+  many it keeps, and log days. A guards' list left empty in the panel stays as the file has it: an empty list (that
+  side attacks nobody) is set in the file.
 - The game prints `Puertos:` when it is ready, about 2 s after it starts. Ctrl+C stops it in about 1 s ("Servidor
   detenido"), with exit code 0.
 - Players play with the game's desktop app, CoverAO (`CoverAO-Setup.exe`, from the same releases): they add the

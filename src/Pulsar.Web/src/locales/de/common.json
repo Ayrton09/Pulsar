@@ -1381,7 +1381,7 @@
       "range": "Von {{min}} bis {{max}}.",
       "secretSet": "Ein Wert ist gesetzt; geben Sie einen neuen ein, um ihn zu ersetzen.",
       "protected": "Nur Benutzer, die Servereinstellungen bearbeiten dürfen, können sie ändern.",
-      "unset": "Wert des Spiels",
+      "unset": "Standard",
       "choose": "Auswählen…",
       "outOfRange": "Außerhalb des erlaubten Bereichs.",
       "notANumber": "Geben Sie eine Zahl ein.",
@@ -7862,6 +7862,186 @@
             "0": "Aus",
             "1": "An (Wartung)"
           }
+        },
+        "bots": {
+          "label": "Bots",
+          "description": "Figuren, die allein spielen, damit die Welt nicht leer wirkt; jede belegt einen Spielerplatz. 0 für keine, bis zu 96. Leer bleibt Bots, wie es in Server.ini steht."
+        },
+        "dayMinutes": {
+          "label": "Tageslänge (Minuten)",
+          "description": "Minuten, die ein ganzer Tag dauert: Morgen, Tag, Abend und Nacht. Leer bleibt MinutosDelDia, wie es in Server.ini steht."
+        },
+        "weatherMinutes": {
+          "label": "Wetterwechsel (Minuten)",
+          "description": "Minuten zwischen zwei Wetterwechseln. Leer bleibt MinutosDeClima, wie es in Server.ini steht."
+        },
+        "rainPercent": {
+          "label": "Regen (%)",
+          "description": "Wie oft ein Wetterwechsel Regen bringt, von 0 bis 100. Leer bleibt PorcentajeLluvia, wie es in Server.ini steht."
+        },
+        "globalDrop": {
+          "label": "Globaler Drop",
+          "description": "Eine von so vielen getöteten Kreaturen lässt zusätzlich einen Gegenstand der globalen Drop-Tabelle fallen. 0 schaltet ihn aus. Leer bleibt DropGlobal, wie es in Server.ini steht."
+        },
+        "campfireMinutes": {
+          "label": "Lagerfeuer (Minuten)",
+          "description": "Minuten, die ein Lagerfeuer brennt, bevor es ausgeht. 0: Es geht nie aus, wie im Original. Leer bleibt MinutosDeFogata, wie es in Server.ini steht."
+        },
+        "keepFloorItems": {
+          "label": "Gegenstände am Boden überstehen Neustarts",
+          "description": "Was Spieler auf den Boden gelegt haben, ist nach einem Neustart des Servers noch da. Leer bleibt PersistirSuelo, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "sailingToCross": {
+          "label": "Seefahrt zum Überqueren des Meeres",
+          "description": "Seefahrtspunkte, die Überfahrten in ein anderes Land verlangen. 0 verlangt keine, wie im Original. Leer bleibt NavegacionParaCruzar, wie es in Server.ini steht."
+        },
+        "goldOnLevelUp": {
+          "label": "Gold beim Stufenaufstieg",
+          "description": "Gold, das eine Figur bei jedem Stufenaufstieg geschenkt bekommt. 0 gibt keines, wie im Original. Leer bleibt OroAlSubirNivel, wie es in Server.ini steht."
+        },
+        "healOnLevelUp": {
+          "label": "Volle Heilung beim Stufenaufstieg",
+          "description": "Ein Stufenaufstieg füllt Leben, Mana und Ausdauer. Aus, wie im Original, füllt er nur das Leben. Leer bleibt CuraAlSubirNivel, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "Anfängergegenstände entfernen",
+          "description": "Ab Stufe 15 verschwinden die (Newbies)-Gegenstände, und nur diese. Aus, wie im Original, bleiben sie. Leer bleibt QuitarEquipoNovato, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "sentinel": {
+          "label": "Anti-Makro-Wächter",
+          "description": "Ein Wächter verlangt von Arbeitenden, /CENTINELA mit einem Code zu tippen; wer nicht binnen zwei Minuten antwortet, kommt ins Gefängnis. Leer bleibt Centinela, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "familiarSeeks": {
+          "label": "Vertrauter sucht Feinde",
+          "description": "Der Vertraute greift von sich aus das nächste feindliche Wesen bei seinem Besitzer an. Aus, wie im Original, kämpft er nur gegen sein Ziel. Leer bleibt FamiliarBusca, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "druidMorph": {
+          "label": "Verwandlung des Druiden",
+          "description": "-1: dauerhaft, wie im klassischen AO; 0: aus; oder die Sekunden, die sie dauert. Leer bleibt MetamorfosisDelDruida, wie es in Server.ini steht."
+        },
+        "rinkelPasses": {
+          "label": "Rinkel-Pässe",
+          "description": "Die zwei Pässe, die der Pirat im Hafen von Rinkel verkauft, sind nutzbar. Aus, wie in den Originaldaten, nicht. Leer bleibt PasesDeRinkel, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "seahorses": {
+          "label": "Seepferdchen auf offener See",
+          "description": "Wer auf offener See mit dem Netz fischt, fängt Seepferdchen statt der üblichen Fische. Leer bleibt HipocamposEnMarAbierto, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "guardsAttack": {
+          "label": "Stadtwachen greifen an",
+          "description": "Die Wachen der Städte greifen die feindlichen Seiten an. Aus, wie im Original, greifen sie nicht an. Leer bleibt GuardiasAtacan, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "guardsChase": {
+          "label": "Wachen verfolgen",
+          "description": "Eine Wache, die einen Feind sieht, verfolgt ihn, solange er in der Stadt bleibt, und kehrt dann auf ihren Posten zurück. Aus, bleiben sie stehen. Leer bleibt GuardiasPersiguen, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "Wachen greifen Neulinge an",
+          "description": "Wachen greifen auch Neulinge (bis Stufe 15) der anderen Seite an. Leer bleibt GuardiasAtacanNewbies, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "Kaiserliche Wachen greifen an",
+          "description": "Die Fraktionen, die die kaiserlichen Wachen angreifen, durch Kommas getrennt, wie das Spiel sie nennt: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Leer bleibt GuardiasImperialesAtacanA, wie es in Server.ini steht."
+        },
+        "republicanGuardsAttack": {
+          "label": "Republikanische Wachen greifen an",
+          "description": "Die Fraktionen, die die republikanischen Wachen angreifen, durch Kommas getrennt, wie das Spiel sie nennt: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Leer bleibt GuardiasRepublicanosAtacanA, wie es in Server.ini steht."
+        },
+        "chaosGuardsAttack": {
+          "label": "Wachen des Chaos greifen an",
+          "description": "Die Fraktionen, die die Wachen des Chaos angreifen, durch Kommas getrennt, wie das Spiel sie nennt: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. Leer bleibt GuardiasDelCaosAtacanA, wie es in Server.ini steht."
+        },
+        "multiLogin": {
+          "label": "Mehrere Verbindungen pro IP",
+          "description": "Aus: eine Verbindung pro IP. Leer bleibt AllowMultiLogins, wie es in Server.ini steht.",
+          "options": {
+            "1": "An",
+            "0": "Aus"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "Verbindungen pro IP",
+          "description": "Höchstzahl offener Verbindungen pro IP, auch noch nicht angemeldete. 0: 10, wie im Original. Leer bleibt LimiteConexionesPorIp, wie es in Server.ini steht."
+        },
+        "charactersPerIp": {
+          "label": "Figuren pro IP",
+          "description": "Figuren einer IP, die gleichzeitig spielen. 0 für keine Grenze. Leer bleibt MaxPersonajesPorIp, wie es in Server.ini steht."
+        },
+        "accountsPerIp": {
+          "label": "Neue Konten pro IP",
+          "description": "Konten, die eine IP alle zehn Minuten anlegen darf. 0 für keine Grenze. Leer bleibt CuentasNuevasPorIp, wie es in Server.ini steht."
+        },
+        "idleMinutes": {
+          "label": "Leerlaufgrenze (Minuten)",
+          "description": "Minuten ohne Aktivität, bevor ein Spieler getrennt wird. 0: nie. Leer bleibt IdleLimit, wie es in Server.ini steht."
+        },
+        "cheatsToKick": {
+          "label": "Schummeleien zum Rauswurf",
+          "description": "Erkannte Schummeleien eines Kontos, ab denen jede neue es hinauswirft. 0 schaltet diese Stufe aus. Leer bleibt TrampasParaEchar, wie es in Server.ini steht."
+        },
+        "cheatsToBan": {
+          "label": "Schummeleien zur Sperre",
+          "description": "Erkannte Schummeleien eines Kontos, bis Konto und Figur gesperrt werden. 0 schaltet diese Stufe aus. Leer bleibt TrampasParaBanear, wie es in Server.ini steht."
+        },
+        "minPasswordLength": {
+          "label": "Kürzestes Passwort",
+          "description": "Mindestlänge des Passworts eines Spielers. Leer bleibt ClaveMinima, wie es in Server.ini steht."
+        },
+        "saveMinutes": {
+          "label": "Figuren speichern (Minuten)",
+          "description": "Minuten zwischen zwei Speicherungen der angemeldeten Figuren. 0 schaltet es aus. Leer bleibt MinutosGuardarUsuarios, wie es in Server.ini steht."
+        },
+        "backupMinutes": {
+          "label": "Weltkopie des Spiels (Minuten)",
+          "description": "Minuten zwischen den eigenen Weltkopien des Spiels in data/backups (getrennt von Pulsars Backups). 0 schaltet sie aus. Leer bleibt MinutosBackup, wie es in Server.ini steht."
+        },
+        "backupsToKeep": {
+          "label": "Aufzubewahrende Weltkopien",
+          "description": "Wie viele der eigenen Weltkopien des Spiels aufbewahrt werden. 0 behält alle. Leer bleibt BackupsAConservar, wie es in Server.ini steht."
+        },
+        "logDays": {
+          "label": "Protokolltage",
+          "description": "Tage an Spielprotokollen in data/logs, die aufbewahrt werden. 0: nur Konsole. Leer bleibt LogDias, wie es in Server.ini steht."
         }
       },
       "ports": {

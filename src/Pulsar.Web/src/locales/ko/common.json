@@ -1381,7 +1381,7 @@
       "range": "{{min}}에서 {{max}}까지.",
       "secretSet": "값이 설정되어 있습니다. 바꾸려면 새 값을 입력하세요.",
       "protected": "서버 설정을 편집할 수 있는 사용자만 변경할 수 있습니다.",
-      "unset": "게임 기본값",
+      "unset": "기본값",
       "choose": "선택…",
       "outOfRange": "허용 범위를 벗어났습니다.",
       "notANumber": "숫자를 입력하세요.",
@@ -7862,6 +7862,186 @@
             "0": "끔",
             "1": "켬(점검)"
           }
+        },
+        "bots": {
+          "label": "봇",
+          "description": "세계가 비어 보이지 않도록 스스로 플레이하는 캐릭터입니다. 각각 플레이어 자리 하나를 차지합니다. 0이면 없음, 최대 96. 비워 두면 Server.ini의 Bots 값이 그대로 유지됩니다."
+        },
+        "dayMinutes": {
+          "label": "하루 길이(분)",
+          "description": "새벽, 낮, 저녁, 밤을 합친 하루의 길이(분)입니다. 비워 두면 Server.ini의 MinutosDelDia 값이 그대로 유지됩니다."
+        },
+        "weatherMinutes": {
+          "label": "날씨 변화(분)",
+          "description": "날씨가 바뀌는 간격(분)입니다. 비워 두면 Server.ini의 MinutosDeClima 값이 그대로 유지됩니다."
+        },
+        "rainPercent": {
+          "label": "비(%)",
+          "description": "날씨가 바뀔 때 비가 오는 빈도(0~100)입니다. 비워 두면 Server.ini의 PorcentajeLluvia 값이 그대로 유지됩니다."
+        },
+        "globalDrop": {
+          "label": "글로벌 드롭",
+          "description": "처치한 크리처 이 수 중 1마리가 글로벌 드롭 표의 아이템도 떨어뜨립니다. 0이면 끕니다. 비워 두면 Server.ini의 DropGlobal 값이 그대로 유지됩니다."
+        },
+        "campfireMinutes": {
+          "label": "모닥불(분)",
+          "description": "모닥불이 꺼지기 전까지 타는 시간(분)입니다. 0이면 원작처럼 꺼지지 않습니다. 비워 두면 Server.ini의 MinutosDeFogata 값이 그대로 유지됩니다."
+        },
+        "keepFloorItems": {
+          "label": "바닥 아이템을 재시작 후에도 유지",
+          "description": "플레이어가 바닥에 둔 물건이 서버를 재시작한 뒤에도 남아 있습니다. 비워 두면 Server.ini의 PersistirSuelo 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "sailingToCross": {
+          "label": "바다를 건너는 데 필요한 항해",
+          "description": "다른 땅으로 가는 항로에 필요한 항해 포인트입니다. 0이면 원작처럼 필요 없습니다. 비워 두면 Server.ini의 NavegacionParaCruzar 값이 그대로 유지됩니다."
+        },
+        "goldOnLevelUp": {
+          "label": "레벨업 골드",
+          "description": "캐릭터가 레벨업할 때마다 선물로 받는 골드입니다. 0이면 원작처럼 주지 않습니다. 비워 두면 Server.ini의 OroAlSubirNivel 값이 그대로 유지됩니다."
+        },
+        "healOnLevelUp": {
+          "label": "레벨업 시 완전 회복",
+          "description": "레벨업하면 생명력, 마나, 기력이 가득 찹니다. 끄면 원작처럼 생명력만 찹니다. 비워 두면 Server.ini의 CuraAlSubirNivel 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "removeNewbieGear": {
+          "label": "초보자 아이템 제거",
+          "description": "레벨 15를 넘으면 (Newbies) 아이템만 사라집니다. 끄면 원작처럼 남아 있습니다. 비워 두면 Server.ini의 QuitarEquipoNovato 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "sentinel": {
+          "label": "매크로 방지 파수꾼",
+          "description": "작업 중인 플레이어에게 파수꾼이 코드와 함께 /CENTINELA 입력을 요구하며, 2분 안에 답하지 않으면 감옥에 갑니다. 비워 두면 Server.ini의 Centinela 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "familiarSeeks": {
+          "label": "사역마가 적을 찾음",
+          "description": "사역마가 주인에게 가장 가까운 적대 크리처를 스스로 공격합니다. 끄면 원작처럼 이미 정한 대상과만 싸웁니다. 비워 두면 Server.ini의 FamiliarBusca 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "druidMorph": {
+          "label": "드루이드 변신",
+          "description": "-1: 클래식 AO처럼 영구, 0: 끔, 또는 지속 시간(초). 비워 두면 Server.ini의 MetamorfosisDelDruida 값이 그대로 유지됩니다."
+        },
+        "rinkelPasses": {
+          "label": "링켈 통행증",
+          "description": "링켈 항구의 해적이 파는 통행증 두 장을 쓸 수 있습니다. 끄면 원래 데이터처럼 쓸 수 없습니다. 비워 두면 Server.ini의 PasesDeRinkel 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "seahorses": {
+          "label": "먼바다의 히포캄포스",
+          "description": "먼바다에서 그물로 낚시하면 평소 물고기 대신 히포캄포스가 잡힙니다. 비워 두면 Server.ini의 HipocamposEnMarAbierto 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "guardsAttack": {
+          "label": "경비병 공격",
+          "description": "도시 경비병이 적대 진영을 공격합니다. 끄면 원작처럼 공격하지 않습니다. 비워 두면 Server.ini의 GuardiasAtacan 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "guardsChase": {
+          "label": "경비병 추격",
+          "description": "적을 본 경비병은 적이 도시에 있는 동안 쫓아가고, 그 뒤 자기 자리로 돌아갑니다. 끄면 제자리에 있습니다. 비워 두면 Server.ini의 GuardiasPersiguen 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "guardsAttackNewbies": {
+          "label": "경비병이 초보자 공격",
+          "description": "경비병이 다른 진영의 초보자(레벨 15까지)도 공격합니다. 비워 두면 Server.ini의 GuardiasAtacanNewbies 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "imperialGuardsAttack": {
+          "label": "제국 경비병의 공격 대상",
+          "description": "제국 경비병이 공격하는 세력, 게임의 이름 그대로 쉼표로 구분: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. 비워 두면 Server.ini의 GuardiasImperialesAtacanA 값이 그대로 유지됩니다."
+        },
+        "republicanGuardsAttack": {
+          "label": "공화국 경비병의 공격 대상",
+          "description": "공화국 경비병이 공격하는 세력, 게임의 이름 그대로 쉼표로 구분: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. 비워 두면 Server.ini의 GuardiasRepublicanosAtacanA 값이 그대로 유지됩니다."
+        },
+        "chaosGuardsAttack": {
+          "label": "혼돈 경비병의 공격 대상",
+          "description": "혼돈 경비병이 공격하는 세력, 게임의 이름 그대로 쉼표로 구분: Renegado, Ciudadano, Republicano, Caos, Armada, Milicia. 비워 두면 Server.ini의 GuardiasDelCaosAtacanA 값이 그대로 유지됩니다."
+        },
+        "multiLogin": {
+          "label": "IP당 여러 연결",
+          "description": "끄면 IP당 연결 하나만 허용합니다. 비워 두면 Server.ini의 AllowMultiLogins 값이 그대로 유지됩니다.",
+          "options": {
+            "1": "켬",
+            "0": "끔"
+          }
+        },
+        "connectionsPerIp": {
+          "label": "IP당 연결 수",
+          "description": "한 IP가 열 수 있는 연결의 최대 수(아직 로그인하지 않은 연결 포함)입니다. 0이면 원작처럼 10. 비워 두면 Server.ini의 LimiteConexionesPorIp 값이 그대로 유지됩니다."
+        },
+        "charactersPerIp": {
+          "label": "IP당 캐릭터 수",
+          "description": "한 IP에서 동시에 플레이하는 캐릭터 수입니다. 0이면 제한 없음. 비워 두면 Server.ini의 MaxPersonajesPorIp 값이 그대로 유지됩니다."
+        },
+        "accountsPerIp": {
+          "label": "IP당 새 계정",
+          "description": "한 IP가 10분마다 만들 수 있는 계정 수입니다. 0이면 제한 없음. 비워 두면 Server.ini의 CuentasNuevasPorIp 값이 그대로 유지됩니다."
+        },
+        "idleMinutes": {
+          "label": "비활동 제한(분)",
+          "description": "플레이어 연결을 끊기 전까지 활동이 없는 시간(분)입니다. 0이면 끊지 않습니다. 비워 두면 Server.ini의 IdleLimit 값이 그대로 유지됩니다."
+        },
+        "cheatsToKick": {
+          "label": "추방까지의 부정행위",
+          "description": "계정에서 감지된 부정행위가 이 수에 이르면 이후 부정행위마다 추방합니다. 0이면 이 단계를 끕니다. 비워 두면 Server.ini의 TrampasParaEchar 값이 그대로 유지됩니다."
+        },
+        "cheatsToBan": {
+          "label": "차단까지의 부정행위",
+          "description": "계정과 캐릭터를 차단하기까지 감지되는 부정행위 수입니다. 0이면 이 단계를 끕니다. 비워 두면 Server.ini의 TrampasParaBanear 값이 그대로 유지됩니다."
+        },
+        "minPasswordLength": {
+          "label": "최소 비밀번호 길이",
+          "description": "플레이어 비밀번호의 최소 글자 수입니다. 비워 두면 Server.ini의 ClaveMinima 값이 그대로 유지됩니다."
+        },
+        "saveMinutes": {
+          "label": "캐릭터 저장(분)",
+          "description": "접속 중인 캐릭터를 저장하는 간격(분)입니다. 0이면 끕니다. 비워 두면 Server.ini의 MinutosGuardarUsuarios 값이 그대로 유지됩니다."
+        },
+        "backupMinutes": {
+          "label": "게임 월드 사본(분)",
+          "description": "게임이 직접 data/backups에 만드는 월드 사본의 간격(분)입니다(Pulsar 백업과는 별개). 0이면 끕니다. 비워 두면 Server.ini의 MinutosBackup 값이 그대로 유지됩니다."
+        },
+        "backupsToKeep": {
+          "label": "보관할 월드 사본 수",
+          "description": "게임 자체의 월드 사본을 몇 개 보관할지입니다. 0이면 모두 보관합니다. 비워 두면 Server.ini의 BackupsAConservar 값이 그대로 유지됩니다."
+        },
+        "logDays": {
+          "label": "로그 보관 일수",
+          "description": "data/logs에 보관할 게임 로그의 일수입니다. 0이면 콘솔만. 비워 두면 Server.ini의 LogDias 값이 그대로 유지됩니다."
         }
       },
       "ports": {
