@@ -175,8 +175,8 @@ results=$(
     echo "VerifyCA and its configured root certificate are preserved|$?"
     (
         export PGSSLROOTCERT=/fixture/inherited.pem
-        capture_policy() { [[ $PGSSLMODE == verify-ca && $PGSSLROOTCERT == '/fixture/custom ca.pem' && $PGPASSWORD == dummy-only ]]; }
-        pg_external capture_policy && [[ $PGSSLROOTCERT == /fixture/inherited.pem ]]
+        policy=$(pg_external printenv PGSSLMODE PGSSLROOTCERT PGPASSWORD) &&
+            [[ $policy == $'verify-ca\n/fixture/custom ca.pem\ndummy-only' && $PGSSLROOTCERT == /fixture/inherited.pem ]]
     )
     echo "the external client receives the configured CA without changing its caller's environment|$?"
     pg_target 'Host=db.example.com;Database=pulsar;Username=panel;Password=dummy-only;SSL Mode=VerifyFull'
