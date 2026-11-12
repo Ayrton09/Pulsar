@@ -102,6 +102,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     private static readonly string[] s_alwaysExcluded = [PulsarDirectory + "/**", "**/" + ServerFileRules.TemporaryPrefix + "*"];
 
+    /// <summary>How much of the archive is written between two looks at the drive's free space.</summary>
+    private const long GuardInterval = 8 * 1024 * 1024;
+
+    /// <summary>How the drive of the backups is asked for its size and free space (<see cref="FileArchives.ProbeDrive"/>): a seam for tests.</summary>
+    internal Func<string, (long Total, long Free)?> DriveProbe { get; init; } = FileArchives.ProbeDrive;
+
     /// <summary>
     /// Archives the files the rules select (everything when there are none) into <paramref name="location"/>. Links are
     /// never followed; files the game holds open are skipped and counted. Nothing is left behind on failure.
@@ -124,6 +130,10 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         List<TreeEntry> selected = whole ? [.. Select(walk, null).Concat(Records(walk)).OrderBy(e => e.Path, StringComparer.Ordinal)] : Select(walk, rules);
         var collisions = DropCaseCollisions(selected);
         var total = selected.Sum(f => f.Size);
+        // The most the archive can take (the files, the dump, their headers) must fit on the drive keeping its floor
+        // before a byte is written; while it is written, the guard below looks again as the drive fills.
+        var dumpSize = database is null ? 0 : new FileInfo(database).Length;
+        FileArchives.EnsureSpace(location.Directory, FileArchives.Bound(total + dumpSize, selected.Count + 1), DriveProbe);
         System.IO.Directory.CreateDirectory(location.Directory);
         try
         {
@@ -141,8 +151,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                 LogUnnameable(location.ShortId, walk.Refused, string.Join(", ", walk.RefusedSample.Select(Printable)));
             }
 
-            await using (var output = new FileStream(location.Partial, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize,
-                FileOptions.Asynchronous))
+            await using (var output = new SpaceGuardStream(
+                new FileStream(location.Partial, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize, FileOptions.Asynchronous),
+                GuardInterval, next => FileArchives.EnsureSpace(location.Directory, next, DriveProbe)))
             {
                 await using var archive = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: false, entryNameEncoding: null,
                     cancellationToken);

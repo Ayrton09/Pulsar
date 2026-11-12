@@ -94,7 +94,9 @@ Each server's **Backups** tab makes backups on its node (and schedules can make 
 
 A new server keeps its last 7 backups (the tab's settings change that, or keep them all), scheduled backups are at
 least 15 minutes apart, and the panel makes no backup, and takes no upload, while the node's drive has less than 5 %
-or 2 GB free: free space on it first (deleting old backups, or files in the server's folder).
+or 2 GB free: free space on it first (deleting old backups, or files in the server's folder). The node itself
+checks too: it refuses a backup the drive could not hold while keeping that room, and stops one (deleting what it had
+written) if the drive fills while it runs. Either way the backup fails with "The node's disk is full."
 
 ### The game's database
 

@@ -928,6 +928,90 @@ public sealed class BackupStoreTests : IDisposable
         }
     }
 
+    private const long Gib = 1024L * 1024 * 1024;
+
+    [Fact]
+    public async Task ABackupTheDriveCannotTakeKeepingItsFloorIsRefusedBeforeAnythingIsWritten()
+    {
+        WriteRandom("world/region.bin", 20 * 1024 * 1024);
+        // 100 GB drive: the floor is 5 GB; 1 MiB above it cannot take 20 MiB.
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance) { DriveProbe = _ => (100 * Gib, 5 * Gib + 1024 * 1024) };
+        var location = Location();
+
+        var failure = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.CreateAsync(location, _server, rules: null, Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.DiskFull, failure.Code);
+        Assert.False(File.Exists(location.Partial));
+        Assert.False(File.Exists(location.Archive));
+    }
+
+    [Fact]
+    public async Task TheDatabaseDumpCountsAgainstTheFloorToo()
+    {
+        Write("cfg/server.cfg", "hostname");
+        var dump = Path.Combine(_root, "dump.bin");
+        File.WriteAllBytes(dump, RandomNumberGenerator.GetBytes(4 * 1024 * 1024));
+        var free = 5 * Gib + 2 * 1024 * 1024; // room for the configuration, not for the dump on top of it
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance) { DriveProbe = _ => (100 * Gib, free) };
+
+        var failure = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.CreateAsync(Location(), _server, rules: null, Progress, TestContext.Current.CancellationToken, database: dump));
+
+        Assert.Equal(FileErrors.DiskFull, failure.Code);
+    }
+
+    [Fact]
+    public async Task ABackupStopsAndLeavesNothingWhenTheDriveFillsWhileItIsWritten()
+    {
+        WriteRandom("world/region.bin", 40 * 1024 * 1024);
+        // Room at the start (the up-front check passes), none a few MiB later: something else is filling the drive.
+        var probes = 0;
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance)
+        {
+            DriveProbe = _ => (100 * Gib, ++probes <= 1 ? 50 * Gib : 5 * Gib),
+        };
+        var location = Location();
+
+        var failure = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.CreateAsync(location, _server, rules: null, Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.DiskFull, failure.Code);
+        Assert.False(File.Exists(location.Partial));
+        Assert.False(File.Exists(location.Archive));
+    }
+
+    [Fact]
+    public async Task ABackupOnADriveWithRoomIsNotHeldBackAndTheDriveIsWatchedWhileItWrites()
+    {
+        WriteRandom("world/region.bin", 20 * 1024 * 1024);
+        Write("cfg/server.cfg", "hostname");
+        var probes = 0;
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance)
+        {
+            DriveProbe = _ =>
+            {
+                probes++;
+                return (100 * Gib, 50 * Gib);
+            },
+        };
+        var location = Location();
+
+        var result = await store.CreateAsync(location, _server, rules: null, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["cfg/server.cfg", "world/region.bin"], Entries(location.Archive));
+        Assert.Equal(2, result.FileCount);
+        Assert.True(probes > 1, "the drive is checked before and while it writes");
+        Assert.False(File.Exists(location.Partial));
+    }
+
+    private void WriteRandom(string path, int size)
+    {
+        var full = Path.Combine(_serverDirectory, path.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllBytes(full, RandomNumberGenerator.GetBytes(size));
+    }
+
     private BackupLocation Location() => new(BackupsRoot, "abcd1234", Guid.NewGuid());
 
     private Task Progress(string stage, double? percent)

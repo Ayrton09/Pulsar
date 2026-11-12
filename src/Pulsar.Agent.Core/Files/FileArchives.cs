@@ -585,18 +585,29 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
     private static void EnsureSpace(ProvisionedServer server, long needed) => EnsureSpace(server.Directory, needed);
 
     /// <summary>Refuses <paramref name="needed"/> bytes the drive of <paramref name="directory"/> cannot take without going below the node's disk floor.</summary>
-    internal static void EnsureSpace(string directory, long needed)
+    /// <param name="directory">A directory of the drive to look at.</param>
+    /// <param name="needed">The bytes about to be written there.</param>
+    /// <param name="probe">How much the drive holds and has free (<see cref="ProbeDrive"/>): a seam for tests, which cannot fill a drive.</param>
+    internal static void EnsureSpace(string directory, long needed, Func<string, (long Total, long Free)?>? probe = null)
+    {
+        if ((probe ?? ProbeDrive)(directory) is var (total, free) && !KeepsFloor(total, free, needed))
+        {
+            throw new FileManagerException(FileErrors.DiskFull,
+                $"The files ({needed} bytes) do not fit on the drive: {MinFreePercent}% of it and {MinFreeBytes / (1024 * 1024)} MiB must stay free.");
+        }
+    }
+
+    /// <summary>The size and the free space of the drive <paramref name="directory"/> is on; null when it has no root to ask.</summary>
+    internal static (long Total, long Free)? ProbeDrive(string directory)
     {
         var root = Path.GetPathRoot(Path.GetFullPath(directory));
-        if (root is { Length: > 0 })
+        if (root is not { Length: > 0 })
         {
-            var drive = new DriveInfo(root);
-            if (!KeepsFloor(drive.TotalSize, drive.AvailableFreeSpace, needed))
-            {
-                throw new FileManagerException(FileErrors.DiskFull,
-                    $"The files ({needed} bytes) do not fit on the drive: {MinFreePercent}% of it and {MinFreeBytes / (1024 * 1024)} MiB must stay free.");
-            }
+            return null;
         }
+
+        var drive = new DriveInfo(root);
+        return (drive.TotalSize, drive.AvailableFreeSpace);
     }
 
     /// <summary>Whether a drive of <paramref name="total"/> bytes with <paramref name="free"/> free still has <see cref="MinFreePercent"/> % and <see cref="MinFreeBytes"/> free once <paramref name="needed"/> bytes are written.</summary>
@@ -607,7 +618,7 @@ public sealed partial class FileArchives(IServerFileManager files, ILogger<FileA
     }
 
     /// <summary>The most a zip of <paramref name="files"/> entries holding <paramref name="total"/> bytes takes: deflate gives up on what does not shrink.</summary>
-    private static long Bound(long total, int files) => total + (total / 1000) + (files * 1024L) + (1024 * 1024);
+    internal static long Bound(long total, int files) => total + (total / 1000) + (files * 1024L) + (1024 * 1024);
 
     private static FileManagerException Invalid(string entry, string reason) =>
         new(FileErrors.ArchiveInvalid, $"The zip cannot be written out: entry '{entry}': {reason}.");
