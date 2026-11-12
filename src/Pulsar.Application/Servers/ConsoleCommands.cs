@@ -68,24 +68,5 @@ public sealed class ConsoleCommands(
     /// sensitive prefix (case-insensitive, after any leading spaces or quotes) becomes <c>rcon_password ***</c>; the
     /// line is unchanged when none does. A ';' inside quotes is split too: redacting more than needed is harmless.
     /// </summary>
-    public static string Redact(string line, IReadOnlyList<string> sensitivePrefixes)
-    {
-        ArgumentNullException.ThrowIfNull(line);
-        ArgumentNullException.ThrowIfNull(sensitivePrefixes);
-        var commands = line.Split(';');
-        var redacted = false;
-        for (var i = 0; i < commands.Length; i++)
-        {
-            var start = commands[i].TrimStart(' ', '\t', '"');
-            if (sensitivePrefixes.FirstOrDefault(p => start.StartsWith(p, StringComparison.OrdinalIgnoreCase)) is { } prefix)
-            {
-                // Keeps the space after a ';' ("say hi; rcon_password ***"), not the quotes or the line's leading spaces.
-                var leading = i == 0 ? string.Empty : commands[i][..^start.Length].Replace("\"", string.Empty, StringComparison.Ordinal);
-                commands[i] = $"{leading}{prefix} ***";
-                redacted = true;
-            }
-        }
-
-        return redacted ? string.Join(';', commands) : line;
-    }
+    public static string Redact(string line, IReadOnlyList<string> sensitivePrefixes) => ConsoleCommandRedaction.Redact(line, sensitivePrefixes);
 }

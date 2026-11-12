@@ -72,9 +72,12 @@ internal sealed partial class PostgresDatabaseHostClient(ILogger<PostgresDatabas
                     cancellationToken);
                 roleMade = true;
                 await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE", cancellationToken);
-                await ExecuteAsync(connection, $"CREATE DATABASE {role} OWNER {role} TEMPLATE template0", cancellationToken);
+                // Keep the host as owner and connections closed until the database's permissions are ready.
+                await ExecuteAsync(connection, $"CREATE DATABASE {role} TEMPLATE template0 ALLOW_CONNECTIONS false", cancellationToken);
                 databaseMade = true;
                 await ExecuteAsync(connection, $"REVOKE ALL ON DATABASE {role} FROM PUBLIC", cancellationToken);
+                await ExecuteAsync(connection, $"ALTER DATABASE {role} OWNER TO {role}", cancellationToken);
+                await ExecuteAsync(connection, $"ALTER DATABASE {role} ALLOW_CONNECTIONS true", cancellationToken);
             }
             catch (Exception ex) when (roleMade)
             {

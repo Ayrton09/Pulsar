@@ -1267,7 +1267,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             var logged = plan.Console.Rcon?.LogsCommands == true;
             if (!logged)
             {
-                _console.Write($"> {line}\n", now);
+                _console.Write($"> {ConsoleCommandRedaction.Redact(line, plan.Console.SensitiveCommandPrefixes ?? [])}\n", now);
             }
 
             // In the background: an answer can take a second (CS2) and the mailbox must stay free for stop and kill.
@@ -1285,7 +1285,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
         if (plan.Console.Mode == ManifestConsoleMode.Pipes)
         {
-            _console.Write($"> {line}\n", now);
+            _console.Write($"> {ConsoleCommandRedaction.Redact(line, plan.Console.SensitiveCommandPrefixes ?? [])}\n", now);
         }
     }
 

@@ -158,6 +158,60 @@ public sealed class ServerFilesTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_server, "game", "server.cfg")));
     }
 
+    [WindowsTheory]
+    [InlineData("read")]
+    [InlineData("write")]
+    [InlineData("create-directory")]
+    [InlineData("delete")]
+    [InlineData("delete-directory")]
+    [InlineData("list")]
+    public void AChangedRootAliasIsRefusedBeforeRelativeOperations(string operation)
+    {
+        var alias = Path.Combine(_root, "alias");
+        Run("mklink", "/J", alias, _server);
+        Directory.CreateDirectory(Path.Combine(_outside, "empty"));
+        var files = new WindowsServerFiles
+        {
+            BeforeRootOpen = () =>
+            {
+                Directory.Delete(alias);
+                Run("mklink", "/J", alias, _outside);
+            },
+        };
+
+        var refused = Assert.Throws<GameProcessException>(() =>
+        {
+            switch (operation)
+            {
+                case "read":
+                    using (files.OpenRead(alias, "secret.cfg"))
+                    {
+                    }
+
+                    break;
+                case "write":
+                    files.Write(alias, "new/server.cfg", Content("x"));
+                    break;
+                case "create-directory":
+                    files.CreateDirectory(alias, "new/child");
+                    break;
+                case "delete":
+                    files.Delete(alias, "secret.cfg");
+                    break;
+                case "delete-directory":
+                    files.DeleteEmptyDirectory(alias, "empty");
+                    break;
+                case "list":
+                    files.ListFiles(alias, "", 10);
+                    break;
+            }
+        });
+
+        Assert.Equal("files.outside_server", refused.Code);
+        Assert.Equal(["empty", "secret.cfg"], Directory.EnumerateFileSystemEntries(_outside).Select(Path.GetFileName).Order());
+        Assert.Equal("rcon_password other-server", File.ReadAllText(Path.Combine(_outside, "secret.cfg")));
+    }
+
     [WindowsFact]
     public void AServerDirectoryWhoseFinalPathIsLongerThan1024CharactersWorks()
     {

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Servers;
 using Pulsar.Api.Sftp;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Domain.Access;
@@ -359,6 +360,37 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
         Assert.Equal(SftpProtocol.Failure, await raw.CloseAsync(large));
         Assert.False(File.Exists(Path.Combine(server.Directory, "tiny.bin")));
         Assert.False(File.Exists(Path.Combine(server.Directory, "large.bin")));
+    }
+
+    [DatabaseTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClosingAWriteAfterSuspensionPreservesTheOriginalFile(bool sendBytes)
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var suffix = sendBytes ? "started" : "empty";
+        await using var agent = await ConnectedAgentAsync(factory, scenario.Admin, $"sftp-close-{suffix}");
+        var server = await InstalledAsync(scenario.Admin, agent, "Close suspension");
+        var role = await ServerRoleAsync(scenario, $"close-{suffix}", Permissions.Server.View, Permissions.Server.FilesView, Permissions.Server.FilesEdit);
+        var user = await scenario.CreateUserAsync($"sftp-close-{suffix}");
+        await GrantAsync(scenario.Admin, user.Id, server.Id, role.Id);
+        var path = Path.Combine(server.Directory, "keep.txt");
+        await File.WriteAllTextAsync(path, "original", Ct);
+        using var raw = await RawSftpAsync(await factory.PortAsync(), $"sftp-close-{suffix}.{server.ShortId}");
+        var handle = await raw.OpenAsync("/keep.txt", SftpProtocol.OpenWrite | SftpProtocol.OpenTruncate);
+        if (sendBytes)
+        {
+            Assert.Equal(SftpProtocol.Ok, await raw.WriteAsync(handle, 0, "replacement"u8.ToArray()));
+        }
+
+        using (var suspended = await scenario.Admin.PostAsync($"/api/v1/servers/{server.Id}/suspend", new SuspendServerRequest(null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(suspended);
+        }
+
+        Assert.Equal(SftpProtocol.NoSuchFile, await raw.CloseAsync(handle));
+        Assert.Equal("original", await File.ReadAllTextAsync(path, Ct));
+        Assert.DoesNotContain(await AuditAsync(AuditActions.Server.FileWritten), e => e.ServerId?.Value == server.Id);
     }
 
     [DatabaseFact]

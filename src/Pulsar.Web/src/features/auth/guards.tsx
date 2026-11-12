@@ -68,7 +68,7 @@ export function RequireSession() {
     return <Navigate to={returnTo === '/' ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
   return (
-    <CurrentUserContext value={session.data.user}>
+    <CurrentUserContext key={session.data.user.id} value={session.data.user}>
       {session.isError && <StaleSession error={session.error} retry={() => void session.refetch()} />}
       {session.data.user.twoFactorSetupRequired ? <TwoFactorRequired /> : <Outlet />}
     </CurrentUserContext>

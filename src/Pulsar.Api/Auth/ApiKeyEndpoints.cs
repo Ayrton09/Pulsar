@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Access;
@@ -66,13 +67,19 @@ public static class ApiKeyEndpoints
             return wrong;
         }
 
+        // Preserve the password proof before the code check can reload this tracked user.
+        var credentialStamp = user.SecurityStamp;
         if (user.TwoFactorEnabled
             && await TwoFactorEndpoints.WrongCodeAsync(user, request.Code, users, db, locks, audit, AuditActions.Auth.ApiKeyCreated, ct) is { } wrongCode)
         {
             return wrongCode;
         }
 
-        var created = await keys.CreateAsync(user.Id, request.Name, request.Permissions, expiresAt, ct);
+        var created = await keys.CreateAsync(user.Id, request.Name, request.Permissions, expiresAt,
+            token => string.IsNullOrEmpty(credentialStamp)
+                ? Task.FromResult(false)
+                : db.Users.AsNoTracking().AnyAsync(current => current.Id == user.Id && !current.IsDisabled
+                    && current.SecurityStamp == credentialStamp, token), ct);
         return created.IsSuccess
             ? TypedResults.Created($"/api/v1/account/api-keys/{created.Value.Key.Id}", created.Value)
             : ApiProblems.FromDomainError(created.Error!);

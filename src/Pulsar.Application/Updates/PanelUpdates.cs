@@ -322,15 +322,8 @@ public sealed partial class PanelUpdates(
                 .WithTarget("node", nodeId.Value.ToString());
         }
 
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            // Two reports at once (a step and the result after a Hello): the next one is kept.
-            return;
-        }
+        // The detached queue retries with a fresh scope. A failed save must not acknowledge a lost report.
+        await db.SaveChangesAsync(cancellationToken);
 
         notifier.NodesChanged([nodeId]);
     }

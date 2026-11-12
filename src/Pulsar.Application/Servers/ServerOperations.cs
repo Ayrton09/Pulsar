@@ -19,9 +19,10 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
     TimeProvider clock, ILogger<ServerOperations> logger)
 {
     /// <param name="beforeSave">Adds what belongs with the operation (its backup row) to the same first save.</param>
+    /// <param name="admitted">Called once admission is saved, before a send whose outcome can become uncertain.</param>
     /// <returns>The operation (failed already when the node did not accept it), or why the server could not take it.</returns>
     public async Task<Result<Operation>> RunAsync(Server server, Operation operation, AgentCommand command, Action? beforeSave,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Action? admitted = null)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(operation);
@@ -55,6 +56,7 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
 
         // Recorded: from here on the request going away changes nothing (the ack's own timeout still applies), so the
         // operation never stays queued for a command whose fate nobody waited for.
+        admitted?.Invoke();
         CommandAck? ack;
         try
         {

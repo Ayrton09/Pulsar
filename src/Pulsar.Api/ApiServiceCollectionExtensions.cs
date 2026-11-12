@@ -26,6 +26,7 @@ using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
+using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api;
 
@@ -251,6 +252,7 @@ internal static class ApiServiceCollectionExtensions
             options.Cookie.HttpOnly = true;
             options.Cookie.SecurePolicy = cookies.SecurePolicy;
             options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Events.OnSigningIn = PulsarSignInManager.BindPendingCookieAsync;
         });
 
         // Disabled users and changed passwords end existing sessions within a minute.

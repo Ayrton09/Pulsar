@@ -101,6 +101,20 @@ public sealed class ServerCloneTests(PulsarApiFactory factory) : IClassFixture<P
         var copied = Path.Combine(second.ServersRoot, clone.Server.ShortId, "data", "server.cfg");
         Assert.Equal("hostname the original's", await File.ReadAllTextAsync(copied, Ct));
         Assert.Equal(new ServerCopyView(source, "Original", SequenceStatus.Succeeded, null, null), (await ServerApi.GetAsync(admin, clone.Server.Id))!.Copy);
+        var viewer = await scenario.CreateUserAsync("clone-only-viewer");
+        var role = await Sftp.SftpTesting.ServerRoleAsync(scenario, "clone-only", Permissions.Server.View);
+        await Sftp.SftpTesting.GrantAsync(admin, viewer.Id, clone.Server.Id, role.Id);
+        using (var limited = await scenario.SignInAsync("clone-only-viewer"))
+        {
+            Assert.Null(await ServerApi.GetAsync(limited, source));
+            Assert.Equal(new ServerCopyView(null, null, SequenceStatus.Succeeded, null, null),
+                (await ServerApi.GetAsync(limited, clone.Server.Id))!.Copy);
+
+            await Sftp.SftpTesting.GrantAsync(admin, viewer.Id, source, role.Id);
+            Assert.Equal(new ServerCopyView(source, "Original", SequenceStatus.Succeeded, null, null),
+                (await ServerApi.GetAsync(limited, clone.Server.Id))!.Copy);
+        }
+
         Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(second.ServersRoot, clone.Server.ShortId, ".pulsar", "addons", "oxide.json"), Ct));
         await using (var scope = factory.Services.CreateAsyncScope())
         {

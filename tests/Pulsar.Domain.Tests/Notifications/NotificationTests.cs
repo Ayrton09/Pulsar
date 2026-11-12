@@ -8,6 +8,18 @@ public sealed class NotificationTests
     private static readonly DateTimeOffset s_now = new(2026, 10, 4, 12, 0, 0, TimeSpan.Zero);
     private static readonly byte[] s_protected = [1, 2, 3];
 
+    [Fact]
+    public void LongSubjectIdentityIsBoundedStableAndDistinguishesTheTruncatedSuffix()
+    {
+        var prefix = new string('x', NotificationDelivery.MaxSubjectLength);
+        Assert.Equal(prefix, NotificationDelivery.SubjectKey(prefix));
+        var first = NotificationDelivery.SubjectKey(prefix + "one");
+        Assert.True(first.Length <= NotificationDelivery.MaxSubjectLength);
+        Assert.Equal(first, NotificationDelivery.SubjectKey(first));
+        Assert.Equal(first, NotificationDelivery.SubjectKey(prefix + "one"));
+        Assert.NotEqual(first, NotificationDelivery.SubjectKey(prefix + "two"));
+    }
+
     [Theory]
     [InlineData("https://discord.com/api/webhooks/123456789/abc-DEF_123", true)]
     [InlineData("https://discordapp.com/api/webhooks/1/x", true)]

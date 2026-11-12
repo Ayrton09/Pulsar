@@ -438,10 +438,21 @@ describe('live updates', () => {
     await waitFor(() => expect(screen.queryByText('Installing')).not.toBeInTheDocument());
   });
 
+  it('renews the server metrics watch after its node changes', async () => {
+    const current = { ...details, server: { ...server } };
+    serverApi(operator, current);
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
+    current.server = { ...server, nodeId: '0192f1a0-0000-7000-8000-0000000000a2', nodeName: 'Other node' };
+    live.emit('ServersChanged', [server.id]);
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(2));
+    expect(live.calls('UnwatchServerAtNode')).toHaveLength(1);
+  });
+
   it('shows the usage the agent pushes in the server header', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);
-    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
 
     live.emit('ServerMetrics', {
       serverId: server.id,
@@ -461,7 +472,7 @@ describe('live updates', () => {
   it("draws the usage against the server's limits", async () => {
     serverApi(operator, { ...details, limits: { cpuPercent: 50, memoryMb: 1024, databases: 2 } });
     const live = await renderAt(`/servers/${server.id}`);
-    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
 
     live.emit('ServerMetrics', {
       serverId: server.id,
@@ -507,7 +518,7 @@ describe('live updates', () => {
   it('shows who is playing, as plain text', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);
-    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
 
     live.emit('ServerMetrics', {
       serverId: server.id,
@@ -545,7 +556,7 @@ describe('live updates', () => {
   it('says so when the game counts its players without listing them', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);
-    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
 
     live.emit('ServerMetrics', {
       serverId: server.id,

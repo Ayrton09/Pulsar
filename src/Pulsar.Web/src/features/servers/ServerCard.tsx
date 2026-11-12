@@ -114,7 +114,7 @@ export function ServerCard({
         </div>
         {alive && server.nodeConnected ? (
           <div className="space-y-2">
-            <CardUsage serverId={server.id} />
+            <CardUsage serverId={server.id} nodeId={server.nodeId} />
             <StateReason server={server} />
           </div>
         ) : (
@@ -231,7 +231,7 @@ export function ServerRow({
       </div>
       <div className="lg:w-72 lg:shrink-0">
         {alive && server.nodeConnected ? (
-          <CardUsage serverId={server.id} />
+          <CardUsage serverId={server.id} nodeId={server.nodeId} />
         ) : (
           <p className="text-xs text-muted">
             {server.lastStartedAt
@@ -251,10 +251,10 @@ export function ServerRow({
 }
 
 /** CPU, memory and players of a running server, pushed every few seconds. */
-function CardUsage({ serverId }: { serverId: string }) {
+function CardUsage({ serverId, nodeId }: { serverId: string; nodeId: string }) {
   const { t } = useTranslation();
   const formatBytes = useFormatBytes();
-  const metrics = useServerMetrics(serverId);
+  const metrics = useServerMetrics(serverId, nodeId);
   const query = metrics?.query;
   return (
     <dl aria-label={t('servers.usage.label')} className="grid grid-cols-3 gap-3 text-xs">

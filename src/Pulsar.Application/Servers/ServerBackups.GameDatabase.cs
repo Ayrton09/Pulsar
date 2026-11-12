@@ -21,11 +21,11 @@ public sealed partial class ServerBackups
     /// The dump of the server's game database for a new backup, handed to its node with a single-use ticket: null when the
     /// game has none. The dump's file goes once the node took it, or could not.
     /// </summary>
-    private async Task<Result<BackupDatabaseDump?>> GameDatabaseDumpAsync(Server server, CancellationToken cancellationToken)
+    private async Task<Result<PreparedDatabaseDump?>> GameDatabaseDumpAsync(Server server, CancellationToken cancellationToken)
     {
         if (server.GameDatabaseId is null)
         {
-            return (BackupDatabaseDump?)null;
+            return (PreparedDatabaseDump?)null;
         }
 
         // An older agent would make the backup without it: one that looks whole, and is not.
@@ -42,7 +42,7 @@ public sealed partial class ServerBackups
 
         if (target.Value is not { } found)
         {
-            return (BackupDatabaseDump?)null;
+            return (PreparedDatabaseDump?)null;
         }
 
         GameDatabaseDump dump;
@@ -56,18 +56,42 @@ public sealed partial class ServerBackups
             return ServerErrors.GameDatabaseBackupFailed;
         }
 
-        var content = new FileStream(dump.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
-        var upload = transfers.BeginUpload(server.NodeId, null, content, dump.Size);
-        if (upload is null)
+        FileStream? content = null;
+        var handedToTransfer = false;
+        try
         {
-            await content.DisposeAsync();
-            Delete(dump.Path);
-            return ServerErrors.FileTransfersBusy;
-        }
+            if (dump.Size is < 0 or > BackupDatabaseDump.MaxSizeBytes)
+            {
+                LogDumpFailed(server.Id, "The dump is larger than a backup takes.");
+                return ServerErrors.GameDatabaseBackupFailed;
+            }
 
-        _ = ForgetDumpAsync(upload, content, dump.Path);
-        return new BackupDatabaseDump(upload.Ticket, dump.Size, dump.Sha256);
+            content = new FileStream(dump.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
+            var upload = transfers.BeginUpload(server.NodeId, null, content, dump.Size);
+            if (upload is null)
+            {
+                return ServerErrors.FileTransfersBusy;
+            }
+
+            var released = ForgetDumpAsync(upload, content, dump.Path);
+            handedToTransfer = true;
+            return new PreparedDatabaseDump(new BackupDatabaseDump(upload.Ticket, dump.Size, dump.Sha256), upload, released);
+        }
+        finally
+        {
+            if (!handedToTransfer)
+            {
+                if (content is not null)
+                {
+                    await content.DisposeAsync();
+                }
+
+                Delete(dump.Path);
+            }
+        }
     }
+
+    private sealed record PreparedDatabaseDump(BackupDatabaseDump Dump, FileTransfers.Upload Upload, Task Released);
 
     /// <summary>Once the node took the dump (or the time for it ran out), its place and its file go.</summary>
     private async Task ForgetDumpAsync(FileTransfers.Upload upload, FileStream content, string path)

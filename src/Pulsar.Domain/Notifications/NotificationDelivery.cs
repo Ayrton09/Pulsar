@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Notifications;
@@ -98,8 +100,17 @@ public sealed class NotificationDelivery
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(message);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        return new NotificationDelivery(channel.Id, notificationEvent, TextLimits.Truncate(subject, MaxSubjectLength),
+        return new NotificationDelivery(channel.Id, notificationEvent, SubjectKey(subject),
             message, now);
+    }
+
+    /// <summary>A bounded identity used by both duplicate lookup and storage; long subjects keep their full identity.</summary>
+    public static string SubjectKey(string subject)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
+        return subject.Length <= MaxSubjectLength
+            ? subject
+            : "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(subject)));
     }
 
     /// <summary>

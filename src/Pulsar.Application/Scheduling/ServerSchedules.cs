@@ -274,8 +274,13 @@ public sealed class ServerSchedules(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // The scheduler took the task meanwhile; the run does not change it.
+            // Keep this manual occurrence after reloading, without replacing a later winning run's time.
             await db.Entry(task).ReloadAsync(cancellationToken);
+            if (task.LastRunAt is not { } last || last < run.ScheduledFor)
+            {
+                db.Entry(task).Property(t => t.LastRunAt).CurrentValue = run.ScheduledFor;
+            }
+
             await db.SaveChangesAsync(cancellationToken);
         }
 

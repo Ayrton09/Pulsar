@@ -404,6 +404,49 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
         Assert.Contains(AuditActions.User.TwoFactorReset, await AuditActionsAsync());
     }
 
+    [DatabaseTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PasswordResetInvalidatesThePendingSecondFactor(bool recovery)
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var name = recovery ? "pending-recovery" : "pending-authenticator";
+        var created = await scenario.CreateUserAsync(name);
+        var (key, codes) = await EnableAsync(scenario, name);
+        using var pending = await PanelClient.CreateAsync(factory);
+        using (var password = await pending.LoginAsync(name, AccessScenario.Password))
+        {
+            await AccessScenario.EnsureSuccessAsync(password);
+            Assert.True((await password.Content.ReadFromJsonAsync<LoginResponse>(Ct))!.TwoFactorRequired);
+        }
+
+        const string replacementPassword = "New-password-137!";
+        using (var reset = await scenario.Admin.PostAsync($"/api/v1/users/{created.Id}/password", new ResetPasswordRequest(replacementPassword)))
+        {
+            await AccessScenario.EnsureSuccessAsync(reset);
+        }
+
+        var factor = recovery ? new TwoFactorLoginRequest(null, codes[0]) : new TwoFactorLoginRequest(Code(key), null);
+        using (var refused = await pending.PostAsync("/api/v1/auth/login/two-factor", factor))
+        {
+            await SetupTests.AssertProblemAsync(refused, HttpStatusCode.Unauthorized, "auth.invalid_code");
+        }
+
+        using (var anonymous = await pending.GetAsync("/api/v1/auth/me"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        }
+
+        // Rejection consumes neither the authenticator step nor the recovery code.
+        using (var password = await pending.LoginAsync(name, replacementPassword))
+        {
+            await AccessScenario.EnsureSuccessAsync(password);
+        }
+
+        using var accepted = await pending.PostAsync("/api/v1/auth/login/two-factor", factor);
+        await AccessScenario.EnsureSuccessAsync(accepted);
+    }
+
     private async Task<(string Key, IReadOnlyList<string> Codes)> EnableAsync(AccessScenario scenario, string userName)
     {
         using var user = await scenario.SignInAsync(userName);

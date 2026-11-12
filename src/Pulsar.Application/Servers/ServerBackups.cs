@@ -130,8 +130,20 @@ public sealed partial class ServerBackups(
 
         var now = clock.GetUtcNow();
         var requestedBy = via == OperationRequester.User ? request.UserId : null;
+        var operation = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, requestedBy, via, now);
+        if (server.CheckOperation(operation) is { IsSuccess: false } unavailable)
+        {
+            return unavailable.Error!;
+        }
+
+        var backupName = string.IsNullOrWhiteSpace(name) ? DefaultName(now) : name;
+        if (Backup.CheckName(backupName) is { IsSuccess: false } invalidName)
+        {
+            return invalidName.Error!;
+        }
+
         // The game's database (1.0.37), dumped first: a backup that should hold it and cannot is not made.
-        BackupDatabaseDump? database = null;
+        PreparedDatabaseDump? preparation = null;
         if (!whole && server.GameDatabaseId is not null)
         {
             var dumped = await GameDatabaseDumpAsync(server, cancellationToken);
@@ -140,41 +152,57 @@ public sealed partial class ServerBackups(
                 return dumped.Error!;
             }
 
-            database = dumped.Value;
+            preparation = dumped.Value;
         }
 
-        var operation = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, requestedBy, via, now);
-        var created = Backup.Create(server, string.IsNullOrWhiteSpace(name) ? DefaultName(now) : name, operation, requestedBy, via, now,
-            database?.SizeBytes);
-        if (!created.IsSuccess)
+        // RunAsync checks admission again when saving, since another operation may have won while the dump was made.
+        // Until admission is saved, a refusal or exception releases the dump's ticket and file at once. After that a
+        // send (or saving its accepted outcome) may fail while the node is using it: keep its ordinary transfer lifetime,
+        // including a failed operation whose acknowledgement was lost.
+        var handedToNode = false;
+        try
         {
-            return created.Error!;
+            var database = preparation?.Dump;
+            var created = Backup.Create(server, backupName, operation, requestedBy, via, now, database?.SizeBytes);
+            if (!created.IsSuccess)
+            {
+                return created.Error!;
+            }
+
+            var backup = created.Value;
+
+            var remote = whole ? null : await RemoteForNewAsync(server, backup, cancellationToken);
+            var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote, whole, database), () =>
+            {
+                db.Backups.Add(backup);
+                recorded?.Invoke(operation.Id);
+                audit.Record(AuditActions.Server.BackupRequested, metadata: new { backup = backup.Id.Value, backup.Name })
+                    .WithServer(server.Id, server.NodeId);
+            }, cancellationToken, admitted: () => handedToNode = true);
+            if (!run.IsSuccess)
+            {
+                return run.Error!;
+            }
+
+            if (run.Value.Status == OperationStatus.Failed)
+            {
+                // Acceptance was refused or unconfirmed. Record the failure, but a lost acknowledgement does not
+                // prove that the node stopped using the dump's ticket.
+                backup.Ended(BackupStatus.Failed, run.Value.ErrorMessage ?? run.Value.ErrorCode, clock.GetUtcNow());
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+
+            await db.Entry(backup).ReloadAsync(cancellationToken);
+            return View(backup);
         }
-
-        var backup = created.Value;
-
-        var remote = whole ? null : await RemoteForNewAsync(server, backup, cancellationToken);
-        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote, whole, database), () =>
+        finally
         {
-            db.Backups.Add(backup);
-            recorded?.Invoke(operation.Id);
-            audit.Record(AuditActions.Server.BackupRequested, metadata: new { backup = backup.Id.Value, backup.Name })
-                .WithServer(server.Id, server.NodeId);
-        }, cancellationToken);
-        if (!run.IsSuccess)
-        {
-            return run.Error!;
+            if (!handedToNode && preparation is { } unused)
+            {
+                unused.Upload.Abort();
+                await unused.Released;
+            }
         }
-
-        if (run.Value.Status == OperationStatus.Failed)
-        {
-            // The node did not take it: the backup will never be made.
-            backup.Ended(BackupStatus.Failed, run.Value.ErrorMessage ?? run.Value.ErrorCode, clock.GetUtcNow());
-            await db.SaveChangesAsync(CancellationToken.None);
-        }
-
-        await db.Entry(backup).ReloadAsync(cancellationToken);
-        return View(backup);
     }
 
     /// <summary>

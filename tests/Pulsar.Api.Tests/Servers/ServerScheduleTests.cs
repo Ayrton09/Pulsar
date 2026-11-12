@@ -99,7 +99,14 @@ public sealed class ServerScheduleTests(PulsarApiFactory factory) : IClassFixtur
 
         await ServerApi.CommandAsync(admin, server, "start");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
-        await PassAsync(task.NextRunAt!.Value + TimeSpan.FromSeconds(1));
+        // Run-now consumes an admission even when the server condition later skips its action.
+        var due = task.NextRunAt!.Value;
+        if (due - skipped.ScheduledFor < ScheduledTask.MinBackupInterval)
+        {
+            due = due.AddHours(1);
+        }
+
+        await PassAsync(due + TimeSpan.FromSeconds(1));
 
         ScheduledRunView? run = null;
         await InProcessAgent.EventuallyAsync(async () =>
@@ -268,6 +275,55 @@ public sealed class ServerScheduleTests(PulsarApiFactory factory) : IClassFixtur
             run = Assert.Single((await RunsAsync(admin, server, working.Id)).Runs);
             return run.Status == ScheduledRunStatus.Succeeded;
         }, () => $"the other task ran (last: {run?.Status} {run?.ErrorCode})");
+    }
+
+    [DatabaseTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunNowKeepsTheLatestOccurrenceWhenItsSaveLosesARace(bool newerWinner)
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, $"manual-race-{newerWinner}");
+        var server = await InstalledServerAsync(admin, agent, "Manual race");
+        var task = await CreateAsync(admin, server, new ScheduledTaskRequest("Backup", "0 4 1 1 *", "UTC", ScheduledAction.Backup, null,
+            false, OnlyIfRunning: true, true));
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        using var hookedAdmin = await PanelClient.CreateAsync(app);
+        using (var login = await hookedAdmin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            await EnsureAsync(login);
+        }
+
+        await hookedAdmin.GetSessionAsync();
+        ScheduledTaskRun? pending = null;
+        DateTimeOffset winningAt = default;
+        var races = 0;
+        hook.BeforeSave(context =>
+        {
+            pending = context.ChangeTracker.Entries<ScheduledTaskRun>()
+                .SingleOrDefault(e => e.State == EntityState.Added && e.Entity.TaskId == new ScheduledTaskId(task.Id))?.Entity;
+            return pending is not null;
+        }, async () =>
+        {
+            races++;
+            // A competing committed run changes xmin before the request saves its already-loaded task.
+            winningAt = pending!.ScheduledFor.AddMinutes(newerWinner ? 1 : -1);
+            winningAt = winningAt.AddTicks(-(winningAt.Ticks % 10)); // PostgreSQL timestamp precision.
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            Assert.Equal(1, await db.ScheduledTasks.Where(t => t.Id == new ScheduledTaskId(task.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.LastRunAt, winningAt), Ct));
+        });
+
+        var run = await RunNowAsync(hookedAdmin, server, task.Id);
+        Assert.Equal(1, races);
+        Assert.Equal(ScheduledRunStatus.Skipped, run.Status);
+        Assert.Equal(ScheduleErrors.NotRunning.Code, run.ErrorCode);
+        var listed = Assert.Single((await ListAsync(admin, server)).Tasks);
+        Assert.Equal(newerWinner ? winningAt : run.ScheduledFor, listed.LastRunAt);
+        Assert.Equal(task.NextRunAt, listed.NextRunAt);
+        Assert.Equal(run.Id, Assert.Single((await RunsAsync(admin, server, task.Id)).Runs).Id);
     }
 
     private async Task<SchedulerPass> PassAsync(DateTimeOffset now) =>

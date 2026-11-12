@@ -170,6 +170,18 @@ results=$(
     pg_target 'Host=db.example.com;Port=6543;Database=pulsar;Username=panel;Password=p@ss;word;SSL Mode=VerifyFull'
     [[ $PG_TARGET == "host='db.example.com' port='6543' dbname='pulsar' user='panel'" && $PG_SSLMODE == verify-full && $PG_PASSWORD == 'p@ss' ]]
     echo "a connection string becomes libpq's, without its password|$?"
+    pg_target 'Host=db.example.com;Database=pulsar;Username=panel;Password=dummy-only;SSL Mode=VerifyCA;Root Certificate=/fixture/custom ca.pem'
+    [[ $PG_SSLMODE == verify-ca && $PG_SSLROOTCERT == '/fixture/custom ca.pem' ]]
+    echo "VerifyCA and its configured root certificate are preserved|$?"
+    (
+        export PGSSLROOTCERT=/fixture/inherited.pem
+        capture_policy() { [[ $PGSSLMODE == verify-ca && $PGSSLROOTCERT == '/fixture/custom ca.pem' && $PGPASSWORD == dummy-only ]]; }
+        pg_external capture_policy && [[ $PGSSLROOTCERT == /fixture/inherited.pem ]]
+    )
+    echo "the external client receives the configured CA without changing its caller's environment|$?"
+    pg_target 'Host=db.example.com;Database=pulsar;Username=panel;Password=dummy-only;SSL Mode=VerifyFull'
+    [[ $PG_SSLMODE == verify-full && -z $PG_SSLROOTCERT ]]
+    echo "a later connection without a custom CA does not retain the preceding setting|$?"
     # A value with a space or a quote stays one value (libpq's quoting), and a '*' or '?' is never a file name.
     globs=$scratch/globs
     mkdir -p "$globs"

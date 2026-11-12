@@ -161,9 +161,9 @@ public sealed class Backup
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(operation);
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
+        if (CheckName(trimmed) is { IsSuccess: false } invalid)
         {
-            return ServerErrors.BackupNameInvalid;
+            return invalid.Error!;
         }
 
         return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now)
@@ -171,6 +171,15 @@ public sealed class Backup
             GameVersion = server.GameVersion,
             GameDatabaseBytes = gameDatabaseBytes,
         };
+    }
+
+    /// <summary>Checks a requested name before preparing any of the backup's content.</summary>
+    public static Result CheckName(string? name)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        return trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed)
+            ? ServerErrors.BackupNameInvalid
+            : Result.Success();
     }
 
     /// <summary>

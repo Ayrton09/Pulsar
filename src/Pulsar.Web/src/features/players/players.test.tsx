@@ -103,7 +103,7 @@ describe('players', () => {
     const sent = playersApi(moderator, details);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const live = await renderAt(`/servers/${serverId}`);
-    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
 
     live.emit('ServerMetrics', {
       serverId,

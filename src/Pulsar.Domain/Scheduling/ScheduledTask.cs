@@ -55,7 +55,8 @@ public sealed class ScheduledTask
     /// <summary>Scheduled backups are at least this far apart (each one is a copy of the whole server on its node's drive).</summary>
     public static readonly TimeSpan MinBackupInterval = TimeSpan.FromMinutes(15);
 
-    // Schedules repeat within a month, but for a few dates of the year: two backups closer than the minimum show up within it.
+    // Check a bounded window from the first occurrence, including sparse seasonal schedules.
+    // Later calendar or DST combinations are also guarded when Due admits a run.
     private static readonly TimeSpan s_intervalCheckedOver = TimeSpan.FromDays(32);
 
     // Counting missed runs stops here (a task every minute and a panel down for months).
@@ -282,8 +283,21 @@ public sealed class ScheduledTask
 
         if (current is { } onTime && onTime <= now)
         {
-            runs.Add(ScheduledTaskRun.Start(this, onTime, now));
-            LastRunAt = onTime;
+            var run = ScheduledTaskRun.Start(this, onTime, now);
+            var backsUp = Action == ScheduledAction.Backup
+                || (Action == ScheduledAction.Sequence && Payload.Steps?.Any(s => s.Kind == SequenceStepKind.Backup) == true);
+            if (backsUp && LastRunAt is { } last && onTime - last < MinBackupInterval)
+            {
+                // Validation examines a bounded preview. Old tasks and later date/DST combinations still obey
+                // the interval between admitted occurrences; skipped runs do not extend the wait.
+                run.Skipped(ScheduleErrors.BackupTooOften, now);
+            }
+            else
+            {
+                LastRunAt = onTime;
+            }
+
+            runs.Add(run);
         }
 
         NextRunAt = Next(expression, now, zone);
@@ -357,9 +371,14 @@ public sealed class ScheduledTask
     /// <summary>Whether two occurrences after <paramref name="from"/> are closer than <paramref name="interval"/>.</summary>
     private static bool Closer(CronExpression expression, TimeZoneInfo zone, DateTimeOffset from, TimeSpan interval)
     {
-        var until = from + s_intervalCheckedOver;
-        DateTimeOffset? previous = null;
-        for (var at = Next(expression, from, zone); at is { } current && current <= until; at = Next(expression, current, zone))
+        if (Next(expression, from, zone) is not { } first)
+        {
+            return false;
+        }
+
+        var until = first > DateTimeOffset.MaxValue - s_intervalCheckedOver ? DateTimeOffset.MaxValue : first + s_intervalCheckedOver;
+        DateTimeOffset? previous = first;
+        for (var at = Next(expression, first, zone); at is { } current && current <= until; at = Next(expression, current, zone))
         {
             if (previous is { } last && current - last < interval)
             {

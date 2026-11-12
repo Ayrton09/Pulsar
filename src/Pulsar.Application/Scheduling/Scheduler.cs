@@ -65,6 +65,9 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
                             }
 
                             break;
+                        case ScheduledRunStatus.Skipped when run.ErrorCode == ScheduleErrors.BackupTooOften.Code:
+                            LogRun(task.Id, task.ServerId, task.Action, run.Status, run.ErrorCode);
+                            break;
                         default:
                             LogMissed(task.Id, task.ServerId, run.Occurrences, run.ScheduledFor);
                             break;

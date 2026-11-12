@@ -136,6 +136,15 @@ public sealed class SteamBuildsTests : IDisposable
             """, 896660, "public"));
     }
 
+    [Fact]
+    public void AMalformedAppBlockDoesNotRestartParsingAtANestedOrLaterCandidate()
+    {
+        var malformed = "\"896660\" {\n \"896660\" { \"depots\" { \"branches\" { \"public\" { \"buildid\" \"7\" } } } }";
+        Assert.Null(SteamBuilds.Latest(malformed, 896660, "public"));
+        var valid = "\"896660\" { \"depots\" { \"branches\" { \"public\" { \"buildid\" \"7\" } } } }";
+        Assert.Equal("7", SteamBuilds.Latest("noise \"896660\" \"896660\"\r\n\t" + valid, 896660, "public"));
+    }
+
     [Theory]
     [InlineData("12a45")]
     [InlineData("")]

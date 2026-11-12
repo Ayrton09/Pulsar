@@ -96,10 +96,19 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
 
             await using var download = await client.DownloadAsync(VerifiedDownloader.Https(url, "addon"), HashAlgorithmName.SHA256, sha256,
                 percent => progress(InstallStages.Downloading, percent), cancellationToken);
+            if (!IsTarGz(name))
+            {
+                await FileArchives.CheckDirectoryAsync(download, cancellationToken);
+            }
+
             await progress(InstallStages.Installing, null);
             var record = Unpack(serverDirectory, addon, release, name, sha256, download, previous, keep: keep);
             Write(serverDirectory, record);
             return record;
+        }
+        catch (FileManagerException ex)
+        {
+            throw Failed("addon.bad_archive", $"{addon.Name}'s zip is not one Pulsar unpacks: {ex.Message}", ex);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidDataException
                                        || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
@@ -417,7 +426,19 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             throw Failed("addon.file_too_large", $"{path} is larger than Pulsar reads.");
         }
 
-        return strict ? Utf8Text.Read(stream, path) : new StreamReader(stream, Encoding.UTF8).ReadToEnd();
+        using var bounded = BoundedFileContents.Read(stream, ConfigFileWriter.MaximumSize * 8);
+        if (bounded is null)
+        {
+            throw Failed("addon.file_too_large", $"{path} is larger than Pulsar reads.");
+        }
+
+        if (strict)
+        {
+            return Utf8Text.Read(bounded, path);
+        }
+
+        using var reader = new StreamReader(bounded, Encoding.UTF8);
+        return reader.ReadToEnd();
     }
 
     private void Delete(string serverDirectory, string path)

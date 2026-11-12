@@ -54,6 +54,102 @@ public sealed class HttpUrlReservationsTests : IDisposable
         Assert.Equal("D:(A;;GX;;;WD)", _acls.Reserved["http://+:7669/"]);
     }
 
+    [Theory]
+    [InlineData("http://other.example:7669/", 7669)]
+    [InlineData("http://127.0.0.2:7669/", 7669)]
+    [InlineData("http://[::1]:7669/", 7669)]
+    [InlineData("http://*:7669/app/", 7669)]
+    [InlineData("http://+:7669/other/", 7669)]
+    [InlineData("http://other.example:80/", 80)]
+    public void AnotherAccountsDifferentPrefixOnTheSamePortIsNotShadowed(string other, int port)
+    {
+        var descriptor = HttpUrlReservations.Descriptor(OtherSid);
+        _acls.Reserved[other] = descriptor;
+
+        var problems = Reservations().Reserve("abcd1234", [port], Account("game"));
+
+        Assert.Contains("another account's reserved web namespace", Assert.Single(problems), StringComparison.Ordinal);
+        Assert.Equal(0, _acls.Added);
+        Assert.Equal(descriptor, Assert.Single(_acls.Reserved).Value);
+    }
+
+    [Theory]
+    [InlineData("http://other.example:7670/", OtherSid)]
+    [InlineData("https://other.example:7669/", OtherSid)]
+    [InlineData("http://other.example:7669/", GameSid)]
+    public void ASeparateHttpPortSchemeOrTheSameAccountCanCoexist(string other, string sid)
+    {
+        _acls.Reserved[other] = HttpUrlReservations.Descriptor(sid);
+
+        Assert.Empty(Reservations().Reserve("abcd1234", [7669], Account("game")));
+
+        Assert.Equal(1, _acls.Added);
+        Assert.Equal(2, _acls.Reserved.Count);
+    }
+
+    [Fact]
+    public void AnExistingRecordedWildcardIsReleasedWhenAnotherAccountsPrefixAppears()
+    {
+        var urls = Reservations();
+        urls.Reserve("abcd1234", [7669], Account("game"));
+        _acls.Reserved["http://other.example:7669/"] = HttpUrlReservations.Descriptor(OtherSid);
+
+        Assert.Single(urls.Reserve("abcd1234", [7669], Account("game")));
+        urls.Remove("abcd1234");
+
+        Assert.Equal("http://other.example:7669/", Assert.Single(_acls.Reserved).Key);
+        Assert.Equal(1, _acls.Added);
+    }
+
+    [Fact]
+    public void AConflictingWildcardChangedBySomeoneElseIsNeverReleased()
+    {
+        var urls = Reservations();
+        urls.Reserve("abcd1234", [7669], Account("game"));
+        _acls.Reserved["http://+:7669/"] = HttpUrlReservations.Descriptor(OtherSid);
+        _acls.Reserved["http://other.example:7669/"] = HttpUrlReservations.Descriptor(OtherSid);
+
+        Assert.Single(urls.Reserve("abcd1234", [7669], Account("game")));
+        urls.Remove("abcd1234");
+
+        Assert.Equal(2, _acls.Reserved.Count);
+        Assert.All(_acls.Reserved.Values, value => Assert.Equal(HttpUrlReservations.Descriptor(OtherSid), value));
+    }
+
+    [Fact]
+    public void AConflictingWildcardWhoseReleaseFailsStaysRecordedForCleanup()
+    {
+        var urls = Reservations();
+        urls.Reserve("abcd1234", [7669], Account("game"));
+        _acls.Reserved["http://other.example:7669/"] = HttpUrlReservations.Descriptor(OtherSid);
+        _acls.DeleteFailure = new Win32Exception(5, "Access is denied");
+
+        Assert.Single(urls.Reserve("abcd1234", [7669], Account("game")));
+        Assert.Equal(2, _acls.Reserved.Count);
+        _acls.DeleteFailure = null;
+        urls.Remove("abcd1234");
+
+        Assert.Equal("http://other.example:7669/", Assert.Single(_acls.Reserved).Key);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnIncompleteReservationListDoesNotLeaveOrGrantARecordedWildcard(bool alreadyReserved)
+    {
+        var urls = Reservations();
+        if (alreadyReserved)
+        {
+            urls.Reserve("abcd1234", [7669], Account("game"));
+        }
+
+        _acls.ListFailure = new IOException("incomplete enumeration");
+
+        Assert.Contains("could not be checked", Assert.Single(urls.Reserve("abcd1234", [7669], Account("game"))), StringComparison.Ordinal);
+        Assert.Empty(_acls.Reserved);
+        Assert.Equal(alreadyReserved ? 1 : 0, _acls.Added);
+    }
+
     [Fact]
     public void AReservationOfAServerDeletedMeanwhileGoesToTheOneThatHasThePortNow()
     {
@@ -220,10 +316,22 @@ public sealed class HttpUrlReservationsTests : IDisposable
 
         public Exception? DeleteFailure { get; set; }
 
+        public Exception? ListFailure { get; set; }
+
         // Security identifiers the system writes back by an alias.
         public Dictionary<string, string> Aliases { get; } = new(StringComparer.Ordinal);
 
         public string? Find(string url) => Reserved.GetValueOrDefault(url);
+
+        public IReadOnlyList<(string Url, string Descriptor)> List()
+        {
+            if (ListFailure is not null)
+            {
+                throw ListFailure;
+            }
+
+            return [.. Reserved.Select(entry => (entry.Key, entry.Value))];
+        }
 
         public string Canonical(string securityDescriptor) =>
             Aliases.Aggregate(securityDescriptor, (d, alias) => d.Replace($";;;{alias.Key})", $";;;{alias.Value})", StringComparison.OrdinalIgnoreCase));

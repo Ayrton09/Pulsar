@@ -224,17 +224,24 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
         return new SftpLocation(server, path, canEdit);
     }
 
-    /// <summary>Checks the permission again for a file opened earlier, and whether its server was suspended since.</summary>
+    /// <summary>Checks an open file against its server's current node and suspension state.</summary>
     public static async Task RequireAsync(SftpOperation operation, SftpServer server, bool write, CancellationToken cancellationToken)
     {
-        var suspended = await operation.Db.Servers.AsNoTracking().Where(s => s.Id == server.Id).Select(s => (bool?)(s.SuspendedAt != null))
+        var current = await operation.Db.Servers.AsNoTracking().Where(s => s.Id == server.Id)
+            .Select(s => new { s.NodeId, Suspended = s.SuspendedAt != null })
             .SingleOrDefaultAsync(cancellationToken);
-        if (suspended is not { } now || !(server with { Suspended = now }).Reached(operation.Permissions))
+        if (current is null)
         {
             throw SftpException.NotFound();
         }
 
-        if (write && !operation.Permissions.Has(Permissions.Server.FilesEdit, server.Target))
+        var target = server with { NodeId = current.NodeId, Suspended = current.Suspended };
+        if (!target.Reached(operation.Permissions))
+        {
+            throw SftpException.NotFound();
+        }
+
+        if (write && !operation.Permissions.Has(Permissions.Server.FilesEdit, target.Target))
         {
             throw SftpException.Denied();
         }

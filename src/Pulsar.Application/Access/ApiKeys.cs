@@ -53,12 +53,19 @@ public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         return made.IsSuccess ? Result.Success() : made.Error!;
     }
 
-    /// <summary>Counted with the user's row locked: requests made at the same moment cannot all take the last place.</summary>
+    /// <summary>Checks the credential proof and count with the user's row locked, before inserting the key.</summary>
+    /// <param name="credentialsStillValid">Reads current persisted credential state without taking a sign-in lock.</param>
     public async Task<Result<CreatedApiKey>> CreateAsync(UserId user, string? name, IReadOnlyCollection<string>? permissions, DateTimeOffset? expiresAt,
-        CancellationToken cancellationToken)
+        Func<CancellationToken, Task<bool>> credentialsStillValid, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(credentialsStillValid);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await locks.LockUserAsync(user, cancellationToken);
+        if (!await credentialsStillValid(cancellationToken))
+        {
+            return AccessErrors.CredentialsChanged;
+        }
+
         if (await db.ApiKeys.CountAsync(k => k.UserId == user && k.RevokedAt == null, cancellationToken) >= ApiKey.MaxPerUser)
         {
             return AccessErrors.ApiKeyTooMany;

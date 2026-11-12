@@ -264,8 +264,8 @@ public sealed class Server
         return new Server(ServerId.New(), shortId, nodeId, templateId, trimmed, cleanDescription, now);
     }
 
-    /// <summary>Takes the server for <paramref name="operation"/>; only one operation runs on a server at a time.</summary>
-    public Result BeginOperation(Operation operation, DateTimeOffset now)
+    /// <summary>Whether the server can take the operation now, without changing it.</summary>
+    public Result CheckOperation(Operation operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
         if (ActiveOperationId is not null)
@@ -294,6 +294,18 @@ public sealed class Server
             && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;
+        }
+
+        return Result.Success();
+    }
+
+    /// <summary>Takes the server for <paramref name="operation"/>; only one operation runs on a server at a time.</summary>
+    public Result BeginOperation(Operation operation, DateTimeOffset now)
+    {
+        var check = CheckOperation(operation);
+        if (!check.IsSuccess)
+        {
+            return check;
         }
 
         ActiveOperationId = operation.Id;

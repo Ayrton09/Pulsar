@@ -43,38 +43,36 @@ public sealed class KeyValues
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(key);
         var quoted = $"\"{key}\"";
-        for (var at = text.IndexOf(quoted, StringComparison.Ordinal); at >= 0; at = text.IndexOf(quoted, at + quoted.Length, StringComparison.Ordinal))
+        for (var lineStart = 0; lineStart < text.Length;)
         {
-            var lineStart = LineStart(text, at);
-            if (!text.AsSpan(lineStart, at - lineStart).IsWhiteSpace())
+            var lineEnd = text.IndexOfAny(['\r', '\n'], lineStart);
+            if (lineEnd < 0)
             {
-                continue;
+                lineEnd = text.Length;
             }
 
-            var reader = new Reader(text, at + quoted.Length);
-            if (reader.NextIsOpeningBrace())
+            var at = lineStart;
+            while (at < lineEnd && char.IsWhiteSpace(text[at]))
             {
-                var block = new KeyValues(null);
-                reader.SkipOpeningBrace();
-                if (reader.ReadPairs(block, depth: 1, untilBrace: true))
+                at++;
+            }
+
+            if (text.AsSpan(at, lineEnd - at).StartsWith(quoted, StringComparison.Ordinal))
+            {
+                var reader = new Reader(text, at + quoted.Length);
+                if (reader.NextIsOpeningBrace())
                 {
-                    return block;
+                    var block = new KeyValues(null);
+                    reader.SkipOpeningBrace();
+                    // A malformed candidate ends this parse. Retrying suffixes resets the entry budget.
+                    return reader.ReadPairs(block, depth: 1, untilBrace: true) ? block : null;
                 }
             }
+
+            lineStart = lineEnd + 1;
         }
 
         return null;
-    }
-
-    private static int LineStart(string text, int at)
-    {
-        if (at == 0)
-        {
-            return 0;
-        }
-
-        var newline = text.LastIndexOfAny(['\n', '\r'], at - 1);
-        return newline < 0 ? 0 : newline + 1;
     }
 
     private sealed class Reader(string text, int position)

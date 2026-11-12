@@ -18,6 +18,57 @@ public sealed unsafe class HttpServiceUrlAcls : IHttpUrlAcls
 {
     private static readonly HTTPAPI_VERSION s_version = new() { HttpApiMajorVersion = 1, HttpApiMinorVersion = 0 };
 
+    private const uint MaximumReservations = 4096;
+    private const uint MaximumRecordBytes = 1024 * 1024;
+    private const uint MaximumTotalBytes = 8 * 1024 * 1024;
+
+    public IReadOnlyList<(string Url, string Descriptor)> List() => Within(() =>
+    {
+        var reservations = new List<(string Url, string Descriptor)>();
+        uint total = 0;
+        for (uint token = 0; ; token++)
+        {
+            var query = new HTTP_SERVICE_CONFIG_URLACL_QUERY
+            {
+                QueryDesc = HTTP_SERVICE_CONFIG_QUERY_TYPE.HttpServiceConfigQueryNext,
+                dwToken = token,
+            };
+            uint size = 0;
+            var result = PInvoke.HttpQueryServiceConfiguration(HANDLE.Null, HTTP_SERVICE_CONFIG_ID.HttpServiceConfigUrlAclInfo, &query,
+                (uint)sizeof(HTTP_SERVICE_CONFIG_URLACL_QUERY), null, 0, &size, null);
+            if (result == (uint)WIN32_ERROR.ERROR_NO_MORE_ITEMS)
+            {
+                return (IReadOnlyList<(string Url, string Descriptor)>)reservations;
+            }
+
+            if (result != (uint)WIN32_ERROR.ERROR_INSUFFICIENT_BUFFER)
+            {
+                throw new Win32Exception((int)result);
+            }
+
+            if (token >= MaximumReservations || size < sizeof(HTTP_SERVICE_CONFIG_URLACL_SET)
+                || size > MaximumRecordBytes || size > MaximumTotalBytes - total)
+            {
+                throw new IOException("The machine's URL reservations exceed the bounded configuration check.");
+            }
+
+            total += size;
+            var buffer = new byte[size];
+            fixed (byte* output = buffer)
+            {
+                result = PInvoke.HttpQueryServiceConfiguration(HANDLE.Null, HTTP_SERVICE_CONFIG_ID.HttpServiceConfigUrlAclInfo, &query,
+                    (uint)sizeof(HTTP_SERVICE_CONFIG_URLACL_QUERY), output, size, &size, null);
+                if (result != 0)
+                {
+                    throw new Win32Exception((int)result);
+                }
+
+                var found = (HTTP_SERVICE_CONFIG_URLACL_SET*)output;
+                reservations.Add((found->KeyDesc.pUrlPrefix.ToString(), Canonical(found->ParamDesc.pStringSecurityDescriptor.ToString())));
+            }
+        }
+    });
+
     public string? Find(string url)
     {
         ArgumentException.ThrowIfNullOrEmpty(url);

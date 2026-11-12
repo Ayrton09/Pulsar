@@ -28,15 +28,19 @@ export function useWatchNodes(enabled = true) {
 }
 
 /** Usage and progress of one server while mounted; returns its latest usage sample (null when it is not running). */
-export function useServerMetrics(serverId: string): ServerMetrics | null {
+export function useServerMetrics(serverId: string, nodeId: string): ServerMetrics | null {
   const queryClient = useQueryClient();
-  useSharedWatch(`server:${serverId}`, (live) => [
-    async () => {
-      const watch = await live.invoke<ServerWatch | null>('WatchServer', serverId);
-      queryClient.setQueryData(metricsKey(serverId), watch?.metrics ?? null);
-    },
-    () => live.invoke('UnwatchServer', serverId),
-  ]);
+  useSharedWatch(
+    `server:${serverId}:node:${nodeId}`,
+    (live) => [
+      async () => {
+        const watch = await live.invoke<ServerWatch | null>('WatchServerAtNode', serverId, nodeId);
+        queryClient.setQueryData(metricsKey(serverId), watch?.metrics ?? null);
+      },
+      () => live.invoke('UnwatchServerAtNode', serverId, nodeId),
+    ],
+    nodeId.length > 0,
+  );
   const { data } = useQuery<ServerMetrics | null>({
     queryKey: metricsKey(serverId),
     queryFn: () => null,

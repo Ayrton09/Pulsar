@@ -900,6 +900,18 @@ internal sealed partial class SftpSession(
             throw SftpException.Failure("Part of the file never arrived: it was not saved.");
         }
 
+        try
+        {
+            await using var operation = await files.BeginAsync(cancellationToken);
+            await SftpFileSystem.RequireAsync(operation, handle.Server, write: true, cancellationToken);
+        }
+        catch
+        {
+            // CLOSE can initiate an empty upload, or commit one started before access changed.
+            await handle.AbortAsync();
+            throw;
+        }
+
         if (handle.Mode == FileWriteMode.Replace && handle.Exists && !handle.Truncate && handle.Written < handle.ExistingSize)
         {
             // Written from its start for less than it holds: saving it would cut off the rest, which a local file keeps.

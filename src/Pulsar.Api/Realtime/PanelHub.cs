@@ -42,7 +42,9 @@ internal sealed class PanelHub(
     public const string NodesListGroup = "nodes-list";
 
     /// <summary>Usage and operation progress of one server (its page).</summary>
-    public static string ServerGroup(ServerId server) => $"server:{server.Value}";
+    public static string ServerGroup(ServerId server, NodeId node) => $"server:{server.Value}:node:{node.Value}";
+
+    private readonly record struct ServerWatchKey(ServerId Server);
 
     /// <summary>Notices about one server, for users who see it through a role on it.</summary>
     public static string ServerListGroup(ServerId server) => $"server-list:{server.Value}";
@@ -134,18 +136,55 @@ internal sealed class PanelHub(
     /// Usage and operation progress of one server, with its latest usage sample (when it runs). Null when the server does
     /// not exist or the user may not see it.
     /// </summary>
-    public async Task<ServerWatch?> WatchServer(Guid serverId)
+    public Task<ServerWatch?> WatchServer(Guid serverId) => WatchServerAsync(serverId, expectedNode: null);
+
+    public Task<ServerWatch?> WatchServerAtNode(Guid serverId, Guid nodeId) => WatchServerAsync(serverId, new NodeId(nodeId));
+
+    private async Task<ServerWatch?> WatchServerAsync(Guid serverId, NodeId? expectedNode)
     {
-        if (await FindServerAsync(serverId, Permissions.Server.View) is not { } server)
+        if (await FindServerAsync(serverId, Permissions.Server.View) is not { } server
+            || (expectedNode is { } expected && server.Node != expected))
         {
             return null;
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, ServerGroup(server.Id));
-        return new ServerWatch(metrics.Find(server.Id));
+        var key = new ServerWatchKey(server.Id);
+        if (Context.Items.TryGetValue(key, out var previous) && previous is NodeId oldNode && oldNode != server.Node)
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, ServerGroup(server.Id, oldNode));
+        }
+
+        Context.Items[key] = server.Node;
+        await Groups.AddToGroupAsync(Context.ConnectionId, ServerGroup(server.Id, server.Node));
+        return new ServerWatch(metrics.Find(server.Id, server.Node));
     }
 
-    public Task UnwatchServer(Guid serverId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, ServerGroup(new ServerId(serverId)));
+    public Task UnwatchServer(Guid serverId)
+    {
+        var id = new ServerId(serverId);
+        var key = new ServerWatchKey(id);
+        if (Context.Items.TryGetValue(key, out var previous) && previous is NodeId node)
+        {
+            Context.Items.Remove(key);
+            return Groups.RemoveFromGroupAsync(Context.ConnectionId, ServerGroup(id, node));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task UnwatchServerAtNode(Guid serverId, Guid nodeId)
+    {
+        var id = new ServerId(serverId);
+        var node = new NodeId(nodeId);
+        var key = new ServerWatchKey(id);
+        if (Context.Items.TryGetValue(key, out var previous) && previous is NodeId current && current == node)
+        {
+            Context.Items.Remove(key);
+        }
+
+        // A delayed old-node cleanup must not remove the new node's subscription.
+        return Groups.RemoveFromGroupAsync(Context.ConnectionId, ServerGroup(id, node));
+    }
 
     /// <summary>
     /// Starts receiving a server's console output and returns what the panel holds after <paramref name="fromSequence"/>

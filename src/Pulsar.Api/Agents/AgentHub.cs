@@ -305,7 +305,10 @@ internal sealed partial class AgentHub(
         LogUpdateReport(nodeId, report.Status!);
         // Not awaited inside its own call: a report waits for the node's update turn, which a request holds while it waits for
         // the agent's answer to its command, a message this connection cannot deliver until this method returns.
-        updateReports.Enqueue(nodeId, report);
+        if (!updateReports.Enqueue(nodeId, report))
+        {
+            throw new HubException("The update report queue is full. Try again shortly.");
+        }
         return Task.CompletedTask;
     }
 
@@ -346,10 +349,10 @@ internal sealed partial class AgentHub(
             var view = new ServerMetricsView(sample.ServerId, at, MetricHistory.CpuPercent(sample.CpuPercent), sample.MemoryBytes, sample.ProcessCount,
                 sample.Uptime.TotalSeconds,
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
-            liveMetrics.Update(view);
+            liveMetrics.Update(nodeId, view);
             history.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, view.Query?.Players);
             resources.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, sample.CommittedBytes);
-            await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
+            await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId), nodeId)).ServerMetrics(view);
         }
     }
 

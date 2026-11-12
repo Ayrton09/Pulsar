@@ -222,6 +222,40 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
     }
 
     [DatabaseFact]
+    public async Task LongTaskNamesDeduplicateBeforeAndAfterSavingWithoutMergingDifferentNames()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "long-notification");
+        var serverId = await InstalledServerAsync(admin, agent, "Long notification names");
+        var channel = await CreateAsync(admin, Channel("long names", NotificationKind.Email) with
+        {
+            Recipients = ["ops@example.com"],
+            Events = [NotificationEvent.ScheduledTaskFailed],
+            ServerIds = [serverId],
+        });
+        var firstName = new string('a', 127) + "x";
+        var secondName = new string('a', 127) + "y";
+        for (var pass = 0; pass < 2; pass++)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var server = await db.Servers.SingleAsync(s => s.Id == new ServerId(serverId), Ct);
+            var notifier = scope.ServiceProvider.GetRequiredService<Notifier>();
+            await notifier.ScheduledTaskFailedAsync(server, firstName, "Dummy failure", Ct);
+            await notifier.ScheduledTaskFailedAsync(server, firstName, "Dummy failure", Ct);
+            await notifier.ScheduledTaskFailedAsync(server, secondName, "Dummy failure", Ct);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var deliveries = await check.ServiceProvider.GetRequiredService<IPulsarDbContext>().NotificationDeliveries.AsNoTracking()
+            .Where(d => d.ChannelId == new NotificationChannelId(channel.Id)).ToListAsync(Ct);
+        Assert.Equal(2, deliveries.Count);
+        Assert.Equal(2, deliveries.Select(d => d.Subject).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(deliveries, d => Assert.True(d.Subject.Length <= NotificationDelivery.MaxSubjectLength));
+    }
+
+    [DatabaseFact]
     public async Task HighCpuOrMemoryIsToldAfterItsMinutesAndOnceUntilWellBelow()
     {
         using var admin = await factory.CreateAdminClientAsync();

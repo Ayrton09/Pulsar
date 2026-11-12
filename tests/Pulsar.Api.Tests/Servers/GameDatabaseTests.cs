@@ -1142,6 +1142,22 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
 
         var game = Assert.Single((await ListAsync(admin, server)).Databases);
 
+        // A request already known to be invalid or busy must not first dump the game's database.
+        using (var invalid = await admin.PostAsync($"/api/v1/servers/{server}/backups", new CreateBackupRequest("bad\u2028name")))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+
+        var held = await HoldBackupAsync(app.Services, server);
+        using (var busy = await admin.PostAsync($"/api/v1/servers/{server}/backups", new CreateBackupRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
+            Assert.Contains(ServerErrors.Busy.Code, await busy.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        Assert.Empty(dumps.Dumped);
+        await FinishHeldBackupAsync(app.Services, server, held);
+
         // A backup holds the dump the panel made as the game's role, kept as Pulsar's own (not one of the server's files).
         dumps.Next = [.. Enumerable.Range(0, 200_000).Select(i => (byte)(i * 13))];
         var backup = await BackupAsync(admin, server);
@@ -1205,14 +1221,59 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         }
 
         dumps.Refuse = false;
+        // Another operation wins after the initial checks, while this request is preparing its dump. The final
+        // admission still refuses it, and both the unclaimed ticket and the dump file must be gone before it answers.
+        OperationId? winner = null;
+        dumps.BeforeReturn = async () =>
+        {
+            winner = await HoldBackupAsync(app.Services, server);
+        };
+        using (var busy = await admin.PostAsync($"/api/v1/servers/{server}/backups", new CreateBackupRequest(null)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
+            Assert.Contains(ServerErrors.Busy.Code, await busy.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        dumps.BeforeReturn = null;
+        Assert.NotNull(winner);
+        Assert.Equal(0, transfers.Running(new NodeId(node.Node.Id)));
+        Assert.All(dumps.Files, file => Assert.False(File.Exists(file), $"Unused dump retained: {file}"));
+        Assert.Equal(2, dumps.Dumped.Count);
+        await FinishHeldBackupAsync(app.Services, server, winner ?? throw new InvalidOperationException("No operation won admission."));
+
         using (var back = await admin.PutAsync($"/api/v1/servers/{server}/databases/game", new GameDatabaseRequest(null)))
         {
             Assert.Equal(HttpStatusCode.NoContent, back.StatusCode);
         }
 
         Assert.False((await BackupAsync(admin, server)).HasGameDatabase);
-        Assert.Single(dumps.Dumped);
+        Assert.Equal(2, dumps.Dumped.Count);
         await DeleteServerAsync(admin, server);
+    }
+
+    private static async Task<OperationId> HoldBackupAsync(IServiceProvider services, Guid server)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct);
+        var now = DateTimeOffset.UtcNow;
+        var operation = Operation.Create(OperationType.BackupCreate, row.NodeId, row.Id, null, OperationRequester.System, now);
+        Assert.True(row.BeginOperation(operation, now).IsSuccess);
+        db.Operations.Add(operation);
+        await db.SaveChangesAsync(Ct);
+        return operation.Id;
+    }
+
+    private static async Task FinishHeldBackupAsync(IServiceProvider services, Guid server, OperationId held)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct);
+        var operation = await db.Operations.SingleAsync(o => o.Id == held, Ct);
+        var now = DateTimeOffset.UtcNow;
+        operation.Complete(OperationStatus.Succeeded, null, null, now);
+        row.OperationCompleted(operation, now);
+        await db.SaveChangesAsync(Ct);
     }
 
     [PostgresHostFact]
@@ -1332,6 +1393,8 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
 
         public Action? BeforeRestore { get; set; }
 
+        public Func<Task>? BeforeReturn { get; set; }
+
         public string? ConfigWhenRestored { get; set; }
 
         public List<GameDatabaseTarget> Dumped { get; } = [];
@@ -1352,6 +1415,11 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             var file = Path.Combine(folder, $"{Guid.NewGuid():N}.dump");
             await File.WriteAllBytesAsync(file, Next, cancellationToken);
             Files.Add(file);
+            if (BeforeReturn is { } beforeReturn)
+            {
+                await beforeReturn();
+            }
+
             return new GameDatabaseDump(file, Next.Length, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Next)));
         }
 

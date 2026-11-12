@@ -14,6 +14,7 @@ using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Domain.Common;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Auth;
@@ -343,6 +344,56 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
         var afterRevoked = keyQueries.Count;
         Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(script, "/api/v1/audit", bearer: null));
         Assert.Equal(afterRevoked, keyQueries.Count);
+    }
+
+    [DatabaseFact]
+    public async Task CredentialConfirmationBeforeAPasswordResetCannotIssueAKeyAfterIt()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var user = await scenario.CreateUserAsync("key-reset-between-check-and-save");
+        var hook = new BeforeUserLock(async () =>
+        {
+            using var reset = await scenario.Admin.PostAsync($"/api/v1/users/{user.Id}/password",
+                new ResetPasswordRequest("a replacement password for this test"));
+            await AccessScenario.EnsureSuccessAsync(reset);
+        });
+        using var hooked = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.ConfigureDbContext<PulsarDbContext>(options => options.AddInterceptors(hook))));
+        using var owner = await PanelClient.CreateAsync(hooked);
+        using (var login = await owner.LoginAsync("key-reset-between-check-and-save", AccessScenario.Password))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        await owner.GetSessionAsync();
+        using var refused = await owner.PostAsync("/api/v1/account/api-keys",
+            new CreateApiKeyRequest("Must not be created", null, null, AccessScenario.Password, null));
+        Assert.True(hook.Fired);
+        await SetupTests.AssertProblemAsync(refused, HttpStatusCode.BadRequest, "auth.credentials_changed");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var userId = new UserId(user.Id);
+        Assert.False(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().ApiKeys
+            .AnyAsync(k => k.UserId == userId, Ct));
+    }
+
+    /// <summary>Runs once before the lock, so the resetting request can complete without waiting on that lock.</summary>
+    private sealed class BeforeUserLock(Func<Task> action) : DbCommandInterceptor
+    {
+        private int _fired;
+        public bool Fired => Volatile.Read(ref _fired) != 0;
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("SELECT 1 FROM users WHERE id =", StringComparison.Ordinal)
+                && command.CommandText.EndsWith("FOR UPDATE", StringComparison.Ordinal)
+                && Interlocked.Exchange(ref _fired, 1) == 0)
+            {
+                await action().WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+            }
+
+            return result;
+        }
     }
 
     /// <summary>Counts the commands the panel sends whose text names a table.</summary>

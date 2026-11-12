@@ -143,6 +143,7 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
     private async Task QueueAsync(NotificationEvent notificationEvent, string subject, Guid? serverId, string linkPath,
         Func<string, string?, Task<NotificationMessage>> build, CancellationToken cancellationToken)
     {
+        subject = NotificationDelivery.SubjectKey(subject);
         var channels = (await db.NotificationChannels.AsNoTracking().Where(c => c.IsEnabled).ToListAsync(cancellationToken))
             .Where(c => c.Wants(notificationEvent, serverId))
             .ToList();

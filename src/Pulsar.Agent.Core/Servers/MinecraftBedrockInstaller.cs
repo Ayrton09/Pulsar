@@ -216,7 +216,13 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
             return null;
         }
 
-        using var reader = new StreamReader(stream, Encoding.UTF8);
+        using var bounded = BoundedFileContents.Read(stream, 64);
+        if (bounded is null)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(bounded, Encoding.UTF8);
         var text = reader.ReadToEnd().Trim();
         return VersionPattern().IsMatch(text) ? text : null;
     }

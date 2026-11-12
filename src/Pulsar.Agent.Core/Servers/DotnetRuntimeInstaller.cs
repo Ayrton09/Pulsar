@@ -190,7 +190,13 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
             return null;
         }
 
-        using var reader = new StreamReader(stream, Encoding.UTF8);
+        using var bounded = BoundedFileContents.Read(stream, MaximumMarkerSize);
+        if (bounded is null)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(bounded, Encoding.UTF8);
         var lines = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         return lines.Length == 0
             ? null

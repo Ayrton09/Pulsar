@@ -13,12 +13,18 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("pulsar-urlacl-").FullName;
     private readonly int _port = Random.Shared.Next(42_000, 48_000);
+    private string? _ownedDescriptor;
 
     public void Dispose()
     {
-        if (ElevatedFactAttribute.Enabled)
+        if (_ownedDescriptor is { } descriptor)
         {
-            new HttpServiceUrlAcls().Delete(HttpUrlReservations.Url(_port));
+            var acls = new HttpServiceUrlAcls();
+            var url = HttpUrlReservations.Url(_port);
+            if (string.Equals(acls.Find(url), descriptor, StringComparison.OrdinalIgnoreCase))
+            {
+                acls.Delete(url);
+            }
         }
 
         Directory.Delete(_root, recursive: true);
@@ -33,7 +39,10 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
         Assert.Null(acls.Find(url));
 
         acls.Add(url, descriptor);
+        _ownedDescriptor = acls.Canonical(descriptor);
         Assert.Equal(acls.Canonical(descriptor), acls.Find(url), ignoreCase: true);
+        Assert.Contains(acls.List(), entry => entry.Url.Equals(url, StringComparison.OrdinalIgnoreCase)
+            && entry.Descriptor.Equals(acls.Canonical(descriptor), StringComparison.OrdinalIgnoreCase));
 
         acls.Delete(url);
         Assert.Null(acls.Find(url));
@@ -43,11 +52,21 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
     [ElevatedFact]
     public void TheAgentReservesAndReleasesTheServersPorts()
     {
-        var reservations = new HttpUrlReservations(new HttpServiceUrlAcls(), HttpServiceUrlAcls.SidOf, Path.Combine(_root, "http-urls.json"),
+        var acls = new HttpServiceUrlAcls();
+        var url = HttpUrlReservations.Url(_port);
+        var descriptor = acls.Canonical(HttpUrlReservations.Descriptor(WindowsIdentity.GetCurrent().User!.Value));
+        Assert.Null(acls.Find(url));
+        var reservations = new HttpUrlReservations(acls, HttpServiceUrlAcls.SidOf, Path.Combine(_root, "http-urls.json"),
             NullLogger<HttpUrlReservations>.Instance);
 
-        Assert.Empty(reservations.Reserve("abcd1234", [_port], ProcessIdentity.CurrentUser));
-        Assert.NotNull(new HttpServiceUrlAcls().Find(HttpUrlReservations.Url(_port)));
+        var problems = reservations.Reserve("abcd1234", [_port], ProcessIdentity.CurrentUser);
+        if (string.Equals(acls.Find(url), descriptor, StringComparison.OrdinalIgnoreCase))
+        {
+            _ownedDescriptor = descriptor;
+        }
+
+        Assert.Empty(problems);
+        Assert.NotNull(acls.Find(url));
 
         reservations.Remove("abcd1234");
         Assert.Null(new HttpServiceUrlAcls().Find(HttpUrlReservations.Url(_port)));
@@ -59,6 +78,21 @@ public sealed class HttpServiceUrlAclsTests : IDisposable
         // Windows reserves this one for everyone, as netsh http show urlacl lists it.
         Assert.Contains(";;;WD)", new HttpServiceUrlAcls().Find("http://+:80/Temporary_Listen_Addresses/"), StringComparison.OrdinalIgnoreCase);
         Assert.Null(new HttpServiceUrlAcls().Find(HttpUrlReservations.Url(_port)));
+    }
+
+    [WindowsFact]
+    public void ReservationEnumerationIsReadOnlyAndDoesNotNeedElevation()
+    {
+        var acls = new HttpServiceUrlAcls();
+
+        var reservations = acls.List();
+
+        Assert.All(reservations, entry =>
+        {
+            Assert.True(entry.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || entry.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(acls.Canonical(entry.Descriptor), entry.Descriptor);
+        });
     }
 
     [WindowsFact]

@@ -30,6 +30,9 @@ public sealed class WindowsServerFiles : IServerFiles
     /// <summary>Tests: runs just before a written file is created (to swap folders in the meantime).</summary>
     internal Action? BeforeCreate { get; init; }
 
+    /// <summary>Tests: runs after resolving the root and before reopening it for relative operations.</summary>
+    internal Action? BeforeRootOpen { get; init; }
+
     public Stream? OpenRead(string serverRoot, string relativePath)
     {
         var (root, _) = Paths(serverRoot, relativePath);
@@ -153,7 +156,7 @@ public sealed class WindowsServerFiles : IServerFiles
     {
         // Opened level by level as a file's folder is (a junction on the way is refused), then listed through its handle.
         var (root, _) = Paths(serverRoot, relativeDirectory.Length == 0 ? "x" : relativeDirectory + "/x");
-        using var directory = relativeDirectory.Length == 0 ? OpenRoot(serverRoot) : OpenParent(serverRoot, root, relativeDirectory + "/x");
+        using var directory = relativeDirectory.Length == 0 ? OpenCheckedRoot(serverRoot, root) : OpenParent(serverRoot, root, relativeDirectory + "/x");
         if (directory is null)
         {
             return [];
@@ -191,7 +194,7 @@ public sealed class WindowsServerFiles : IServerFiles
         using var directory = OpenDirectories(serverRoot, root, relativePath);
     }
 
-    private static (string Root, string Path) Paths(string serverRoot, string relativePath)
+    private (string Root, string Path) Paths(string serverRoot, string relativePath)
     {
         if (!Pulsar.Manifests.ManifestValidator.IsValidRelativePath(relativePath))
         {
@@ -199,7 +202,9 @@ public sealed class WindowsServerFiles : IServerFiles
         }
 
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(serverRoot));
-        return (FinalPath(root), Path.Combine(root, relativePath.Replace('/', '\\')));
+        var final = FinalPath(root);
+        BeforeRootOpen?.Invoke();
+        return (final, Path.Combine(root, relativePath.Replace('/', '\\')));
     }
 
     /// <summary>
@@ -209,7 +214,7 @@ public sealed class WindowsServerFiles : IServerFiles
     /// </summary>
     private static SafeFileHandle OpenDirectories(string serverRoot, string root, string relativeDirectory)
     {
-        var current = OpenRoot(serverRoot);
+        var current = OpenCheckedRoot(serverRoot, root);
         try
         {
             var walked = "";
@@ -241,7 +246,7 @@ public sealed class WindowsServerFiles : IServerFiles
     private static SafeFileHandle? OpenParent(string serverRoot, string root, string relativePath)
     {
         var separator = relativePath.LastIndexOf('/');
-        var current = OpenRoot(serverRoot);
+        var current = OpenCheckedRoot(serverRoot, root);
         try
         {
             var walked = "";
@@ -280,6 +285,27 @@ public sealed class WindowsServerFiles : IServerFiles
             ? null
             : TryOpenRelative(parent, relativePath[(relativePath.LastIndexOf('/') + 1)..], access, NtFile.FileOpen,
                 NtFile.FileSynchronousIoNonAlert | NtFile.FileOpenForBackupIntent | NtFile.FileOpenReparsePoint, relativePath);
+    }
+
+    private static SafeFileHandle OpenCheckedRoot(string serverRoot, string root)
+    {
+        var handle = OpenRoot(serverRoot);
+        try
+        {
+            // An administrator's stable alias is supported. A different destination between the initial resolution
+            // and this open is refused before any relative child is opened, created, listed or removed.
+            if (!FinalPath(handle).Equals(root, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new GameProcessException("files.outside_server", "The server directory changed while it was being opened.");
+            }
+
+            return handle;
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
     }
 
     /// <summary>The server directory itself, following a junction an administrator may have put on its path.</summary>

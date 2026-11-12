@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -40,6 +41,9 @@ public sealed class NoHttpUrlReservations : IHttpUrlReservations
 /// <summary>The URL reservations of the HTTP Server API (Windows' <c>netsh http ... urlacl</c>), by URL.</summary>
 public interface IHttpUrlAcls
 {
+    /// <summary>All reserved URL prefixes and their canonical security descriptors, or an exception if the list is incomplete.</summary>
+    IReadOnlyList<(string Url, string Descriptor)> List();
+
     /// <summary>
     /// The security descriptor (SDDL) the URL is reserved with, as the system writes it back (<see cref="Canonical"/>), or
     /// null when it is not reserved.
@@ -131,11 +135,39 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
                 }
             }
 
+            IReadOnlyList<(string Url, string Descriptor)> reserved;
+            try
+            {
+                reserved = wanted.Count == 0 ? [] : acls.List();
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+            {
+                // A strong wildcard outranks every explicit host/IP prefix, even in another reservation category.
+                // Without a complete view, do not create one, and release the recorded grants we can still verify.
+                foreach (var url in wanted)
+                {
+                    ReleaseMine(mine, url, descriptor);
+                    problems.Add($"{url} could not be reserved because the machine's existing URL reservations could not be checked ({ex.Message}).");
+                }
+
+                Keep(records, shortId, mine);
+                TrySave(records);
+                return problems;
+            }
+
             // Only a server's own account's reservation made by someone else is taken as the agent's (Pulsar made that
             // account, and deletes it with the server); one for the agent's own user (a development agent's) never is.
             var adopt = identity is ProcessIdentity.AccountIdentity;
             foreach (var url in wanted)
             {
+                if (reserved.Any(entry => !entry.Url.Equals(url, StringComparison.OrdinalIgnoreCase)
+                    && SameHttpPort(entry.Url, url) && !Same(entry.Descriptor, descriptor)))
+                {
+                    ReleaseMine(mine, url, descriptor);
+                    problems.Add($"{url} overlaps another account's reserved web namespace on this machine, so this game answers there on this machine only. Give it another port.");
+                    continue;
+                }
+
                 if (mine.Any(e => e.Is(url, descriptor)) && Present(url, descriptor) is true)
                 {
                     continue;
@@ -280,6 +312,35 @@ public sealed partial class HttpUrlReservations(IHttpUrlAcls acls, Func<ProcessI
     }
 
     private static bool Same(string found, string descriptor) => string.Equals(found.Trim(), descriptor.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private void ReleaseMine(List<Entry> mine, string url, string descriptor)
+    {
+        foreach (var entry in mine.Where(e => e.Is(url, descriptor)).ToList())
+        {
+            if (Release(entry) != Released.Failed)
+            {
+                mine.Remove(entry);
+            }
+        }
+    }
+
+    private static bool SameHttpPort(string candidate, string wildcard)
+    {
+        if (!candidate.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // URL prefixes include an explicit port, including after a bracketed IPv6 host. The path is irrelevant:
+        // a root strong wildcard takes precedence over every weaker host category's paths on this HTTP port.
+        var end = candidate.IndexOf('/', 7);
+        var authority = end < 0 ? candidate.AsSpan(7) : candidate.AsSpan(7, end - 7);
+        var colon = authority.LastIndexOf(':');
+        return colon >= 0
+            && int.TryParse(authority[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var candidatePort)
+            && int.TryParse(wildcard.AsSpan(9, wildcard.Length - 10), NumberStyles.None, CultureInfo.InvariantCulture, out var wildcardPort)
+            && candidatePort == wildcardPort;
+    }
 
     private Dictionary<string, IReadOnlyList<Entry>> Load()
     {

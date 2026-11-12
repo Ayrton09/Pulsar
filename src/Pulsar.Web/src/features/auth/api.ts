@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext } from 'react';
 import { ApiError, api, unwrap, type Schemas } from '../../api/client';
+import { SessionIdentityBoundary } from '../../app/sessionIdentity';
 
 export const sessionKey = ['session'] as const;
 
@@ -9,9 +10,31 @@ export type Session = Schemas['SessionResponse'];
 
 /** The session also issues the antiforgery token, so it is loaded before anything else. */
 export function useSession() {
+  const queryClient = useQueryClient();
+  const changeIdentity = useContext(SessionIdentityBoundary);
   return useQuery({
     queryKey: sessionKey,
-    queryFn: () => unwrap(api.GET('/api/v1/auth/session')),
+    queryFn: async () => {
+      const next = await unwrap(api.GET('/api/v1/auth/session'));
+      const previous = queryClient.getQueryData<Session>(sessionKey);
+      if (previous && previous.user?.id !== next.user?.id) {
+        // Another tab can change the cookie without this tab's login/logout mutations.
+        // Drop the old account's cache before publishing the new session to its pages.
+        const otherQueries = {
+          predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== sessionKey[0],
+        };
+        await queryClient.cancelQueries(otherQueries);
+        queryClient.removeQueries(otherQueries);
+        queryClient.getMutationCache().clear();
+        if (changeIdentity) {
+          // Pending mutation callbacks can still write to their old client after clear().
+          // Publish the new account only through a separate client and remounted tree.
+          changeIdentity(queryClient, next);
+          return previous;
+        }
+      }
+      return next;
+    },
     staleTime: Infinity,
   });
 }

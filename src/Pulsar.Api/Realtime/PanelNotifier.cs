@@ -57,7 +57,19 @@ internal sealed partial class PanelNotifier(
     }
 
     public void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent) =>
-        Send(hub.Clients.Group(PanelHub.ServerGroup(server)).OperationProgress(new OperationProgressView(server.Value, operationId, stage, percent)));
+        Send(OperationProgressAsync(server, operationId, stage, percent));
+
+    private async Task OperationProgressAsync(ServerId server, Guid operationId, string stage, decimal? percent)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var current = await db.Servers.AsNoTracking().Where(s => s.Id == server).Select(s => new { s.NodeId }).SingleOrDefaultAsync();
+        if (current is not null)
+        {
+            await hub.Clients.Group(PanelHub.ServerGroup(server, current.NodeId))
+                .OperationProgress(new OperationProgressView(server.Value, operationId, stage, percent));
+        }
+    }
 
     // Every signed-in browser reads the settings; the notice itself says nothing about them.
     public void AppearanceChanged() => Send(hub.Clients.All.AppearanceChanged());

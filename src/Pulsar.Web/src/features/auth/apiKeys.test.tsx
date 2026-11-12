@@ -8,6 +8,7 @@ import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
+import { sessionKey } from './api';
 
 const catalog: Schemas['PermissionResponse'][] = [
   { key: 'audit.view', grantableScopes: ['global'] },
@@ -21,6 +22,7 @@ function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<App router={router} queryClient={queryClient} />);
+  return queryClient;
 }
 
 beforeAll(async () => {
@@ -32,6 +34,55 @@ afterEach(() => {
 });
 
 describe('API keys', () => {
+  it('forgets a displayed key and cached account data when a background session refresh changes users', async () => {
+    let current = adminUser;
+    fakeApi({
+      'GET /api/v1/auth/session': () => json({ setupRequired: false, user: current, insecureConnection: false }),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/permissions': () => json(catalog),
+      'GET /api/v1/account/api-keys': () => json([]),
+      'POST /api/v1/account/api-keys': () =>
+        json(
+          {
+            key: {
+              id: 'key-a',
+              name: 'Account A key',
+              prefix: value.slice(0, 13),
+              permissions: null,
+              createdAt: '2026-10-05T12:00:00Z',
+              expiresAt: null,
+              lastUsedAt: null,
+            },
+            value,
+          },
+          201,
+        ),
+    });
+    const client = renderAt('/account');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Create key' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'Account A key');
+    await user.type(within(dialog).getByLabelText('Current password'), 'dummy password');
+    await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
+    expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
+    client.setQueryData(['previous-account-only'], 'private cached value');
+
+    // Same-account refresh must preserve the one-time value while it is being saved.
+    await client.invalidateQueries({ queryKey: sessionKey });
+    expect(within(dialog).getByLabelText('API key')).toHaveTextContent(value);
+    current = {
+      ...adminUser,
+      id: 'another-account',
+      userName: 'another-user',
+      displayName: 'Another User',
+    };
+    await client.invalidateQueries({ queryKey: sessionKey });
+    await waitFor(() => expect(screen.queryByText(value)).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(client.getQueryData(['previous-account-only'])).toBeUndefined();
+  });
+
   it('creates a key limited to some permissions, shows its value once and revokes it', async () => {
     let keys: Schemas['ApiKeyView'][] = [];
     let sent: unknown;

@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Pulsar.Api.Http;
@@ -72,6 +73,15 @@ public static class TwoFactorEndpoints
         // Under the account's lock, as the password step: parallel guesses each count and keep their audit entries.
         using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
         await db.Entry(user).ReloadAsync(ct);
+        var pending = await http.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
+        var originalStamp = pending.Principal?.FindFirst(PulsarSignInManager.PendingSecurityStampClaim)?.Value;
+        if (!pending.Succeeded || string.IsNullOrEmpty(originalStamp)
+            || !string.Equals(originalStamp, user.SecurityStamp, StringComparison.Ordinal))
+        {
+            await http.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+            return InvalidCode();
+        }
+
         SessionLifetime.Remember(http, request.RememberMe);
         var recovery = !string.IsNullOrWhiteSpace(request.RecoveryCode);
         SignInResult result;

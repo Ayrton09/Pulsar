@@ -1,6 +1,8 @@
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Updates;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Updates;
 
 namespace Pulsar.Api.Agents;
 
@@ -16,6 +18,9 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
 {
     private readonly Dictionary<NodeId, Line> _lines = [];
     private readonly Lock _lock = new();
+    private int _waiting;
+    internal const int MaximumPerNode = 64;
+    private const int MaximumPending = 4096;
 
     /// <summary>How many times a report is tried before its failure is only logged.</summary>
     internal const int Attempts = 3;
@@ -26,10 +31,29 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
     /// <summary>The wait between two tries of a report (shorter in tests).</summary>
     internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
-    public void Enqueue(NodeId nodeId, UpdateReport report)
+    public bool Enqueue(NodeId nodeId, UpdateReport report)
     {
+        ArgumentNullException.ThrowIfNull(report);
+        if (!UpdateStatuses.All.Contains(report.Status))
+        {
+            return false;
+        }
+
         lock (_lock)
         {
+            if (_waiting >= MaximumPending || (_lines.TryGetValue(nodeId, out var existing) && existing.Waiting >= MaximumPerNode))
+            {
+                return false;
+            }
+
+            // Retain only the bounded fields consumed by ReportAsync; Parts has no panel-side consumer.
+            report = report with
+            {
+                From = BoundedVersion(report.From),
+                To = BoundedVersion(report.To),
+                Error = report.Error is null ? null : AgentInput.Text(report.Error, NodeUpdate.MaxErrorLength),
+                Parts = null,
+            };
             if (!_lines.TryGetValue(nodeId, out var line))
             {
                 line = new Line();
@@ -37,10 +61,16 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
             }
 
             line.Waiting++;
+            _waiting++;
             var previous = line.Tail;
             line.Tail = Task.Run(() => RunAsync(previous, nodeId, report));
+            return true;
         }
     }
+
+    private static string? BoundedVersion(string? text) => text is { Length: <= 256 } && UpdateVersion.Installed(text) is { } parsed
+        ? text.Length <= NodeUpdate.MaxVersionLength ? text : parsed.Version.ToString()
+        : null;
 
     private async Task RunAsync(Task previous, NodeId nodeId, UpdateReport report)
     {
@@ -81,6 +111,7 @@ internal sealed partial class UpdateReportQueue(IServiceScopeFactory scopes, ILo
         {
             lock (_lock)
             {
+                _waiting--;
                 if (--_lines[nodeId].Waiting == 0)
                 {
                     _lines.Remove(nodeId);

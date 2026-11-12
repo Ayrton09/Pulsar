@@ -147,6 +147,23 @@ public sealed class ConsoleLogTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     [Fact]
+    public async Task OneNewlineRichChunkIsFlushedInBoundedBatches()
+    {
+        const int count = 4097;
+        var options = new ConsoleLogOptions { MaxFileBytes = 1024, KeepFiles = 4, FlushInterval = TimeSpan.Zero };
+        await using (var log = new ConsoleLog(_root, options, TimeProvider.System, NullLogger.Instance))
+        {
+            log.Write(new string('\n', count), DateTimeOffset.UnixEpoch);
+        }
+
+        var files = Directory.GetFiles(_root);
+        Assert.True(files.Length > 1);
+        // One empty line is 26 ASCII bytes including timestamp; the threshold may be crossed by one line.
+        Assert.All(files, file => Assert.InRange(new FileInfo(file).Length, 1L, ConsoleLog.BatchCharacterLimit + 26L));
+        Assert.Equal(count, files.Sum(file => File.ReadAllLines(file).Length));
+    }
+
+    [Fact]
     public async Task LinesAreWrittenWithTheirTimeAndWithoutEscapeSequences()
     {
         var at = new DateTimeOffset(2026, 10, 2, 12, 0, 1, 500, TimeSpan.Zero);
@@ -310,10 +327,22 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
     }
 
-    private ServerSupervisor Supervisor(ManifestConsoleMode mode, IReadOnlyList<string>? secrets = null)
+    [Fact]
+    public async Task ANewSensitiveValueIsNotIncludedInTheAgentsCommandEcho()
+    {
+        var supervisor = Supervisor(ManifestConsoleMode.Pipes, sensitivePrefixes: ["password"]);
+        await RunningAsync(supervisor);
+        const string command = "say ready; password new-dummy-value";
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync(command, TestContext.Current.CancellationToken));
+        await EventuallyAsync(() => Text(supervisor).Contains("> say ready; password ***", StringComparison.Ordinal), () => Text(supervisor));
+        Assert.DoesNotContain("new-dummy-value", Text(supervisor), StringComparison.Ordinal);
+        Assert.Equal(command + "\n", _processes.Last.Input[^1]);
+    }
+
+    private ServerSupervisor Supervisor(ManifestConsoleMode mode, IReadOnlyList<string>? secrets = null, IReadOnlyList<string>? sensitivePrefixes = null)
     {
         var plan = new LaunchPlan("bin/game.exe", "", [], new Dictionary<string, string>(),
-            new ConsoleDefinition(mode, InputNewline: mode == ManifestConsoleMode.Pty ? "\r\n" : null),
+            new ConsoleDefinition(mode, InputNewline: mode == ManifestConsoleMode.Pty ? "\r\n" : null, SensitiveCommandPrefixes: sensitivePrefixes),
             new LogPatternReadiness("^Test server ready", 60),
             new StopDefinition([new ConsoleCommandStop("quit")], 15))
         {

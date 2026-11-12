@@ -21,6 +21,7 @@ const defaults: Record<string, (...args: unknown[]) => unknown> = {
   WatchServers: () => true,
   WatchNodes: () => true,
   WatchServer: () => ({ metrics: null }),
+  WatchServerAtNode: () => ({ metrics: null }),
   WatchConsole: () => ({ entries: [], nodeConnected: true }),
 };
 

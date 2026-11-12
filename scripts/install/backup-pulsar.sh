@@ -89,7 +89,7 @@ trap 'status=$?; if ((status != 0)); then rm -rf -- "$target"; echo "The backup 
 # The database: as the panel's system user over the local socket (peer), or with the connection string's password in
 # the environment of pg_dump (never on its command line).
 connection=$(jq -r '.ConnectionStrings.Pulsar' "$SETTINGS")
-host='' port=5432 database='' user='' password='' sslmode=prefer
+host='' port=5432 database='' user='' password='' sslmode=prefer rootcertificate=''
 IFS=';' read -r -a parts <<<"$connection"
 for part in "${parts[@]}"; do
     key=$(printf '%s' "${part%%=*}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
@@ -100,9 +100,11 @@ for part in "${parts[@]}"; do
     database | db) database=$value ;;
     username | user | userid) user=$value ;;
     password | pwd) password=$value ;;
+    rootcertificate) rootcertificate=$value ;;
     sslmode)
         case ${value,,} in
-        require | verifyca | verify-ca) sslmode=require ;;
+        require) sslmode=require ;;
+        verifyca | verify-ca) sslmode=verify-ca ;;
         verifyfull | verify-full) sslmode=verify-full ;;
         disable) sslmode=disable ;;
         esac
@@ -116,6 +118,9 @@ pg() {
     if [[ $(jq -r '.database' "$STATE") == local ]]; then
         runuser -u "$ACCOUNT" -- "$program" "$@" "$target_db"
     else
+        if [[ -n $rootcertificate ]]; then
+            local -x PGSSLROOTCERT="$rootcertificate"
+        fi
         PGPASSWORD=$password PGSSLMODE=$sslmode "$program" "$@" "$target_db"
     fi
 }

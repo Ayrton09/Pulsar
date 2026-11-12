@@ -93,7 +93,7 @@ public sealed record ServerDetails(
     ServerCopyView? Copy = null);
 
 /// <summary>
-/// The last copy of files into this server (Pulsar 1.0.16): a clone's, from which server (null once it is gone), or a
+/// The last copy of files into this server (Pulsar 1.0.16): a clone's, from which visible server, or a
 /// transfer's, to which node; and how it goes.
 /// </summary>
 /// <param name="Transfer">A move of this server to another node, rather than a clone's copy.</param>
@@ -1455,7 +1455,10 @@ public sealed partial class ServerManagement(
             return null;
         }
 
-        var name = await db.Servers.AsNoTracking().Where(s => s.Id == new ServerId(sourceId)).Select(s => s.Name).SingleOrDefaultAsync(cancellationToken);
+        var source = await db.Servers.AsNoTracking().Where(s => s.Id == new ServerId(sourceId))
+            .Select(s => new { s.Id, s.NodeId, s.Name }).SingleOrDefaultAsync(cancellationToken);
+        var sees = await visible.ServersAsync(cancellationToken);
+        var name = source is not null && (sees is null || sees(source.Id, source.NodeId)) ? source.Name : null;
         return new ServerCopyView(name is null ? null : sourceId, name, copy.Status, copy.ErrorCode, copy.Message);
     }
 

@@ -457,7 +457,7 @@ conninfo_value() {
 # and PGPASSWORD/PGSSLMODE in the environment of the call (never on a command line).
 pg_target() {
     local connection=$1 key value part
-    local host='' port='' database='' user='' password='' sslmode=''
+    local host='' port='' database='' user='' password='' sslmode='' rootcertificate=''
     local IFS=';' parts=()
     # read, not an unquoted expansion: a '*', '?' or '[' in a password must not be expanded as a file name.
     read -r -a parts <<<"$connection"
@@ -472,16 +472,29 @@ pg_target() {
         username | user | userid) user=$value ;;
         password | pwd) password=$value ;;
         sslmode) sslmode=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]') ;;
+        rootcertificate) rootcertificate=$value ;;
         esac
     done
     PG_TARGET="host=$(conninfo_value "$host") port=$(conninfo_value "${port:-5432}") dbname=$(conninfo_value "$database") user=$(conninfo_value "$user")"
     PG_PASSWORD=$password
+    PG_SSLROOTCERT=$rootcertificate
     case $sslmode in
-    require | verifyca | verify-ca) PG_SSLMODE=require ;;
+    require) PG_SSLMODE=require ;;
+    verifyca | verify-ca) PG_SSLMODE=verify-ca ;;
     verifyfull | verify-full) PG_SSLMODE=verify-full ;;
     disable) PG_SSLMODE=disable ;;
     *) PG_SSLMODE=prefer ;;
     esac
+}
+
+# The configured CA applies to this client only; an absent setting preserves libpq's environment/defaults.
+pg_external() {
+    local program=$1
+    shift
+    if [[ -n ${PG_SSLROOTCERT:-} ]]; then
+        local -x PGSSLROOTCERT="$PG_SSLROOTCERT"
+    fi
+    PGPASSWORD=$PG_PASSWORD PGSSLMODE=$PG_SSLMODE "$program" "$@"
 }
 
 # Runs a PostgreSQL client program on the panel's database: as 'pulsar' over the local socket (peer), or with the
@@ -493,7 +506,7 @@ pg_panel() {
     if [[ $(jq -r '.database // "local"' "$STATE" 2>/dev/null || echo local) == local ]]; then
         runuser -u "$ACCOUNT" -- "$program" "$@" "$PG_TARGET"
     else
-        PGPASSWORD=$PG_PASSWORD PGSSLMODE=$PG_SSLMODE "$program" "$@" "$PG_TARGET"
+        pg_external "$program" "$@" "$PG_TARGET"
     fi
 }
 
@@ -1175,7 +1188,7 @@ install_panel() {
                 -d "host=$PG_SOCKET port=$PG_PORT dbname=$DATABASE user=$ACCOUNT" <"$RESTORE_COPY/pulsar.dump"
         else
             pg_target "$connection"
-            PGPASSWORD=$PG_PASSWORD PGSSLMODE=$PG_SSLMODE pg_restore --no-owner --no-privileges --exit-on-error \
+            pg_external pg_restore --no-owner --no-privileges --exit-on-error \
                 -d "$PG_TARGET" "$RESTORE_COPY/pulsar.dump"
         fi
     fi

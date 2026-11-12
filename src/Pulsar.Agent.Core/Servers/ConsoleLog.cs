@@ -13,7 +13,7 @@ public sealed class ConsoleLogOptions
     /// <summary>Rotated files kept next to the current one (<c>console.1.log</c> is the newest).</summary>
     public int KeepFiles { get; set; } = 4;
 
-    /// <summary>Output is written in batches, at most this often (never one write per piece of output).</summary>
+    /// <summary>Wait between bounded drain passes; a large piece may require several writes before that wait.</summary>
     public TimeSpan FlushInterval { get; set; } = TimeSpan.FromSeconds(1);
 }
 
@@ -28,6 +28,8 @@ public sealed partial class ConsoleLog : IAsyncDisposable
     public const string FileName = "console.log";
 
     private const int QueueCapacity = 4096;
+    internal const int BatchCharacterLimit = 64 * 1024;
+    private const int BatchItemLimit = 256;
 
     private readonly string _directory;
     private readonly ConsoleLogOptions _options;
@@ -68,11 +70,16 @@ public sealed partial class ConsoleLog : IAsyncDisposable
         var reader = _queue.Reader;
         while (await reader.WaitToReadAsync())
         {
-            while (reader.TryRead(out var item))
+            var items = 0;
+            while (items++ < BatchItemLimit && reader.TryRead(out var item))
             {
                 foreach (var line in _lines.Add(item.Text))
                 {
                     AppendLine(batch, line, item.At);
+                    if (batch.Length >= BatchCharacterLimit)
+                    {
+                        Flush(batch);
+                    }
                 }
             }
 

@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Updates;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Tests.Auth;
 using Pulsar.Api.Tests.Infrastructure;
@@ -23,6 +24,7 @@ using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Updates;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Updates;
@@ -264,6 +266,38 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         {
             factory.UpdateCommand = null;
         }
+    }
+
+    [DatabaseFact]
+    public async Task AFailedReportSaveIsRetriedWithAFreshContextAndAuditedOnce()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await NodeApi.CreateAsync(admin, "updates-save-retry");
+        var node = new NodeId(created.Node.Id);
+        var hook = new DatabaseHook();
+        var failures = 0;
+        hook.BeforeSave(context => context.ChangeTracker.Entries<NodeUpdate>().Any(e => e.Entity.NodeId == node), () =>
+        {
+            Interlocked.Increment(ref failures);
+            throw new DbUpdateException("Simulated report write failure.");
+        });
+        using var hooked = factory.WithDatabaseHook(hook);
+        var queue = new UpdateReportQueue(hooked.Services.GetRequiredService<IServiceScopeFactory>(), NullLogger<UpdateReportQueue>.Instance)
+        {
+            RetryDelay = TimeSpan.FromMilliseconds(10),
+        };
+        Assert.True(queue.Enqueue(node, new UpdateReport(UpdateStatuses.Failed, "1.0.0", Next, null,
+            "Dummy update failure.", DateTimeOffset.UtcNow)));
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().NodeUpdates.AsNoTracking()
+                .AnyAsync(u => u.NodeId == node && u.Status == UpdateStatuses.Failed && u.Error == "Dummy update failure.", Ct);
+        }, "the report saved after its first failed write");
+        Assert.Equal(1, failures);
+        await using var check = factory.Services.CreateAsyncScope();
+        Assert.Equal(1, await check.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .CountAsync(e => e.Action == AuditActions.Updates.Finished && e.TargetId == node.ToString(), Ct));
     }
 
     private static async Task ApplyAsync(PanelClient admin, Guid node)

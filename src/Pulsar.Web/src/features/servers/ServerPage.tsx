@@ -109,7 +109,7 @@ function ServerView({ id }: { id: string }) {
   const me = useCurrentUser();
   const details = useServer(id);
   useWatchServers();
-  const metrics = useServerMetrics(id);
+  const metrics = useServerMetrics(id, details.data?.server.nodeId ?? '');
   const [search, setSearch] = useSearchParams();
   // Until the server is loaded nothing is shown, tabs included.
   const target = details.data?.server ?? { id, nodeId: '' };

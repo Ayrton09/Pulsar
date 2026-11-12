@@ -139,6 +139,133 @@ public sealed class ScheduledTaskTests
             .IsSuccess);
     }
 
+    [Theory]
+    [InlineData("* * 1 1 *", false)]
+    [InlineData("0,10 0 29 2 *", false)]
+    [InlineData("0,10 0 31 1 *", false)]
+    [InlineData("0,10 0 1 1 MON", false)]
+    [InlineData("*/15 * 1 1 *", true)]
+    [InlineData("0,15 0 29 2 *", true)]
+    public void SparseBackupSchedulesAreCheckedFromTheirFirstOccurrence(string cron, bool allowed)
+    {
+        var now = new DateTimeOffset(2026, 11, 11, 0, 0, 0, TimeSpan.Zero);
+        var backup = ScheduledTask.Create(Server(), "Backup", cron, "UTC", ScheduledAction.Backup,
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, now);
+        Assert.Equal(allowed ? null : ScheduleErrors.BackupTooOften, backup.Error);
+
+        var restart = Create(cron, "UTC").Value;
+        var next = restart.NextRunAt;
+        var changed = restart.Change("Backup", cron, "UTC", ScheduledAction.Backup,
+            ScheduledActionPayload.None, ScheduledConditions.None, true, now);
+        Assert.Equal(allowed ? null : ScheduleErrors.BackupTooOften, changed.Error);
+        if (!allowed)
+        {
+            Assert.Equal(ScheduledAction.Restart, restart.Action);
+            Assert.Equal(next, restart.NextRunAt);
+        }
+
+        var steps = ScheduledTask.Create(Server(), "Steps", cron, "UTC", ScheduledAction.Sequence,
+            new ScheduledActionPayload(Steps: [new SequenceStep(SequenceStepKind.Backup)]), ScheduledConditions.None, true, null, now);
+        Assert.Equal(allowed ? null : ScheduleErrors.BackupTooOften, steps.Error);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LoadedDenseBackupTasksSkipUntilFifteenMinutesAfterTheLastAdmittedOccurrence(bool sequence)
+    {
+        var task = LoadedBackup("* * * * *", sequence);
+        var first = task.NextRunAt!.Value;
+        Assert.Equal(ScheduledRunStatus.Running, Assert.Single(task.Due(first)).Status);
+        for (var minute = 1; minute < 15; minute++)
+        {
+            var at = first.AddMinutes(minute);
+            var skipped = Assert.Single(task.Due(at));
+            Assert.Equal(ScheduledRunStatus.Skipped, skipped.Status);
+            Assert.Equal(ScheduleErrors.BackupTooOften.Code, skipped.ErrorCode);
+            Assert.Equal(1, skipped.Occurrences);
+            Assert.Equal(at, skipped.ScheduledFor);
+            Assert.Equal(at, skipped.FinishedAt);
+            Assert.Equal(first, task.LastRunAt);
+            Assert.Equal(at.AddMinutes(1), task.NextRunAt);
+        }
+
+        var resumed = first.AddMinutes(15);
+        Assert.Equal(ScheduledRunStatus.Running, Assert.Single(task.Due(resumed)).Status);
+        Assert.Equal(resumed, task.LastRunAt);
+    }
+
+    [Fact]
+    public void BackupThrottlingKeepsMissedAccountingAndRunNowSemantics()
+    {
+        var task = LoadedBackup("* * * * *", sequence: false);
+        var first = task.NextRunAt!.Value;
+        task.Due(first);
+        var runs = task.Due(first.AddMinutes(5));
+        Assert.Equal(2, runs.Count);
+        Assert.Equal(ScheduleErrors.Missed.Code, runs[0].ErrorCode);
+        Assert.Equal(3, runs[0].Occurrences);
+        Assert.Equal(ScheduleErrors.BackupTooOften.Code, runs[1].ErrorCode);
+        Assert.Equal(first, task.LastRunAt);
+
+        var next = task.NextRunAt;
+        var manualAt = first.AddMinutes(5).AddSeconds(30);
+        Assert.Equal(ScheduledRunStatus.Running, task.RunNow(manualAt).Status);
+        Assert.Equal(manualAt, task.LastRunAt);
+        Assert.Equal(next, task.NextRunAt);
+        Assert.Equal(ScheduleErrors.BackupTooOften.Code, Assert.Single(task.Due(next!.Value)).ErrorCode);
+
+        var restart = Create("* * * * *", "UTC").Value;
+        var due = restart.NextRunAt!.Value;
+        Assert.Equal(ScheduledRunStatus.Running, Assert.Single(restart.Due(due)).Status);
+        Assert.Equal(ScheduledRunStatus.Running, Assert.Single(restart.Due(due.AddMinutes(1))).Status);
+    }
+
+    [Fact]
+    public void ACalendarBoundaryOutsideThePreviewStillObeysTheBackupInterval()
+    {
+        // The first 32 days contain no consecutive selected dates; April 30 and May 1 do.
+        var now = new DateTimeOffset(2027, 1, 2, 0, 0, 0, TimeSpan.Zero);
+        var task = ScheduledTask.Create(Server(), "Backup", "0,59 0,23 1,30 * *", "UTC", ScheduledAction.Backup,
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, now).Value;
+        var last = new DateTimeOffset(2027, 4, 30, 23, 59, 0, TimeSpan.Zero);
+        var due = task.Due(last);
+        Assert.Equal(last, due[^1].ScheduledFor);
+        Assert.Equal(ScheduledRunStatus.Running, due[^1].Status);
+        var skipped = Assert.Single(task.Due(last.AddMinutes(1)));
+        Assert.Equal(ScheduleErrors.BackupTooOften.Code, skipped.ErrorCode);
+    }
+
+    [Fact]
+    public void ADstGapBeyondThePreviewCannotAdmitBackupOccurrencesFiveMinutesApart()
+    {
+        var now = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var task = ScheduledTask.Create(Server(), "Backup", "5 2,3 * * *", NewYork, ScheduledAction.Backup,
+            ScheduledActionPayload.None, ScheduledConditions.None, true, null, now).Value;
+        // 02:05 shifts to 03:00 EDT; 03:05 EDT is five minutes later.
+        var first = new DateTimeOffset(2027, 3, 14, 7, 0, 0, TimeSpan.Zero);
+        var due = task.Due(first);
+        Assert.Equal(ScheduledRunStatus.Running, due[^1].Status);
+        Assert.Equal(first, task.LastRunAt);
+        Assert.Equal(ScheduleErrors.BackupTooOften.Code, Assert.Single(task.Due(first.AddMinutes(5))).ErrorCode);
+        Assert.Equal(first, task.LastRunAt);
+    }
+
+    private static ScheduledTask LoadedBackup(string cron, bool sequence)
+    {
+        // Simulate a persisted task accepted before the first-occurrence validation fix.
+        var task = Create(cron, "UTC").Value;
+        typeof(ScheduledTask).GetProperty(nameof(ScheduledTask.Action))!.SetValue(task,
+            sequence ? ScheduledAction.Sequence : ScheduledAction.Backup);
+        if (sequence)
+        {
+            typeof(ScheduledTask).GetProperty(nameof(ScheduledTask.Payload))!.SetValue(task,
+                new ScheduledActionPayload(Steps: [new SequenceStep(SequenceStepKind.Backup)]));
+        }
+
+        return task;
+    }
+
     [Fact]
     public void ATaskMadeABackupTaskIsCheckedLikeANewOne()
     {

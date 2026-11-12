@@ -22,6 +22,9 @@ internal sealed partial class ConsoleMirrors(
     /// <summary>Characters kept per watched console (the agent keeps more; xterm shows 5,000 lines).</summary>
     public const int Capacity = 256 * 1024;
 
+    /// <summary>Also bound entry overhead, including empty gap markers.</summary>
+    public const int MaximumEntries = 4096;
+
     public static readonly TimeSpan UnsubscribeAfter = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan ForgetAfter = TimeSpan.FromMinutes(10);
 
@@ -337,7 +340,7 @@ internal sealed partial class ConsoleMirrors(
                     Last = entry.Sequence;
                 }
 
-                while (_length > Capacity && _entries.Count > 1)
+                while ((_length > Capacity || _entries.Count > MaximumEntries) && _entries.Count > 1)
                 {
                     _length -= _entries.First!.Value.Text.Length;
                     _entries.RemoveFirst();

@@ -68,8 +68,12 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         var file = Path.Combine(folder, $"{Guid.NewGuid():N}.dump");
         try
         {
-            await RunAsync("pg_dump", target, ["--format=custom", "--no-owner", "--no-privileges", "--no-password", $"--file={file}",
-                $"--dbname={name}"], cancellationToken);
+            await using (var output = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
+            {
+                await RunAsync("pg_dump", target, ["--format=custom", "--no-owner", "--no-privileges", "--no-password", $"--dbname={name}"],
+                    cancellationToken, (content, token) => GameDatabaseDumpStreams.CopyAsync(content, output,
+                        Pulsar.Contracts.BackupDatabaseDump.MaxSizeBytes, bytes => EnsureRoom(folder, bytes), token));
+            }
             var info = new FileInfo(file);
             if (!info.Exists)
             {
@@ -109,19 +113,7 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         {
             await using (var output = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
             {
-                var buffer = new byte[81920];
-                long copied = 0;
-                int read;
-                while (copied < length && (read = await content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, length - copied)), cancellationToken)) > 0)
-                {
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    copied += read;
-                }
-
-                if (copied != length)
-                {
-                    throw new GameDatabaseDumpException($"The dump ended after {copied} of {length} bytes.");
-                }
+                await GameDatabaseDumpStreams.CopyAsync(content, output, length, bytes => EnsureRoom(folder, bytes), cancellationToken, exact: true);
             }
 
             // Received: the transfer's own time limit ends here; the restore has the configured one. Whoever sent it may have
@@ -148,24 +140,29 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         // A hyphen, which no database a user names can hold: these never take another database's name.
         var restoring = Quote(name + "-r");
         var old = Quote(name + "-o");
-        await AdminAsync(admin, async connection =>
-        {
-            // A swap cut off between its two renames left the data under the old name: it gets its own name back first.
-            if (!await ExistsAsync(connection, name, cancellationToken) && await ExistsAsync(connection, name + "-o", cancellationToken))
-            {
-                await ExecuteAsync(connection, $"ALTER DATABASE {old} RENAME TO {role}", cancellationToken);
-            }
-
-            // Left over by a restore that did not end: never the database itself.
-            await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {restoring} WITH (FORCE)", cancellationToken);
-            await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {old} WITH (FORCE)", cancellationToken);
-            await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE", cancellationToken);
-            await ExecuteAsync(connection, $"CREATE DATABASE {restoring} OWNER {role} TEMPLATE template0", cancellationToken);
-            await ExecuteAsync(connection, $"REVOKE ALL ON DATABASE {restoring} FROM PUBLIC", cancellationToken);
-        }, cancellationToken);
-
+        var restoringMade = false;
         try
         {
+            await AdminAsync(admin, async connection =>
+            {
+                // A swap cut off between its two renames left the data under the old name: it gets its own name back first.
+                if (!await ExistsAsync(connection, name, cancellationToken) && await ExistsAsync(connection, name + "-o", cancellationToken))
+                {
+                    await ExecuteAsync(connection, $"ALTER DATABASE {old} RENAME TO {role}", cancellationToken);
+                }
+
+                // Left over by a restore that did not end: never the database itself.
+                await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {restoring} WITH (FORCE)", cancellationToken);
+                await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {old} WITH (FORCE)", cancellationToken);
+                await ExecuteAsync(connection, $"GRANT {role} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE", cancellationToken);
+                // The game's existing role cannot open staging before the host has set its permissions.
+                await ExecuteAsync(connection, $"CREATE DATABASE {restoring} TEMPLATE template0 ALLOW_CONNECTIONS false", cancellationToken);
+                restoringMade = true;
+                await ExecuteAsync(connection, $"REVOKE ALL ON DATABASE {restoring} FROM PUBLIC", cancellationToken);
+                await ExecuteAsync(connection, $"ALTER DATABASE {restoring} OWNER TO {role}", cancellationToken);
+                await ExecuteAsync(connection, $"ALTER DATABASE {restoring} ALLOW_CONNECTIONS true", cancellationToken);
+            }, cancellationToken);
+
             await RunAsync("pg_restore", target, ["--no-owner", "--no-privileges", "--single-transaction", "--exit-on-error", "--no-password",
                 $"--dbname={name}-r", dump], cancellationToken);
             await AdminAsync(admin, async connection =>
@@ -214,7 +211,11 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         }
         catch
         {
-            await DropQuietlyAsync(admin, restoring);
+            if (restoringMade)
+            {
+                await DropQuietlyAsync(admin, restoring);
+            }
+
             throw;
         }
 
@@ -241,7 +242,8 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
     }
 
     /// <summary>Runs <paramref name="program"/> against <paramref name="target"/> as its role, within the configured time.</summary>
-    private async Task RunAsync(string program, GameDatabaseTarget target, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task RunAsync(string program, GameDatabaseTarget target, IReadOnlyList<string> arguments, CancellationToken cancellationToken,
+        Func<Stream, CancellationToken, Task>? consumeOutput = null)
     {
         var start = new ProcessStartInfo(Tool(program))
         {
@@ -284,23 +286,15 @@ internal sealed partial class PostgresDumps(IOptions<GameDatabaseOptions> option
         using var process = Process.Start(start) ?? throw new GameDatabaseDumpException($"{program} could not be started.");
         process.StandardInput.Close();
         var errors = process.StandardError.ReadToEndAsync(timeout.Token);
-        var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        Task output = consumeOutput is null
+            ? process.StandardOutput.ReadToEndAsync(timeout.Token)
+            : consumeOutput(process.StandardOutput.BaseStream, timeout.Token);
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
-            await Task.WhenAll(errors, output);
+            await GameDatabaseDumpStreams.WaitAsync(process, output, errors, timeout);
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                // It ended meanwhile.
-            }
-
             if (cancellationToken.IsCancellationRequested)
             {
                 throw;

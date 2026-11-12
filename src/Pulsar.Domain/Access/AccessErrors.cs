@@ -83,6 +83,9 @@ public static class AccessErrors
 
     public static DomainError UserNotFound { get; } = new("user.not_found", "The user does not exist.");
 
+    public static DomainError CredentialsChanged { get; } =
+        new("auth.credentials_changed", "Your credentials changed while confirming this action. Sign in again and retry.");
+
     public static DomainError QuotaInvalid { get; } = new("quota.invalid",
         $"A quota allows 0 to {UserQuota.MaxServersLimit} servers, memory and CPU totals of 0 or more, on at most {UserQuota.MaxNodes} nodes.");
 

@@ -62,6 +62,23 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public void CheckingAnOperationDoesNotReserveTheServerOrChangeItsInstallState()
+    {
+        var server = NewServer();
+        var install = Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        var before = server.UpdatedAt;
+
+        Assert.True(server.CheckOperation(install).IsSuccess);
+        Assert.Null(server.ActiveOperationId);
+        Assert.Equal(InstallState.NotInstalled, server.InstallState);
+        Assert.Equal(before, server.UpdatedAt);
+
+        Assert.True(server.BeginOperation(install, s_now).IsSuccess);
+        Assert.Equal(ServerErrors.Busy, server.CheckOperation(install).Error);
+        Assert.Equal(install.Id, server.ActiveOperationId);
+    }
+
+    [Fact]
     public void AnUpdateNeedsAnInstalledStoppedServerAndKeepsItInstalledWhateverHappens()
     {
         var server = NewServer();
