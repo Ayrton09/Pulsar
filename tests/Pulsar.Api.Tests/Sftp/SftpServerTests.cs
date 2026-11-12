@@ -390,7 +390,20 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
 
         Assert.Equal(SftpProtocol.NoSuchFile, await raw.CloseAsync(handle));
         Assert.Equal("original", await File.ReadAllTextAsync(path, Ct));
-        Assert.DoesNotContain(await AuditAsync(AuditActions.Server.FileWritten), e => e.ServerId?.Value == server.Id);
+        var writes = (await AuditAsync(AuditActions.Server.FileWritten)).Where(e => e.ServerId?.Value == server.Id).ToList();
+        if (sendBytes)
+        {
+            // The started upload is audited as a failed attempt when CLOSE aborts it, never as a successful write.
+            var attempted = Assert.Single(writes);
+            Assert.Equal(AuditOutcome.Failure, attempted.Outcome);
+            Assert.Equal(AuditActorType.User, attempted.ActorType);
+            Assert.Equal(user.Id, attempted.ActorUserId?.Value);
+            Assert.Equal("keep.txt", Field(attempted, "path"));
+        }
+        else
+        {
+            Assert.Empty(writes);
+        }
     }
 
     [DatabaseFact]
