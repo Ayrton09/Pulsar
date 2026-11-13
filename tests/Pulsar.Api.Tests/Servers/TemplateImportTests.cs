@@ -439,7 +439,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             var template = templates.Single(t => t.Key == game);
             foreach (var refused in new[] { true, false })
             {
-                var node = await NodeApi.CreateAsync(admin, $"{game}-{(refused ? "old" : "new")}");
+                var node = await NodeApi.CreateAsync(admin, $"{game}-{(refused ? "without" : "with")}-capability");
                 await using var agent = new TestAgent(factory);
                 await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
                 await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, [.. all.Where(c => !refused || c != capability)]);
