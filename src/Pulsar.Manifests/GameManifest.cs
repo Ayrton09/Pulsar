@@ -548,11 +548,18 @@ public enum QueryProtocol
 
     /// <summary>Minecraft's Server List Ping over TCP.</summary>
     Minecraft,
+
+    /// <summary>
+    /// AO 2027's (CoverAO's) public status, <c>GET /api/publico.json</c> over HTTP on the port its desktop app uses
+    /// (Pulsar 1.0.42): the players online, their names and the game's version.
+    /// </summary>
+    CoverAo,
 }
 
 /// <summary>
 /// How the agent asks a running server for its name, map and players (docs/architecture/04, "Query"), on a required
-/// port of the manifest that has the protocol's transport (UDP for A2S, TCP for Minecraft).
+/// port of the manifest that has the protocol's transport (UDP for A2S, TCP for Minecraft; CoverAO's, a TCP port the game
+/// serves HTTP on).
 /// </summary>
 public sealed record QueryDefinition(QueryProtocol Protocol, string Port);
 

@@ -399,7 +399,11 @@ function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: Serv
     { icon: Clock, label: t('servers.usage.uptime'), value: formatDuration(metrics.uptimeSeconds) },
   ];
   if (query) {
-    const players = t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers });
+    // A game that says no maximum (AO 2027) shows its count alone, not "6 / 0".
+    const players =
+      query.maxPlayers > 0
+        ? t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers })
+        : t('servers.usage.playersCount', { players: query.players });
     tiles.push({
       icon: Users,
       label: t('servers.usage.players'),

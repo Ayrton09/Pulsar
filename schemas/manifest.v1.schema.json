@@ -413,8 +413,8 @@
       "additionalProperties": false,
       "required": ["protocol", "port"],
       "properties": {
-        "protocol": { "enum": ["a2s", "minecraft"], "description": "a2s: Valve's server queries over UDP (Source and most Steam games); minecraft: the Server List Ping over TCP." },
-        "port": { "type": "string", "description": "Name of a required port with the protocol's transport (UDP for a2s, TCP for minecraft)." }
+        "protocol": { "enum": ["a2s", "minecraft", "coverAo"], "description": "a2s: Valve's server queries over UDP (Source and most Steam games); minecraft: the Server List Ping over TCP; coverAo (Pulsar 1.0.42): AO 2027's status (GET /api/publico.json) over HTTP, the players and their names with no maximum." },
+        "port": { "type": "string", "description": "Name of a required port with the protocol's transport (UDP for a2s, TCP for minecraft and coverAo, which also needs 'http')." }
       }
     },
     "CommandsDefinition": {

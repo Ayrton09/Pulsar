@@ -936,6 +936,12 @@ public static class AgentCapabilities
     public const string GoldSrcRcon = "manifest.goldsrc_rcon";
 
     /// <summary>
+    /// Not a command: the agent asks AO 2027 (CoverAO) for its players over HTTP (Pulsar 1.0.42, the <c>coverAo</c> query);
+    /// an older one refuses manifests that use it.
+    /// </summary>
+    public const string CoverAoQuery = "manifest.coverao_query";
+
+    /// <summary>
     /// Not a command: the agent copies the Steam client's libraries beside a game after SteamCMD installs it (Pulsar 1.0.25,
     /// <c>steamClient</c>); an older one refuses manifests that ask for it.
     /// </summary>

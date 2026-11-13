@@ -95,6 +95,13 @@ public static class ManifestFeatures
         return manifest.Runtime.Values.Any(r => r.Console.Rcon?.Protocol == RconProtocol.GoldSrc);
     }
 
+    /// <summary>AO 2027's (CoverAO's) status over HTTP as the query (Pulsar 1.0.42): an older agent refuses the protocol.</summary>
+    public static bool UsesCoverAoQuery(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Query?.Protocol == QueryProtocol.CoverAo;
+    }
+
     /// <summary>Thunderstore's packages (Pulsar 1.0.14): the <c>thunderstore</c> addon source, and the catalog unpacked into BepInEx's folder.</summary>
     public static bool UsesThunderstore(GameManifest manifest)
     {

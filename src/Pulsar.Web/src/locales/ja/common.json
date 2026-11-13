@@ -1520,6 +1520,7 @@
       "uptime": "稼働時間",
       "players": "プレイヤー",
       "playersValue": "{{players, number}} / {{max, number}}",
+      "playersCount": "{{players, number}}",
       "bots_one": "(ボット{{count, number}}体)",
       "bots_other": "(ボット{{count, number}}体)",
       "cpuLimit": "{{value, number}} %",

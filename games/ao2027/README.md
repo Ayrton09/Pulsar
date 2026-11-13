@@ -19,6 +19,11 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   idle limit, cheats to kick and to ban, shortest password; saving characters, the game's own world copies and how
   many it keeps, and log days. A guards' list left empty in the panel stays as the file has it: an empty list (that
   side attacks nobody) is set in the file.
+- From template 1.0.4 (Pulsar 1.0.42) the server's card and page show the players online and their names, from the
+  game's public status (`/api/publico.json` on the Game port, what the app's server list reads), asked by the agent on
+  the machine: checked on 2026-11-13 against CoverAO 1.0.17, 10 online, names and version read. The game says no
+  maximum, so the panel shows the count alone; its bots are counted and listed like players (the status does not tell
+  them apart). With `PaginaPublica=0` the game does not answer it and the panel shows no players.
 - The game prints `Puertos:` when it is ready, about 2 s after it starts. Ctrl+C stops it in about 1 s ("Servidor
   detenido"), with exit code 0.
 - Players play with the game's desktop app, CoverAO (`CoverAO-Setup.exe`, from the same releases): they add the

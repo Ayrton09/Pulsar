@@ -1520,6 +1520,7 @@
       "uptime": "运行时间",
       "players": "玩家",
       "playersValue": "{{players, number}} / {{max, number}}",
+      "playersCount": "{{players, number}}",
       "bots_one": "（{{count, number}} 个机器人）",
       "bots_other": "（{{count, number}} 个机器人）",
       "cpuLimit": "{{value, number}} %",

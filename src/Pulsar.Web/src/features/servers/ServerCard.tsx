@@ -283,7 +283,11 @@ function CardUsage({ serverId, nodeId }: { serverId: string; nodeId: string }) {
           {t('servers.usage.players')}
         </dt>
         <dd className="mt-0.5 truncate font-medium tabular-nums">
-          {query ? t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers }) : '—'}
+          {query
+            ? query.maxPlayers > 0
+              ? t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers })
+              : t('servers.usage.playersCount', { players: query.players })
+            : '—'}
         </dd>
         {query && query.maxPlayers > 0 && (
           <dd className="mt-1.5">

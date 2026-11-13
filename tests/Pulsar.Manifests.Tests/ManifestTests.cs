@@ -388,6 +388,8 @@ public sealed class ManifestTests
     [InlineData("a2s", "rcon")] // TCP only: A2S is UDP
     [InlineData("minecraft", "query")] // UDP only: the Server List Ping is TCP
     [InlineData("a2s", "tv")] // optional: the server may not have it
+    [InlineData("coverAo", "query")] // UDP only: AO 2027's status is HTTP
+    [InlineData("coverAo", "rcon")] // TCP, but not served over HTTP
     public void TheQueryPortIsChecked(string protocol, string port)
     {
         var errors = Errors(m =>
@@ -397,6 +399,20 @@ public sealed class ManifestTests
         });
 
         Assert.Contains(errors, e => e.Path == "query.port");
+    }
+
+    [Fact]
+    public void CoverAoIsAskedOnAPortServedOverHttp()
+    {
+        var manifest = Parse(Manifest(m =>
+        {
+            var ports = QueryPorts();
+            ports.Add(new JsonObject { ["name"] = "web", ["label"] = "Web", ["protocols"] = new JsonArray("tcp"), ["default"] = 28030, ["http"] = true });
+            m["ports"] = ports;
+            m["query"] = new JsonObject { ["protocol"] = "coverAo", ["port"] = "web" };
+        }));
+
+        Assert.Equal(new QueryDefinition(QueryProtocol.CoverAo, "web"), manifest.Query);
     }
 
     [Fact]

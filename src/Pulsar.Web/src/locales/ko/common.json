@@ -1520,6 +1520,7 @@
       "uptime": "가동 시간",
       "players": "플레이어",
       "playersValue": "{{players, number}} / {{max, number}}",
+      "playersCount": "{{players, number}}",
       "bots_one": "(봇 {{count, number}}개)",
       "bots_other": "(봇 {{count, number}}개)",
       "cpuLimit": "{{value, number}} %",

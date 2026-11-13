@@ -191,6 +191,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.CatalogLists;
             yield return AgentCapabilities.SteamBranches;
             yield return AgentCapabilities.GoldSrcRcon;
+            yield return AgentCapabilities.CoverAoQuery;
             yield return AgentCapabilities.ChangeGame;
             yield return AgentCapabilities.ReceiveBackup;
             yield return AgentCapabilities.WholeBackup;

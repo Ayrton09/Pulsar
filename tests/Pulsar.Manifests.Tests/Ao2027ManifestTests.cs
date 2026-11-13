@@ -43,6 +43,17 @@ public sealed class Ao2027ManifestTests
         var ini = Assert.Single(plan.ConfigFiles);
         Assert.Equal(("CoverAO-win-x64/Server.ini", "INIT"), (ini.Path, ini.Section));
         Assert.Contains(ini.Entries, e => e.Key == "StartPort" && e.Value == "7700");
+        Assert.Equal(new QueryEndpoint(QueryProtocol.CoverAo, PortAssignment.AnyAddress, 7703), plan.Query); // the app's port
+    }
+
+    [Fact]
+    public void ItsPlayersAreAskedOverHttpByANewerAgent()
+    {
+        var manifest = TestManifests.Load("ao2027");
+
+        Assert.Equal(new QueryDefinition(QueryProtocol.CoverAo, "game"), manifest.Query);
+        Assert.True(ManifestFeatures.UsesCoverAoQuery(manifest));
+        Assert.False(ManifestFeatures.UsesCoverAoQuery(TestManifests.Load("minecraft")));
     }
 
     [Fact]

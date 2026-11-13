@@ -318,16 +318,17 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             .Single(t => t.Key == "ao2027" && t.Source == TemplateSource.Bundled);
 
         // Before 1.0.35 an agent would run the game answering on the node only, and an update would put back Server.ini's defaults;
-        // before 1.0.37 it would refuse the manifest's database section (template 1.0.1).
+        // before 1.0.37 it would refuse the manifest's database section (template 1.0.1); before 1.0.42 its players' query (template 1.0.4).
         string[] older = [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands,
             AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall];
         foreach (var (name, capabilities, refused) in new[]
         {
             ("ao2027-old", older, true),
-            ("ao2027-no-keep", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.GameDatabase], true),
-            ("ao2027-no-urls", [.. older, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase], true),
-            ("ao2027-no-database", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep], true),
-            ("ao2027-new", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase], false),
+            ("ao2027-no-keep", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.GameDatabase, AgentCapabilities.CoverAoQuery], true),
+            ("ao2027-no-urls", [.. older, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase, AgentCapabilities.CoverAoQuery], true),
+            ("ao2027-no-database", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.CoverAoQuery], true),
+            ("ao2027-no-query", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase], true),
+            ("ao2027-new", [.. older, AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase, AgentCapabilities.CoverAoQuery], false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);
@@ -354,7 +355,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
         await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, [AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings,
             AgentCapabilities.MoreConfigFormats, AgentCapabilities.ManifestCommands, AgentCapabilities.PlayerCommands, AgentCapabilities.GitHubReleaseInstall,
-            AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase]);
+            AgentCapabilities.HttpUrls, AgentCapabilities.ReleaseKeep, AgentCapabilities.GameDatabase, AgentCapabilities.CoverAoQuery]);
         await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.5", "7666-7669");
         await GameServerTests.AllocateAsync(admin, node.Node.Id, "192.168.1.6", "7666-7669");
 
@@ -419,7 +420,8 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             .Where(t => t.Source == TemplateSource.Bundled).ToList();
 
         // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need, one before 1.0.15
-        // GoldSrc's RCON, one before 1.0.25 (or one that cannot check Valve's signature) the copy of Steam's client libraries.
+        // GoldSrc's RCON, one before 1.0.25 (or one that cannot check Valve's signature) the copy of Steam's client libraries,
+        // one before 1.0.42 AO 2027's players' query.
         string[] all = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         foreach (var (game, capability, values) in new[]
@@ -431,6 +433,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("cs16", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
             ("hldm", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
             ("cs2", AgentCapabilities.SteamClient, new Dictionary<string, string?>()),
+            ("ao2027", AgentCapabilities.CoverAoQuery, new Dictionary<string, string?>()),
         })
         {
             var template = templates.Single(t => t.Key == game);

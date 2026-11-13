@@ -1522,10 +1522,14 @@ public static partial class ManifestValidator
     /// <summary>The query goes to a port every server has, over the transport the game answers it on.</summary>
     private static void ValidateQuery(QueryDefinition query, Dictionary<string, PortDefinition> ports, Action<string, string> error)
     {
-        var transport = query.Protocol == QueryProtocol.Minecraft ? PortProtocol.Tcp : PortProtocol.Udp;
+        var transport = query.Protocol == QueryProtocol.A2s ? PortProtocol.Udp : PortProtocol.Tcp;
         if (!ports.TryGetValue(query.Port, out var port) || !port.Required || !port.Protocols.Contains(transport))
         {
             error("query.port", $"Must name a required {transport.ToString().ToUpperInvariant()} port of the manifest.");
+        }
+        else if (query.Protocol == QueryProtocol.CoverAo && !port.Http)
+        {
+            error("query.port", "CoverAO's status is asked over HTTP: the port must say 'http'.");
         }
     }
 

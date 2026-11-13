@@ -597,6 +597,37 @@ describe('live updates', () => {
     expect(screen.getByLabelText('Usage')).toHaveTextContent('2 / 10');
   });
 
+  it('shows the count alone when the game says no maximum', async () => {
+    serverApi();
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServerAtNode')).toHaveLength(1));
+
+    live.emit('ServerMetrics', {
+      serverId: server.id,
+      at: '2026-10-02T12:06:00Z',
+      cpuPercent: 3,
+      memoryBytes: 1024,
+      processCount: 1,
+      uptimeSeconds: 600,
+      query: {
+        at: '2026-10-02T12:06:00Z',
+        name: null,
+        map: null,
+        players: 6,
+        maxPlayers: 0,
+        bots: 0,
+        version: '1.0.17',
+        playerList: [{ name: 'Aldo', score: null, connectedSeconds: null }],
+      },
+    });
+
+    const players = await screen.findByRole('table', { name: 'Players' });
+    expect(players).toHaveTextContent('Aldo');
+    const usage = screen.getByLabelText('Usage');
+    expect(usage).toHaveTextContent('6');
+    expect(usage).not.toHaveTextContent('/ 0');
+  });
+
   it('fetches the servers again when the panel says they changed, instead of polling', async () => {
     const api = serverApi();
     const live = await renderAt('/servers');

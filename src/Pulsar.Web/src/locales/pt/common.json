@@ -1520,6 +1520,7 @@
       "uptime": "Tempo ativo",
       "players": "Jogadores",
       "playersValue": "{{players, number}} / {{max, number}}",
+      "playersCount": "{{players, number}}",
       "bots_one": "({{count, number}} bot)",
       "bots_other": "({{count, number}} bots)",
       "cpuLimit": "{{value, number}} %",

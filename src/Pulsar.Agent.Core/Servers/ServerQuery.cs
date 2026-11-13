@@ -37,7 +37,8 @@ public sealed class QueryException : Exception
 }
 
 /// <summary>
-/// The query protocols of docs/architecture/04 ("Query"): A2S over UDP and Minecraft's Server List Ping over TCP.
+/// The query protocols of docs/architecture/04 ("Query"): A2S over UDP, Minecraft's Server List Ping over TCP and AO 2027's
+/// status over HTTP.
 /// Answers are read with fixed limits (packet count, sizes, players) and every text is cleaned
 /// (<see cref="QueryText"/>): the game, and its players' names, are not trusted.
 /// </summary>
@@ -56,6 +57,7 @@ public sealed class ServerQuery(TimeProvider clock) : IServerQuery
             return endpoint.Protocol switch
             {
                 QueryProtocol.Minecraft => await MinecraftPing.QueryAsync(endpoint, clock, timeout.Token),
+                QueryProtocol.CoverAo => await CoverAoStatus.QueryAsync(endpoint, clock, timeout.Token),
                 _ => await A2sQuery.QueryAsync(endpoint, clock, timeout.Token),
             };
         }
@@ -63,7 +65,7 @@ public sealed class ServerQuery(TimeProvider clock) : IServerQuery
         {
             throw new QueryException($"No answer from {endpoint.Address}:{endpoint.Port} within {Timeout.TotalSeconds:0} s.");
         }
-        catch (Exception ex) when (ex is SocketException or IOException)
+        catch (Exception ex) when (ex is SocketException or IOException or HttpRequestException)
         {
             throw new QueryException($"Cannot query {endpoint.Address}:{endpoint.Port}: {ex.Message}", ex);
         }
@@ -595,5 +597,100 @@ internal static class MinecraftPing
         }
 
         throw new QueryException("A malformed answer.");
+    }
+}
+
+/// <summary>
+/// AO 2027's (CoverAO's) public status: <c>GET /api/publico.json</c> on the port its desktop app uses, the address the app
+/// asks too. <c>servidor.online</c> is the count, <c>online[].nombre</c> the names (bots too: the game does not tell them
+/// apart) and <c>servidor.version</c> the version; the game says no maximum. Asked on the machine itself, with no proxy and
+/// no redirect followed, and read up to a fixed size.
+/// </summary>
+internal static class CoverAoStatus
+{
+    /// <summary>Far above the status of a full server (its players and its ranking).</summary>
+    private const int MaxAnswer = 512 * 1024;
+
+    private static readonly HttpClient s_http = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        AutomaticDecompression = DecompressionMethods.None,
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
+        MaxResponseHeadersLength = 16, // KiB
+    })
+    {
+        Timeout = Timeout.InfiniteTimeSpan, // the query's own deadline cancels it
+    };
+
+    public static async Task<ServerQueryInfo> QueryAsync(QueryEndpoint endpoint, TimeProvider clock, CancellationToken cancellationToken)
+    {
+        var address = endpoint.Address == PortAssignment.AnyAddress ? IPAddress.Loopback : IPAddress.Parse(endpoint.Address);
+        var host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"http://{host}:{endpoint.Port.ToString(CultureInfo.InvariantCulture)}/api/publico.json"));
+        using var response = await s_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new QueryException($"The game's status answered {(int)response.StatusCode}.");
+        }
+
+        if (response.Content.Headers.ContentLength is > MaxAnswer)
+        {
+            throw new QueryException("An answer of an unexpected size.");
+        }
+
+        var body = new MemoryStream();
+        await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
+        {
+            var buffer = new byte[16 * 1024];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                if (body.Length + read > MaxAnswer)
+                {
+                    throw new QueryException("An answer of an unexpected size.");
+                }
+
+                body.Write(buffer, 0, read);
+            }
+        }
+
+        var at = clock.GetUtcNow();
+        try
+        {
+            using var document = JsonDocument.Parse(body.GetBuffer().AsMemory(0, (int)body.Length), new JsonDocumentOptions { MaxDepth = 16 });
+            return Read(document.RootElement, at);
+        }
+        catch (JsonException ex)
+        {
+            throw new QueryException("An answer that is not AO 2027's status.", ex);
+        }
+    }
+
+    private static ServerQueryInfo Read(JsonElement status, DateTimeOffset at)
+    {
+        if (status.ValueKind != JsonValueKind.Object || !status.TryGetProperty("servidor", out var server) || server.ValueKind != JsonValueKind.Object
+            || !server.TryGetProperty("online", out var online) || online.ValueKind != JsonValueKind.Number || !online.TryGetInt32(out var count)
+            || count < 0)
+        {
+            throw new QueryException("An answer that is not AO 2027's status.");
+        }
+
+        var players = new List<QueryPlayer>();
+        if (status.TryGetProperty("online", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var player in list.EnumerateArray().Take(QueryText.MaxPlayers))
+            {
+                if (player.ValueKind == JsonValueKind.Object && player.TryGetProperty("nombre", out var name)
+                    && name.ValueKind == JsonValueKind.String && QueryText.Clean(name.GetString()) is { } clean)
+                {
+                    players.Add(new QueryPlayer(clean, null, null));
+                }
+            }
+        }
+
+        var version = server.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? QueryText.Clean(v.GetString()) : null;
+        return new ServerQueryInfo(at, Name: null, Map: null, count, MaxPlayers: 0, Bots: 0, version, players);
     }
 }

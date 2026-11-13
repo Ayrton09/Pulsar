@@ -153,6 +153,95 @@ public sealed class ServerQueryTests
         await served;
     }
 
+    [Fact]
+    public async Task CoverAoGivesItsCountNamesAndVersionAndNoMaximum()
+    {
+        const string Status = """
+            {"servidor":{"version":"1.0.17","uptimeSec":156,"online":3},
+             "online":[{"nombre":"Aldo","nivel":2,"clase":"Leñador","clan":null,"gm":false},{"nombre":"‮Bruma\u001b[31m","nivel":1},{"nivel":1},{"nombre":""}],
+             "ranking":[{"puesto":1,"nombre":"Ciro","nivel":1}]}
+            """;
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeHttpAsync(listener, "200 OK", Status);
+
+        var info = await _query.QueryAsync(new QueryEndpoint(QueryProtocol.CoverAo, PortAssignment.AnyAddress, port), TestContext.Current.CancellationToken);
+
+        Assert.Equal((3, 0, 0), (info.Players, info.MaxPlayers, info.Bots)); // the game says no maximum
+        Assert.Equal("1.0.17", info.Version);
+        Assert.Null(info.Name);
+        Assert.Null(info.Map);
+        Assert.Equal(["Aldo", "Bruma[31m"], info.PlayerList.Select(p => p.Name)); // cleaned; the ranking is not who is online
+        Assert.StartsWith("GET /api/publico.json HTTP/1.1", await served, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("404 Not Found", """{"servidor":{"online":1}}""")] // its public page turned off
+    [InlineData("302 Found", """{"servidor":{"online":1}}""")] // a redirect is not followed
+    [InlineData("200 OK", """{"online":[]}""")] // no count
+    [InlineData("200 OK", """{"servidor":{"online":-1}}""")]
+    [InlineData("200 OK", """{"servidor":{"online":"6"}}""")] // a count that is not a number
+    [InlineData("200 OK", """[1,2]""")]
+    [InlineData("200 OK", "<html>not the status</html>")]
+    public async Task SomethingElseOnCoverAosPortIsAQueryFailure(string status, string body)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeHttpAsync(listener, status, body);
+
+        await Assert.ThrowsAsync<QueryException>(() =>
+            _query.QueryAsync(new QueryEndpoint(QueryProtocol.CoverAo, "127.0.0.1", port), TestContext.Current.CancellationToken));
+        await served;
+    }
+
+    [Fact]
+    public async Task AnOversizedCoverAoAnswerIsRefused()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeHttpAsync(listener, "200 OK", """{"servidor":{"online":1},"x":" """ + new string('a', 600 * 1024) + "\"}", chunked: true);
+
+        await Assert.ThrowsAsync<QueryException>(() =>
+            _query.QueryAsync(new QueryEndpoint(QueryProtocol.CoverAo, "127.0.0.1", port), TestContext.Current.CancellationToken));
+        await served;
+    }
+
+    /// <summary>Answers one HTTP request with <paramref name="body"/>; returns the request's first line.</summary>
+    private static async Task<string> ServeHttpAsync(TcpListener listener, string status, string body, bool chunked = false)
+    {
+        using var client = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken);
+        var stream = client.GetStream();
+        var request = new StringBuilder();
+        var one = new byte[1];
+        while (!request.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await stream.ReadAsync(one, TestContext.Current.CancellationToken) == 1)
+        {
+            request.Append((char)one[0]);
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(body);
+        var head = chunked
+            ? $"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{bytes.Length:x}\r\n"
+            : $"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {bytes.Length}\r\nLocation: http://127.0.0.1:1/\r\nConnection: close\r\n\r\n";
+        try
+        {
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(head), TestContext.Current.CancellationToken);
+            await stream.WriteAsync(bytes, TestContext.Current.CancellationToken);
+            if (chunked)
+            {
+                await stream.WriteAsync("\r\n0\r\n\r\n"u8.ToArray(), TestContext.Current.CancellationToken);
+            }
+        }
+        catch (IOException)
+        {
+            // The agent hung up once it had read enough.
+        }
+
+        return request.ToString().Split("\r\n")[0];
+    }
+
     [Theory]
     [InlineData("  plain  ", "plain")]
     [InlineData("§aGreen§r name", "Green name")]
