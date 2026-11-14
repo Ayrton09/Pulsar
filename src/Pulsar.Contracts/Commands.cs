@@ -948,6 +948,12 @@ public static class AgentCapabilities
     public const string ReleaseUpdater = "install.release_updater";
 
     /// <summary>
+    /// Not a command: the agent follows a console log the game may write to other places (Pulsar 1.0.44, the console's
+    /// <c>otherLogFiles</c>: CS2 with Metamod); an older one refuses manifests that name them.
+    /// </summary>
+    public const string OtherLogFiles = "manifest.other_log_files";
+
+    /// <summary>
     /// Not a command: the agent copies the Steam client's libraries beside a game after SteamCMD installs it (Pulsar 1.0.25,
     /// <c>steamClient</c>); an older one refuses manifests that ask for it.
     /// </summary>

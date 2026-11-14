@@ -172,6 +172,13 @@ public static class ManifestFeatures
         return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any(s => s.Keep is not null);
     }
 
+    /// <summary>A console log the game may write to other places (<see cref="ConsoleDefinition.OtherLogFiles"/>, Pulsar 1.0.44).</summary>
+    public static bool UsesOtherLogFiles(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Runtime.Values.Any(r => r.Console.OtherLogFiles is not null);
+    }
+
     /// <summary>A release the game's own updater installs (<see cref="GitHubReleaseStep.Updater"/>, Pulsar 1.0.43).</summary>
     public static bool UsesReleaseUpdater(GameManifest manifest)
     {

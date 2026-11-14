@@ -45,6 +45,31 @@ public sealed class Cs2ManifestTests
     }
 
     [Fact]
+    public void ItsConsoleIsFollowedWhereMetamodMakesItWriteIt()
+    {
+        var manifest = TestManifests.Load("cs2");
+        var console = manifest.Runtime[ManifestValidator.WindowsX64].Console;
+
+        Assert.Equal(["game/csgo/console.log", "game/csgo/addons/metamod/console.log"], console.LogFiles);
+        Assert.True(ManifestFeatures.UsesOtherLogFiles(manifest));
+        Assert.False(ManifestFeatures.UsesOtherLogFiles(TestManifests.Load("css")));
+    }
+
+    [Theory]
+    [InlineData("""[]""", "runtime.windows-x64.console.otherLogFiles")]
+    [InlineData("""["game/csgo/console.log"]""", "runtime.windows-x64.console.otherLogFiles")]
+    [InlineData("""["game/csgo/addons/metamod/console_*.log"]""", "runtime.windows-x64.console.otherLogFiles[0]")]
+    [InlineData("""["../console.log"]""", "runtime.windows-x64.console.otherLogFiles[0]")]
+    [InlineData("""[".pulsar/console.log"]""", "runtime.windows-x64.console.otherLogFiles[0]")]
+    [InlineData("""["a.log", "b.log", "c.log", "d.log", "e.log"]""", "runtime.windows-x64.console.otherLogFiles")]
+    public void OtherLogFilesAreOtherFilesNamedInFull(string others, string path)
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("cs2", m => m["runtime"]!["windows-x64"]!["console"]!["otherLogFiles"] = System.Text.Json.Nodes.JsonNode.Parse(others)));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    [Fact]
     public void MaxRoundsHasNoZero()
     {
         // 0 is no limit on older Counter-Strike; on Counter-Strike 2 its warmup never ends.

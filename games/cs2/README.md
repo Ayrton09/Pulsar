@@ -1,5 +1,9 @@
 # Counter-Strike 2 (cs2)
 
+## The console with Metamod (1.0.44)
+
+With Metamod's line in `gameinfo.gi` (`Game csgo/addons/metamod`, first of the search paths), CS2 writes its `console.log` to `game/csgo/addons/metamod/console.log` instead of `game/csgo/console.log`: seen on 2026-11-14 on a CS2 1.41.9.7 server with Metamod 2.0 build 1490, CounterStrikeSharp 1.0.380 and MultiAddonManager 1.7.4, whose console in Pulsar stayed empty while the game ran. From template 1.5.3 the agent follows whichever of the two appears after the start (`otherLogFiles`).
+
 ## Max rounds (1.0.29)
 
 `mp_maxrounds 0` is no limit on older Counter-Strike, not on Counter-Strike 2: the warmup counts down to 0:01 and stays there, with no round ever starting, on any map (seen on a user's server, fixed by `mp_maxrounds 30` and `mp_restartgame 1`). The option takes 1 to 100 from template 1.5.2; a server with 0 stored is asked for another value when it moves to that version.

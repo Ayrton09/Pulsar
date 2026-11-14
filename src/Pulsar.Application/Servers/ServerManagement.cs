@@ -932,6 +932,7 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesGoldSrcRcon(manifest) || Announces(connection, AgentCapabilities.GoldSrcRcon))
         && (!ManifestFeatures.UsesCoverAoQuery(manifest) || Announces(connection, AgentCapabilities.CoverAoQuery))
         && (!ManifestFeatures.UsesReleaseUpdater(manifest) || Announces(connection, AgentCapabilities.ReleaseUpdater))
+        && (!ManifestFeatures.UsesOtherLogFiles(manifest) || Announces(connection, AgentCapabilities.OtherLogFiles))
         && (!ManifestFeatures.UsesSteamClient(manifest) || Announces(connection, AgentCapabilities.SteamClient))
         && (!ManifestFeatures.UsesHttpUrls(manifest) || Announces(connection, AgentCapabilities.HttpUrls))
         && (!ManifestFeatures.UsesReleaseKeep(manifest) || Announces(connection, AgentCapabilities.ReleaseKeep))

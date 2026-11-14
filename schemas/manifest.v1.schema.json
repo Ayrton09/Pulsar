@@ -407,6 +407,10 @@
         "privatePaths": {
           "type": "array", "maxItems": 8, "items": { "type": "string", "minLength": 1, "maxLength": 260 },
           "description": "With GoldSrc's RCON (Pulsar 1.0.15): other files or folders the game writes RCON commands to, password included (HLDS's logs folder). Pulsar keeps them, what is in them and the folders that hold them from whoever handles the server's files."
+        },
+        "otherLogFiles": {
+          "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 260 },
+          "description": "Pulsar 1.0.44, beside a logFile named in full (not with GoldSrc's RCON): other places the game may write the same log to, relative paths named in full outside .pulsar. All are deleted before a start, and the console follows the one that appears (CS2 writes console.log to addons/metamod once Metamod's line is in gameinfo.gi)."
         }
       }
     },

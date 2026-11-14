@@ -1232,6 +1232,44 @@ public static partial class ManifestValidator
             }
         }
 
+        if (console.OtherLogFiles is { } others)
+        {
+            if (console.LogFile is not { } named || IsLogFilePattern(named))
+            {
+                context.Error($"{path}.console.otherLogFiles", "Only beside a 'logFile' named in full.");
+            }
+            else if (console.Rcon?.Protocol == RconProtocol.GoldSrc)
+            {
+                context.Error($"{path}.console.otherLogFiles", "GoldSrc's log holds the password: one file Pulsar knows by name.");
+            }
+            else if (others.Count is 0 or > ConsoleDefinition.MaxOtherLogFiles)
+            {
+                context.Error($"{path}.console.otherLogFiles", $"From 1 to {ConsoleDefinition.MaxOtherLogFiles} files.");
+            }
+            else
+            {
+                for (var i = 0; i < others.Count; i++)
+                {
+                    if (others[i] is null || IsLogFilePattern(others[i]))
+                    {
+                        context.Error($"{path}.console.otherLogFiles[{i}]", "A relative path named in full.");
+                        continue;
+                    }
+
+                    ValidateRelativePath($"{path}.console.otherLogFiles[{i}]", others[i], context.Error);
+                    if (PulsarFolderError(others[i]) is { } inPulsar)
+                    {
+                        context.Error($"{path}.console.otherLogFiles[{i}]", inPulsar);
+                    }
+                }
+
+                if (console.LogFiles.Distinct(StringComparer.OrdinalIgnoreCase).Count() != console.LogFiles.Count)
+                {
+                    context.Error($"{path}.console.otherLogFiles", "Each file once, and not the 'logFile'.");
+                }
+            }
+        }
+
         if (console.PrivatePaths is { } privatePaths)
         {
             if (console.Rcon?.Protocol != RconProtocol.GoldSrc)

@@ -422,7 +422,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
 
         // Everything the current agent announces; an agent before 1.0.14 lacks the one its game's mods need, one before 1.0.15
         // GoldSrc's RCON, one before 1.0.25 (or one that cannot check Valve's signature) the copy of Steam's client libraries,
-        // one before 1.0.42 AO 2027's players' query, one before 1.0.43 its own updater.
+        // one before 1.0.42 AO 2027's players' query, one before 1.0.43 its own updater, one before 1.0.44 CS2's console written where Metamod puts it.
         string[] all = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         foreach (var (game, capability, values) in new[]
@@ -434,6 +434,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             ("cs16", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
             ("hldm", AgentCapabilities.GoldSrcRcon, new Dictionary<string, string?>()),
             ("cs2", AgentCapabilities.SteamClient, new Dictionary<string, string?>()),
+            ("cs2", AgentCapabilities.OtherLogFiles, new Dictionary<string, string?>()),
             ("ao2027", AgentCapabilities.CoverAoQuery, new Dictionary<string, string?>()),
             ("ao2027", AgentCapabilities.ReleaseUpdater, new Dictionary<string, string?>()),
         })

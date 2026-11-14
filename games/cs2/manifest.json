@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -103,6 +103,7 @@
       "console": {
         "mode": "logfile+rcon",
         "logFile": "game/csgo/console.log",
+        "otherLogFiles": ["game/csgo/addons/metamod/console.log"],
         "rcon": { "protocol": "source", "port": "game", "logsCommands": true },
         "sensitiveCommandPrefixes": ["rcon_password", "sv_password", "sv_setsteamaccount"]
       }

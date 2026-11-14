@@ -989,7 +989,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 }
                 else
                 {
-                    _files.Delete(_definition.Directory, logFile);
+                    // Every place the game may write it (CS2 with Metamod: addons/metamod): the one that appears is this start's.
+                    foreach (var file in plan.Console.LogFiles)
+                    {
+                        _files.Delete(_definition.Directory, file);
+                    }
                 }
             }
 
@@ -1061,12 +1065,34 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
             logFile = found;
         }
+        else if (plan.Console.OtherLogFiles is not null)
+        {
+            // A game that may write its log elsewhere (CS2 with Metamod's search path first): the place it appears in.
+            string? found = null;
+            for (var attempt = 1; found is null; attempt++)
+            {
+                found = plan.Console.LogFiles.FirstOrDefault(Exists);
+                if (found is null)
+                {
+                    try
+                    {
+                        await Task.Delay(attempt < 40 ? _options.LogPollInterval : s_maximumLogSearchInterval, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            logFile = found;
+        }
 
         var tail = new LogTail(_files, _definition.Directory, logFile, TextEncoding(plan.Console.Encoding), _options.LogPollInterval,
             start, onUnreadable: ex =>
             {
                 LogLogTailFailed(ServerId, ex.Message);
-                _console.Note($"Cannot open the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
+                _console.Note($"Cannot open the log file {logFile}: {ex.Message}", _clock.GetUtcNow());
             });
         var lines = readiness is null ? null : new ConsoleLines();
         try
@@ -1112,7 +1138,21 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
         {
             LogLogTailFailed(ServerId, ex.Message);
-            _console.Note($"Cannot follow the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
+            _console.Note($"Cannot follow the log file {logFile}: {ex.Message}", _clock.GetUtcNow());
+        }
+    }
+
+    /// <summary>Whether a file of the server is there (one that cannot be opened is looked for again later).</summary>
+    private bool Exists(string relativePath)
+    {
+        try
+        {
+            using var stream = _files.OpenRead(_definition.Directory, relativePath);
+            return stream is not null;
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

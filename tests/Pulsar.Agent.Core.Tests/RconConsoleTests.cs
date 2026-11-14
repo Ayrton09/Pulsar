@@ -783,6 +783,30 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ALogTheGameWritesElsewhereIsFollowedWhereItAppears()
+    {
+        // CS2 with Metamod's line in gameinfo.gi writes console.log to addons/metamod (Pulsar 1.0.44): an earlier start's
+        // log in either place is deleted, and the console follows the one that appears.
+        var ct = TestContext.Current.CancellationToken;
+        Directory.CreateDirectory(Path.Combine(_root, "cstrike", "addons", "metamod"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "console.log"), "an earlier start\n", ct);
+        await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "addons", "metamod", "console.log"), "an earlier start\n", ct);
+        var supervisor = Supervisor(new LogPatternReadiness("^Server is hibernating", 60),
+            change: plan => plan with { Console = plan.Console with { OtherLogFiles = ["cstrike/addons/metamod/console.log"] } });
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        await supervisor.FlushAsync();
+        Assert.False(File.Exists(Path.Combine(_root, "cstrike", "console.log")));
+        Assert.False(File.Exists(Path.Combine(_root, "cstrike", "addons", "metamod", "console.log")));
+
+        await File.WriteAllTextAsync(Path.Combine(_root, "cstrike", "addons", "metamod", "console.log"), "Loading map\nServer is hibernating\n", ct);
+
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+        await EventuallyAsync(() => Text(supervisor).EndsWith("Loading map\nServer is hibernating\n", StringComparison.Ordinal));
+        Assert.DoesNotContain("an earlier start", Text(supervisor), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AConfigurationFileThatCannotBeWrittenFailsTheStart()
     {
         Directory.CreateDirectory(Path.Combine(_root, "cstrike", "cfg", "server.cfg")); // a directory where the file goes

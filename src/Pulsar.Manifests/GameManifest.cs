@@ -521,6 +521,11 @@ public enum ManifestConsoleEncoding
 /// With GoldSrc's RCON (Pulsar 1.0.15): other files or folders the game writes its RCON commands to, password included
 /// (HLDS's <c>logs</c> folder once logging is on). Like the console's log, they and what is in them are Pulsar's to keep.
 /// </param>
+/// <param name="OtherLogFiles">
+/// Other places the game may write the same log to (Pulsar 1.0.44): CS2 writes <c>console.log</c> to the first folder of
+/// its search paths, which Metamod's line in <c>gameinfo.gi</c> makes <c>addons/metamod</c>. All are deleted before a
+/// start, and the console follows the one that appears.
+/// </param>
 public sealed record ConsoleDefinition(
     ManifestConsoleMode Mode,
     ManifestConsoleEncoding Encoding = ManifestConsoleEncoding.Utf8,
@@ -528,7 +533,15 @@ public sealed record ConsoleDefinition(
     IReadOnlyList<string>? SensitiveCommandPrefixes = null,
     string? LogFile = null,
     RconDefinition? Rcon = null,
-    IReadOnlyList<string>? PrivatePaths = null);
+    IReadOnlyList<string>? PrivatePaths = null,
+    IReadOnlyList<string>? OtherLogFiles = null)
+{
+    /// <summary>At most this many <see cref="OtherLogFiles"/>.</summary>
+    public const int MaxOtherLogFiles = 4;
+
+    /// <summary>Where the game may write its log: <see cref="LogFile"/>, then <see cref="OtherLogFiles"/>; none without a log.</summary>
+    public IReadOnlyList<string> LogFiles => LogFile is null ? [] : [LogFile, .. OtherLogFiles ?? []];
+}
 
 public enum RconProtocol
 {
