@@ -172,6 +172,13 @@ public static class ManifestFeatures
         return (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any(s => s.Keep is not null);
     }
 
+    /// <summary>A release the game's own updater installs (<see cref="GitHubReleaseStep.Updater"/>, Pulsar 1.0.43).</summary>
+    public static bool UsesReleaseUpdater(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return (manifest.Update?.Steps ?? []).OfType<GitHubReleaseStep>().Any(s => s.Updater is not null);
+    }
+
     /// <summary>A .NET runtime in the server's folder (<see cref="DotnetRuntimeStep"/>, Pulsar 1.0.12).</summary>
     public static bool UsesDotnetRuntime(GameManifest manifest)
     {

@@ -942,6 +942,12 @@ public static class AgentCapabilities
     public const string CoverAoQuery = "manifest.coverao_query";
 
     /// <summary>
+    /// Not a command: the agent hands a new release to the game's own updater when the manifest names one (Pulsar 1.0.43,
+    /// <c>githubRelease</c>'s <c>updater</c>); an older one refuses manifests that do.
+    /// </summary>
+    public const string ReleaseUpdater = "install.release_updater";
+
+    /// <summary>
     /// Not a command: the agent copies the Steam client's libraries beside a game after SteamCMD installs it (Pulsar 1.0.25,
     /// <c>steamClient</c>); an older one refuses manifests that ask for it.
     /// </summary>

@@ -931,6 +931,7 @@ public sealed partial class ServerManagement(
         && (!ManifestFeatures.UsesCatalogLists(manifest) || Announces(connection, AgentCapabilities.CatalogLists))
         && (!ManifestFeatures.UsesGoldSrcRcon(manifest) || Announces(connection, AgentCapabilities.GoldSrcRcon))
         && (!ManifestFeatures.UsesCoverAoQuery(manifest) || Announces(connection, AgentCapabilities.CoverAoQuery))
+        && (!ManifestFeatures.UsesReleaseUpdater(manifest) || Announces(connection, AgentCapabilities.ReleaseUpdater))
         && (!ManifestFeatures.UsesSteamClient(manifest) || Announces(connection, AgentCapabilities.SteamClient))
         && (!ManifestFeatures.UsesHttpUrls(manifest) || Announces(connection, AgentCapabilities.HttpUrls))
         && (!ManifestFeatures.UsesReleaseKeep(manifest) || Announces(connection, AgentCapabilities.ReleaseKeep))

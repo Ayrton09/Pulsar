@@ -57,6 +57,44 @@ public sealed class Ao2027ManifestTests
     }
 
     [Fact]
+    public void AnUpdateGoesThroughTheGamesOwnUpdaterOnAnewerAgent()
+    {
+        var manifest = TestManifests.Load("ao2027");
+
+        Assert.Null(manifest.Install!.Steps.OfType<GitHubReleaseStep>().Single().Updater); // an install unpacks
+        var updater = manifest.Update!.Steps.OfType<GitHubReleaseStep>().Single().Updater!;
+        Assert.Equal("CoverAO-win-x64/CoverAO.Server.exe", updater.Executable);
+        Assert.Equal(["actualizar", "--desde", ReleaseUpdater.ReleaseFile], updater.Arguments);
+        Assert.True(ManifestFeatures.UsesReleaseUpdater(manifest));
+        Assert.False(ManifestFeatures.UsesReleaseUpdater(TestManifests.Load("terraria")));
+    }
+
+    [Theory]
+    [InlineData("""{ "executable": "CoverAO-win-x64/Actualizar.bat", "arguments": ["{{release.file}}"] }""", "update.steps[0].updater.executable")]
+    [InlineData("""{ "executable": "../CoverAO.Server.exe", "arguments": ["{{release.file}}"] }""", "update.steps[0].updater.executable")]
+    [InlineData("""{ "executable": ".pulsar/x.exe", "arguments": ["{{release.file}}"] }""", "update.steps[0].updater.executable")]
+    [InlineData("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["actualizar"] }""", "update.steps[0].updater.arguments")]
+    [InlineData("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["{{release.file}}", "{{release.file}}"] }""", "update.steps[0].updater.arguments")]
+    [InlineData("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["{{release.file}}", "{{var.x}}"] }""", "update.steps[0].updater.arguments[1]")]
+    [InlineData("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["{{release.file}}", "a\"b"] }""", "update.steps[0].updater.arguments[1]")]
+    [InlineData("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": [] }""", "update.steps[0].updater.arguments")]
+    public void TheUpdaterIsAProgramOfTheReleaseGivenTheDownloadOnce(string updater, string path)
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("ao2027", m => m["update"]!["steps"]![0]!["updater"] = JsonNode.Parse(updater)));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    [Fact]
+    public void AnInstallHasNoUpdater()
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("ao2027", m => m["install"]!["steps"]![0]!["updater"] =
+            JsonNode.Parse("""{ "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["actualizar", "--desde", "{{release.file}}"] }""")));
+
+        Assert.Contains(errors, e => e.Path == "install.steps[0].updater");
+    }
+
+    [Fact]
     public void AnHttpPortListensOverTcp()
     {
         var errors = TestManifests.Errors(TestManifests.Change("ao2027", m => m["ports"]![3]!["protocols"] = new JsonArray("udp")));

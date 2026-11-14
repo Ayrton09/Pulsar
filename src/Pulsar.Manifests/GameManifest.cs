@@ -412,8 +412,14 @@ public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallSt
 /// are missing (Pulsar 1.0.35): an update never replaces or removes them once they exist, so the settings a release ships
 /// a default of (AO2027's <c>Server.ini</c>, its game masters among them) stay as the server's administrators left them.
 /// </param>
+/// <param name="Updater">
+/// The game's own updater (Pulsar 1.0.43, only in <c>update</c>): once the release is installed, a new one is downloaded
+/// and checked as always and then handed to this program of the server, run as the server's account, instead of being
+/// unpacked over it (AO 2027's <c>CoverAO.Server.exe actualizar --desde &lt;zip&gt;</c>, which keeps the files and settings
+/// the host changed and adds the new settings to <c>Server.ini</c>).
+/// </param>
 public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "",
-    IReadOnlyList<string>? Keep = null) : InstallStep
+    IReadOnlyList<string>? Keep = null, ReleaseUpdater? Updater = null) : InstallStep
 {
     /// <summary>At most this many <see cref="Keep"/> paths.</summary>
     public const int MaxKeep = 16;
@@ -427,6 +433,20 @@ public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = 
 
     /// <summary>The name of the step's record: its repository's, lowercase, <c>/</c> as <c>_</c>.</summary>
     public string RecordKey => Repo.Replace('/', '_').ToLowerInvariant();
+}
+
+/// <summary>
+/// A game's own updater (<see cref="GitHubReleaseStep.Updater"/>): an <c>.exe</c> of the server's folder and its arguments,
+/// one of which is <see cref="ReleaseFile"/>, the downloaded asset's full path. It must exit with 0; what it prints goes
+/// to the server's console.
+/// </summary>
+public sealed record ReleaseUpdater(string Executable, IReadOnlyList<string> Arguments)
+{
+    /// <summary>Stands for the downloaded asset's full path in <see cref="Arguments"/>.</summary>
+    public const string ReleaseFile = "{{release.file}}";
+
+    /// <summary>At most this many arguments.</summary>
+    public const int MaxArguments = 16;
 }
 
 /// <summary>

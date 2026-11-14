@@ -90,6 +90,16 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 
         if (step is GitHubReleaseStep release)
         {
+            // Once the release is installed, the game's own updater takes a new one (an install unpacks it).
+            if (release.Updater is { } updater && Releases.Read(serverDirectory, release.RecordKey) is { } installed
+                && files.OpenRead(serverDirectory, updater.Executable) is { } executable)
+            {
+                await executable.DisposeAsync();
+                var updated = await Releases.UpdateThroughAsync(serverDirectory, AsAddon(release), installed,
+                    (file, token) => RunUpdaterAsync(context, serverDirectory, updater, file, token), progress, cancellationToken);
+                return updated.Release;
+            }
+
             var record = await Releases.InstallAsync(serverDirectory, AsAddon(release), force: false, progress, cancellationToken,
                 keep: release.KeepList);
             return record.Release;
@@ -201,10 +211,42 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
     /// The server's Java runtime, as its account, in its folder (an installer the publisher's checksum vouched for): what it
     /// prints goes to the console; one that stalls or runs too long is stopped.
     /// </summary>
-    private async Task RunJavaAsync(InstallContext context, string serverDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private Task RunJavaAsync(InstallContext context, string serverDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
+        RunAsServerAsync(context, serverDirectory, "java/bin/java.exe", "", arguments, ConsoleMode.Pipes, "minecraft.installer", "The installer",
+            cancellationToken);
+
+    /// <summary>
+    /// The game's own updater (<see cref="GitHubReleaseStep.Updater"/>), as the server's account, in its executable's folder,
+    /// with the downloaded release's full path for <see cref="ReleaseUpdater.ReleaseFile"/>: what it prints goes to the
+    /// console, and anything but exit code 0 fails the update.
+    /// </summary>
+    private Task RunUpdaterAsync(InstallContext? context, string serverDirectory, ReleaseUpdater updater, string file, CancellationToken cancellationToken)
     {
-        var spec = new ProcessLaunchSpec(context.ServerId, serverDirectory, "java/bin/java.exe", arguments, "", new Dictionary<string, string>(),
-            ConsoleMode.Pipes, ConsoleEncoding.Utf8, context.Identity);
+        if (context is null || processes is null)
+        {
+            throw new GameProcessException("release.updater_unavailable", "This agent cannot run the game's updater here.");
+        }
+
+        var path = Resolve(serverDirectory, file);
+        var arguments = updater.Arguments.Select(a => a == ReleaseUpdater.ReleaseFile ? path : a).ToList();
+        var slash = updater.Executable.LastIndexOf('/');
+        var workingDirectory = slash < 0 ? "" : updater.Executable[..slash];
+        context.Output?.Invoke($"Pulsar: running the game's updater, {updater.Executable}.\n");
+        // A pseudo-console, as the game itself runs (doc 04): a .NET program writing to a pipe uses the system's code page.
+        return RunAsServerAsync(context, serverDirectory, updater.Executable, workingDirectory, arguments, ConsoleMode.Pty, "release.updater",
+            "The game's updater", cancellationToken);
+    }
+
+    /// <summary>
+    /// A program of the server, as its account (an installer the publisher's checksum vouched for, or the game's updater):
+    /// what it prints goes to the console; one that stalls or runs too long is stopped, and one that exits with anything but
+    /// 0 fails with <c>&lt;codePrefix&gt;_failed</c> (<c>_stalled</c> when stopped).
+    /// </summary>
+    private async Task RunAsServerAsync(InstallContext context, string serverDirectory, string executable, string workingDirectory,
+        IReadOnlyList<string> arguments, ConsoleMode mode, string codePrefix, string what, CancellationToken cancellationToken)
+    {
+        var spec = new ProcessLaunchSpec(context.ServerId, serverDirectory, executable, arguments, workingDirectory, new Dictionary<string, string>(),
+            mode, ConsoleEncoding.Utf8, context.Identity);
         var process = await processes!.StartAsync(spec, cancellationToken);
         using var stall = new CancellationTokenSource(options.InstallerStallTimeout);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
@@ -232,15 +274,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
             await process.DisposeAsync();
             await DrainedAsync(pump);
             cancellationToken.ThrowIfCancellationRequested();
-            throw new GameProcessException("minecraft.installer_stalled", "The installer stopped making progress, or ran too long; the console has what it printed.");
+            throw new GameProcessException($"{codePrefix}_stalled", $"{what} stopped making progress, or ran too long; the console has what it printed.");
         }
 
         await process.DisposeAsync();
         await DrainedAsync(pump);
         if (exitCode != 0)
         {
-            throw new GameProcessException("minecraft.installer_failed",
-                $"The installer exited with code {exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)}; the console has what it printed.");
+            throw new GameProcessException($"{codePrefix}_failed",
+                $"{what} exited with code {exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)}; the console has what it printed.");
         }
     }
 

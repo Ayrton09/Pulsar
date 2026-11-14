@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ao2027",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "name": "AO2027",
   "description": "AO2027, Argentum Online's world on a modern server (CoverAO, its port to .NET), installed from its GitHub releases. Players play with the game's desktop app, CoverAO, from the same releases: they add the server by its address and Game port. Game masters and the other settings are in CoverAO-win-x64/Server.ini. Characters and accounts are in the game's own SQLite file, or in a PostgreSQL database chosen in the server's Databases tab, which takes the SQLite file's characters at its first start.",
   "authors": ["Pulsar contributors"],
@@ -122,7 +122,8 @@
     { "type": "githubRelease", "repo": "Ayrton09/AO-2027", "asset": "^CoverAO-servidor-win-x64\\.zip$", "keep": ["CoverAO-win-x64/Server.ini"] }
   ] },
   "update": { "steps": [
-    { "type": "githubRelease", "repo": "Ayrton09/AO-2027", "asset": "^CoverAO-servidor-win-x64\\.zip$", "keep": ["CoverAO-win-x64/Server.ini"] }
+    { "type": "githubRelease", "repo": "Ayrton09/AO-2027", "asset": "^CoverAO-servidor-win-x64\\.zip$", "keep": ["CoverAO-win-x64/Server.ini"],
+      "updater": { "executable": "CoverAO-win-x64/CoverAO.Server.exe", "arguments": ["actualizar", "--desde", "{{release.file}}"] } }
   ] },
 
   "runtime": {

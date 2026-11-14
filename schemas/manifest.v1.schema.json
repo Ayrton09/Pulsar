@@ -331,7 +331,19 @@
         "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." },
         "target": { "type": "string", "maxLength": 260, "default": "", "description": "The folder of the server it is unpacked into; the server's own folder by default. Not the dotnet folder of a dotnetRuntime step." },
         "keep": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "maxLength": 260 },
-          "description": "Files of the release (paths of the server's folder, inside the target) written only while they are missing: an update never replaces or removes them once they exist (settings the release ships a default of)." }
+          "description": "Files of the release (paths of the server's folder, inside the target) written only while they are missing: an update never replaces or removes them once they exist (settings the release ships a default of)." },
+        "updater": { "$ref": "#/$defs/ReleaseUpdater" }
+      }
+    },
+    "ReleaseUpdater": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "arguments"],
+      "description": "Pulsar 1.0.43, only in 'update': the game's own updater. Once the release is installed, a new one is downloaded and checked as always, then handed to this program of the server, run as the server's account in its own folder, instead of being unpacked over it. It must exit with 0; what it prints goes to the server's console.",
+      "properties": {
+        "executable": { "type": "string", "maxLength": 260, "description": "An .exe of the release, inside the target, outside .pulsar." },
+        "arguments": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "description": "Plain arguments; '{{release.file}}' (alone, exactly once) is the downloaded asset's full path." }
       }
     },
     "DotnetRuntimeStep": {

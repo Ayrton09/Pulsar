@@ -406,6 +406,79 @@ public sealed class AddonInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task OnceInstalledANewReleaseGoesToTheGamesOwnUpdaterInsteadOfBeingUnpacked()
+    {
+        // AO 2027's updater (Pulsar 1.0.43): the install unpacks, an update hands the checked zip to the game.
+        var updater = new ReleaseUpdater("CoverAO-win-x64/CoverAO.Server.exe", ["actualizar", "--desde", ReleaseUpdater.ReleaseFile]);
+        var step = new GitHubReleaseStep("OxideMod/Oxide.Rust", @"^Oxide\.Rust\.zip$", Keep: ["CoverAO-win-x64/Server.ini"], Updater: updater);
+        var processes = new FakeProcessManager();
+        string? handed = null;
+        processes.OnStarted = (process, spec) =>
+        {
+            var path = spec.Arguments[2];
+            handed = File.Exists(path) ? File.ReadAllText(Path.Combine(_root, "CoverAO-win-x64", "CoverAO.Server.exe")) + " got " + new FileInfo(path).Length : "missing";
+            process.Print("Server.ini: al día con tus valores.\r\n");
+            process.Exit(0);
+        };
+        var output = new List<string>();
+        var context = new InstallContext(Guid.NewGuid(), ProcessIdentity.Account("pulsar_abcd1234"), output.Add);
+        var steps = new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles(), processes);
+        var program = Path.Combine(_root, "CoverAO-win-x64", "CoverAO.Server.exe");
+        Release("v1.0.18", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.18"), ("CoverAO-win-x64/Server.ini", "[INIT]\r\n")));
+
+        Assert.Equal("v1.0.18", await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, context,
+            TestContext.Current.CancellationToken));
+        Assert.Empty(processes.Specs); // the first install unpacks
+        Assert.Equal("1.0.18", File.ReadAllText(program));
+
+        var zip = Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.19"));
+        Release("v1.0.19", zip);
+        Assert.Equal("v1.0.19", await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, context,
+            TestContext.Current.CancellationToken));
+
+        var spec = Assert.Single(processes.Specs);
+        Assert.Equal(("CoverAO-win-x64/CoverAO.Server.exe", "CoverAO-win-x64", ConsoleMode.Pty), (spec.Executable, spec.WorkingDirectory, spec.ConsoleMode));
+        Assert.Equal(context.Identity, spec.Identity);
+        Assert.Equal(["actualizar", "--desde", Path.Combine(_root, ".pulsar", "release-update.zip")], spec.Arguments);
+        Assert.Equal($"1.0.18 got {zip.Length}", handed); // the checked zip, not unpacked: the updater does the rest
+        Assert.Equal("1.0.18", File.ReadAllText(program));
+        Assert.False(File.Exists(Path.Combine(_root, ".pulsar", "release-update.zip"))); // deleted after
+        Assert.Contains(output, o => o.Contains("al día con tus valores", StringComparison.Ordinal));
+        Assert.Equal("v1.0.19", new AddonInstaller(new DirectServerFiles(), _http, GitHubReleaseStep.RecordDirectory).Read(_root, step.RecordKey)!.Release);
+
+        // The same release again: nothing downloaded, nothing run.
+        Assert.Equal("v1.0.19", await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, context,
+            TestContext.Current.CancellationToken));
+        Assert.Single(processes.Specs);
+    }
+
+    [Fact]
+    public async Task AnUpdaterThatFailsFailsTheUpdateAndKeepsTheRecordedRelease()
+    {
+        var updater = new ReleaseUpdater("CoverAO-win-x64/CoverAO.Server.exe", ["actualizar", "--desde", ReleaseUpdater.ReleaseFile]);
+        var step = new GitHubReleaseStep("OxideMod/Oxide.Rust", @"^Oxide\.Rust\.zip$", Updater: updater);
+        var processes = new FakeProcessManager { OnStarted = (process, _) => { process.Print("El paquete NO está firmado.\r\n"); process.Exit(1); } };
+        var context = new InstallContext(Guid.NewGuid(), ProcessIdentity.CurrentUser, null);
+        var steps = new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles(), processes);
+        Release("v1.0.18", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.18")));
+        await steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, context, TestContext.Current.CancellationToken);
+        Release("v1.0.19", Zip(("CoverAO-win-x64/CoverAO.Server.exe", "1.0.19")));
+
+        var failure = await Assert.ThrowsAsync<GameProcessException>(() =>
+            steps.RunAsync(step, _root, new Dictionary<string, string?>(), (_, _) => Task.CompletedTask, context, TestContext.Current.CancellationToken));
+
+        Assert.Equal("release.updater_failed", failure.Code);
+        Assert.False(File.Exists(Path.Combine(_root, ".pulsar", "release-update.zip")));
+        Assert.Equal("v1.0.18", new AddonInstaller(new DirectServerFiles(), _http, GitHubReleaseStep.RecordDirectory).Read(_root, step.RecordKey)!.Release);
+
+        // An agent that cannot run it as the server's account says so, and changes nothing.
+        var unavailable = await Assert.ThrowsAsync<GameProcessException>(() =>
+            new InstallSteps(new InstallOptions { HttpHandler = _http }, new DirectServerFiles()).RunAsync(step, _root, new Dictionary<string, string?>(),
+                (_, _) => Task.CompletedTask, context, TestContext.Current.CancellationToken));
+        Assert.Equal("release.updater_unavailable", unavailable.Code);
+    }
+
+    [Fact]
     public async Task AnUpdateCheckOfAReleaseComparesItsAssetWithTheInstalledOne()
     {
         var source = (GitHubReleaseSource)s_oxide.Source;

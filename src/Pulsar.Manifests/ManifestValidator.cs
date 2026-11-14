@@ -966,6 +966,11 @@ public static partial class ManifestValidator
                     }
 
                     ValidateKeep(path, step, context.Error);
+                    if (step.Updater is { } updater)
+                    {
+                        ValidateUpdater($"{path}.updater", section, step, updater, context.Error);
+                    }
+
                     break;
                 case DotnetRuntimeStep step:
                     if (!DotnetChannelPattern().IsMatch(step.Channel))
@@ -1048,6 +1053,56 @@ public static partial class ManifestValidator
             {
                 error($"{path}.keep[{i}]", $"A file inside the step's target, '{step.Target}/'.");
             }
+        }
+    }
+
+    /// <summary>
+    /// A release step's game updater: only in <c>update</c> (an install has nothing for it to update), an <c>.exe</c> of the
+    /// step's target outside Pulsar's folder, and arguments that name the downloaded asset once, with no other placeholder.
+    /// </summary>
+    private static void ValidateUpdater(string path, string section, GitHubReleaseStep step, ReleaseUpdater updater, Action<string, string> error)
+    {
+        if (section != "update")
+        {
+            error(path, "Only in 'update': an install unpacks the release.");
+        }
+
+        ValidateRelativePath($"{path}.executable", updater.Executable, error);
+        if (IsValidRelativePath(updater.Executable))
+        {
+            if (!updater.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
+            }
+            else if (PulsarFolderError(updater.Executable) is { } inPulsar)
+            {
+                error($"{path}.executable", inPulsar);
+            }
+            else if (step.Target.Length > 0 && !IsUnder(updater.Executable, step.Target))
+            {
+                error($"{path}.executable", $"A file of the release, inside the step's target '{step.Target}/'.");
+            }
+        }
+
+        if (updater.Arguments is null || updater.Arguments.Count is 0 or > ReleaseUpdater.MaxArguments)
+        {
+            error($"{path}.arguments", $"From 1 to {ReleaseUpdater.MaxArguments} arguments.");
+            return;
+        }
+
+        for (var i = 0; i < updater.Arguments.Count; i++)
+        {
+            var argument = updater.Arguments[i];
+            if (argument is null || argument.Length is 0 or > 256 || argument.Any(char.IsControl) || argument.Contains('"', StringComparison.Ordinal)
+                || (argument.Contains("{{", StringComparison.Ordinal) && argument != ReleaseUpdater.ReleaseFile))
+            {
+                error($"{path}.arguments[{i}]", $"Plain text of 1 to 256 characters, or '{ReleaseUpdater.ReleaseFile}' alone.");
+            }
+        }
+
+        if (updater.Arguments.Count(a => a == ReleaseUpdater.ReleaseFile) != 1)
+        {
+            error($"{path}.arguments", $"'{ReleaseUpdater.ReleaseFile}' (the downloaded asset) exactly once.");
         }
     }
 

@@ -117,6 +117,78 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         }
     }
 
+    /// <summary>Where a new release waits, in Pulsar's folder of the server, while the game's own updater installs it.</summary>
+    public const string UpdaterDownload = ".pulsar/release-update";
+
+    /// <summary>
+    /// Brings an installed release to the latest one through the game's own updater (<see cref="GitHubReleaseStep.Updater"/>,
+    /// Pulsar 1.0.43): found and checked against GitHub's SHA-256 as <see cref="InstallAsync"/> does, written to
+    /// <see cref="UpdaterDownload"/> (the server's account reads it there), handed to <paramref name="update"/> with its path
+    /// relative to the server's folder, and deleted after. Nothing is downloaded when the same asset is installed; the
+    /// record keeps the files the release installed first, which the updater manages from then on.
+    /// </summary>
+    /// <exception cref="GameProcessException">With an <c>addon.*</c> code, or the updater's own.</exception>
+    public async Task<AddonRecord> UpdateThroughAsync(string serverDirectory, AddonDefinition addon, AddonRecord previous,
+        Func<string, CancellationToken, Task> update, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(addon);
+        ArgumentNullException.ThrowIfNull(previous);
+        ArgumentNullException.ThrowIfNull(update);
+        ArgumentNullException.ThrowIfNull(progress);
+        if (addon.Source is not GitHubReleaseSource source)
+        {
+            throw Failed("addon.unsupported_source", $"This agent cannot install {addon.Name} from its source.");
+        }
+
+        using var http = GitHubClient();
+        var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
+        string file;
+        try
+        {
+            await progress(InstallStages.Preparing, null);
+            var (release, name, url, sha256) = await AssetAsync(client, addon.Name, source, cancellationToken);
+            if (previous.Asset == name && previous.Sha256.Equals(sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return previous;
+            }
+
+            file = UpdaterDownload + (IsTarGz(name) ? ".tar.gz" : ".zip");
+            try
+            {
+                await using (var download = await client.DownloadAsync(VerifiedDownloader.Https(url, "addon"), HashAlgorithmName.SHA256, sha256,
+                    percent => progress(InstallStages.Downloading, percent), cancellationToken))
+                {
+                    files.Delete(serverDirectory, file);
+                    files.Write(serverDirectory, file, download);
+                }
+
+                await progress(InstallStages.Installing, null);
+                await update(file, cancellationToken);
+            }
+            finally
+            {
+                // Best effort: a file the updater still holds must not hide its result or keep the new release unrecorded
+                // (the next update deletes it first).
+                try
+                {
+                    files.Delete(serverDirectory, file);
+                }
+                catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+
+            var record = previous with { Release = release, Asset = name, Sha256 = sha256 };
+            Write(serverDirectory, record);
+            return record;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw Failed("addon.download_failed", $"{addon.Name} could not be downloaded: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>
     /// Whether <paramref name="source"/>'s release has another asset than the one recorded as <paramref name="key"/> (an
     /// update check of a <see cref="GitHubReleaseStep"/>): the releases' tags, the installed one null when nothing is.

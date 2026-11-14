@@ -56,9 +56,23 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
 - Checked with v1.0.10 on PostgreSQL 18: at its first start on the chosen database the game took the 6 characters and
   accounts of its SQLite file; a backup held the database (`.pulsar/database.dump`, 75 KB); after the characters were
   changed by hand, a full restore put them back as they were in the backup, and the game started on them again.
-- An update unpacks the whole release again: a map in `gamedata` edited by hand is replaced by the release's (the
-  game's own updater, `Actualizar.bat`, would keep it). `Server.ini` is the only file kept, so take a backup before
-  updating a server whose maps were changed.
+- Up to template 1.0.4 an update unpacked the whole release again: a map in `gamedata` edited by hand was replaced by
+  the release's, and `Server.ini`, kept as it was, did not get the settings a new release adds (1.0.19's
+  `VolverAlHogarAlMorir`; the game then uses that setting's default). From template 1.0.5 (Pulsar 1.0.43) an update
+  hands the downloaded release, checked against GitHub's SHA-256, to the game's own updater, `CoverAO.Server.exe
+  actualizar --desde <zip>`, run as the server's account with the server stopped: it checks the author's signature,
+  backs up `data` (in `data/backups`), replaces only the files the host did not change (the ones it changed stay, the
+  release's go to `actualizacion/sin-aplicar`, the replaced ones to `actualizacion/anterior`), and rebuilds
+  `Server.ini` with the host's values, the new settings that would change the game's behaviour added commented out.
+  What it says (`Server.ini: al día con tus valores…`) is in the server's console; an exit code other than 0 fails
+  the update. The first install still unpacks the release.
+- Until the game's updater has run once, it finds the installed version already current: a server Pulsar updated by
+  unpacking gets the new settings at the next release. With the game's database in PostgreSQL chosen in Pulsar, the
+  updater, which does not get the database's environment, backs up the SQLite file only: take a Pulsar backup before
+  (it holds the database).
+- With another AO 2027 server running on the node under its own account, the updater cannot see that one's folder; up
+  to AO 1.0.19 it then refuses to update. From the AO release after 1.0.19 it opens this folder's database instead,
+  which a running server holds, and goes on when it is free.
 - The game reads no commands from its console: it is run from its admin panel and with the game masters' commands in
   the game. Its admin panel's token is printed in the console at every start, so whoever can read the server's console
   in Pulsar sees it; the panel answers on the machine only.
