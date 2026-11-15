@@ -96,7 +96,8 @@ public sealed class BundledGameSettingsTests
         }
         else
         {
-            Assert.Equal("arma-reforger", game);
+            // Arma Reforger's file must have a name; AO 2027's name came with template 1.0.6, Pulsar never wrote one before.
+            Assert.Contains(game, (string[])["arma-reforger", "ao2027"]);
         }
     }
 

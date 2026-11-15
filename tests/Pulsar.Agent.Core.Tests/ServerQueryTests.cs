@@ -177,6 +177,24 @@ public sealed class ServerQueryTests
     }
 
     [Theory]
+    [InlineData("""{"servidor":{"nombre":"Tierras del Sur","version":"1.0.22","online":0},"online":[]}""", "Tierras del Sur")]
+    [InlineData("""{"servidor":{"nombre":"  ‮Sur\u001b  ","online":0}}""", "Sur")] // cleaned
+    [InlineData("""{"servidor":{"nombre":"","online":0}}""", null)] // its host gave it none
+    [InlineData("""{"servidor":{"nombre":7,"online":0}}""", null)]
+    public async Task CoverAoGivesTheNameItsHostGaveIt(string status, string? name)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeHttpAsync(listener, "200 OK", status);
+
+        var info = await _query.QueryAsync(new QueryEndpoint(QueryProtocol.CoverAo, "127.0.0.1", port), TestContext.Current.CancellationToken);
+
+        Assert.Equal(name, info.Name);
+        await served;
+    }
+
+    [Theory]
     [InlineData("404 Not Found", """{"servidor":{"online":1}}""")] // its public page turned off
     [InlineData("302 Found", """{"servidor":{"online":1}}""")] // a redirect is not followed
     [InlineData("200 OK", """{"online":[]}""")] // no count

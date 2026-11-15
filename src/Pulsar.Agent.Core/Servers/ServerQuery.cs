@@ -603,7 +603,8 @@ internal static class MinecraftPing
 /// <summary>
 /// AO 2027's (CoverAO's) public status: <c>GET /api/publico.json</c> on the port its desktop app uses, the address the app
 /// asks too. <c>servidor.online</c> is the count, <c>online[].nombre</c> the names (bots too: the game does not tell them
-/// apart) and <c>servidor.version</c> the version; the game says no maximum. Asked on the machine itself, with no proxy and
+/// apart), <c>servidor.version</c> the version and <c>servidor.nombre</c> the name its host gave it (AO 1.0.22, empty without
+/// one); the game says no maximum. Asked on the machine itself, with no proxy and
 /// no redirect followed, and read up to a fixed size.
 /// </summary>
 internal static class CoverAoStatus
@@ -691,6 +692,7 @@ internal static class CoverAoStatus
         }
 
         var version = server.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String ? QueryText.Clean(v.GetString()) : null;
-        return new ServerQueryInfo(at, Name: null, Map: null, count, MaxPlayers: 0, Bots: 0, version, players);
+        var serverName = server.TryGetProperty("nombre", out var n) && n.ValueKind == JsonValueKind.String ? QueryText.Clean(n.GetString()) : null;
+        return new ServerQueryInfo(at, Name: serverName, Map: null, count, MaxPlayers: 0, Bots: 0, version, players);
     }
 }

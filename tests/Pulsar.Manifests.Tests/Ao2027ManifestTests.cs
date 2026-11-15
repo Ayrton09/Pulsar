@@ -43,7 +43,26 @@ public sealed class Ao2027ManifestTests
         var ini = Assert.Single(plan.ConfigFiles);
         Assert.Equal(("CoverAO-win-x64/Server.ini", "INIT"), (ini.Path, ini.Section));
         Assert.Contains(ini.Entries, e => e.Key == "StartPort" && e.Value == "7700");
+        Assert.DoesNotContain(ini.Entries, e => e.Key == "Nombre"); // left empty: Server.ini keeps its own
         Assert.Equal(new QueryEndpoint(QueryProtocol.CoverAo, PortAssignment.AnyAddress, 7703), plan.Query); // the app's port
+    }
+
+    [Theory]
+    [InlineData("Tierras del Sur ⚔", null)]
+    [InlineData("1234567890123456789012345678901234567890", null)]
+    [InlineData("12345678901234567890123456789012345678901", "At most 40 characters.")] // the game cuts at 40
+    [InlineData("El \"Sur\"", "Does not match the allowed format.")] // the file's writer takes no quotes
+    [InlineData("C:\\Sur", "Does not match the allowed format.")] // nor backslashes
+    [InlineData("Sur\nMaxUsers=1", "Control characters are not allowed.")] // never a second line in Server.ini
+    public void TheServersNameIsWrittenAsTheGameReadsIt(string name, string? error)
+    {
+        var manifest = TestManifests.Load("ao2027");
+        var variable = manifest.VariableList.Single(v => v.Key == "serverName");
+
+        Assert.Equal(error, VariableValues.Check(variable, name));
+        var ini = Assert.Single(manifest.ConfigFileList);
+        Assert.Equal("{{var.serverName}}", ini.Set["Nombre"]);
+        Assert.Contains("Nombre", ini.KeepIfEmpty!);
     }
 
     [Fact]

@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ao2027",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "name": "AO2027",
   "description": "AO2027, Argentum Online's world on a modern server (CoverAO, its port to .NET), installed from its GitHub releases. Players play with the game's desktop app, CoverAO, from the same releases: they add the server by its address and Game port. Game masters and the other settings are in CoverAO-win-x64/Server.ini. Characters and accounts are in the game's own SQLite file, or in a PostgreSQL database chosen in the server's Databases tab, which takes the SQLite file's characters at its first start.",
   "authors": ["Pulsar contributors"],
@@ -11,6 +11,8 @@
   "requirements": { "minDiskGb": 3, "minMemoryMb": 2048 },
 
   "variables": [
+    { "key": "serverName", "label": "Server name", "type": "string", "maxLength": 40, "pattern": "^[^\"\\\\]{1,40}$",
+      "description": "What players see in the CoverAO app's list once they add the address (AO 2027 1.0.22 or later). Left empty, Nombre stays as Server.ini has it." },
     { "key": "maxUsers", "label": "Player limit", "type": "integer", "min": 0, "max": 5000,
       "description": "0 for none. Left empty, MaxUsers stays as Server.ini has it." },
     { "key": "exp", "label": "Experience multiplier", "type": "integer", "min": 1, "max": 1000,
@@ -139,6 +141,7 @@
     { "path": "CoverAO-win-x64/Server.ini", "format": "unreal-ini", "mode": "patch", "section": "INIT",
       "set": {
         "StartPort": "{{port.base}}",
+        "Nombre": "{{var.serverName}}",
         "MaxUsers": "{{var.maxUsers}}",
         "Exp": "{{var.exp}}",
         "Oro": "{{var.gold}}",
@@ -180,7 +183,7 @@
         "LogDias": "{{var.logDays}}"
       },
       "keepIfEmpty": [
-        "MaxUsers", "Exp", "Oro", "PuedeCrearPersonajes", "ServerSoloGMs", "Bots",
+        "Nombre", "MaxUsers", "Exp", "Oro", "PuedeCrearPersonajes", "ServerSoloGMs", "Bots",
         "MinutosDelDia", "MinutosDeClima", "PorcentajeLluvia", "DropGlobal", "MinutosDeFogata", "PersistirSuelo",
         "NavegacionParaCruzar", "OroAlSubirNivel", "CuraAlSubirNivel", "QuitarEquipoNovato", "Centinela", "FamiliarBusca",
         "MetamorfosisDelDruida", "PasesDeRinkel", "HipocamposEnMarAbierto", "GuardiasAtacan", "GuardiasPersiguen", "GuardiasAtacanNewbies",

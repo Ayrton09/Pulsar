@@ -24,6 +24,10 @@ Checked on 2026-11-08 on Windows 11 Pro (build 26200), with CoverAO v1.0.6 (`Cov
   the machine: checked on 2026-11-13 against CoverAO 1.0.17, 10 online, names and version read. The game says no
   maximum, so the panel shows the count alone; its bots are counted and listed like players (the status does not tell
   them apart). With `PaginaPublica=0` the game does not answer it and the panel shows no players.
+- From template 1.0.6 the panel's **Server name** writes `Nombre` in `Server.ini` (`[INIT]`; AO 1.0.22 or later), the
+  name players see in the app's list once they add the address; up to 40 characters, without quotes or backslashes.
+  Left empty, the file keeps its own. The game publishes it in its status, and the server's page shows it above the players:
+  checked on 2026-11-15 against AO 1.0.22 (`"nombre": "Umbrella Server Argentina"` in `/api/publico.json`).
 - The game prints `Puertos:` when it is ready, about 2 s after it starts. Ctrl+C stops it in about 1 s ("Servidor
   detenido"), with exit code 0.
 - Players play with the game's desktop app, CoverAO (`CoverAO-Setup.exe`, from the same releases): they add the
