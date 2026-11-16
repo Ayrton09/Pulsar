@@ -177,6 +177,41 @@ public sealed class SessionLifetimeTests(TwoFactorApiFactory factory) : IClassFi
     }
 
     [DatabaseFact]
+    public async Task UsingARememberedSessionMovesTheUsersLastActivity()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("lifetime-activity");
+        using var user = await PanelClient.CreateAsync(factory);
+        using (var login = await user.PostAsync("/api/v1/auth/login", new LoginRequest("lifetime-activity", AccessScenario.Password, RememberMe: true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        var signedIn = await LastActivityAsync("lifetime-activity");
+        Assert.NotNull(signedIn);
+
+        // Used again within UserActivity.Precision: the row is left alone.
+        factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(HttpStatusCode.OK, await StatusAsync(user.Http));
+        Assert.Equal(signedIn, await LastActivityAsync("lifetime-activity"));
+
+        // Coming back days later in the same session, without signing in: that is when the user was last here.
+        factory.Clock.Advance(TimeSpan.FromDays(3));
+        Assert.Equal(HttpStatusCode.OK, await StatusAsync(user.Http));
+        var seen = await LastActivityAsync("lifetime-activity");
+        Assert.NotNull(seen);
+        Assert.InRange(factory.Clock.GetUtcNow() - seen!.Value, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    private async Task<DateTimeOffset?> LastActivityAsync(string userName)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        return await db.Users.Where(u => u.UserName == userName).Select(u => u.LastLoginAt).SingleAsync(TestContext.Current.CancellationToken);
+    }
+
+    [DatabaseFact]
     public async Task ARememberedSessionStillEndsWhenTheUserSignsOut()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

@@ -119,7 +119,7 @@
     "user": "사용자",
     "roles": "역할",
     "status": "상태",
-    "lastLogin": "마지막 로그인",
+    "lastLogin": "마지막 활동",
     "active": "활성",
     "disabled": "비활성",
     "displayName": "표시 이름",

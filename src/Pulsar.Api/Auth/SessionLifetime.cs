@@ -2,6 +2,8 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Pulsar.Api.Security;
+using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Auth;
 
@@ -76,6 +78,14 @@ public static class SessionLifetime
         }
 
         await SecurityStampValidator.ValidatePrincipalAsync(context);
+
+        // Still signed in: the user is using the panel now (UserActivity).
+        if (context.Principal?.GetUserId() is { } user)
+        {
+            var services = context.HttpContext.RequestServices;
+            await services.GetRequiredService<UserActivity>().SeenAsync(user, services.GetRequiredService<PulsarDbContext>(),
+                context.HttpContext.RequestAborted);
+        }
     }
 
     private static bool IsRemembered(AuthenticationProperties properties) =>

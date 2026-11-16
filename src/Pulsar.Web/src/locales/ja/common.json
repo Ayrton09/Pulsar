@@ -119,7 +119,7 @@
     "user": "ユーザー",
     "roles": "ロール",
     "status": "ステータス",
-    "lastLogin": "最終サインイン",
+    "lastLogin": "最終アクティビティ",
     "active": "有効",
     "disabled": "無効",
     "displayName": "表示名",

@@ -119,7 +119,7 @@
     "user": "用户",
     "roles": "角色",
     "status": "状态",
-    "lastLogin": "上次登录",
+    "lastLogin": "上次活动",
     "active": "正常",
     "disabled": "已禁用",
     "displayName": "显示名称",

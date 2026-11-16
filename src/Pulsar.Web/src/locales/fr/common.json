@@ -119,7 +119,7 @@
     "user": "Utilisateur",
     "roles": "Rôles",
     "status": "État",
-    "lastLogin": "Dernière connexion",
+    "lastLogin": "Dernière activité",
     "active": "Actif",
     "disabled": "Désactivé",
     "displayName": "Nom affiché",

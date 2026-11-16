@@ -119,7 +119,7 @@
     "user": "User",
     "roles": "Roles",
     "status": "Status",
-    "lastLogin": "Last sign-in",
+    "lastLogin": "Last active",
     "active": "Active",
     "disabled": "Disabled",
     "displayName": "Display name",

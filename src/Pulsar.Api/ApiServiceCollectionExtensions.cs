@@ -129,6 +129,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddSingleton<InitialSetup>();
         services.AddSingleton<FailedLoginBudget>();
         services.AddSingleton<SignInLocks>();
+        services.AddSingleton<UserActivity>();
         services.AddScoped<UserManagement>();
 
         services.ConfigureHttpJsonOptions(options =>
