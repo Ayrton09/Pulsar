@@ -7836,6 +7836,10 @@
     "ao2027": {
       "description": "AO2027, il mondo di Argentum Online su un server moderno (CoverAO, il suo port in .NET), installato dalle sue release su GitHub. Si gioca con l'app desktop del gioco, CoverAO, dalle stesse release: i giocatori aggiungono il server con il suo indirizzo e la porta Gioco. I game master e le altre impostazioni sono in CoverAO-win-x64/Server.ini. Personaggi e account sono nel file SQLite del gioco, o in un database PostgreSQL scelto nella scheda Database del server, che al primo avvio prende i personaggi del file SQLite.",
       "variables": {
+        "serverName": {
+          "label": "Nome del server",
+          "description": "Ciò che i giocatori vedono nell'elenco dell'app CoverAO dopo aver aggiunto l'indirizzo (AO 2027 1.0.22 o successivo). Se lasciato vuoto, Nombre resta com'è in Server.ini."
+        },
         "maxUsers": {
           "label": "Limite di giocatori",
           "description": "0 per nessuno. Vuoto, MaxUsers resta com'è in Server.ini."

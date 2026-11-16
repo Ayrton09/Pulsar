@@ -7836,6 +7836,10 @@
     "ao2027": {
       "description": "AO2027：在现代服务器上运行的 Argentum Online 世界（CoverAO，.NET 移植），从其 GitHub 发布版本安装。玩家使用同一发布版本中的游戏桌面应用 CoverAO，按服务器地址和“游戏”端口添加服务器来游玩；游戏管理员和其他设置位于 CoverAO-win-x64/Server.ini。角色和账户保存在游戏自己的 SQLite 文件中，或保存在服务器“数据库”标签页中选择的 PostgreSQL 数据库中；后者在首次启动时会接收 SQLite 文件中的角色。",
       "variables": {
+        "serverName": {
+          "label": "服务器名称",
+          "description": "玩家添加地址后在 CoverAO 应用列表中看到的名称（AO 2027 1.0.22 或更高版本）。留空时，Nombre 保持 Server.ini 中的值。"
+        },
         "maxUsers": {
           "label": "玩家上限",
           "description": "0 表示不限。留空则保留 Server.ini 中的 MaxUsers。"

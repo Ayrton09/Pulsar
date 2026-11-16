@@ -7836,6 +7836,10 @@
     "ao2027": {
       "description": "AO2027。Argentum Online の世界を最新のサーバーで動かします（CoverAO：.NET への移植）。GitHub のリリースからインストールされます。プレイヤーは同じリリースにあるゲームのデスクトップアプリ CoverAO に、サーバーのアドレスと「ゲーム」ポートを追加してプレイします。ゲームマスターなどの設定は CoverAO-win-x64/Server.ini にあります。キャラクターとアカウントは、ゲーム自身の SQLite ファイル、またはサーバーの［データベース］タブで選んだ PostgreSQL データベースに保存されます。PostgreSQL は最初の起動時に SQLite ファイルのキャラクターを引き継ぎます。",
       "variables": {
+        "serverName": {
+          "label": "サーバー名",
+          "description": "プレイヤーがアドレスを追加した後、CoverAO アプリの一覧に表示される名前です（AO 2027 1.0.22 以降）。空のままにすると、Nombre は Server.ini のままです。"
+        },
         "maxUsers": {
           "label": "プレイヤー上限",
           "description": "0 で無制限。空欄なら Server.ini の MaxUsers のままです。"
