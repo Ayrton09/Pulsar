@@ -16,7 +16,6 @@ using Pulsar.Api.Tests.Sftp;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
-using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Auth;
@@ -217,8 +216,8 @@ public sealed class SsoTests(SsoApiFactory factory) : IClassFixture<SsoApiFactor
             Assert.Equal("/account?sso=linked", await LinkAsync(owner, "oidc", "subject-2fa"));
         }
 
-        // Turned on after linking (its code is the step before now): the provider still does not stand in for it.
-        var (key, _) = await SftpTesting.EnableTwoFactorAsync(scenario, "sso-two-factor");
+        // Turned on after linking: the provider still does not stand in for it.
+        var (key, _) = await SftpTesting.EnableTwoFactorAsync(factory, scenario, "sso-two-factor");
 
         using var browser = await PanelClient.CreateAsync(factory);
         Assert.Equal("/login?sso=two_factor", await SignInAsync(browser, "oidc", "subject-2fa"));
@@ -229,7 +228,7 @@ public sealed class SsoTests(SsoApiFactory factory) : IClassFixture<SsoApiFactor
 
         await browser.GetSessionAsync();
         using var code = await browser.PostAsync("/api/v1/auth/login/two-factor",
-            new TwoFactorLoginRequest(Totp.Compute(key, DateTimeOffset.UtcNow), null));
+            new TwoFactorLoginRequest(SftpTesting.AuthenticatorCode(key, factory.AuthenticatorClock), null));
         await AccessScenario.EnsureSuccessAsync(code);
         Assert.Equal("sso-two-factor", (await GetJsonAsync<CurrentUserResponse>(browser, "/api/v1/auth/me")).UserName);
     }

@@ -94,7 +94,7 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
         var role = await ServerRoleAsync(scenario, "sftp-2fa-files", Permissions.Server.View, Permissions.Server.FilesView);
         var bob = await scenario.CreateUserAsync("sftp-bob");
         await GrantAsync(scenario.Admin, bob.Id, server.Id, role.Id);
-        var (key, recoveryCodes) = await EnableTwoFactorAsync(scenario, "sftp-bob");
+        var (key, recoveryCodes) = await EnableTwoFactorAsync(factory, scenario, "sftp-bob");
         var port = await factory.PortAsync();
 
         var prompts = new List<string>();
@@ -102,7 +102,7 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
         Assert.Equal([SftpAuthenticator.PasswordPrompt, SftpAuthenticator.CodePrompt], prompts.Take(2));
 
         prompts.Clear();
-        using (var client = Client(port, "sftp-bob", AccessScenario.Password, code: Totp.Compute(key, DateTimeOffset.UtcNow.AddSeconds(30)), prompts: prompts))
+        using (var client = Client(port, "sftp-bob", AccessScenario.Password, code: AuthenticatorCode(key, factory.AuthenticatorClock), prompts: prompts))
         {
             await client.ConnectAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
             Assert.Equal([SftpAuthenticator.PasswordPrompt, SftpAuthenticator.CodePrompt], prompts);

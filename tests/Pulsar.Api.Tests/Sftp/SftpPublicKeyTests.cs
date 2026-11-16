@@ -315,10 +315,10 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         var rosa = await scenario.CreateUserAsync("keys-rosa");
-        var (secret, _) = await EnableTwoFactorAsync(scenario, "keys-rosa");
+        var (secret, _) = await EnableTwoFactorAsync(factory, scenario, "keys-rosa");
         using var account = await SignInWithCodeAsync(factory, "keys-rosa", secret);
         using var key = TestSshKey.Ecdsa(ECCurve.NamedCurves.nistP384);
-        await key.AddAsync(account, code: Totp.Compute(secret, DateTimeOffset.UtcNow.AddSeconds(30)));
+        await key.AddAsync(account, code: AuthenticatorCode(secret, factory.AuthenticatorClock));
         var port = await factory.PortAsync();
 
         // No code asked: the key is the second factor; the password alone still never gets in.
