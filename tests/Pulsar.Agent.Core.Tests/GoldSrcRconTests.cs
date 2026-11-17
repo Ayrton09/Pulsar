@@ -19,9 +19,10 @@ public sealed class GoldSrcRconTests
     public async Task GetsAChallengeAndRunsCommands()
     {
         await using var game = new FakeHlds("secret");
+        var clock = new RconTestClock();
 
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
-        var echo = await session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken);
+        await using var session = await ConnectAsync(game, clock);
+        var echo = await clock.CompleteAnswerAsync(session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken), s_connector.AnswerIdle);
 
         Assert.Equal("hello \n", echo);
         Assert.Equal(["echo", "echo hello"], game.Commands); // the password is checked with a bare echo first
@@ -32,9 +33,10 @@ public sealed class GoldSrcRconTests
     public async Task AnAnswerInSeveralPacketsAndSplitPartsIsReadWhole()
     {
         await using var game = new FakeHlds("secret");
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        var clock = new RconTestClock();
+        await using var session = await ConnectAsync(game, clock);
 
-        var answer = await session.ExecuteAsync("cvarlist", TestContext.Current.CancellationToken);
+        var answer = await clock.CompleteAnswerAsync(session.ExecuteAsync("cvarlist", TestContext.Current.CancellationToken), s_connector.AnswerIdle, printedPackets: 3);
 
         Assert.Equal("first packet\n" + "split one, " + "split two\n" + "last packet\n", answer);
     }
@@ -43,9 +45,11 @@ public sealed class GoldSrcRconTests
     public async Task ACommandWithNoOutputAnswersEmpty()
     {
         await using var game = new FakeHlds("secret");
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        var clock = new RconTestClock();
+        await using var session = await ConnectAsync(game, clock);
 
-        Assert.Equal("", await session.ExecuteAsync("nosuchcommand", TestContext.Current.CancellationToken));
+        Assert.Equal("", await clock.CompleteAnswerAsync(session.ExecuteAsync("nosuchcommand", TestContext.Current.CancellationToken), s_connector.AnswerIdle));
+        Assert.Equal("hello \n", await clock.CompleteAnswerAsync(session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken), s_connector.AnswerIdle));
     }
 
     [Fact]
@@ -53,20 +57,30 @@ public sealed class GoldSrcRconTests
     {
         // hlds closes without a word: the stop step must not report a game that did not answer.
         await using var game = new FakeHlds("secret");
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        var clock = new RconTestClock();
+        await using var session = await ConnectAsync(game, clock);
 
-        Assert.Equal("", await session.ExecuteAsync("quit", TestContext.Current.CancellationToken));
+        var quitting = session.ExecuteAsync("quit", TestContext.Current.CancellationToken);
+        await clock.WaitForTimerAsync(s_connector.AnswerTimeout);
+        await game.WaitForCommandAsync("quit");
+        clock.Advance(s_connector.AnswerTimeout);
+        Assert.Equal("", await quitting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         Assert.Contains("quit", game.Commands);
-        await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("silent", TestContext.Current.CancellationToken)); // any other command
+        var silent = session.ExecuteAsync("silent", TestContext.Current.CancellationToken);
+        await clock.WaitForTimerAsync(s_connector.AnswerTimeout);
+        await game.WaitForCommandAsync("silent");
+        clock.Advance(s_connector.AnswerTimeout);
+        await Assert.ThrowsAsync<RconException>(() => silent.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)); // any other command
     }
 
     [Fact]
     public async Task AWrongPasswordIsReportedAsSuch()
     {
         await using var game = new FakeHlds("secret");
+        var connector = new GoldSrcRconConnector { Clock = new RconTestClock() };
 
-        var error = await Assert.ThrowsAsync<RconException>(() => s_connector.ConnectAsync(game.Endpoint("wrong"), ProcessIdentity.CurrentUser,
-            TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<RconException>(() => connector.ConnectAsync(game.Endpoint("wrong"), ProcessIdentity.CurrentUser,
+            TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
 
         Assert.True(error.AuthenticationFailed);
     }
@@ -75,7 +89,8 @@ public sealed class GoldSrcRconTests
     public async Task AChallengeTheGameNoLongerTakesEndsTheSessionWithoutRunningTheCommand()
     {
         await using var game = new FakeHlds("secret");
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        var clock = new RconTestClock();
+        await using var session = await ConnectAsync(game, clock);
         game.ForgetChallenges = true; // the game restarted
 
         var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("status", TestContext.Current.CancellationToken));
@@ -157,6 +172,12 @@ public sealed class GoldSrcRconTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => answering.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
     }
 
+    private static Task<IRconSession> ConnectAsync(FakeHlds game, RconTestClock clock)
+    {
+        var connector = new GoldSrcRconConnector { AnswerIdle = s_connector.AnswerIdle, AnswerTimeout = s_connector.AnswerTimeout, Clock = clock };
+        return clock.CompleteAnswerAsync(connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken), connector.AnswerIdle);
+    }
+
     private sealed class RconTestClock : TimeProvider
     {
         private readonly FakeTimeProvider _time = new();
@@ -176,6 +197,17 @@ public sealed class GoldSrcRconTests
         }
 
         public void Advance(TimeSpan time) => _time.Advance(time);
+
+        public async Task<T> CompleteAnswerAsync<T>(Task<T> answer, TimeSpan idle, int printedPackets = 1)
+        {
+            for (var i = 0; i < printedPackets; i++)
+            {
+                await WaitForTimerAsync(idle); // Each complete printed packet starts a new idle wait.
+            }
+
+            Advance(idle);
+            return await answer.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
 
         public async Task WaitForTimerAsync(TimeSpan dueTime)
         {
@@ -211,10 +243,11 @@ public sealed class GoldSrcRconTests
         // A process of another account binds the address the agent sends to while the game runs: each command checks again.
         await using var game = new FakeHlds("secret");
         var peers = new SwitchingPeers();
-        var connector = new GoldSrcRconConnector { Peers = peers, AnswerIdle = TimeSpan.FromMilliseconds(150) };
-        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.Account("pulsar-abcd2345"),
-            TestContext.Current.CancellationToken);
-        Assert.Equal("hello \n", await session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
+        var clock = new RconTestClock();
+        var connector = new GoldSrcRconConnector { Peers = peers, AnswerIdle = s_connector.AnswerIdle, Clock = clock };
+        await using var session = await clock.CompleteAnswerAsync(connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.Account("pulsar-abcd2345"),
+            TestContext.Current.CancellationToken), connector.AnswerIdle);
+        Assert.Equal("hello \n", await clock.CompleteAnswerAsync(session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken), connector.AnswerIdle));
 
         peers.Taken = true;
         var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("status", TestContext.Current.CancellationToken));
@@ -280,7 +313,8 @@ public sealed class GoldSrcRconTests
     public async Task CommandsAreSingleLines(string command)
     {
         await using var game = new FakeHlds("secret");
-        await using var session = await s_connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        var clock = new RconTestClock();
+        await using var session = await ConnectAsync(game, clock);
 
         await Assert.ThrowsAsync<ArgumentException>(() => session.ExecuteAsync(command, TestContext.Current.CancellationToken));
     }
@@ -352,6 +386,7 @@ internal sealed class FakeHlds : IAsyncDisposable
 
     private readonly UdpClient _udp = new(new IPEndPoint(IPAddress.Loopback, 0));
     private readonly CancellationTokenSource _stop = new();
+    private readonly Channel<string> _commands = Channel.CreateUnbounded<string>();
     private readonly string _password;
     private readonly Task _loop;
 
@@ -373,6 +408,16 @@ internal sealed class FakeHlds : IAsyncDisposable
 
     public RconEndpoint Endpoint(string password) =>
         new(RconProtocol.GoldSrc, "127.0.0.1", ((IPEndPoint)_udp.Client.LocalEndPoint!).Port, password);
+
+    public async Task WaitForCommandAsync(string command)
+    {
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        waiting.CancelAfter(TimeSpan.FromSeconds(10));
+        while (await _commands.Reader.ReadAsync(waiting.Token) != command)
+        {
+            // Earlier commands precede the one whose no-response deadline the test is about to advance.
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -428,6 +473,7 @@ internal sealed class FakeHlds : IAsyncDisposable
             }
 
             Commands.Add(command);
+            _commands.Writer.TryWrite(command);
             switch (command)
             {
                 case "echo":
