@@ -151,13 +151,15 @@ public static partial class SsoEndpoints
             return wrong;
         }
 
+        // Code verification reloads the tracked user: keep the generation whose password was actually proved.
+        var credentialStamp = user.SecurityStamp;
         if (user.TwoFactorEnabled && await TwoFactorEndpoints.WrongCodeAsync(user, request.Code, users, db, locks, audit, AuditActions.Auth.SsoLinked, ct)
             is { } wrongCode)
         {
             return wrongCode;
         }
 
-        var started = await StartAsync(provider, Flow.Link, user.Id.Value, user.SecurityStamp, http, providers, client, protection, cookies, ct);
+        var started = await StartAsync(provider, Flow.Link, user.Id.Value, credentialStamp, http, providers, client, protection, cookies, ct);
         return started.Result switch
         {
             Ok<SsoStartResponse> ok => ok,

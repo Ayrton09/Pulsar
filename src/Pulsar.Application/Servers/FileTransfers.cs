@@ -112,6 +112,9 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
     /// <summary>The user's sessions ended (signed out, disabled, deleted, a new password or roles): their transfers end.</summary>
     public void EndUser(UserId user) => End(t => t.User == user);
 
+    /// <summary>The node was explicitly disabled, deleted or revoked: its pending and claimed transfers end.</summary>
+    public void EndNode(NodeId node) => End(t => t.Node == node);
+
     /// <summary>A role changed: any user's permissions may have; every user's transfers end (the panel's own go on).</summary>
     public void EndAll() => End(t => t.User is not null);
 

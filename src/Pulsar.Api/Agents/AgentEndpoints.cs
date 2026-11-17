@@ -57,7 +57,7 @@ internal static class AgentEndpoints
         // this request gives only once the content ended within its limit; any failure aborts it instead.
         http.Response.ContentLength = upload.Streamed ? null : upload.Size;
 
-        // An upload that was ended (its user's sessions, its API key, its time) stops here: the node never gets the rest.
+        // Explicit node cutoff, user/key revocation or a transfer deadline also ends a response already in progress.
         using var sending = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, upload.Aborted);
         try
         {
@@ -68,6 +68,7 @@ internal static class AgentEndpoints
                 // A streamed upload reads one byte past its limit, to tell content that ends there from content that goes on.
                 var wanted = (int)Math.Min(buffer.Length, upload.Size - sent + (upload.Streamed ? 1 : 0));
                 var read = await upload.Content.ReadAsync(buffer.AsMemory(0, wanted), sending.Token);
+                sending.Token.ThrowIfCancellationRequested();
                 if (read == 0)
                 {
                     break;
@@ -92,6 +93,7 @@ internal static class AgentEndpoints
                 return;
             }
 
+            sending.Token.ThrowIfCancellationRequested();
             await http.Response.CompleteAsync();
             upload.ContentSent();
         }

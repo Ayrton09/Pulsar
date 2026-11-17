@@ -86,6 +86,7 @@
     "reload": "Recarregar"
   },
   "dashboard": {
+    "dataUpdated": "Última atualização: {{time}}",
     "title": "Painel inicial",
     "welcome": "Bem-vindo, {{name}}.",
     "nothing": "Nada para mostrar ainda: suas funções não incluem servidores, nós nem o registro de auditoria.",
@@ -275,6 +276,18 @@
     }
   },
   "audit": {
+    "filters": {
+      "action": "Prefixo da ação",
+      "actorUserId": "ID do usuário autor",
+      "from": "Desde (hora local)",
+      "until": "Até (exclusive, hora local)",
+      "targetType": "Tipo de recurso",
+      "targetId": "ID do recurso",
+      "apply": "Aplicar filtros",
+      "clear": "Limpar filtros",
+      "export": "Exportar CSV",
+      "exportHint": "Exporta as últimas 200 entradas correspondentes aos filtros aplicados."
+    },
     "title": "Registro de auditoria",
     "description": "Quem fez o quê e quando. As entradas não podem ser editadas.",
     "when": "Quando",
@@ -360,6 +373,7 @@
         "retired": "Aposentou uma chave de assinatura do painel"
       },
       "server": {
+        "renamed": "Servidor renomeado",
         "created": "Criou um servidor",
         "deleted": "Servidor excluído",
         "delete_requested": "Pediu para excluir um servidor",
@@ -648,6 +662,7 @@
       "nodes_outdated": "Alguns nós não confiam em nenhuma outra chave: aposentá-la os deixaria sem conexão. Tente novamente para ver quais."
     },
     "server": {
+      "rename_forbidden": "Você não tem permissão para alterar o nome deste servidor.",
       "name_invalid": "O nome de um servidor é uma linha de até 64 caracteres.",
       "description_too_long": "A descrição é longa demais.",
       "not_found": "O servidor não existe.",
@@ -1193,6 +1208,28 @@
     }
   },
   "servers": {
+    "inventory": {
+      "node": "Nó",
+      "game": "Jogo",
+      "status": "Estado",
+      "sort": "Ordenar servidores",
+      "allNodes": "Todos os nós",
+      "allGames": "Todos os jogos",
+      "allStatuses": "Todos os estados",
+      "active": "Não suspensos",
+      "suspended": "Suspensos",
+      "update": "Atualização disponível",
+      "sort_name": "Nome: A–Z",
+      "sort_nameDesc": "Nome: Z–A",
+      "sort_newest": "Mais recentes primeiro",
+      "sort_node": "Nó e nome",
+      "sort_game": "Jogo e nome"
+    },
+    "rename": {
+      "action": "Renomear",
+      "title": "Renomear servidor",
+      "hint": "Altera o nome mostrado no painel. O nome anunciado pelo jogo é configurado separadamente."
+    },
     "title": "Servidores",
     "description": "Servidores de jogos nos seus nós: o estado deles e o que você pode fazer com eles.",
     "create": "Criar servidor",
@@ -1732,6 +1769,11 @@
     "reconnecting": "Atualizações ao vivo pausadas, reconectando…"
   },
   "files": {
+    "queue": {
+      "queued": "Na fila",
+      "cancelled": "Cancelado",
+      "dismiss": "Remover"
+    },
     "title": "Arquivos",
     "location": "Local",
     "root": "servidor",
@@ -1935,6 +1977,12 @@
     }
   },
   "backups": {
+    "preview": {
+      "summary": "Backups elegíveis: {{count}} · Espaço estimado: {{size}}",
+      "unknown": "Backups com tamanho desconhecido: {{count}}. Seu espaço não está incluído.",
+      "timing": "Ao salvar, a retenção é aplicada quando possível. Se o nó estiver offline ou uma clonagem ou transferência usar os backups, a exclusão aguarda uma execução posterior.",
+      "recheck": "A estimativa inclui apenas backups concluídos e desbloqueados além do limite. O painel verifica novamente os backups e bloqueios antes de excluir; o resultado pode mudar."
+    },
     "title": "Backups",
     "hint": "Backups são arquivos zip guardados no nó do servidor. Eles contêm os arquivos que o modelo do jogo escolhe (sua configuração, seus complementos), não o que pode ser baixado novamente.",
     "create": "Criar backup",
@@ -2020,13 +2068,13 @@
     "deleteConfirm": "Excluir o backup {{name}}? Seu arquivo é removido do nó. Isso não pode ser desfeito.",
     "retention": {
       "title": "Retenção",
-      "hint": "Após cada novo backup, os mais antigos além deste número são excluídos. Backups bloqueados são sempre mantidos e não contam.",
+      "hint": "A retenção é aplicada ao alterar este limite e após cada novo backup. Backups bloqueados são mantidos separadamente e não contam para o limite.",
       "keep": "Backups a manter",
       "all": "Todos",
       "invalid": "Um número inteiro de 1 a {{max}}, ou vazio para mantê-los todos.",
       "notANumber": "Digite um número inteiro, ou deixe vazio para mantê-los todos.",
-      "confirm_one": "Manter somente o backup mais recente? Os mais antigos não bloqueados são excluídos agora.",
-      "confirm_other": "Manter somente os {{count}} backups mais recentes? Os mais antigos não bloqueados são excluídos agora.",
+      "confirm_one": "Aplicar a retenção mantendo o backup desbloqueado mais recente?",
+      "confirm_other": "Aplicar a retenção mantendo os {{count}} backups desbloqueados mais recentes?",
       "saved": "Salvo."
     },
     "remote": {
@@ -2675,6 +2723,14 @@
     "turnedOff": "Imagens desligadas. As páginas abertas deixam de pedi-las na hora e listam servidores e jogos sem imagens."
   },
   "updates": {
+    "runtime": {
+      "title": "Painel em execução",
+      "hint": "Versões carregadas por este processo. O SDK de compilação não identifica o runtime em uso.",
+      "panelVersion": "Versão do painel",
+      "dotNet": ".NET",
+      "aspNetCore": "ASP.NET Core",
+      "architecture": "Arquitetura"
+    },
     "title": "Atualizações",
     "description": "As novas versões do Pulsar, das versões publicadas no GitHub do projeto, assinadas por seu mantenedor: o painel só oferece uma versão cuja assinatura verificou, e cada nó a verifica novamente antes de instalá-la.",
     "checkNow": "Verificar agora",

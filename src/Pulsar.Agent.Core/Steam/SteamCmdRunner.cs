@@ -598,10 +598,8 @@ public sealed partial class SteamCmdRunner(
         var process = await processes.StartAsync(spec, cancellationToken);
         using var stall = new CancellationTokenSource(options.StallTimeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
-        // Everything secret that went on the command line, should SteamCMD echo it (the beta password too, with or without an account).
-        string[] secrets = [job.Login?.Password ?? string.Empty, job.Login?.GuardCode ?? string.Empty, job.BetaPassword ?? string.Empty];
         Action<string>? echo = console is null ? null : line => console.Write(ForConsole(job, line) + "\r\n", clock.GetUtcNow());
-        var output = new RunOutput(new ProgressReporter(progress, clock), secrets, echo);
+        var output = new RunOutput(new ProgressReporter(progress, clock), line => ForConsole(job, line), echo);
         // A pseudo console's output ends only when it is closed (disposing the process): read it alongside.
         var pump = PumpAsync(process, output, stall);
         try
@@ -743,11 +741,11 @@ public sealed partial class SteamCmdRunner(
 
     /// <summary>
     /// What a run printed that matters. Lines are read as printed (a one-letter password or a five-digit code also appears
-    /// in "Success!" or a progress line), and kept with the account's password and code, should SteamCMD echo them,
-    /// blanked out: <see cref="Tail"/> and <see cref="Message"/> are what gets logged and reported.
+    /// in "Success!" or a progress line), and kept with the account's identity and secrets blanked out:
+    /// <see cref="Tail"/> and <see cref="Message"/> are what gets logged and reported.
     /// </summary>
     /// <param name="echo">Each line printed, as printed, for the server's console (which blanks out what it must).</param>
-    private sealed class RunOutput(ProgressReporter reporter, IReadOnlyList<string> secrets, Action<string>? echo)
+    private sealed class RunOutput(ProgressReporter reporter, Func<string, string> redact, Action<string>? echo)
     {
         private const int MaxMessageLength = 300;
 
@@ -771,7 +769,7 @@ public sealed partial class SteamCmdRunner(
             }
 
             echo?.Invoke(line);
-            Tail.Enqueue(Redact(line));
+            Tail.Enqueue(redact(line));
             if (Tail.Count > 20)
             {
                 Tail.Dequeue();
@@ -789,18 +787,15 @@ public sealed partial class SteamCmdRunner(
                     Succeeded = true;
                     break;
                 case SteamCmdLine.Failure failure:
-                    (Error, Message) = (failure.Message, Cut(Redact(line.Trim())));
+                    (Error, Message) = (failure.Message, Cut(redact(line.Trim())));
                     break;
                 case SteamCmdLine.GuardRequested guard when Error is null:
-                    (Error, Message) = (guard.Message, Cut(Redact(line.Trim())));
+                    (Error, Message) = (guard.Message, Cut(redact(line.Trim())));
                     break;
             }
         }
 
-        // Blanked out before the line is cut: a secret across the cut would leave its first characters.
-        private string Redact(string text) =>
-            secrets.Where(s => s.Length > 0).Aggregate(text, (current, secret) => current.Replace(secret, "***", StringComparison.Ordinal));
-
+        // Redaction precedes truncation so a secret crossing the cut cannot leave its first characters.
         private static string Cut(string text) => text.Length > MaxMessageLength ? text[..MaxMessageLength] : text;
     }
 

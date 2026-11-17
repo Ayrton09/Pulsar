@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { File as FileIcon, Folder, Link2 } from 'lucide-react';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
@@ -598,12 +598,14 @@ function ArchiveDialog({ serverId, directory, action, onDone }: ArchiveDialogPro
 
 interface Upload {
   id: number;
+  serverId: string;
   name: string;
   /** The folder it goes to: the one open when it was chosen, not the one open when it is retried. */
   directory: string;
   file: File;
   progress: number;
-  state: 'uploading' | 'done' | 'failed' | 'exists';
+  state: 'queued' | 'uploading' | 'done' | 'failed' | 'exists' | 'cancelled';
+  overwrite: boolean;
   error?: unknown;
 }
 
@@ -613,21 +615,44 @@ function useUploads(serverId: string, directory: string) {
   const [items, setItems] = useState<Upload[]>([]);
   const counter = useRef(0);
   const queue = useRef(Promise.resolve());
+  const controllers = useRef(new Map<number, { controller: AbortController; running: boolean }>());
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const active = controllers.current;
+    return () => {
+      mounted.current = false;
+      for (const { controller } of active.values()) controller.abort();
+      active.clear();
+    };
+  }, [serverId]);
 
-  const update = (id: number, change: Partial<Upload>) =>
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, ...change } : item)));
+  const update = (id: number, change: Partial<Upload>) => {
+    if (mounted.current) setItems((current) => current.map((item) => (item.id === id ? { ...item, ...change } : item)));
+  };
 
-  const run = ({ id, file, directory: target }: Upload, overwrite: boolean) => {
+  const run = ({ id, file, directory: target, serverId: owner }: Upload, overwrite: boolean) => {
+    if (controllers.current.has(id)) return;
+    const transfer = { controller: new AbortController(), running: false };
+    controllers.current.set(id, transfer);
+    update(id, { state: 'queued', progress: 0, error: undefined, overwrite });
     queue.current = queue.current.then(async () => {
-      update(id, { state: 'uploading', progress: 0, error: undefined });
       try {
-        await writeFile(serverId, joinPath(target, file.name), file, {
+        if (transfer.controller.signal.aborted || !mounted.current) return;
+        transfer.running = true;
+        update(id, { state: 'uploading' });
+        await writeFile(owner, joinPath(target, file.name), file, {
           createOnly: !overwrite,
+          signal: transfer.controller.signal,
           onProgress: (progress) => update(id, { progress }),
         });
         update(id, { state: 'done', progress: 1 });
-        await queryClient.invalidateQueries({ queryKey: fileKeys.listing(serverId, target) });
+        await queryClient.invalidateQueries({ queryKey: fileKeys.listing(owner, target) });
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          update(id, { state: 'cancelled' });
+          return;
+        }
         update(
           id,
           error instanceof ApiError && error.code === 'files.exists' ? { state: 'exists' } : { state: 'failed', error },
@@ -635,24 +660,30 @@ function useUploads(serverId: string, directory: string) {
         if (endsSession(error)) {
           void queryClient.invalidateQueries({ queryKey: sessionKey });
         }
+      } finally {
+        if (controllers.current.get(id) === transfer) controllers.current.delete(id);
       }
     });
   };
 
   return {
     // A question about a name is asked in the folder it is about: elsewhere it would read as about that folder's files.
-    items: items.filter((item) => item.state !== 'exists' || item.directory === directory),
+    items: items.filter(
+      (item) => item.serverId === serverId && (item.state !== 'exists' || item.directory === directory),
+    ),
     start: (files: File[]) => {
       const added = files.map((file) => ({
         id: ++counter.current,
+        serverId,
         name: file.name,
         directory,
         file,
         progress: 0,
-        state: 'uploading' as const,
+        state: 'queued' as const,
+        overwrite: false,
       }));
       setItems((current) => [
-        ...current.filter((item) => item.state === 'uploading' || item.state === 'exists'),
+        ...current.filter((item) => item.serverId === serverId && item.state !== 'done' && item.state !== 'cancelled'),
         ...added,
       ]);
       for (const item of added) {
@@ -660,6 +691,17 @@ function useUploads(serverId: string, directory: string) {
       }
     },
     replace: (item: Upload) => run(item, true),
+    retry: (item: Upload) => run(item, item.overwrite),
+    cancel: (item: Upload) => {
+      const transfer = controllers.current.get(item.id);
+      if (transfer) {
+        transfer.controller.abort();
+        if (!transfer.running) {
+          controllers.current.delete(item.id);
+          update(item.id, { state: 'cancelled' });
+        }
+      }
+    },
     dismiss: (item: Upload) => setItems((current) => current.filter((other) => other.id !== item.id)),
   };
 }
@@ -671,12 +713,14 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
       {uploads.items.map((item) => {
         const percent = Math.round(item.progress * 100);
         return (
-          <div key={item.id} className="space-y-2 px-4 py-3">
+          <div key={item.id} role="group" aria-label={visibleName(item.name)} className="space-y-2 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="truncate font-mono">{visibleName(baseName(item.name))}</span>
               <span className="text-muted">
+                {item.state === 'queued' && t('files.queue.queued')}
                 {item.state === 'uploading' && t('files.uploads.progress', { percent })}
                 {item.state === 'done' && t('files.uploads.done')}
+                {item.state === 'cancelled' && t('files.queue.cancelled')}
               </span>
             </div>
             {item.state === 'uploading' && (
@@ -703,6 +747,24 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
               </div>
             )}
             {item.state === 'failed' && <Alert>{errorMessage(t, item.error)}</Alert>}
+            <p className="break-all text-xs text-muted">{visibleName(joinPath(item.directory, item.name))}</p>
+            <div className="flex flex-wrap gap-2">
+              {(item.state === 'queued' || item.state === 'uploading') && (
+                <Button size="sm" variant="secondary" onClick={() => uploads.cancel(item)}>
+                  {t('actions.cancel')}
+                </Button>
+              )}
+              {(item.state === 'failed' || item.state === 'cancelled') && (
+                <Button size="sm" variant="secondary" onClick={() => uploads.retry(item)}>
+                  {t('actions.retry')}
+                </Button>
+              )}
+              {(item.state === 'failed' || item.state === 'cancelled' || item.state === 'done') && (
+                <Button size="sm" variant="ghost" onClick={() => uploads.dismiss(item)}>
+                  {t('files.queue.dismiss')}
+                </Button>
+              )}
+            </div>
           </div>
         );
       })}

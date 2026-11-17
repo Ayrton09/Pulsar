@@ -52,6 +52,30 @@ afterEach(() => {
 });
 
 describe('updates', () => {
+  it('shows the effective runtime independently from release checks and offers a retry', async () => {
+    let fail = true;
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      'GET /api/v1/updates/runtime': () =>
+        fail
+          ? problem(503, 'unavailable')
+          : json({
+              panelVersion: '1.0.45',
+              dotNet: '.NET 10.0.15',
+              aspNetCore: '10.0.15',
+              architecture: 'Arm64',
+            }),
+    });
+    renderAt('/admin/updates');
+    const region = await screen.findByRole('region', { name: 'Running panel' });
+    const retry = await within(region).findByRole('button', { name: 'Try again' });
+    fail = false;
+    await userEvent.setup().click(retry);
+    expect(await within(region).findByText('.NET 10.0.15')).toBeInTheDocument();
+    expect(within(region).getByText('10.0.15')).toBeInTheDocument();
+    expect(within(region).getByText('Arm64')).toBeInTheDocument();
+  });
+
   it('shows a newer release and its notes as text, with the panel first', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),

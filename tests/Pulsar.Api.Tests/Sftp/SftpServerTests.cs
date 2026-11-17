@@ -122,6 +122,58 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
     }
 
     [DatabaseFact]
+    public async Task APasswordResetInvalidatesAPendingSecondFactor()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var user = await scenario.CreateUserAsync("sftp-pending-reset");
+        var (key, _) = await EnableTwoFactorAsync(factory, scenario, "sftp-pending-reset");
+        var port = await factory.PortAsync();
+        var codeAsked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCode = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var interactive = new Renci.SshNet.KeyboardInteractiveAuthenticationMethod("sftp-pending-reset");
+        interactive.AuthenticationPrompt += (_, e) =>
+        {
+            foreach (var prompt in e.Prompts)
+            {
+                if (prompt.Request == SftpAuthenticator.PasswordPrompt)
+                {
+                    prompt.Response = AccessScenario.Password;
+                }
+                else
+                {
+                    Assert.Equal(SftpAuthenticator.CodePrompt, prompt.Request);
+                    codeAsked.TrySetResult();
+                    releaseCode.Task.WaitAsync(SftpApiFactory.Timeout, Ct).GetAwaiter().GetResult();
+                    prompt.Response = AuthenticatorCode(key, factory.AuthenticatorClock);
+                }
+            }
+        };
+        using var client = new Renci.SshNet.SftpClient(new Renci.SshNet.ConnectionInfo("127.0.0.1", port,
+            "sftp-pending-reset", interactive)
+        { Timeout = SftpApiFactory.Timeout });
+        client.HostKeyReceived += (_, e) => e.CanTrust = true;
+        var connecting = Record.ExceptionAsync(() => client.ConnectAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct));
+        try
+        {
+            await codeAsked.Task.WaitAsync(SftpApiFactory.Timeout, Ct);
+            using var reset = await scenario.Admin.PostAsync($"/api/v1/users/{user.Id}/password",
+                new ResetPasswordRequest("a new pending SFTP password"));
+            await AccessScenario.EnsureSuccessAsync(reset);
+        }
+        finally
+        {
+            releaseCode.TrySetResult();
+        }
+
+        Assert.IsType<SshAuthenticationException>(await connecting);
+        // The code was valid and unused: a fresh proof with the new password still works.
+        using var fresh = Client(port, "sftp-pending-reset", "a new pending SFTP password",
+            code: AuthenticatorCode(key, factory.AuthenticatorClock));
+        await fresh.ConnectAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
+        Assert.True(fresh.IsConnected);
+    }
+
+    [DatabaseFact]
     public async Task WrongPasswordsLockTheAccountAndDisabledOrUnknownUsersGetTheSameAnswer()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

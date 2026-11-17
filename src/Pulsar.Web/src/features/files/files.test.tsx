@@ -911,6 +911,107 @@ describe('files tab', () => {
     expect(FakeXhr.sent[2]?.headers['If-None-Match']).toBeUndefined();
   });
 
+  it('distinguishes queued uploads, cancels before sending, retries them and aborts an active upload', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    let finish: (() => void) | undefined;
+    FakeXhr.handler = (xhr) =>
+      xhr.path === 'first.bin'
+        ? new Promise((resolve) => {
+            finish = () => resolve(written('first.bin', 1));
+          })
+        : Promise.resolve(written(xhr.path ?? '', 1));
+    const aborted = vi.spyOn(FakeXhr.prototype, 'abort');
+    renderAt(`/servers/${serverId}?tab=files`);
+    await screen.findByRole('table', { name: 'Files' });
+    await userEvent.upload(screen.getByLabelText('Upload'), [
+      new File(['1'], 'first.bin'),
+      new File(['2'], 'second.bin'),
+    ]);
+    const first = await screen.findByRole('group', { name: 'first.bin' });
+    const second = screen.getByRole('group', { name: 'second.bin' });
+    expect(within(second).getByText('Queued')).toBeInTheDocument();
+    expect(FakeXhr.sent).toHaveLength(1);
+    await userEvent.click(within(second).getByRole('button', { name: 'Cancel' }));
+    expect(within(second).getByText('Cancelled')).toBeInTheDocument();
+    expect(FakeXhr.sent).toHaveLength(1);
+    await userEvent.click(within(second).getByRole('button', { name: 'Try again' }));
+    expect(within(second).getByText('Queued')).toBeInTheDocument();
+    await userEvent.click(within(first).getByRole('button', { name: 'Cancel' }));
+    expect(await within(first).findByText('Cancelled')).toBeInTheDocument();
+    expect(await within(second).findByText('Uploaded')).toBeInTheDocument();
+    expect(aborted).toHaveBeenCalledOnce();
+    expect(FakeXhr.sent.map((xhr) => xhr.path)).toEqual(['first.bin', 'second.bin']);
+    await act(async () => {
+      finish?.();
+    });
+    expect(within(first).getByText('Cancelled')).toBeInTheDocument();
+  });
+
+  it('retries a failed replacement with the original directory and overwrite decision', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    FakeXhr.handler = async (xhr) =>
+      FakeXhr.sent.length === 1
+        ? { status: 409, body: { code: 'files.exists' } }
+        : FakeXhr.sent.length === 2
+          ? { status: 503, body: { title: 'Temporarily unavailable' } }
+          : written(xhr.path ?? '', 1);
+    renderAt(`/servers/${serverId}?tab=files&path=game`);
+    await screen.findByRole('button', { name: 'csgo/' });
+    await userEvent.upload(screen.getByLabelText('Upload'), [new File(['1'], 'server.cfg')]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace' }));
+    await screen.findByRole('button', { name: 'Try again' });
+    expect(within(screen.getByRole('group', { name: 'server.cfg' })).getByRole('alert')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'server' }));
+    await screen.findByRole('button', { name: 'game/' });
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'server.cfg' })).getByRole('button', { name: 'Try again' }),
+    );
+    await screen.findByText('Uploaded');
+    expect(FakeXhr.sent.map((xhr) => [xhr.path, xhr.headers['If-None-Match']])).toEqual([
+      ['game/server.cfg', '*'],
+      ['game/server.cfg', undefined],
+      ['game/server.cfg', undefined],
+    ]);
+  });
+
+  it('aborts active uploads and discards queued ones when leaving the server', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      'GET /api/v1/servers': () => json([]),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    let finish: (() => void) | undefined;
+    FakeXhr.handler = (xhr) =>
+      new Promise((resolve) => {
+        finish = () => resolve(written(xhr.path ?? '', 1));
+      });
+    const aborted = vi.spyOn(FakeXhr.prototype, 'abort');
+    const router = renderAt(`/servers/${serverId}?tab=files`);
+    await screen.findByRole('table', { name: 'Files' });
+    await userEvent.upload(screen.getByLabelText('Upload'), [
+      new File(['1'], 'first.bin'),
+      new File(['2'], 'second.bin'),
+    ]);
+    await waitFor(() => expect(FakeXhr.sent).toHaveLength(1));
+    await act(async () => {
+      await router.navigate('/servers');
+    });
+    expect(aborted).toHaveBeenCalledOnce();
+    await act(async () => {
+      finish?.();
+    });
+    expect(FakeXhr.sent).toHaveLength(1);
+  });
+
   it('asks for the session again when an upload finds it ended', async () => {
     let sessions = 0;
     fakeApi({

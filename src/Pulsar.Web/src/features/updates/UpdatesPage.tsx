@@ -14,6 +14,7 @@ import {
   useCheckForUpdates,
   useUpdates,
   useUpdateSettings,
+  useRuntimeDiagnostics,
   type NodeUpdateView,
   type UpdateRequestResult,
 } from './api';
@@ -44,6 +45,7 @@ export function UpdatesPage() {
           </Button>
         }
       />
+      <RuntimeCard />
       {updates.isPending && <Spinner label={t('common.loading')} />}
       {updates.isError && <Alert>{errorMessage(t, updates.error)}</Alert>}
       {check.isError && <Alert>{errorMessage(t, check.error)}</Alert>}
@@ -275,6 +277,38 @@ function ApplyDialog({ nodes, version, onClose }: { nodes: NodeUpdateView[]; ver
         </div>
       </form>
     </Dialog>
+  );
+}
+
+function RuntimeCard() {
+  const { t } = useTranslation();
+  const runtime = useRuntimeDiagnostics();
+  return (
+    <section aria-label={t('updates.runtime.title')} className="mb-6">
+      <Card className="space-y-3 p-5">
+        <h2 className="font-semibold">{t('updates.runtime.title')}</h2>
+        <p className="text-sm text-muted">{t('updates.runtime.hint')}</p>
+        {runtime.isPending && <Spinner label={t('common.loading')} />}
+        {runtime.isError && (
+          <div className="space-y-2">
+            <Alert>{errorMessage(t, runtime.error)}</Alert>
+            <Button variant="secondary" size="sm" busy={runtime.isFetching} onClick={() => void runtime.refetch()}>
+              {t('actions.retry')}
+            </Button>
+          </div>
+        )}
+        {runtime.data && (
+          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            {(['panelVersion', 'dotNet', 'aspNetCore', 'architecture'] as const).map((key) => (
+              <div key={key} className="min-w-0">
+                <dt className="text-muted">{t(`updates.runtime.${key}`)}</dt>
+                <dd className="break-words font-mono">{runtime.data[key] ?? '—'}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </Card>
+    </section>
   );
 }
 

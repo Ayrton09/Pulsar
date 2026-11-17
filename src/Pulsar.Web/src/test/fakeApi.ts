@@ -132,14 +132,22 @@ export function fakeApi(routes: Record<string, Handler>) {
                       ? () => json({ steamArtwork: true })
                       : key === 'GET /api/v1/account/ssh-keys'
                         ? () => json([])
-                        : key === 'GET /api/v1/updates'
-                          ? () => json(noUpdates)
-                          : key === 'GET /api/v1/auth/sso' || key === 'GET /api/v1/account/sso'
-                            ? () => json([])
-                            : request.method === 'GET' &&
-                                /^\/api\/v1\/(account|users\/[^/]+)\/quota$/.test(url.pathname)
-                              ? () => problem(404, 'quota.not_found')
-                              : undefined);
+                        : key === 'GET /api/v1/updates/runtime'
+                          ? () =>
+                              json({
+                                panelVersion: '1.0.45',
+                                dotNet: '.NET 10.0.15',
+                                aspNetCore: '10.0.15',
+                                architecture: 'X64',
+                              })
+                          : key === 'GET /api/v1/updates'
+                            ? () => json(noUpdates)
+                            : key === 'GET /api/v1/auth/sso' || key === 'GET /api/v1/account/sso'
+                              ? () => json([])
+                              : request.method === 'GET' &&
+                                  /^\/api\/v1\/(account|users\/[^/]+)\/quota$/.test(url.pathname)
+                                ? () => problem(404, 'quota.not_found')
+                                : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

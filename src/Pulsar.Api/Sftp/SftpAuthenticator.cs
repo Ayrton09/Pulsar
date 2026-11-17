@@ -112,7 +112,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
                 break;
             case SshAuthenticationType.ClientInteractive when e.InfoResponse is null:
                 // A new keyboard-interactive attempt: the password first, whoever the user is.
-                connection.Interactive = new SftpInteractiveState(e.Username ?? string.Empty, null, null);
+                connection.Interactive = new SftpInteractiveState(e.Username ?? string.Empty, null, null, null);
                 e.InfoRequest = Prompt(PasswordPrompt);
                 break;
             case SshAuthenticationType.ClientInteractive:
@@ -178,7 +178,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         }
 
         connection.Interactive = null;
-        return await CheckCodeAsync(connection, userId, state.ServerShortId, answer, e.Cancellation);
+        return await CheckCodeAsync(connection, userId, state.ServerShortId, state.CredentialStamp, answer, e.Cancellation);
     }
 
     private async Task<(Outcome Outcome, ClaimsPrincipal? Principal, SftpInteractiveState? Pending)> CheckPasswordAsync(
@@ -238,7 +238,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
             if (twoFactorPossible)
             {
                 // The sign-in (and its audit entry) waits for the second factor, as in the browser.
-                return (Outcome.NeedsCode, null, new SftpInteractiveState(login, user.Id, shortId));
+                return (Outcome.NeedsCode, null, new SftpInteractiveState(login, user.Id, shortId, user.SecurityStamp));
             }
 
             // The "password" method cannot ask for a code: never a way around two-factor authentication.
@@ -267,7 +267,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         return FailedCheckTime.WaitOutAsync(_clock, from, _failedCheckTime, cancellationToken);
     }
 
-    private async Task<ClaimsPrincipal?> CheckCodeAsync(SftpConnection connection, UserId userId, string? shortId, string answer,
+    private async Task<ClaimsPrincipal?> CheckCodeAsync(SftpConnection connection, UserId userId, string? shortId, string? credentialStamp, string answer,
         CancellationToken cancellationToken)
     {
         await using var scope = Scope(connection);
@@ -282,7 +282,9 @@ internal sealed partial class SftpAuthenticator : IDisposable
 
         using var turn = await _locks.AcquireAsync(user.NormalizedUserName!, cancellationToken);
         await db.Entry(user).ReloadAsync(cancellationToken);
-        if (!user.TwoFactorEnabled || !await services.GetRequiredService<SignInManager<PulsarUser>>().CanSignInAsync(user))
+        // The second factor completes the password proof from the first round, never a newer credential generation.
+        if (string.IsNullOrEmpty(credentialStamp) || !string.Equals(credentialStamp, user.SecurityStamp, StringComparison.Ordinal)
+            || !user.TwoFactorEnabled || !await services.GetRequiredService<SignInManager<PulsarUser>>().CanSignInAsync(user))
         {
             return null;
         }

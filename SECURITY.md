@@ -4,7 +4,8 @@ Pulsar controls processes and files on remote machines, so we take security repo
 
 ## Supported versions
 
-Pulsar is pre-alpha. Until the first release, only the `main` branch receives fixes.
+Pulsar publishes versioned 1.x releases. Check the latest published release when reporting a problem, and include
+the exact installed version or development commit. Historical releases may not contain fixes added later.
 
 ## Reporting a vulnerability
 

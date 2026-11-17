@@ -86,6 +86,7 @@
     "reload": "Reload"
   },
   "dashboard": {
+    "dataUpdated": "Last updated: {{time}}",
     "title": "Dashboard",
     "welcome": "Welcome, {{name}}.",
     "nothing": "Nothing to show yet: your roles don't include servers, nodes or the audit log.",
@@ -275,6 +276,18 @@
     }
   },
   "audit": {
+    "filters": {
+      "action": "Action prefix",
+      "actorUserId": "Actor user ID",
+      "from": "From (local time)",
+      "until": "Until (exclusive, local time)",
+      "targetType": "Resource type",
+      "targetId": "Resource ID",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "export": "Export CSV",
+      "exportHint": "Exports the latest 200 matching entries using the applied filters."
+    },
     "title": "Audit log",
     "description": "Who did what, and when. Entries cannot be edited.",
     "when": "When",
@@ -360,6 +373,7 @@
         "retired": "Retired a panel signing key"
       },
       "server": {
+        "renamed": "Renamed a server",
         "created": "Created a server",
         "deleted": "Server deleted",
         "delete_requested": "Asked to delete a server",
@@ -648,6 +662,7 @@
       "nodes_outdated": "Some nodes trust no other key: retiring it would cut them off. Try again to see which ones."
     },
     "server": {
+      "rename_forbidden": "You may not change this server's name.",
       "name_invalid": "A server name is one line of up to 64 characters.",
       "description_too_long": "The description is too long.",
       "not_found": "The server does not exist.",
@@ -1193,6 +1208,28 @@
     }
   },
   "servers": {
+    "inventory": {
+      "node": "Node",
+      "game": "Game",
+      "status": "Status",
+      "sort": "Sort servers",
+      "allNodes": "All nodes",
+      "allGames": "All games",
+      "allStatuses": "All statuses",
+      "active": "Not suspended",
+      "suspended": "Suspended",
+      "update": "Update available",
+      "sort_name": "Name: A–Z",
+      "sort_nameDesc": "Name: Z–A",
+      "sort_newest": "Newest first",
+      "sort_node": "Node, then name",
+      "sort_game": "Game, then name"
+    },
+    "rename": {
+      "action": "Rename",
+      "title": "Rename server",
+      "hint": "Changes the name shown in this panel. The name advertised by the game is configured separately."
+    },
     "title": "Servers",
     "description": "Game servers on your nodes: their state and what you can do with them.",
     "create": "Create server",
@@ -1732,6 +1769,11 @@
     "reconnecting": "Live updates paused, reconnecting…"
   },
   "files": {
+    "queue": {
+      "queued": "Queued",
+      "cancelled": "Cancelled",
+      "dismiss": "Dismiss"
+    },
     "title": "Files",
     "location": "Location",
     "root": "server",
@@ -1935,6 +1977,12 @@
     }
   },
   "backups": {
+    "preview": {
+      "summary": "Eligible backups: {{count}} · Estimated space: {{size}}",
+      "unknown": "Backups with unknown size: {{count}}. Their space is not included.",
+      "timing": "Saving applies retention now when possible. If the node is offline or a clone or transfer is using backups, deletion waits for a later retention run.",
+      "recheck": "Only completed, unlocked backups beyond the limit are estimated here. The panel rechecks the current backups and locks before deleting; the actual result may change."
+    },
     "title": "Backups",
     "hint": "Backups are zip files kept on the server's node. They hold the files the game's template chooses (its configuration, its add-ons), not what can be downloaded again.",
     "create": "Create backup",
@@ -2020,13 +2068,13 @@
     "deleteConfirm": "Delete the backup {{name}}? Its file is removed from the node. This cannot be undone.",
     "retention": {
       "title": "Retention",
-      "hint": "After each new backup, the oldest ones beyond this number are deleted. Locked backups are always kept and do not count.",
+      "hint": "Retention runs when this limit changes and after each new backup. Locked backups are kept separately and do not count toward the limit.",
       "keep": "Backups to keep",
       "all": "All",
       "invalid": "A whole number from 1 to {{max}}, or empty to keep them all.",
       "notANumber": "Type a whole number, or leave it empty to keep them all.",
-      "confirm_one": "Keep only the newest backup? Older unlocked ones are deleted now.",
-      "confirm_other": "Keep only the {{count}} newest backups? Older unlocked ones are deleted now.",
+      "confirm_one": "Apply retention keeping the newest unlocked backup?",
+      "confirm_other": "Apply retention keeping the {{count}} newest unlocked backups?",
       "saved": "Saved."
     },
     "remote": {
@@ -2675,6 +2723,14 @@
     "turnedOff": "Artwork turned off. Open pages stop asking for it at once and list servers and games without pictures."
   },
   "updates": {
+    "runtime": {
+      "title": "Running panel",
+      "hint": "Versions loaded by this process. The build SDK does not identify the runtime in use.",
+      "panelVersion": "Panel version",
+      "dotNet": ".NET",
+      "aspNetCore": "ASP.NET Core",
+      "architecture": "Architecture"
+    },
     "title": "Updates",
     "description": "Pulsar's new versions, from the project's GitHub releases, signed by its maintainer: the panel offers only a release whose signature it checked, and each node checks it again before installing it.",
     "checkNow": "Check now",

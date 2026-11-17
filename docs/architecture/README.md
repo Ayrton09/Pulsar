@@ -1,6 +1,9 @@
 # Pulsar v1 architecture
 
-> Status: **draft under review**. Phase 0 (repository skeleton and Windows spikes) is in progress; nothing in these documents is implemented beyond that. Decisions that are hard to reverse live in [`../adr`](../adr/README.md).
+> Status: **implemented and evolving**. The panel, Windows agent, authentication, scoped access, server lifecycle,
+> files, backups, schedules and updates ship in the 1.x releases. Phase labels in individual documents describe the
+> implementation history; they are not a claim that the repository is still a skeleton. Installation and operation
+> are documented in [`../guides`](../guides/install.md). Decisions that are hard to reverse live in [`../adr`](../adr/README.md).
 
 ## Summary in ten lines
 
@@ -13,7 +16,7 @@
 7. **Three console modes** chosen by the manifest: ConPTY, pipes, or log file + RCON (Source engine servers on Windows allocate their own console; see spike 0001).
 8. **One Windows account per server**: plugin code never runs as SYSTEM and cannot see other servers.
 9. **Scoped RBAC** (global ⊃ node ⊃ server), permissions defined in code, anti-escalation rules.
-10. **Event-driven real time** (agent → panel → browser); metrics live in memory, not in PostgreSQL.
+10. **Event-driven real time** (agent → panel → browser); current metrics are kept in memory and historical samples are retained in PostgreSQL.
 
 ## Documents
 
@@ -52,10 +55,10 @@
 - **Language:** code, comments, commits, issues and public documentation in English. The UI shipped in English and Spanish from day one; it now speaks nine languages (docs 07, "i18n"), and so do notifications.
 - **Licensing:** AGPL-3.0-only for the core; MIT for `games/` and `schemas/`; contributions under the DCO (ADR-0013).
 - **Isolation:** one Windows account per game server, implemented in Phase 3 together with process management (ADR-0005).
-- **Starting point:** Phase 0 = repository skeleton + Windows spikes in parallel (see [roadmap](09-roadmap.md)).
+- **Starting point:** Phase 0 established the repository skeleton and Windows spikes; subsequent phases implemented the shipped features (see [roadmap](09-roadmap.md)).
 
-## Open questions
+## Platform status and remaining questions
 
-1. **Panel on Linux.** The panel has nothing Windows-specific; supporting it on Linux costs nothing extra (the agent stays Windows-first). Proposed: yes.
-2. **Windows 10.** Out of support since October 2025. Proposed: best effort on 22H2, full support for Windows 11 and Windows Server 2019/2022/2025.
+1. **Panel on Linux.** Supported on x86_64 with systemd, Debian 12+ or Ubuntu 24.04+; the game-server agent remains Windows-only. See the [installation guide](../guides/install.md#linux).
+2. **Windows 10.** Best effort on 22H2. The current installation guide lists Windows 11 and Windows Server 2022/2025 as the supported targets; older design documents retain their original platform proposals.
 3. **Code of conduct contact.** `CODE_OF_CONDUCT.md` needs a reporting address before the first public release.

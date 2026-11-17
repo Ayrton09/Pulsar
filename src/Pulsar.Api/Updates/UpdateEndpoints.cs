@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Pulsar.Api.Auth;
@@ -15,6 +17,14 @@ using Pulsar.Infrastructure.Persistence;
 namespace Pulsar.Api.Updates;
 
 public sealed record UpdateSettingsRequest(bool CheckAutomatically);
+
+/// <summary>Versions of the running process, independent of the SDK used to build it. No machine paths or configuration.</summary>
+public sealed record RuntimeDiagnostics(string PanelVersion, string DotNet, string? AspNetCore, string Architecture)
+{
+    public static RuntimeDiagnostics Read() => new(PanelUpdates.PanelVersionText, RuntimeInformation.FrameworkDescription,
+        typeof(WebApplication).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+', 2)[0],
+        RuntimeInformation.ProcessArchitecture.ToString());
+}
 
 /// <param name="NodeIds">The nodes to update: the one the panel runs on updates the panel too.</param>
 /// <param name="Password">The administrator's current password.</param>
@@ -39,6 +49,7 @@ public static class UpdateEndpoints
     public static RouteGroupBuilder MapUpdateEndpoints(this RouteGroupBuilder api)
     {
         var updates = api.MapGroup("/updates").WithTags("Updates");
+        updates.MapGet("/runtime", () => TypedResults.Ok(RuntimeDiagnostics.Read())).RequirePermission(Permissions.Settings.Manage);
         updates.MapGet("/", (PanelUpdates panelUpdates, CancellationToken ct) => panelUpdates.GetAsync(ct)).RequirePermission(Permissions.Settings.Manage);
         updates.MapPut("/settings", SetAsync).RequirePermission(Permissions.Settings.Manage);
         updates.MapPost("/check", CheckAsync).RequirePermission(Permissions.Settings.Manage).RequireRateLimiting(AuthEndpoints.RateLimitPolicy);

@@ -8,6 +8,47 @@ public sealed class ServerTests
 {
     private static readonly DateTimeOffset s_now = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void RenamingKeepsTheServersIdentityAndItsCurrentOperation()
+    {
+        var server = NewServer();
+        var identity = (server.Id, server.ShortId, server.NodeId, server.TemplateId, server.CreatedAt);
+        var install = Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        Assert.True(server.BeginOperation(install, s_now).IsSuccess);
+
+        Assert.True(server.Rename("  New panel name  ", s_now.AddMinutes(1)).IsSuccess);
+
+        Assert.Equal("New panel name", server.Name);
+        Assert.Equal(identity, (server.Id, server.ShortId, server.NodeId, server.TemplateId, server.CreatedAt));
+        Assert.Equal(install.Id, server.ActiveOperationId);
+        Assert.Equal(InstallState.Installing, server.InstallState);
+        Assert.Equal(s_now.AddMinutes(1), server.UpdatedAt);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Name\nSecond line")]
+    [InlineData("Name\u0000")]
+    [InlineData("Left\u202eRight")]
+    public void InvalidRenameLeavesTheExistingNameAlone(string? name)
+    {
+        var server = NewServer();
+        var previous = (server.Name, server.UpdatedAt);
+
+        Assert.Equal(ServerErrors.NameInvalid, server.Rename(name, s_now.AddMinutes(1)).Error);
+        Assert.Equal(previous, (server.Name, server.UpdatedAt));
+    }
+
+    [Fact]
+    public void RenamingUsesTheSameLengthLimitAsCreation()
+    {
+        var server = NewServer();
+        Assert.Equal(ServerErrors.NameInvalid, server.Rename(new string('x', Server.MaxNameLength + 1), s_now).Error);
+        Assert.True(server.Rename(new string('x', Server.MaxNameLength), s_now).IsSuccess);
+    }
+
     // Names go into notification titles and email subjects: no line breaks or other control characters.
     [Theory]
     [InlineData("Retakes\nBcc: someone")]

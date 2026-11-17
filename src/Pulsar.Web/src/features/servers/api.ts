@@ -98,6 +98,16 @@ export function useCreateServer() {
   });
 }
 
+/** Changes the panel's display name and refreshes the list, detail and audit log. */
+export function useRenameServer() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/name', { params: { path: { id } }, body: { name } })),
+    onSuccess: changed,
+  });
+}
+
 /** A new server like this one on a node of the user's choosing, with a copy of its files (copied after it installs). */
 export function useCloneServer() {
   const changed = useServersChanged();

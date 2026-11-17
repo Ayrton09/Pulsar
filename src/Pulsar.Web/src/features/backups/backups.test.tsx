@@ -482,7 +482,6 @@ describe('backups tab', () => {
     });
     renderAt(`/servers/${serverId}?tab=backups`);
     const input = await screen.findByLabelText('Backups to keep');
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     await userEvent.type(input, '0');
     expect(screen.getByText('A whole number from 1 to 1000, or empty to keep them all.')).toBeInTheDocument();
@@ -490,9 +489,21 @@ describe('backups tab', () => {
     await userEvent.clear(input);
     await userEvent.type(input, '2');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
+    const preview = await screen.findByRole('dialog', { name: 'Retention' });
+    expect(within(preview).getByRole('status')).toHaveTextContent('Eligible backups: 1');
+    expect(within(preview).getByRole('status')).toHaveTextContent('3 MB');
+    const candidates = within(preview).getByRole('list', { name: 'Backups' });
+    expect(within(candidates).getAllByRole('listitem')).toHaveLength(1);
+    expect(candidates).toHaveTextContent('Before the update');
+    expect(candidates).toHaveTextContent('3 MB');
+    expect(limits).toEqual([]);
+    await userEvent.click(within(preview).getByRole('button', { name: 'Cancel' }));
+    expect(limits).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Retention' })).getByRole('button', { name: 'Save' }),
+    );
     expect(await screen.findByRole('status')).toHaveTextContent('Saved.');
-    expect(confirm).toHaveBeenCalledWith('Keep only the 2 newest backups? Older unlocked ones are deleted now.');
     expect(limits).toEqual([{ limit: 2 }]);
   });
 

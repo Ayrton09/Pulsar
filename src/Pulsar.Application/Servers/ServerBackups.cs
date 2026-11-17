@@ -498,6 +498,7 @@ public sealed partial class ServerBackups(
         var extra = await db.Backups
             .Where(b => b.ServerId == id && b.Status == BackupStatus.Completed && !b.IsLocked)
             .OrderByDescending(b => b.CreatedAt)
+            .ThenByDescending(b => b.Id)
             .Skip(limit)
             .ToListAsync(cancellationToken);
         foreach (var backup in extra)

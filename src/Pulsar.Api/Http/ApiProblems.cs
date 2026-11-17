@@ -27,7 +27,7 @@ public static class ApiProblems
     {
         _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
         "access.escalation" or "access.self_change" or "server.variable_protected" or "operation.forbidden" or "schedules.forbidden" or "server.create_forbidden"
-            or "server.port_numbers_forbidden" or "server.game_updates_forbidden" or "players.admin_forbidden" or "server.steam_branch_forbidden"
+            or "server.port_numbers_forbidden" or "server.game_updates_forbidden" or "players.admin_forbidden" or "server.steam_branch_forbidden" or "server.rename_forbidden"
             or "server.change_game_forbidden" or "server.clone_forbidden" or "server.transfer_forbidden" or "quota.node_not_allowed" or "server.owner_forbidden"
             => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"

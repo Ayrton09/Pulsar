@@ -2,7 +2,10 @@ import { CircleCheck, Cpu, HardDrive, MemoryStick, Server, TriangleAlert, type L
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Card, Meter, PageHeader } from '../../components/ui/Display';
+import { Button, Spinner } from '../../components/ui/Button';
+import { Alert, Card, Meter, PageHeader } from '../../components/ui/Display';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
+import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes } from '../../lib/format';
 import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useRecentActivity, type AuditEntry } from '../admin/api';
@@ -24,9 +27,13 @@ export function DashboardPage() {
   const canServers = canAnywhere(me, Permission.ServerView);
   const canNodes = canAnywhere(me, Permission.NodeView, Permission.NodeManage);
   const canAudit = can(me, Permission.AuditView);
-  const servers = useServersIf(canServers);
+  const serverQuery = useServers(canServers);
+  useWatchServers(canServers);
+  const servers = canServers ? serverQuery.data : undefined;
   // Only the nodes whose machine and usage they see: the list also carries those they may only create servers on.
-  const nodes = useNodesIf(canNodes)?.filter((node) => seesNodeDetails(me, node)) ?? null;
+  const nodeQuery = useNodes(canNodes);
+  useWatchNodes(canNodes);
+  const nodes = canNodes ? nodeQuery.data?.filter((node) => seesNodeDetails(me, node)) : undefined;
   const activity = useRecentActivity(8, canAudit);
 
   return (
@@ -40,29 +47,85 @@ export function DashboardPage() {
           <p className="text-sm text-muted">{t('dashboard.nothing')}</p>
         </Card>
       )}
+      <div className="mb-5 grid gap-3 lg:grid-cols-3">
+        {canServers && (
+          <DataStatus title={t('dashboard.servers')} query={serverQuery} hasData={servers !== undefined} />
+        )}
+        {canNodes && <DataStatus title={t('dashboard.nodes')} query={nodeQuery} hasData={nodes !== undefined} />}
+        {canAudit && (
+          <DataStatus title={t('dashboard.activity')} query={activity} hasData={activity.data !== undefined} />
+        )}
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {servers && <ServersCard servers={servers} />}
         {nodes && <NodesCard nodes={nodes} />}
         {nodes && <UsageCards nodes={nodes} />}
       </div>
-      {(servers || nodes) && <Alerts servers={servers ?? []} nodes={nodes ?? []} />}
+      {(servers || nodes) && (
+        <Alerts
+          servers={servers ?? []}
+          nodes={nodes ?? []}
+          complete={
+            (!canServers || (servers !== undefined && !serverQuery.isError)) &&
+            (!canNodes || (nodes !== undefined && !nodeQuery.isError))
+          }
+        />
+      )}
       {servers && servers.length > 0 && <ServerCards servers={servers} />}
+      {servers?.length === 0 && <Card className="mt-6 p-6 text-sm text-muted">{t('servers.empty')}</Card>}
       {canAudit && activity.data && <RecentActivity entries={activity.data.entries} />}
     </>
   );
 }
 
-function useServersIf(enabled: boolean): ServerSummary[] | null {
-  // Hooks run either way; without the permission nothing is fetched or watched.
-  const servers = useServers(enabled);
-  useWatchServers(enabled);
-  return enabled ? (servers.data ?? null) : null;
-}
-
-function useNodesIf(enabled: boolean): NodeSummary[] | null {
-  const nodes = useNodes(enabled);
-  useWatchNodes(enabled);
-  return enabled ? (nodes.data ?? null) : null;
+function DataStatus({
+  title,
+  query,
+  hasData,
+}: {
+  title: string;
+  query: {
+    isPending: boolean;
+    isError: boolean;
+    isFetching: boolean;
+    error: unknown;
+    dataUpdatedAt: number;
+    refetch: () => unknown;
+  };
+  hasData: boolean;
+}) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  return (
+    <section aria-label={title}>
+      <Card className="h-full min-w-0 p-3">
+        <p className="mb-1 text-sm font-medium">{title}</p>
+        {!hasData && query.isPending && <Spinner label={t('common.loading')} />}
+        {query.isError &&
+          (hasData ? (
+            <RefreshFailed error={query.error} retry={() => void query.refetch()} />
+          ) : (
+            <Alert>
+              <p>{errorMessage(t, query.error)}</p>
+              <Button
+                className="mt-2"
+                size="sm"
+                variant="secondary"
+                busy={query.isFetching}
+                onClick={() => void query.refetch()}
+              >
+                {t('actions.retry')}
+              </Button>
+            </Alert>
+          ))}
+        {hasData && query.dataUpdatedAt > 0 && (
+          <p className="text-xs text-muted">
+            {t('dashboard.dataUpdated', { time: formatDate(new Date(query.dataUpdatedAt).toISOString()) })}
+          </p>
+        )}
+      </Card>
+    </section>
+  );
 }
 
 function Stat({
@@ -172,7 +235,7 @@ function UsageCards({ nodes }: { nodes: NodeSummary[] }) {
   );
 }
 
-function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSummary[] }) {
+function Alerts({ servers, nodes, complete }: { servers: ServerSummary[]; nodes: NodeSummary[]; complete: boolean }) {
   const { t } = useTranslation();
   const items: { key: string; to: string; text: string }[] = [
     ...servers
@@ -192,6 +255,9 @@ function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSumma
         text: t('dashboard.alerts.nodeOffline', { name: n.name }),
       })),
   ];
+  if (!complete && items.length === 0) {
+    return null;
+  }
   // All clear is one quiet line; problems get the room and the color.
   return items.length === 0 ? (
     <Card className="mt-6 flex items-center gap-3 px-6 py-4">

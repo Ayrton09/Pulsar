@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Audit;
 using Pulsar.Domain.Access;
@@ -13,7 +14,15 @@ public static class AuditEndpoints
         return api;
     }
 
-    private static async Task<Ok<AuditPage>> ListAsync(
-        AuditQueries audit, Guid? before, string? action, Guid? actorUserId, CancellationToken ct, int limit = 50) =>
-        TypedResults.Ok(await audit.ListAsync(before, limit, action, actorUserId, ct));
+    private static async Task<Results<Ok<AuditPage>, ProblemHttpResult>> ListAsync(
+        AuditQueries audit, Guid? before, string? action, Guid? actorUserId, DateTimeOffset? from, DateTimeOffset? until,
+        string? targetType, string? targetId, CancellationToken ct, int limit = 50)
+    {
+        if (action?.Length > 64 || targetType?.Length > 32 || targetId?.Length > 512 || (from is not null && until <= from))
+        {
+            return ApiProblems.Create(StatusCodes.Status400BadRequest, "validation.failed", "The audit filters are not valid.");
+        }
+
+        return TypedResults.Ok(await audit.ListAsync(before, limit, action, actorUserId, ct, from, until, targetType, targetId));
+    }
 }

@@ -712,6 +712,26 @@ public sealed class SteamCmdRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task AccountIdentityIsRemovedFromOperationErrors()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("Logging in user 'SERVERS' [U:1:1234] to Steam Public...FAILED (Invalid Password)\r\n");
+            process.Exit(5);
+        };
+        using var runner = Runner();
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password") }, Report,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.login_failed", error.Code);
+        Assert.DoesNotContain("servers", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[U:1:1234]", error.Message, StringComparison.Ordinal);
+        Assert.Single(_processes.Started);
+    }
+
+    [Fact]
     public async Task RunsOfOneAccountWaitForEachOther()
     {
         var gate = new TaskCompletionSource();

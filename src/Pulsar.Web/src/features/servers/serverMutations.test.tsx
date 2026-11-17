@@ -4,9 +4,10 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeApi, json } from '../../test/fakeApi';
 import { addonKeys, useInstallAddon } from '../addons/api';
+import { adminKeys } from '../admin/api';
 import { backupKeys, useCreateBackup } from '../backups/api';
 import { scheduleKeys, useRunSchedule } from '../schedules/api';
-import { serverKeys, useServerCommand, useUpgradeTemplate } from './api';
+import { serverKeys, useRenameServer, useServerCommand, useUpgradeTemplate } from './api';
 
 const id = '0192f1a0-0000-7000-8000-0000000000s1';
 
@@ -25,6 +26,20 @@ afterEach(() => {
 });
 
 describe('server mutations', () => {
+  it('renaming refreshes the list, detail and audit without dropping settings being edited', async () => {
+    fakeApi({ [`PUT /api/v1/servers/${id}/name`]: () => json({}) });
+    const { queryClient, wrapper } = setUp();
+    queryClient.setQueryData(serverKeys.all, []);
+    queryClient.setQueryData(adminKeys.audit, {});
+    const { result } = renderHook(() => useRenameServer(), { wrapper });
+
+    await act(() => result.current.mutateAsync({ id, name: 'Renamed' }));
+
+    expect(queryClient.getQueryState(serverKeys.all)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(serverKeys.detail(id))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(adminKeys.audit)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(serverKeys.settings(id))?.isInvalidated).toBe(false);
+  });
   it('leave the settings alone: an admin may be editing them', async () => {
     fakeApi({ [`POST /api/v1/servers/${id}/start`]: () => json({ status: 'accepted' }) });
     const { queryClient, wrapper } = setUp();
