@@ -1772,6 +1772,7 @@
     "queue": {
       "queued": "Na fila",
       "cancelled": "Cancelado",
+      "unconfirmed": "O arquivo pode ter sido salvo. Verifique a pasta de destino antes de enviá-lo novamente.",
       "dismiss": "Remover"
     },
     "title": "Arquivos",

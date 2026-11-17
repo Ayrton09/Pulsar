@@ -1772,6 +1772,7 @@
     "queue": {
       "queued": "En cola",
       "cancelled": "Cancelada",
+      "unconfirmed": "Puede que el archivo se haya guardado. Revisá la carpeta de destino antes de volver a subirlo.",
       "dismiss": "Quitar"
     },
     "title": "Archivos",

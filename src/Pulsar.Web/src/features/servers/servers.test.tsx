@@ -428,7 +428,7 @@ describe('server cards', () => {
       nodeName: 'Other node',
       templateId: 'another-game',
       templateName: 'Another game',
-      name: 'Alpha',
+      name: 'All Stars',
       gameUpdateAvailable: true,
       suspension: { at: '2026-11-01T00:00:00Z', reason: null, by: null },
     };
@@ -440,7 +440,7 @@ describe('server cards', () => {
     const user = userEvent.setup();
     const list = await screen.findByRole('list', { name: 'Servers' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
-    expect(list).toHaveTextContent('Alpha');
+    expect(list).toHaveTextContent('All Stars');
     expect(screen.getByRole('combobox', { name: 'Node' })).toHaveValue('other-node');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Node' }), '');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), '');
@@ -450,7 +450,16 @@ describe('server cards', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(router.state.location.search).toContain('game=another-game');
     expect(router.state.location.search).toContain('sort=nameDesc');
-    await user.type(screen.getByRole('searchbox', { name: 'Search servers' }), 'missing');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Game' }), '');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+    const search = screen.getByRole('searchbox', { name: 'Search servers' });
+    await user.type(search, 'all');
+    expect(search).toHaveValue('all');
+    expect(new URLSearchParams(router.state.location.search).get('q')).toBe('all');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('All Stars');
+    await user.clear(search);
+    await user.type(search, 'missing');
     expect(screen.getByText('No server matches.')).toBeInTheDocument();
     expect(router.state.location.search).toContain('q=missing');
   });

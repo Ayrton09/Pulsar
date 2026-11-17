@@ -49,10 +49,11 @@ public sealed record BackupView(
     string? ErrorCode = null,
     bool HasGameDatabase = false);
 
-/// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
 /// <summary>A storage a server can copy its backups to (its name only: the rest is the panel's settings).</summary>
 public sealed record BackupStorageOption(Guid Id, string Name);
 
+/// <param name="Backups">Newest first, with the same tie-breaker as retention.</param>
+/// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
 /// <param name="StorageId">Where new backups are copied besides the node; null: on the node only.</param>
 /// <param name="Storages">The storages to choose from.</param>
 public sealed record BackupList(IReadOnlyList<BackupView> Backups, int? Limit, Guid? StorageId, IReadOnlyList<BackupStorageOption> Storages);
@@ -495,10 +496,8 @@ public sealed partial class ServerBackups(
             return;
         }
 
-        var extra = await db.Backups
-            .Where(b => b.ServerId == id && b.Status == BackupStatus.Completed && !b.IsLocked)
-            .OrderByDescending(b => b.CreatedAt)
-            .ThenByDescending(b => b.Id)
+        var extra = await NewestFirst(db.Backups
+                .Where(b => b.ServerId == id && b.Status == BackupStatus.Completed && !b.IsLocked))
             .Skip(limit)
             .ToListAsync(cancellationToken);
         foreach (var backup in extra)
@@ -752,9 +751,12 @@ public sealed partial class ServerBackups(
     private Task<RemoteBackupTarget?> RemoteOfAsync(Backup backup, CancellationToken cancellationToken) =>
         backup.RemoteStatus == RemoteCopyStatus.Copied ? storages.TargetAsync(backup.StorageId, backup.RemoteKey, cancellationToken) : Task.FromResult<RemoteBackupTarget?>(null);
 
+    private static IOrderedQueryable<Backup> NewestFirst(IQueryable<Backup> query) =>
+        query.OrderByDescending(b => b.CreatedAt).ThenByDescending(b => b.Id);
+
     private async Task<BackupList> ListOfAsync(Server server, CancellationToken cancellationToken)
     {
-        var backups = await db.Backups.AsNoTracking().Where(b => b.ServerId == server.Id).OrderByDescending(b => b.CreatedAt).ToListAsync(cancellationToken);
+        var backups = await NewestFirst(db.Backups.AsNoTracking().Where(b => b.ServerId == server.Id)).ToListAsync(cancellationToken);
         var options = await db.BackupStorages.AsNoTracking().OrderBy(s => s.Name).Select(s => new BackupStorageOption(s.Id.Value, s.Name))
             .ToListAsync(cancellationToken);
         // A failed backup keeps its operation's message; the code, for the browser to translate, is the operation's.

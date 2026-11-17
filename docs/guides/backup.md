@@ -7,6 +7,8 @@ unlocked backups beyond the proposed limit, their names, creation dates, individ
 from the estimate. Locked and unfinished backups are excluded from this archive estimate. Retention also performs
 its existing cleanup of old failed-operation metadata.
 
+The preview uses the server's order, newest first with the backup ID as the tie-breaker.
+
 Saving applies retention immediately when possible. An offline node, or a clone or transfer using the backups, can
 defer deletion until a later retention run. The preview is advisory: the panel reads current backups and rechecks
 locks before deletion, so a backup locked after the preview is preserved. Cancelling the dialog changes nothing.

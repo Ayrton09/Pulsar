@@ -13,6 +13,7 @@ import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
+import { invalidateAfterChange } from '../../lib/queries';
 import { sessionKey, useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import {
@@ -604,7 +605,7 @@ interface Upload {
   directory: string;
   file: File;
   progress: number;
-  state: 'queued' | 'uploading' | 'done' | 'failed' | 'exists' | 'cancelled';
+  state: 'queued' | 'uploading' | 'done' | 'failed' | 'exists' | 'cancelled' | 'unconfirmed';
   overwrite: boolean;
   error?: unknown;
 }
@@ -650,7 +651,9 @@ function useUploads(serverId: string, directory: string) {
         await queryClient.invalidateQueries({ queryKey: fileKeys.listing(owner, target) });
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
-          update(id, { state: 'cancelled' });
+          // A request already sent can be committed by the agent before the browser sees its answer.
+          update(id, { state: 'unconfirmed' });
+          void invalidateAfterChange(queryClient, { queryKey: fileKeys.listing(owner, target), exact: true });
           return;
         }
         update(
@@ -747,6 +750,11 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
               </div>
             )}
             {item.state === 'failed' && <Alert>{errorMessage(t, item.error)}</Alert>}
+            {item.state === 'unconfirmed' && (
+              <p role="status" className="text-sm text-muted">
+                {t('files.queue.unconfirmed')}
+              </p>
+            )}
             <p className="break-all text-xs text-muted">{visibleName(joinPath(item.directory, item.name))}</p>
             <div className="flex flex-wrap gap-2">
               {(item.state === 'queued' || item.state === 'uploading') && (
@@ -759,7 +767,10 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
                   {t('actions.retry')}
                 </Button>
               )}
-              {(item.state === 'failed' || item.state === 'cancelled' || item.state === 'done') && (
+              {(item.state === 'failed' ||
+                item.state === 'cancelled' ||
+                item.state === 'done' ||
+                item.state === 'unconfirmed') && (
                 <Button size="sm" variant="ghost" onClick={() => uploads.dismiss(item)}>
                   {t('files.queue.dismiss')}
                 </Button>

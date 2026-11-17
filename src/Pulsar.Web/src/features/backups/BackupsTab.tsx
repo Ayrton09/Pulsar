@@ -582,13 +582,11 @@ function RetentionCard({
   const parsed = value.trim() === '' ? null : Number(value);
   const invalid = unreadable || (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT));
   const changed = parsed !== limit;
+  // The API lists the newest first, using the same timestamp precision and tie-breaker as retention.
   const eligible =
     parsed === null || invalid
       ? []
-      : backups
-          .filter((backup) => backup.status === 'completed' && !backup.locked)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
-          .slice(parsed);
+      : backups.filter((backup) => backup.status === 'completed' && !backup.locked).slice(parsed);
   const bytes = eligible.reduce((total, backup) => total + (backup.size ?? 0), 0);
   const unknown = eligible.filter((backup) => backup.size === null).length;
 

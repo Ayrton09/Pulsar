@@ -941,14 +941,48 @@ describe('files tab', () => {
     await userEvent.click(within(second).getByRole('button', { name: 'Try again' }));
     expect(within(second).getByText('Queued')).toBeInTheDocument();
     await userEvent.click(within(first).getByRole('button', { name: 'Cancel' }));
-    expect(await within(first).findByText('Cancelled')).toBeInTheDocument();
+    expect(await within(first).findByRole('status')).toHaveTextContent('The file may have been saved.');
     expect(await within(second).findByText('Uploaded')).toBeInTheDocument();
     expect(aborted).toHaveBeenCalledOnce();
     expect(FakeXhr.sent.map((xhr) => xhr.path)).toEqual(['first.bin', 'second.bin']);
     await act(async () => {
       finish?.();
     });
-    expect(within(first).getByText('Cancelled')).toBeInTheDocument();
+    expect(within(first).getByRole('status')).toHaveTextContent('The file may have been saved.');
+  });
+
+  it('refreshes the destination when an aborted upload might already have saved the file', async () => {
+    const file = { name: 'saved.bin', kind: 'file', size: 1, modifiedAt: at };
+    let saved = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: (request) => {
+        const path = new URL(request.url).searchParams.get('path');
+        return saved && path === 'game'
+          ? json({ path, entries: [...(listings.game ?? []), file], truncated: false, skipped: 0 })
+          : listing(request);
+      },
+    });
+    let acknowledge: (() => void) | undefined;
+    FakeXhr.handler = () =>
+      new Promise((resolve) => {
+        saved = true;
+        acknowledge = () => resolve(written('game/saved.bin', 1));
+      });
+    renderAt(`/servers/${serverId}?tab=files&path=game`, Infinity);
+    const table = await screen.findByRole('table', { name: 'Files' });
+    expect(within(table).queryByText('saved.bin')).not.toBeInTheDocument();
+
+    await userEvent.upload(screen.getByLabelText('Upload'), new File(['1'], 'saved.bin'));
+    await waitFor(() => expect(saved).toBe(true));
+    const upload = screen.getByRole('group', { name: 'saved.bin' });
+    await userEvent.click(within(upload).getByRole('button', { name: 'Cancel' }));
+
+    expect(await within(upload).findByRole('status')).toHaveTextContent('The file may have been saved.');
+    expect(within(upload).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(await within(table).findByText('saved.bin')).toBeInTheDocument();
+    await act(async () => acknowledge?.());
   });
 
   it('retries a failed replacement with the original directory and overwrite decision', async () => {

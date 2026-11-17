@@ -51,12 +51,13 @@ public sealed class AuditQueries(IPulsarDbContext db)
             query = query.Where(e => e.ActorUserId == actorId);
         }
 
-        if (from is { } start)
+        // Clients can send any offset; PostgreSQL parameters for these instants must be UTC.
+        if (from?.ToUniversalTime() is { } start)
         {
             query = query.Where(e => e.OccurredAt >= start);
         }
 
-        if (until is { } end)
+        if (until?.ToUniversalTime() is { } end)
         {
             query = query.Where(e => e.OccurredAt < end);
         }
