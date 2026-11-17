@@ -177,7 +177,7 @@ internal sealed class SftpConnection : IDisposable
 internal sealed record SftpIdentity(UserId UserId, string UserName, string? SecurityStamp, string? ServerShortId, SshKeyId? Key = null);
 
 /// <summary>Keyboard-interactive sign-in: the password was right, the code is asked next.</summary>
-internal sealed record SftpInteractiveState(string Login, UserId? AwaitingCodeFor, string? ServerShortId);
+internal sealed record SftpInteractiveState(string Login, UserId? AwaitingCodeFor, string? ServerShortId, string? CredentialStamp);
 
 /// <summary>
 /// The SFTP server's connections and their limits (docs/architecture/08, T35): connections at once, those not signed in,

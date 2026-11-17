@@ -1,13 +1,16 @@
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
@@ -16,6 +19,7 @@ using Pulsar.Api.Tests.Sftp;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Auth;
@@ -432,6 +436,87 @@ public sealed class SsoTests(SsoApiFactory factory) : IClassFixture<SsoApiFactor
         Assert.False(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().UserLogins
             .AnyAsync(l => l.UserId == new Pulsar.Domain.Common.UserId(created.Id), Ct));
         await ConfigureOidcAsync(scenario.Admin);
+    }
+
+    [DatabaseFact]
+    public async Task ALinkKeepsTheCredentialGenerationOfItsPasswordProof()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await ConfigureOidcAsync(scenario.Admin);
+        var user = await scenario.CreateUserAsync("sso-proof-generation");
+        var (key, _) = await SftpTesting.EnableTwoFactorAsync(factory, scenario, "sso-proof-generation");
+        var hook = new BeforeCodeReload();
+        var hasher = new AfterPasswordCheck();
+        using var hooked = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.ConfigureDbContext<PulsarDbContext>(options => options.AddInterceptors(hook));
+            services.AddScoped<IPasswordHasher<PulsarUser>>(_ => hasher);
+        }));
+        using var owner = await PanelClient.CreateAsync(hooked);
+        using (var login = await owner.LoginAsync("sso-proof-generation", AccessScenario.Password))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        using (var code = await owner.PostAsync("/api/v1/auth/login/two-factor",
+                   new TwoFactorLoginRequest(SftpTesting.AuthenticatorCode(key, factory.AuthenticatorClock), null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(code);
+        }
+
+        await owner.GetSessionAsync();
+        factory.AuthenticatorClock.Advance(TimeSpan.FromSeconds(Totp.StepSeconds));
+        var resetDone = false;
+        hasher.AfterCheck = () => hook.Action = async () =>
+        {
+            using var reset = await scenario.Admin.PostAsync($"/api/v1/users/{user.Id}/password",
+                new ResetPasswordRequest("a replacement SSO test password"));
+            await AccessScenario.EnsureSuccessAsync(reset);
+            resetDone = true;
+        };
+        var authorize = await StartAsync(owner, "/api/v1/account/sso/oidc/link",
+            new SsoLinkRequest(AccessScenario.Password, SftpTesting.AuthenticatorCode(key, factory.AuthenticatorClock)));
+        Assert.True(resetDone);
+        Assert.Equal("/account?sso_error=expired", await CallbackAsync(owner, "oidc", factory.Providers.Approve(authorize, "subject-stale-proof"),
+            QueryHelpers.ParseQuery(authorize.Query)["state"]!));
+        await using var scope = factory.Services.CreateAsyncScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().UserLogins
+            .AnyAsync(l => l.UserId == new Pulsar.Domain.Common.UserId(user.Id), Ct));
+    }
+
+    private sealed class AfterPasswordCheck : IPasswordHasher<PulsarUser>
+    {
+        private readonly PasswordHasher<PulsarUser> _inner = new();
+        public Action? AfterCheck { get; set; }
+        public string HashPassword(PulsarUser user, string password) => _inner.HashPassword(user, password);
+        public PasswordVerificationResult VerifyHashedPassword(PulsarUser user, string hashedPassword, string providedPassword)
+        {
+            var result = _inner.VerifyHashedPassword(user, hashedPassword, providedPassword);
+            if (result != PasswordVerificationResult.Failed && AfterCheck is { } after)
+            {
+                AfterCheck = null;
+                after();
+            }
+
+            return result;
+        }
+    }
+
+    private sealed class BeforeCodeReload : DbCommandInterceptor
+    {
+        public Func<Task>? Action { get; set; }
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (Action is { } action && command.CommandText.Contains("FROM users", StringComparison.Ordinal))
+            {
+                Action = null;
+                await action().WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+            }
+
+            return result;
+        }
     }
 
     private async Task<string?> StampAsync(Guid userId)

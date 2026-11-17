@@ -126,8 +126,10 @@ root).
   key. A key not added to that user, or a user name that does not exist, gets the same no, after the same database query.
 - Deleting a key ends the SFTP sessions it signed in (the others stay). An administrator (`user.manage`) can delete all of
   a user's keys on the Users page, which ends every session one of them signed in. A new password, turning two-factor
-  authentication off or on, or an administrator's reset of either ends the user's sessions but keeps their keys (as with
-  API keys): delete the keys too if they may be in the wrong hands. A session signed in with a key also ends within 15
+  authentication off or on, or an administrator's reset of either ends the user's sessions but keeps their SSH keys:
+  delete the SSH keys too if they may be in the wrong hands. API keys have a separate lifecycle: changing or resetting
+  the password, or an administrator resetting two-factor authentication, revokes them. A password proof waiting for
+  an SFTP authenticator code is also invalidated when that credential generation changes. A session signed in with a key also ends within 15
   seconds of a request when the key is gone by any other way.
 
 ## Sign-in rules

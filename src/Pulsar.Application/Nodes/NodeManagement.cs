@@ -4,6 +4,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Metrics;
+using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -132,6 +133,7 @@ public sealed class NodeManagement(
     IPanelKeyRing keys,
     IAgentConnections connections,
     AgentSessionStore sessions,
+    FileTransfers transfers,
     IRowLocks locks,
     IRequestContext request,
     IAuditLog audit,
@@ -491,6 +493,7 @@ public sealed class NodeManagement(
     /// <summary>Ends the node's sessions and closes its connection right away.</summary>
     private void CutOff(NodeId id)
     {
+        transfers.EndNode(id);
         sessions.EndAll(id);
         connections.Disconnect(id);
     }
