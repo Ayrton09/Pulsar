@@ -80,23 +80,30 @@ internal static class SftpTesting
         }, null);
 
     /// <summary>Turns two-factor authentication on for <paramref name="userName"/>: the authenticator key, and the recovery codes.</summary>
-    public static async Task<(string Key, IReadOnlyList<string> RecoveryCodes)> EnableTwoFactorAsync(AccessScenario scenario, string userName)
+    public static async Task<(string Key, IReadOnlyList<string> RecoveryCodes)> EnableTwoFactorAsync(
+        PulsarApiFactory factory, AccessScenario scenario, string userName)
     {
+        var clock = factory.AuthenticatorClock;
         using var user = await scenario.SignInAsync(userName);
         using var setup = await user.PostAsync("/api/v1/auth/two-factor/setup", new PasswordConfirmationRequest(AccessScenario.Password));
         await AccessScenario.EnsureSuccessAsync(setup);
         var key = (await setup.Content.ReadFromJsonAsync<TwoFactorSetupResponse>(AccessScenario.Json, Ct))!.SharedKey.Replace(" ", string.Empty, StringComparison.Ordinal);
 
-        // The step before this one: still accepted now, and the sign-in's code (the next step) comes after it.
+        // Server and client share a fixed clock: a request crossing a real 30-second boundary cannot expire the code.
         using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable",
-            new EnableTwoFactorRequest(Totp.Compute(key, DateTimeOffset.UtcNow.AddSeconds(-30)), AccessScenario.Password));
+            new EnableTwoFactorRequest(AuthenticatorCode(key, clock), AccessScenario.Password));
         await AccessScenario.EnsureSuccessAsync(enabled);
+        clock.Advance(TimeSpan.FromSeconds(Totp.StepSeconds)); // leave the next unused step for signing in
         return (key, (await enabled.Content.ReadFromJsonAsync<RecoveryCodesResponse>(AccessScenario.Json, Ct))!.RecoveryCodes);
     }
 
-    /// <summary>A browser session of a two-factor user: the password, then the code of the step <paramref name="offsetSeconds"/> from now.</summary>
-    public static async Task<PanelClient> SignInWithCodeAsync(PulsarApiFactory factory, string userName, string secret, int offsetSeconds = 0)
+    /// <summary>The authenticator app's current code, using the same clock as the panel's authenticator provider.</summary>
+    public static string AuthenticatorCode(string key, TimeProvider clock) => Totp.Compute(key, clock.GetUtcNow());
+
+    /// <summary>A browser session of a two-factor user: the password, then the next unused authenticator code.</summary>
+    public static async Task<PanelClient> SignInWithCodeAsync(PulsarApiFactory factory, string userName, string secret)
     {
+        var clock = factory.AuthenticatorClock;
         var client = await PanelClient.CreateAsync(factory);
         try
         {
@@ -106,12 +113,13 @@ internal static class SftpTesting
             }
 
             using (var code = await client.PostAsync("/api/v1/auth/login/two-factor",
-                       new TwoFactorLoginRequest(Totp.Compute(secret, DateTimeOffset.UtcNow.AddSeconds(offsetSeconds)), null)))
+                       new TwoFactorLoginRequest(AuthenticatorCode(secret, clock), null)))
             {
                 await AccessScenario.EnsureSuccessAsync(code);
             }
 
             await client.GetSessionAsync();
+            clock.Advance(TimeSpan.FromSeconds(Totp.StepSeconds)); // a later protected operation needs a fresh code too
             return client;
         }
         catch

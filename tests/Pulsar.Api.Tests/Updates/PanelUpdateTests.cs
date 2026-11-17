@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
@@ -151,7 +152,11 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         host.Platform.Results.Enqueue(null);
         await ApplyAsync(admin, node);
         await InProcessAgent.EventuallyAsync(async () => (await NodeStatusAsync(admin, node))?.Status == "installing", "the second try installing");
-        var second = host.Platform.Attempts[^1];
+        // Installing is reported before StartInstaller is called: wait for the actual second invocation too.
+        Guid?[] attempts = [];
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult((attempts = host.Platform.Attempts.ToArray()).Length == 2),
+            () => $"the second installer start ({attempts.Length} starts recorded)");
+        var second = attempts[1];
         Assert.NotEqual(first, second);
 
         // The agent reconnects meanwhile and sends the installer's last result again: the first try's, rolled back, of the
@@ -427,7 +432,7 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
     {
         public List<(string Script, string Folder)> Started { get; } = [];
 
-        public List<Guid?> Attempts { get; } = [];
+        public ConcurrentQueue<Guid?> Attempts { get; } = new();
 
         public Queue<string?> Results { get; } = new();
 
@@ -440,7 +445,7 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         public Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt)
         {
             Started.Add((script, workingDirectory));
-            Attempts.Add(attempt);
+            Attempts.Enqueue(attempt);
             if ((Results.Count > 0 ? Results.Dequeue() : UpdateStatuses.Succeeded) is { } status)
             {
                 WriteResult(status, attempt);

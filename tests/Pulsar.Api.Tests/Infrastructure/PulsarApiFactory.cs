@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Time.Testing;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Sftp;
 using Pulsar.Application.Servers;
 using Pulsar.Application.Updates;
+using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Infrastructure;
@@ -20,8 +23,12 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private readonly Dictionary<string, Task> _once = [];
     private TestDatabase? _database;
     private bool _adminCreated;
+    private FakeTimeProvider? _authenticatorClock;
 
     public TestDatabase Database => _database ?? throw new InvalidOperationException("Database tests are disabled.");
+
+    /// <summary>Opt-in clock for authenticator codes only; the panel's timers and other clocks keep running normally.</summary>
+    public FakeTimeProvider AuthenticatorClock => _authenticatorClock ??= new(Services.GetRequiredService<TimeProvider>().GetUtcNow());
 
     /// <summary>Data Protection key ring of this panel instance (never the machine-wide default).</summary>
     public string KeysDirectory { get; } = TestKeys.NewDirectory();
@@ -107,6 +114,8 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.PostConfigure<SftpOptions>(options => options.Listen = false);
             services.AddScoped<IUpdateSource, OfflineUpdateSource>();
+            services.Replace(ServiceDescriptor.Transient<PulsarAuthenticatorTokenProvider>(provider =>
+                new(_authenticatorClock ?? provider.GetRequiredService<TimeProvider>())));
         });
     }
 }

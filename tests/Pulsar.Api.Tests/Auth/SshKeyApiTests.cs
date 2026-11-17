@@ -90,7 +90,7 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         var vera = await scenario.CreateUserAsync("ssh-vera");
-        var (secret, recoveryCodes) = await SftpTesting.EnableTwoFactorAsync(scenario, "ssh-vera");
+        var (secret, recoveryCodes) = await SftpTesting.EnableTwoFactorAsync(factory, scenario, "ssh-vera");
         using var account = await SftpTesting.SignInWithCodeAsync(factory, "ssh-vera", secret);
         using var key = TestSshKey.Ed25519Key();
 
@@ -101,7 +101,7 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
         }
 
         Assert.Equal(0, (await UserAsync("ssh-vera")).AccessFailedCount);
-        var current = Totp.Compute(secret, DateTimeOffset.UtcNow.AddSeconds(30));
+        var current = SftpTesting.AuthenticatorCode(secret, factory.AuthenticatorClock);
         foreach (var code in new[] { recoveryCodes[0], current == "000000" ? "111111" : "000000" })
         {
             using var wrong = await account.PostAsync("/api/v1/account/ssh-keys", new AddSshKeyRequest("Laptop", key.Line, AccessScenario.Password, code));
