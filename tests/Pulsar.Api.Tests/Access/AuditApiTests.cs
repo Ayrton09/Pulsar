@@ -28,7 +28,44 @@ public sealed class AuditApiTests(PulsarApiFactory factory) : IClassFixture<Puls
         var second = await GetAsync(admin, $"/api/v1/audit?limit=2&before={first.NextBefore}");
 
         Assert.Equal(all.Entries.Take(4).Select(e => e.Id), first.Entries.Concat(second.Entries).Select(e => e.Id));
-        Assert.Equal(all.Entries.OrderByDescending(e => e.OccurredAt).Select(e => e.Id), all.Entries.Select(e => e.Id));
+        // UUIDv7 orders milliseconds; its random suffix is the stable tie-breaker within one millisecond.
+        Assert.Equal(all.Entries.OrderByDescending(e => e.OccurredAt.ToUnixTimeMilliseconds()).ThenByDescending(e => e.Id).Select(e => e.Id),
+            all.Entries.Select(e => e.Id));
+    }
+
+    [DatabaseFact]
+    public async Task EntriesWithinOneMillisecondUseUuidOrderWithoutGapsOrOverlaps()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var actor = UserId.New();
+        var at = DateTimeOffset.Parse("2026-10-10T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var earlier = AuditEntry.Create(at.AddTicks(1000), AuditActions.Server.Renamed, AuditOutcome.Success,
+            AuditActor.ForUser(actor, "same-millisecond"), AuditRequestInfo.None);
+        var later = AuditEntry.Create(at.AddTicks(9000), AuditActions.Server.Renamed, AuditOutcome.Success,
+            AuditActor.ForUser(actor, "same-millisecond"), AuditRequestInfo.None);
+        var prefix = Guid.CreateVersion7(at).ToString()[..24];
+        var higher = Guid.Parse(prefix + "ffffffffffff");
+        var lower = Guid.Parse(prefix + "000000000001");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+            db.AuditLog.AddRange(earlier, later);
+            // Reproduce the valid UUIDv7 case where random bits reverse sub-millisecond occurrence order.
+            db.Entry(earlier).Property(e => e.Id).CurrentValue = higher;
+            db.Entry(later).Property(e => e.Id).CurrentValue = lower;
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var all = await GetAsync(admin, $"/api/v1/audit?actorUserId={actor.Value}");
+        Assert.Equal([higher, lower], all.Entries.Select(e => e.Id));
+        Assert.True(all.Entries[0].OccurredAt < all.Entries[1].OccurredAt);
+        var first = await GetAsync(admin, $"/api/v1/audit?actorUserId={actor.Value}&limit=1");
+        Assert.Equal(higher, Assert.Single(first.Entries).Id);
+        Assert.Equal(higher, first.NextBefore);
+        var second = await GetAsync(admin, $"/api/v1/audit?actorUserId={actor.Value}&limit=1&before={first.NextBefore}");
+        Assert.Equal(lower, Assert.Single(second.Entries).Id);
+        Assert.Null(second.NextBefore);
+        Assert.Equal(all.Entries.Select(e => e.Id), first.Entries.Concat(second.Entries).Select(e => e.Id));
     }
 
     [DatabaseFact]
