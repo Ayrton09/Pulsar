@@ -1,12 +1,13 @@
 import { QueryClient } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
-import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
+import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { connections, openedConnection } from '../../test/fakeSignalR';
 
 const server = (
@@ -78,6 +79,67 @@ afterEach(() => {
 });
 
 describe('dashboard', () => {
+  it('shows loading without pretending an unavailable server list is empty or healthy', async () => {
+    let release!: (response: Response) => void;
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),
+      'GET /api/v1/servers': () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    });
+    render(
+      <App
+        router={createMemoryRouter(routes, { initialEntries: ['/'] })}
+        queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      />,
+    );
+    const status = await screen.findByRole('region', { name: 'Servers' });
+    expect(within(status).getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('0 of 0 running')).not.toBeInTheDocument();
+    release(json([]));
+    expect(await screen.findByText('There are no servers you can see yet.')).toBeInTheDocument();
+    expect(within(status).getByText(/Last updated:/)).toBeInTheDocument();
+  });
+
+  it('shows a section error with a retry instead of an empty server list', async () => {
+    let failed = true;
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),
+      'GET /api/v1/servers': () => (failed ? problem(500, 'unexpected') : json([])),
+    });
+    render(
+      <App
+        router={createMemoryRouter(routes, { initialEntries: ['/'] })}
+        queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      />,
+    );
+    const status = await screen.findByRole('region', { name: 'Servers' });
+    expect(await within(status).findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText('0 of 0 running')).not.toBeInTheDocument();
+    failed = false;
+    await userEvent.setup().click(within(status).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('There are no servers you can see yet.')).toBeInTheDocument();
+  });
+
+  it('keeps the previous list with a stale warning after a failed refresh', async () => {
+    let failed = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),
+      'GET /api/v1/servers': () =>
+        failed
+          ? problem(500, 'unexpected')
+          : json([server('0192f1a0-0000-7000-8000-0000000000e1', 'Keep this server')]),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<App router={createMemoryRouter(routes, { initialEntries: ['/'] })} queryClient={queryClient} />);
+    await screen.findByRole('heading', { name: 'Keep this server' });
+    failed = true;
+    await queryClient.invalidateQueries({ queryKey: ['servers'], exact: true });
+    const status = screen.getByRole('region', { name: 'Servers' });
+    expect(await within(status).findByRole('status')).toHaveTextContent(/refresh/i);
+    expect(screen.getByRole('heading', { name: 'Keep this server' })).toBeInTheDocument();
+  });
   it('sums up servers, nodes and their usage, and lists what needs attention', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view', 'node.view'] }),

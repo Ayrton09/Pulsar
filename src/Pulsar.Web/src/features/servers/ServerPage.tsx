@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   MemoryStick,
   Network,
+  Pencil,
   Puzzle,
   RotateCcw,
   Settings,
@@ -39,6 +40,7 @@ import { ModsTab } from '../mods/ModsTab';
 import { BackupsTab } from '../backups/BackupsTab';
 import { DatabasesTab } from '../databases/DatabasesTab';
 import { useArtworkShown } from '../games/api';
+import { RenameServerDialog } from './RenameServerDialog';
 import { GameArt } from '../games/GameArt';
 import { SteamGuardPrompt } from '../steam/SteamServerCards';
 import { FilesTab } from '../files/FilesTab';
@@ -318,6 +320,11 @@ function ServerHero({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const { server } = details;
   const artwork = useArtworkShown();
+  const me = useCurrentUser();
+  const [renaming, setRenaming] = useState(false);
+  const canRename =
+    canOnServer(me, server, Permission.ServerSettingsEdit) &&
+    (!server.suspension || canOnServer(me, server, Permission.ServerSuspend));
   return (
     <header className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl shadow-black/30">
       {artwork && (
@@ -336,7 +343,15 @@ function ServerHero({ details }: { details: ServerDetails }) {
             ← {t('servers.title')}
           </Link>
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="text-2xl font-bold tracking-tight break-words sm:text-3xl">{server.name}</h1>
+            <h1 className="min-w-0 max-w-full text-2xl font-bold tracking-tight break-words sm:text-3xl">
+              {server.name}
+            </h1>
+            {canRename && (
+              <Button variant="secondary" onClick={() => setRenaming(true)} aria-label={t('servers.rename.title')}>
+                <Pencil aria-hidden="true" className="size-4" />
+                {t('servers.rename.action')}
+              </Button>
+            )}
             <ServerStateBadge server={server} />
             {server.suspension && <SuspendedBadge />}
             {!server.nodeConnected && <NodeDisconnectedBadge />}
@@ -359,6 +374,7 @@ function ServerHero({ details }: { details: ServerDetails }) {
       <div className="relative px-5 pb-5 empty:hidden sm:px-7 sm:pb-7">
         <UpdateBanner details={details} />
       </div>
+      {renaming && canRename && <RenameServerDialog server={server} onClose={() => setRenaming(false)} />}
     </header>
   );
 }

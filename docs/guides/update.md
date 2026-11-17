@@ -4,6 +4,12 @@ Updates replace Pulsar's programs and keep everything else: settings, database, 
 
 ## Before updating
 
+The **Updates** page shows the panel version, .NET runtime, loaded ASP.NET Core version and process architecture in
+**Running panel** (`settings.manage`). These values describe the process answering the request; an installed SDK
+version alone does not establish which runtime a deployed panel uses. The diagnostic endpoint returns no machine
+paths, environment variables or settings. A self-contained release carries its runtime; a framework-dependent
+deployment uses the compatible runtime selected on its host.
+
 1. Read the release notes of every version between yours and the new one (the project's Releases page).
 2. Back up the panel ([backup.md](backup.md)) to a place of your own, away from this machine: an update backs the panel
    up itself first (below) and puts the previous version back if the new one does not work, but those copies are on

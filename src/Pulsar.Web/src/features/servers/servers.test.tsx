@@ -181,12 +181,12 @@ describe('servers page', () => {
 
     const list = await screen.findByRole('list', { name: 'Servers' });
     const cards = within(list).getAllByRole('listitem');
-    expect(cards[0]).toHaveTextContent('Surf');
-    expect(cards[0]).toHaveTextContent('Online');
-    expect(cards[1]).toHaveTextContent('Last known: Crashed');
-    expect(cards[1]).toHaveTextContent('Node disconnected');
-    expect(cards[1]).toHaveTextContent('Crashed too many times in a row');
-    expect(cards[2]).toHaveTextContent('Installing');
+    expect(cards[0]).toHaveTextContent('Installing');
+    expect(cards[1]).toHaveTextContent('Surf');
+    expect(cards[1]).toHaveTextContent('Online');
+    expect(cards[2]).toHaveTextContent('Last known: Crashed');
+    expect(cards[2]).toHaveTextContent('Node disconnected');
+    expect(cards[2]).toHaveTextContent('Crashed too many times in a row');
     expect(screen.getByRole('link', { name: 'Servers' })).toBeInTheDocument();
   });
 
@@ -420,6 +420,41 @@ describe('servers page', () => {
 });
 
 describe('server cards', () => {
+  it('restores inventory filters from the URL and keeps sort and search changes there', async () => {
+    const another = {
+      ...installedOffline,
+      id: 'another',
+      nodeId: 'other-node',
+      nodeName: 'Other node',
+      templateId: 'another-game',
+      templateName: 'Another game',
+      name: 'Alpha',
+      gameUpdateAvailable: true,
+      suspension: { at: '2026-11-01T00:00:00Z', reason: null, by: null },
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      'GET /api/v1/servers': () => json([running, installedOffline, another]),
+    });
+    const router = renderAt('/servers?node=other-node&status=update&sort=newest');
+    const user = userEvent.setup();
+    const list = await screen.findByRole('list', { name: 'Servers' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('Alpha');
+    expect(screen.getByRole('combobox', { name: 'Node' })).toHaveValue('other-node');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Node' }), '');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), '');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Sort servers' }), 'nameDesc');
+    expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('Surf');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Game' }), 'another-game');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(router.state.location.search).toContain('game=another-game');
+    expect(router.state.location.search).toContain('sort=nameDesc');
+    await user.type(screen.getByRole('searchbox', { name: 'Search servers' }), 'missing');
+    expect(screen.getByText('No server matches.')).toBeInTheDocument();
+    expect(router.state.location.search).toContain('q=missing');
+  });
+
   it('filters the cards by name and by whether the server runs', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -621,7 +656,7 @@ describe('actions on several servers', () => {
     await user.click(within(bar).getByRole('button', { name: 'Start (1)' }));
 
     const results = await screen.findByRole('dialog', { name: 'Starting servers' });
-    const [retakes, other] = within(results).getAllByRole('listitem');
+    const [other, retakes] = within(results).getAllByRole('listitem');
     expect(retakes).toHaveTextContent('Failed');
     expect(other).toHaveTextContent('You do not have the permission on this server.');
   });
@@ -681,7 +716,7 @@ describe('actions on several servers', () => {
       within(results)
         .getAllByRole('listitem')
         .map((row) => row.textContent),
-    ).toEqual(['RetakesDisk fullFailed', 'ArenaAsked']);
+    ).toEqual(['ArenaAsked', 'RetakesDisk fullFailed']);
   });
 
   it('keeps showing the outcomes of a run whose servers left the filter', async () => {
@@ -741,6 +776,91 @@ describe('actions on several servers', () => {
 });
 
 describe('server page', () => {
+  it('renames the panel label of a running server without a power action', async () => {
+    let server = { ...running };
+    let body: unknown;
+    const restart = vi.fn();
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.settings.edit'],
+      }),
+      [`GET /api/v1/servers/${running.id}`]: () => json(details(server)),
+      [`PUT /api/v1/servers/${running.id}/name`]: async (request) => {
+        body = await request.json();
+        server = { ...server, name: (body as { name: string }).name };
+        return json(details(server));
+      },
+      [`POST /api/v1/servers/${running.id}/restart`]: restart,
+    });
+    renderAt(`/servers/${running.id}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Rename server' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rename server' });
+    expect(within(dialog).getByLabelText('Name')).toHaveValue(running.name);
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), '  New panel label  ');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'New panel label' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(body).toEqual({ name: 'New panel label' });
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('keeps an invalid rename out of the API and lets the user cancel it', async () => {
+    const rename = vi.fn();
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.settings.edit'],
+      }),
+      [`GET /api/v1/servers/${running.id}`]: () => json(details(running)),
+      [`PUT /api/v1/servers/${running.id}/name`]: rename,
+    });
+    renderAt(`/servers/${running.id}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Rename server' }));
+    const dialog = screen.getByRole('dialog');
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), '   ');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it('preserves the entered name when the API refuses a rename', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.settings.edit'],
+      }),
+      [`GET /api/v1/servers/${running.id}`]: () => json(details(running)),
+      [`PUT /api/v1/servers/${running.id}/name`]: () => problem(400, 'server.name_invalid'),
+    });
+    renderAt(`/servers/${running.id}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Rename server' }));
+    const dialog = screen.getByRole('dialog');
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), 'Fix this name');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Fix this name');
+  });
+
+  it('has no rename action for a server viewer', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      [`GET /api/v1/servers/${running.id}`]: () => json(details(running)),
+    });
+    renderAt(`/servers/${running.id}`);
+    await screen.findByRole('heading', { level: 1, name: running.name });
+    expect(screen.queryByRole('button', { name: 'Rename server' })).not.toBeInTheDocument();
+  });
+
   it('changes the game only once the user says the files go, with what the new game needs', async () => {
     let body: unknown;
     const scpsl = {

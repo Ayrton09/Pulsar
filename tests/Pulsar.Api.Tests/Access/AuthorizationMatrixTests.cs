@@ -27,6 +27,7 @@ public sealed class AuthorizationMatrixTests(PulsarApiFactory factory) : IClassF
         { "PUT", "/api/v1/auth/profile", [NoPermissions, UserViewer, RoleManager, Administrator] },
         { "POST", "/api/v1/auth/password", [NoPermissions, UserViewer, RoleManager, Administrator] },
         { "GET", "/api/v1/users", [UserViewer, Administrator] },
+        { "GET", "/api/v1/updates/runtime", [Administrator] },
         { "GET", $"/api/v1/users/{s_someId}", [UserViewer, Administrator] },
         { "POST", "/api/v1/users", [Administrator] },
         { "PUT", $"/api/v1/users/{s_someId}", [Administrator] },

@@ -33,18 +33,33 @@ export function usePermissionCatalog() {
   });
 }
 
-export function useAuditLog(pageSize = 50) {
+export interface AuditFilters {
+  action?: string;
+  actorUserId?: string;
+  from?: string;
+  until?: string;
+  targetType?: string;
+  targetId?: string;
+}
+
+export function useAuditLog(filters: AuditFilters = {}, pageSize = 50) {
   return useInfiniteQuery({
-    queryKey: adminKeys.audit,
+    queryKey: [...adminKeys.audit, 'pages', filters, pageSize],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET('/api/v1/audit', {
-          params: { query: { limit: pageSize, ...(pageParam ? { before: pageParam } : {}) } },
+          params: { query: { ...filters, limit: pageSize, ...(pageParam ? { before: pageParam } : {}) } },
+          signal,
         }),
       ),
     getNextPageParam: (page) => page.nextBefore ?? undefined,
   });
+}
+
+/** A bounded export from the same authorized, filtered endpoint as the table. */
+export function exportAudit(filters: AuditFilters) {
+  return unwrap(api.GET('/api/v1/audit', { params: { query: { ...filters, limit: 200 } } }));
 }
 
 /** The latest audit entries, for the dashboard (refreshed when servers or nodes change). */

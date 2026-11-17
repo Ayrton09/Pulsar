@@ -1,5 +1,16 @@
 # Backing up and restoring Pulsar
 
+## Game-server retention preview
+
+In a server's **Backups** tab, lowering **Backups to keep** opens a confirmation showing the number of completed,
+unlocked backups beyond the proposed limit, their names, creation dates, individual sizes and estimated total size. Unknown sizes are identified and excluded
+from the estimate. Locked and unfinished backups are excluded from this archive estimate. Retention also performs
+its existing cleanup of old failed-operation metadata.
+
+Saving applies retention immediately when possible. An offline node, or a clone or transfer using the backups, can
+defer deletion until a later retention run. The preview is advisory: the panel reads current backups and rechecks
+locks before deletion, so a backup locked after the preview is preserved. Cancelling the dialog changes nothing.
+
 ## What to back up
 
 | What | Where | Why |

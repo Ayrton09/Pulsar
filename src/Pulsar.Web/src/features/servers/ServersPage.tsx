@@ -1,9 +1,11 @@
 import { ListChecks, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card, PageHeader } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
+import { Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
@@ -28,8 +30,24 @@ export function ServersPage() {
   const servers = useServers(canView);
   useWatchServers(canView);
   const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [params, setParams] = useSearchParams();
+  const search = params.get('q') ?? '';
+  const state = params.get('state');
+  const filter: Filter = filters.includes(state as Filter) ? (state as Filter) : 'all';
+  const node = params.get('node') ?? '';
+  const game = params.get('game') ?? '';
+  const status = params.get('status') ?? '';
+  const sort = params.get('sort') ?? 'name';
+  const changeFilter = (key: string, value: string) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value && value !== 'all' && !(key === 'sort' && value === 'name')) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
   const canCreate = canAnywhere(me, Permission.ServerCreate);
   // 1.0.24: a user with a quota creates their own servers within it, on its nodes, whatever they may create elsewhere.
   const myQuota = useMyQuota(me.hasQuota === true);
@@ -65,12 +83,30 @@ export function ServersPage() {
 
   const all = (canView ? servers.data : []) ?? [];
   const words = search.trim().toLocaleLowerCase();
-  const shown = all.filter(
-    (server) =>
-      (filter === 'all' || (filter === 'online') === alive(server)) &&
-      (words === '' ||
-        [server.name, server.templateName, server.nodeName].some((text) => text.toLocaleLowerCase().includes(words))),
+  // Options come only from the authorized inventory returned by the API.
+  const nodes = [...new Map(all.map((s) => [s.nodeId, s.nodeName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const games = [...new Map(all.map((s) => [s.templateId, s.templateName])).entries()].sort((a, b) =>
+    a[1].localeCompare(b[1]),
   );
+  const shown = all
+    .filter(
+      (server) =>
+        (filter === 'all' || (filter === 'online') === alive(server)) &&
+        (!node || server.nodeId === node) &&
+        (!game || server.templateId === game) &&
+        (status !== 'suspended' || !!server.suspension) &&
+        (status !== 'active' || !server.suspension) &&
+        (status !== 'update' || server.gameUpdateAvailable) &&
+        (words === '' ||
+          [server.name, server.templateName, server.nodeName].some((text) => text.toLocaleLowerCase().includes(words))),
+    )
+    .sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, undefined, { numeric: true });
+      if (sort === 'newest') return b.createdAt.localeCompare(a.createdAt) || byName || a.id.localeCompare(b.id);
+      if (sort === 'node') return a.nodeName.localeCompare(b.nodeName) || byName || a.id.localeCompare(b.id);
+      if (sort === 'game') return a.templateName.localeCompare(b.templateName) || byName || a.id.localeCompare(b.id);
+      return (sort === 'nameDesc' ? -byName : byName) || a.id.localeCompare(b.id);
+    });
   // Those picked that the list shows now, in its order: a server the search or a filter hides (or that was deleted)
   // is never acted on unseen.
   const selected = shown.filter((server) => picked.has(server.id));
@@ -146,7 +182,7 @@ export function ServersPage() {
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => changeFilter('q', event.target.value)}
                 placeholder={t('servers.search')}
                 className="h-10 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-sm placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
               />
@@ -161,7 +197,7 @@ export function ServersPage() {
                   key={name}
                   type="button"
                   aria-pressed={filter === name}
-                  onClick={() => setFilter(name)}
+                  onClick={() => changeFilter('state', name)}
                   className={`inline-flex items-center gap-1 rounded-md px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
                     filter === name ? 'bg-surface-raised font-medium text-text' : 'text-muted hover:text-text'
                   }`}
@@ -169,6 +205,55 @@ export function ServersPage() {
                   {t(`servers.filters.${name}`)} <span className="text-muted tabular-nums">{counts[name]}</span>
                 </button>
               ))}
+            </div>
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Select
+                aria-label={t('servers.inventory.node')}
+                value={node}
+                onChange={(e) => changeFilter('node', e.target.value)}
+              >
+                <option value="">{t('servers.inventory.allNodes')}</option>
+                {nodes.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('servers.inventory.game')}
+                value={game}
+                onChange={(e) => changeFilter('game', e.target.value)}
+              >
+                <option value="">{t('servers.inventory.allGames')}</option>
+                {games.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('servers.inventory.status')}
+                value={status}
+                onChange={(e) => changeFilter('status', e.target.value)}
+              >
+                <option value="">{t('servers.inventory.allStatuses')}</option>
+                {['active', 'suspended', 'update'].map((value) => (
+                  <option key={value} value={value}>
+                    {t(`servers.inventory.${value}`)}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('servers.inventory.sort')}
+                value={sort}
+                onChange={(e) => changeFilter('sort', e.target.value)}
+              >
+                {['name', 'nameDesc', 'newest', 'node', 'game'].map((value) => (
+                  <option key={value} value={value}>
+                    {t(`servers.inventory.sort_${value}`)}
+                  </option>
+                ))}
+              </Select>
             </div>
             {canBulk &&
               (selecting ? (

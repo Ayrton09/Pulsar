@@ -81,6 +81,7 @@ public static class AuditActions
     public static class Server
     {
         public const string Created = "server.created";
+        public const string Renamed = "server.renamed";
         public const string Deleted = "server.deleted";
         public const string DeleteRequested = "server.delete_requested";
         public const string Started = "server.start";

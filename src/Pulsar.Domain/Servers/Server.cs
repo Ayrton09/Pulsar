@@ -264,6 +264,20 @@ public sealed class Server
         return new Server(ServerId.New(), shortId, nodeId, templateId, trimmed, cleanDescription, now);
     }
 
+    /// <summary>The panel's display name; the server's identity, files and game configuration keep their own values.</summary>
+    public Result Rename(string? name, DateTimeOffset now)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
+        {
+            return ServerErrors.NameInvalid;
+        }
+
+        Name = trimmed;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
     /// <summary>Whether the server can take the operation now, without changing it.</summary>
     public Result CheckOperation(Operation operation)
     {

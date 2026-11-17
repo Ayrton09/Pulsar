@@ -16,6 +16,14 @@ Mixing "installing", "online" and "backing up" in a single enum produces combina
 
 The UI derives a single **display status**: `Installing 42 %`, `Updating`, `Restoring backup`, `Starting`, `Online`, `Stopping`, `Offline`, `Crashed`, `Suspended`, `Node disconnected (last state: Online)`.
 
+## Panel display name
+
+The server page offers **Rename** to users with `server.settings.edit` on that server. Names are trimmed and must
+contain 1–64 displayable characters, as at creation. `PUT /api/v1/servers/{id}/name` changes only the panel label and
+records `server.renamed`; it does not change the server ID, folders, game hostname or process, and works while the
+node is offline. Suspended servers retain the normal suspension permission checks. Quota ownership alone does not
+grant permission to edit this host-controlled setting.
+
 ## Runtime state machine (in the agent)
 
 ```

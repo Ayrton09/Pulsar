@@ -86,6 +86,7 @@
     "reload": "Neu laden"
   },
   "dashboard": {
+    "dataUpdated": "Zuletzt aktualisiert: {{time}}",
     "title": "Dashboard",
     "welcome": "Willkommen, {{name}}.",
     "nothing": "Noch nichts anzuzeigen: Ihre Rollen umfassen weder Server, Nodes noch das Audit-Protokoll.",
@@ -275,6 +276,18 @@
     }
   },
   "audit": {
+    "filters": {
+      "action": "Aktionspräfix",
+      "actorUserId": "Benutzer-ID des Akteurs",
+      "from": "Ab (Ortszeit)",
+      "until": "Bis (ausschließlich, Ortszeit)",
+      "targetType": "Ressourcentyp",
+      "targetId": "Ressourcen-ID",
+      "apply": "Filter anwenden",
+      "clear": "Filter zurücksetzen",
+      "export": "CSV exportieren",
+      "exportHint": "Exportiert die neuesten 200 Einträge passend zu den angewendeten Filtern."
+    },
     "title": "Audit-Protokoll",
     "description": "Wer wann was getan hat. Einträge können nicht bearbeitet werden.",
     "when": "Wann",
@@ -360,6 +373,7 @@
         "retired": "Signaturschlüssel des Panels außer Betrieb genommen"
       },
       "server": {
+        "renamed": "Server umbenannt",
         "created": "Server erstellt",
         "deleted": "Server gelöscht",
         "delete_requested": "Löschen eines Servers angefordert",
@@ -648,6 +662,7 @@
       "nodes_outdated": "Einige Nodes vertrauen keinem anderen Schlüssel: Das Außerbetriebnehmen würde sie abschneiden. Versuchen Sie es erneut, um zu sehen, welche."
     },
     "server": {
+      "rename_forbidden": "Du darfst den Namen dieses Servers nicht ändern.",
       "name_invalid": "Ein Servername ist eine einzelne Zeile mit höchstens 64 Zeichen.",
       "description_too_long": "Die Beschreibung ist zu lang.",
       "not_found": "Der Server existiert nicht.",
@@ -1193,6 +1208,28 @@
     }
   },
   "servers": {
+    "inventory": {
+      "node": "Knoten",
+      "game": "Spiel",
+      "status": "Status",
+      "sort": "Server sortieren",
+      "allNodes": "Alle Knoten",
+      "allGames": "Alle Spiele",
+      "allStatuses": "Alle Status",
+      "active": "Nicht gesperrt",
+      "suspended": "Gesperrt",
+      "update": "Update verfügbar",
+      "sort_name": "Name: A–Z",
+      "sort_nameDesc": "Name: Z–A",
+      "sort_newest": "Neueste zuerst",
+      "sort_node": "Knoten, dann Name",
+      "sort_game": "Spiel, dann Name"
+    },
+    "rename": {
+      "action": "Umbenennen",
+      "title": "Server umbenennen",
+      "hint": "Ändert den im Panel angezeigten Namen. Der vom Spiel angezeigte Name wird separat konfiguriert."
+    },
     "title": "Server",
     "description": "Spielserver auf Ihren Nodes: ihr Zustand und was Sie damit tun können.",
     "create": "Server erstellen",
@@ -1732,6 +1769,11 @@
     "reconnecting": "Live-Aktualisierungen pausiert, Verbindung wird wiederhergestellt…"
   },
   "files": {
+    "queue": {
+      "queued": "In Warteschlange",
+      "cancelled": "Abgebrochen",
+      "dismiss": "Entfernen"
+    },
     "title": "Dateien",
     "location": "Ort",
     "root": "server",
@@ -1935,6 +1977,12 @@
     }
   },
   "backups": {
+    "preview": {
+      "summary": "Geeignete Backups: {{count}} · Geschätzter Speicher: {{size}}",
+      "unknown": "Backups mit unbekannter Größe: {{count}}. Ihr Speicher ist nicht enthalten.",
+      "timing": "Beim Speichern wird die Aufbewahrung wenn möglich sofort angewendet. Ist der Knoten offline oder nutzt ein Klon oder Transfer Backups, wartet die Löschung auf einen späteren Lauf.",
+      "recheck": "Geschätzt werden nur abgeschlossene, nicht gesperrte Backups über dem Limit. Vor dem Löschen prüft das Panel die aktuellen Backups und Sperren erneut; das Ergebnis kann abweichen."
+    },
     "title": "Backups",
     "hint": "Backups sind ZIP-Dateien, die auf dem Node des Servers liegen. Sie enthalten die Dateien, die die Vorlage des Spiels auswählt (Konfiguration, Add-ons), nicht das, was sich erneut herunterladen lässt.",
     "create": "Backup erstellen",
@@ -2020,13 +2068,13 @@
     "deleteConfirm": "Backup {{name}} löschen? Seine Datei wird vom Node entfernt. Dies kann nicht rückgängig gemacht werden.",
     "retention": {
       "title": "Aufbewahrung",
-      "hint": "Nach jedem neuen Backup werden die ältesten über diese Anzahl hinaus gelöscht. Gesperrte Backups bleiben immer erhalten und zählen nicht mit.",
+      "hint": "Die Aufbewahrung wird bei Änderung dieses Limits und nach jedem neuen Backup angewendet. Gesperrte Backups bleiben zusätzlich erhalten und zählen nicht zum Limit.",
       "keep": "Aufzubewahrende Backups",
       "all": "Alle",
       "invalid": "Eine ganze Zahl von 1 bis {{max}} oder leer, um alle aufzubewahren.",
       "notANumber": "Geben Sie eine ganze Zahl ein oder lassen Sie das Feld leer, um alle aufzubewahren.",
-      "confirm_one": "Nur das neueste Backup aufbewahren? Ältere, nicht gesperrte werden jetzt gelöscht.",
-      "confirm_other": "Nur die {{count}} neuesten Backups aufbewahren? Ältere, nicht gesperrte werden jetzt gelöscht.",
+      "confirm_one": "Aufbewahrung anwenden und das neueste nicht gesperrte Backup behalten?",
+      "confirm_other": "Aufbewahrung anwenden und die {{count}} neuesten nicht gesperrten Backups behalten?",
       "saved": "Gespeichert."
     },
     "remote": {
@@ -2675,6 +2723,14 @@
     "turnedOff": "Bilder ausgeschaltet. Offene Seiten fragen sofort nicht mehr danach und zeigen Server und Spiele als Liste ohne Bilder."
   },
   "updates": {
+    "runtime": {
+      "title": "Laufendes Panel",
+      "hint": "Von diesem Prozess geladene Versionen. Das Build-SDK bestimmt nicht die verwendete Laufzeit.",
+      "panelVersion": "Panel-Version",
+      "dotNet": ".NET",
+      "aspNetCore": "ASP.NET Core",
+      "architecture": "Architektur"
+    },
     "title": "Updates",
     "description": "Neue Versionen von Pulsar aus den GitHub-Releases des Projekts, signiert von dessen Maintainer: Das Panel bietet nur ein Release an, dessen Signatur es geprüft hat, und jeder Node prüft sie vor der Installation erneut.",
     "checkNow": "Jetzt prüfen",

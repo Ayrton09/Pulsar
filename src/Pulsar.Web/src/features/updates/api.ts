@@ -11,6 +11,14 @@ export const updateKeys = {
   all: ['updates'] as const,
 };
 
+export function useRuntimeDiagnostics() {
+  return useQuery({
+    queryKey: [...updateKeys.all, 'runtime'],
+    queryFn: () => unwrap(api.GET('/api/v1/updates/runtime')),
+    staleTime: Infinity,
+  });
+}
+
 /**
  * Pulsar's updates (Phase 19): the panel's version, the newest release when it is newer, and each node. While an update
  * is under way it is read again every few seconds: the node's agent reports each step.

@@ -86,6 +86,7 @@
     "reload": "Recharger"
   },
   "dashboard": {
+    "dataUpdated": "Dernière mise à jour : {{time}}",
     "title": "Tableau de bord",
     "welcome": "Bienvenue, {{name}}.",
     "nothing": "Rien à afficher pour l'instant : vos rôles ne donnent accès ni aux serveurs, ni aux nœuds, ni au journal d'audit.",
@@ -275,6 +276,18 @@
     }
   },
   "audit": {
+    "filters": {
+      "action": "Préfixe d’action",
+      "actorUserId": "ID de l’utilisateur acteur",
+      "from": "Depuis (heure locale)",
+      "until": "Jusqu’à (exclu, heure locale)",
+      "targetType": "Type de ressource",
+      "targetId": "ID de la ressource",
+      "apply": "Appliquer les filtres",
+      "clear": "Effacer les filtres",
+      "export": "Exporter CSV",
+      "exportHint": "Exporte les 200 dernières entrées correspondant aux filtres appliqués."
+    },
     "title": "Journal d'audit",
     "description": "Qui a fait quoi, et quand. Les entrées ne peuvent pas être modifiées.",
     "when": "Quand",
@@ -360,6 +373,7 @@
         "retired": "Retrait d'une clé de signature du panneau"
       },
       "server": {
+        "renamed": "Serveur renommé",
         "created": "Création d'un serveur",
         "deleted": "Serveur supprimé",
         "delete_requested": "Demande de suppression d'un serveur",
@@ -648,6 +662,7 @@
       "nodes_outdated": "Certains nœuds ne font confiance à aucune autre clé : la retirer les couperait du panneau. Réessayez pour voir lesquels."
     },
     "server": {
+      "rename_forbidden": "Vous ne pouvez pas modifier le nom de ce serveur.",
       "name_invalid": "Le nom d'un serveur tient sur une seule ligne, de 64 caractères au plus.",
       "description_too_long": "La description est trop longue.",
       "not_found": "Le serveur n'existe pas.",
@@ -1193,6 +1208,28 @@
     }
   },
   "servers": {
+    "inventory": {
+      "node": "Nœud",
+      "game": "Jeu",
+      "status": "État",
+      "sort": "Trier les serveurs",
+      "allNodes": "Tous les nœuds",
+      "allGames": "Tous les jeux",
+      "allStatuses": "Tous les états",
+      "active": "Non suspendus",
+      "suspended": "Suspendus",
+      "update": "Mise à jour disponible",
+      "sort_name": "Nom : A–Z",
+      "sort_nameDesc": "Nom : Z–A",
+      "sort_newest": "Plus récents en premier",
+      "sort_node": "Nœud puis nom",
+      "sort_game": "Jeu puis nom"
+    },
+    "rename": {
+      "action": "Renommer",
+      "title": "Renommer le serveur",
+      "hint": "Modifie le nom affiché dans le panneau. Le nom annoncé par le jeu se configure séparément."
+    },
     "title": "Serveurs",
     "description": "Les serveurs de jeu de vos nœuds : leur état et ce que vous pouvez en faire.",
     "create": "Créer un serveur",
@@ -1732,6 +1769,11 @@
     "reconnecting": "Mises à jour en direct en pause, reconnexion…"
   },
   "files": {
+    "queue": {
+      "queued": "En attente",
+      "cancelled": "Annulé",
+      "dismiss": "Retirer"
+    },
     "title": "Fichiers",
     "location": "Emplacement",
     "root": "serveur",
@@ -1935,6 +1977,12 @@
     }
   },
   "backups": {
+    "preview": {
+      "summary": "Sauvegardes concernées : {{count}} · Espace estimé : {{size}}",
+      "unknown": "Sauvegardes de taille inconnue : {{count}}. Leur espace est exclu.",
+      "timing": "L’enregistrement applique la rétention dès que possible. Si le nœud est hors ligne ou qu’un clonage ou transfert utilise les sauvegardes, la suppression attend une prochaine exécution.",
+      "recheck": "Seules les sauvegardes terminées et non verrouillées au-delà de la limite sont estimées. Le panel revérifie les sauvegardes et verrous avant suppression ; le résultat peut changer."
+    },
     "title": "Sauvegardes",
     "hint": "Les sauvegardes sont des fichiers ZIP conservés sur le nœud du serveur. Elles contiennent les fichiers que choisit le modèle du jeu (sa configuration, ses add-ons), pas ce qui peut être retéléchargé.",
     "create": "Créer une sauvegarde",
@@ -2020,13 +2068,13 @@
     "deleteConfirm": "Supprimer la sauvegarde {{name}} ? Son fichier est retiré du nœud. Cette action est irréversible.",
     "retention": {
       "title": "Conservation",
-      "hint": "Après chaque nouvelle sauvegarde, les plus anciennes au-delà de ce nombre sont supprimées. Les sauvegardes verrouillées sont toujours conservées et ne comptent pas.",
+      "hint": "La rétention s’applique lors d’un changement de cette limite et après chaque nouvelle sauvegarde. Les sauvegardes verrouillées sont conservées à part et ne comptent pas dans la limite.",
       "keep": "Sauvegardes à conserver",
       "all": "Toutes",
       "invalid": "Un nombre entier de 1 à {{max}}, ou vide pour tout conserver.",
       "notANumber": "Saisissez un nombre entier, ou laissez vide pour tout conserver.",
-      "confirm_one": "Ne conserver que la sauvegarde la plus récente ? Les plus anciennes non verrouillées sont supprimées maintenant.",
-      "confirm_other": "Ne conserver que les {{count}} sauvegardes les plus récentes ? Les plus anciennes non verrouillées sont supprimées maintenant.",
+      "confirm_one": "Appliquer la rétention en conservant la sauvegarde non verrouillée la plus récente ?",
+      "confirm_other": "Appliquer la rétention en conservant les {{count}} sauvegardes non verrouillées les plus récentes ?",
       "saved": "Enregistré."
     },
     "remote": {
@@ -2675,6 +2723,14 @@
     "turnedOff": "Images désactivées. Les pages ouvertes cessent aussitôt de les demander et listent serveurs et jeux sans images."
   },
   "updates": {
+    "runtime": {
+      "title": "Panel en cours",
+      "hint": "Versions chargées par ce processus. Le SDK de compilation ne détermine pas le runtime utilisé.",
+      "panelVersion": "Version du panel",
+      "dotNet": ".NET",
+      "aspNetCore": "ASP.NET Core",
+      "architecture": "Architecture"
+    },
     "title": "Mises à jour",
     "description": "Les nouvelles versions de Pulsar, issues des versions publiées sur le GitHub du projet et signées par son mainteneur : le panneau ne propose qu'une version dont il a vérifié la signature, et chaque nœud la vérifie de nouveau avant de l'installer.",
     "checkNow": "Vérifier maintenant",

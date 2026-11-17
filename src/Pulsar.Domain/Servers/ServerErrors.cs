@@ -8,6 +8,8 @@ public static class ServerErrors
     public static DomainError NameInvalid { get; } =
         new("server.name_invalid", $"The server name is one line of 1 to {Server.MaxNameLength} characters.");
 
+    public static DomainError RenameForbidden { get; } = new("server.rename_forbidden", "You may not change this server's name.");
+
     public static DomainError DescriptionTooLong { get; } =
         new("server.description_too_long", $"The description must have at most {Server.MaxDescriptionLength} characters.");
 

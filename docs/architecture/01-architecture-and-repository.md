@@ -1,8 +1,8 @@
 # 01 — Architecture, repository and dependencies
 
-> Status: **proposal under review**. The repository skeleton described here exists since Phase 0.
+> Status: **implemented and evolving**. This document began as the Phase 0 design; the panel, agent and modules described below now ship in the 1.x releases. Individual ADRs retain their own decision status.
 
-## 1. Proposed architecture
+## 1. Architecture
 
 Pulsar consists of **two executables** and **one database**:
 

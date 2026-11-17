@@ -134,7 +134,14 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
       )}
 
       {/* Keyed on what is stored: a change made elsewhere (another admin) starts the field again from it. */}
-      {canDelete && <RetentionCard key={backups.data.limit ?? 'all'} limit={backups.data.limit} save={saveLimit} />}
+      {canDelete && (
+        <RetentionCard
+          key={backups.data.limit ?? 'all'}
+          limit={backups.data.limit}
+          backups={backups.data.backups}
+          save={saveLimit}
+        />
+      )}
       {canDelete && (
         <RemoteCopyCard
           key={backups.data.storageId ?? 'node'}
@@ -554,23 +561,45 @@ function CreateBackupDialog({ serverId, running, onDone }: { serverId: string; r
   );
 }
 
-/** How many backups to keep; the oldest unlocked ones beyond it are deleted after each new backup. */
-function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType<typeof useBackupLimit> }) {
+/** Retention runs after each new backup and when its limit changes. The preview is advisory and lock-aware. */
+function RetentionCard({
+  limit,
+  backups,
+  save,
+}: {
+  limit: number | null;
+  backups: BackupView[];
+  save: ReturnType<typeof useBackupLimit>;
+}) {
   const { t } = useTranslation();
+  const formatSize = useFormatFileSize();
+  const [asking, setAsking] = useState(false);
+  const formatDate = useFormatDate();
+  const [previewRows, setPreviewRows] = useState(20);
   const [value, setValue] = useState(limit === null ? '' : String(limit));
   // What the browser cannot read as a number ("1e") it reports as empty, which would keep every backup: refused instead.
   const [unreadable, setUnreadable] = useState(false);
   const parsed = value.trim() === '' ? null : Number(value);
   const invalid = unreadable || (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT));
   const changed = parsed !== limit;
+  const eligible =
+    parsed === null || invalid
+      ? []
+      : backups
+          .filter((backup) => backup.status === 'completed' && !backup.locked)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+          .slice(parsed);
+  const bytes = eligible.reduce((total, backup) => total + (backup.size ?? 0), 0);
+  const unknown = eligible.filter((backup) => backup.size === null).length;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!invalid && changed) {
       const lowering = parsed !== null && (limit === null || parsed < limit);
-      if (!lowering || window.confirm(t('backups.retention.confirm', { count: parsed }))) {
-        save.mutate(parsed);
-      }
+      if (lowering) {
+        setPreviewRows(20);
+        setAsking(true);
+      } else save.mutate(parsed);
     }
   };
 
@@ -620,6 +649,59 @@ function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType
         <p role="status" className="mt-3 text-sm text-success">
           {t('backups.retention.saved')}
         </p>
+      )}
+      {asking && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!save.isPending) setAsking(open);
+          }}
+          title={t('backups.retention.title')}
+        >
+          <div className="space-y-4">
+            <p>{t('backups.retention.confirm', { count: parsed })}</p>
+            <p role="status">{t('backups.preview.summary', { count: eligible.length, size: formatSize(bytes) })}</p>
+            {eligible.length > 0 && (
+              <>
+                <ul
+                  aria-label={t('backups.title')}
+                  className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-border bg-bg p-3 text-sm"
+                >
+                  {eligible.slice(0, previewRows).map((backup) => (
+                    <li key={backup.id}>
+                      <p className="break-words font-medium">{visibleName(backup.name)}</p>
+                      <p className="text-xs text-muted">
+                        {formatDate(backup.createdAt)} · {backup.size === null ? '—' : formatSize(backup.size)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                {eligible.length > previewRows && (
+                  <Button size="sm" variant="secondary" onClick={() => setPreviewRows((current) => current + 20)}>
+                    {t('actions.loadMore')}
+                  </Button>
+                )}
+              </>
+            )}
+            {unknown > 0 && <p className="text-sm text-muted">{t('backups.preview.unknown', { count: unknown })}</p>}
+            <p className="text-sm text-muted">{t('backups.preview.timing')}</p>
+            <p className="text-sm text-muted">{t('backups.preview.recheck')}</p>
+            {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" disabled={save.isPending} onClick={() => setAsking(false)}>
+                {t('actions.cancel')}
+              </Button>
+              <Button
+                variant={eligible.length ? 'danger' : 'primary'}
+                busy={save.isPending}
+                disabled={invalid || !changed}
+                onClick={() => save.mutate(parsed, { onSuccess: () => setAsking(false) })}
+              >
+                {t('actions.save')}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       )}
     </Card>
   );

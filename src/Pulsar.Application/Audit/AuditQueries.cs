@@ -30,7 +30,8 @@ public sealed class AuditQueries(IPulsarDbContext db)
     /// Keyset pagination on the UUIDv7 id, which is ordered by time: stable while new entries arrive, and cheap at
     /// any depth (no OFFSET).
     /// </summary>
-    public async Task<AuditPage> ListAsync(Guid? before, int limit, string? actionPrefix, Guid? actorUserId, CancellationToken cancellationToken)
+    public async Task<AuditPage> ListAsync(Guid? before, int limit, string? actionPrefix, Guid? actorUserId, CancellationToken cancellationToken,
+        DateTimeOffset? from = null, DateTimeOffset? until = null, string? targetType = null, string? targetId = null)
     {
         limit = Math.Clamp(limit, 1, MaxPageSize);
         var query = db.AuditLog.AsNoTracking();
@@ -50,6 +51,36 @@ public sealed class AuditQueries(IPulsarDbContext db)
             query = query.Where(e => e.ActorUserId == actorId);
         }
 
+        if (from is { } start)
+        {
+            query = query.Where(e => e.OccurredAt >= start);
+        }
+
+        if (until is { } end)
+        {
+            query = query.Where(e => e.OccurredAt < end);
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetType))
+        {
+            query = query.Where(e => (e.TargetType ?? (e.ServerId != null ? "server" : e.NodeId != null ? "node" : null)) == targetType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetId))
+        {
+            if (Guid.TryParse(targetId, out var resource))
+            {
+                var server = new ServerId(resource);
+                var node = new NodeId(resource);
+                query = query.Where(e => e.TargetId == targetId || (e.TargetType == null &&
+                    (e.ServerId == server || (e.ServerId == null && e.NodeId == node))));
+            }
+            else
+            {
+                query = query.Where(e => e.TargetId == targetId);
+            }
+        }
+
         var rows = await query.OrderByDescending(e => e.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var page = rows.Take(limit).Select(ToView).ToList();
         return new AuditPage(page, rows.Count > limit ? page[^1].Id : null);
@@ -58,7 +89,10 @@ public sealed class AuditQueries(IPulsarDbContext db)
     private static AuditEntryView ToView(AuditEntry e)
     {
         using var metadata = JsonDocument.Parse(e.Metadata);
+        // Most server/node actions record their resource through WithServer/WithNode, without a separate target.
+        var targetType = e.TargetType ?? (e.ServerId is not null ? "server" : e.NodeId is not null ? "node" : null);
+        var targetId = e.TargetType is not null ? e.TargetId : e.ServerId?.ToString() ?? e.NodeId?.ToString();
         return new AuditEntryView(e.Id, e.OccurredAt, e.Action, e.Outcome, e.ActorType, e.ActorUserId?.Value, e.ActorDisplay,
-            e.TargetType, e.TargetId, e.IpAddress?.ToString(), metadata.RootElement.Clone());
+            targetType, targetId, e.IpAddress?.ToString(), metadata.RootElement.Clone());
     }
 }

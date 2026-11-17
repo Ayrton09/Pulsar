@@ -40,6 +40,9 @@ public sealed record UpdateServerSettingsRequest(
     bool AutoStart,
     bool RestartOnCrash);
 
+/// <summary>The display name in the panel, independently of the name advertised by the game.</summary>
+public sealed record RenameServerRequest([property: Required, StringLength(Server.MaxNameLength)] string Name);
+
 /// <param name="Password">The RCON password chosen for the server (<see cref="RconPasswords"/>); null goes back to one its agent makes.</param>
 public sealed record SetRconPasswordRequest([property: StringLength(RconPasswords.MaxLength)] string? Password);
 
@@ -110,6 +113,9 @@ public static class ServerEndpoints
         var servers = api.MapGroup("/servers").WithTags("Servers");
         servers.MapGet("/", ListAsync).RequirePermissionAnywhere(Permissions.Server.View);
         servers.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Server.View).AllowWhileSuspended();
+        servers.MapPut("/{id:guid}/name", (Guid id, RenameServerRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.RenameAsync(new ServerId(id), request.Name, ct)))
+            .RequirePermission(Permissions.Server.SettingsEdit);
         servers.MapPost("/", CreateAsync).RequirePermissionAnywhere(Permissions.Server.Create); // checked on the node by ServerManagement
         servers.MapPost("/{id:guid}/start", (Guid id, ServerManagement m, CancellationToken ct) => CommandAsync(m.StartAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Start);

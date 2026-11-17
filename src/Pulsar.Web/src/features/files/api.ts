@@ -139,7 +139,19 @@ export function writeFile(
   options: WriteOptions = {},
 ): Promise<FileDetails> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+      return;
+    }
     const request = new XMLHttpRequest();
+    const abort = () => request.abort();
+    const cleanup = () => {
+      options.signal?.removeEventListener('abort', abort);
+      request.onload = null;
+      request.onerror = null;
+      request.onabort = null;
+      request.upload.onprogress = null;
+    };
     request.open('PUT', contentUrl(serverId, path));
     request.withCredentials = true;
     request.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -158,6 +170,7 @@ export function writeFile(
       }
     };
     request.onload = () => {
+      cleanup();
       const json = parseJson(request.responseText);
       if (request.status >= 200 && request.status < 300) {
         resolve(json as FileDetails);
@@ -165,10 +178,21 @@ export function writeFile(
         reject(new ApiError(request.status, json as ConstructorParameters<typeof ApiError>[1]));
       }
     };
-    request.onerror = () => reject(new ApiError(0, { title: 'Network error', code: 'http.network' }));
-    request.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
-    options.signal?.addEventListener('abort', () => request.abort(), { once: true });
-    request.send(body);
+    request.onerror = () => {
+      cleanup();
+      reject(new ApiError(0, { title: 'Network error', code: 'http.network' }));
+    };
+    request.onabort = () => {
+      cleanup();
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
+    try {
+      request.send(body);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
   });
 }
 

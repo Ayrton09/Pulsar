@@ -86,6 +86,7 @@
     "reload": "重新加载"
   },
   "dashboard": {
+    "dataUpdated": "上次更新：{{time}}",
     "title": "仪表盘",
     "welcome": "欢迎，{{name}}。",
     "nothing": "暂无可显示的内容：你的角色不包含服务器、节点或审计日志。",
@@ -275,6 +276,18 @@
     }
   },
   "audit": {
+    "filters": {
+      "action": "操作前缀",
+      "actorUserId": "操作者用户ID",
+      "from": "起始（本地时间）",
+      "until": "截止（不包含，本地时间）",
+      "targetType": "资源类型",
+      "targetId": "资源ID",
+      "apply": "应用筛选",
+      "clear": "清除筛选",
+      "export": "导出CSV",
+      "exportHint": "导出符合已应用筛选条件的最新200条记录。"
+    },
     "title": "审计日志",
     "description": "谁在何时做了什么。条目无法编辑。",
     "when": "时间",
@@ -360,6 +373,7 @@
         "retired": "停用了面板签名密钥"
       },
       "server": {
+        "renamed": "重命名了服务器",
         "created": "创建了服务器",
         "deleted": "服务器已删除",
         "delete_requested": "请求删除服务器",
@@ -648,6 +662,7 @@
       "nodes_outdated": "部分节点不信任其他密钥：停用它会导致这些节点失去连接。请重试以查看是哪些节点。"
     },
     "server": {
+      "rename_forbidden": "你无权更改此服务器的名称。",
       "name_invalid": "服务器名称为单行内容，最多 64 个字符。",
       "description_too_long": "描述过长。",
       "not_found": "该服务器不存在。",
@@ -1193,6 +1208,28 @@
     }
   },
   "servers": {
+    "inventory": {
+      "node": "节点",
+      "game": "游戏",
+      "status": "状态",
+      "sort": "服务器排序",
+      "allNodes": "所有节点",
+      "allGames": "所有游戏",
+      "allStatuses": "所有状态",
+      "active": "未停用",
+      "suspended": "已停用",
+      "update": "有可用更新",
+      "sort_name": "名称：升序",
+      "sort_nameDesc": "名称：降序",
+      "sort_newest": "最新优先",
+      "sort_node": "节点、名称",
+      "sort_game": "游戏、名称"
+    },
+    "rename": {
+      "action": "重命名",
+      "title": "重命名服务器",
+      "hint": "更改面板中显示的名称。游戏对外显示的名称需单独配置。"
+    },
     "title": "服务器",
     "description": "你节点上的游戏服务器：它们的状态以及可执行的操作。",
     "create": "创建服务器",
@@ -1732,6 +1769,11 @@
     "reconnecting": "实时更新已暂停，正在重新连接…"
   },
   "files": {
+    "queue": {
+      "queued": "排队中",
+      "cancelled": "已取消",
+      "dismiss": "移除"
+    },
     "title": "文件",
     "location": "位置",
     "root": "服务器",
@@ -1935,6 +1977,12 @@
     }
   },
   "backups": {
+    "preview": {
+      "summary": "符合条件的备份：{{count}} · 预计空间：{{size}}",
+      "unknown": "大小未知的备份：{{count}}，其空间未计入。",
+      "timing": "保存时会在条件允许时立即应用保留策略。如果节点离线，或克隆、传输正在使用备份，删除将推迟到后续保留任务执行时。",
+      "recheck": "此处仅估算超过限制且已完成、未锁定的备份。删除前面板会重新检查当前备份和锁定状态，实际结果可能变化。"
+    },
     "title": "备份",
     "hint": "备份是保存在服务器所在节点上的 zip 文件。其中包含游戏模板选定的文件（配置、附加内容），不包含可重新下载的内容。",
     "create": "创建备份",
@@ -2020,13 +2068,13 @@
     "deleteConfirm": "删除备份 {{name}}？其文件将从节点上移除。此操作无法撤销。",
     "retention": {
       "title": "保留策略",
-      "hint": "每次创建新备份后，超出此数量的最旧备份会被删除。已锁定的备份始终保留，且不计入数量。",
+      "hint": "修改此限制和创建新备份后都会执行保留策略。已锁定备份会单独保留，不计入限制。",
       "keep": "保留的备份数",
       "all": "全部",
       "invalid": "1 到 {{max}} 之间的整数，留空表示全部保留。",
       "notANumber": "请输入整数，留空表示全部保留。",
-      "confirm_one": "只保留最新的备份？较旧且未锁定的备份将立即删除。",
-      "confirm_other": "只保留最新的 {{count}} 个备份？较旧且未锁定的备份将立即删除。",
+      "confirm_one": "应用保留策略，保留最新的{{count}}个未锁定备份？",
+      "confirm_other": "应用保留策略，保留最新的{{count}}个未锁定备份？",
       "saved": "已保存。"
     },
     "remote": {
@@ -2675,6 +2723,14 @@
     "turnedOff": "已关闭图片。已打开的页面会立即停止请求图片，并以无图片的列表显示服务器和游戏。"
   },
   "updates": {
+    "runtime": {
+      "title": "运行中的面板",
+      "hint": "此进程加载的版本。构建SDK不能确定正在使用的运行时。",
+      "panelVersion": "面板版本",
+      "dotNet": ".NET",
+      "aspNetCore": "ASP.NET Core",
+      "architecture": "架构"
+    },
     "title": "更新",
     "description": "Pulsar 的新版本来自项目的 GitHub 发行版，由维护者签名：面板只提供已验证过签名的发行版，每个节点在安装前还会再次验证。",
     "checkNow": "立即检查",
