@@ -258,6 +258,37 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task BackupListAndRetentionUseTheSameOrderAtMicrosecondPrecision()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "retention-order");
+        var server = await InstalledServerAsync(admin, agent, "Retention order");
+        var older = await MadeAsync(admin, server, "older");
+        var tiedFirst = await MadeAsync(admin, server, "tie 1");
+        var tiedSecond = await MadeAsync(admin, server, "tie 2");
+        var exactSecond = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var oneMicrosecondLater = exactSecond.AddTicks(10);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database;
+            await database.ExecuteSqlInterpolatedAsync($"UPDATE backups SET created_at = {exactSecond} WHERE id = {older.Id}", Ct);
+            await database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE backups SET created_at = {oneMicrosecondLater} WHERE id IN ({tiedFirst.Id}, {tiedSecond.Id})", Ct);
+        }
+
+        var tied = new[] { tiedFirst.Id, tiedSecond.Id }.OrderDescending().ToArray();
+        var listed = await ListAsync(admin, server);
+        Assert.Equal([tied[0], tied[1], older.Id], listed.Backups.Select(b => b.Id));
+        Assert.Equal([oneMicrosecondLater, oneMicrosecondLater, exactSecond], listed.Backups.Select(b => b.CreatedAt));
+
+        var retained = await SettingsAsync(admin, server, 1);
+        Assert.Equal(tied[0], Assert.Single(retained.Backups).Id);
+        Assert.True(File.Exists(Archive(agent, server, tied[0])));
+        Assert.False(File.Exists(Archive(agent, server, tied[1])));
+        Assert.False(File.Exists(Archive(agent, server, older.Id)));
+    }
+
+    [DatabaseFact]
     public async Task RetentionKeepsTheNewestUnfinishedBackupsAndRecentOperations()
     {
         using var admin = await factory.CreateAdminClientAsync();

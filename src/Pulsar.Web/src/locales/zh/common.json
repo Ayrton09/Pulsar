@@ -1772,6 +1772,7 @@
     "queue": {
       "queued": "排队中",
       "cancelled": "已取消",
+      "unconfirmed": "文件可能已保存。再次上传前，请检查目标文件夹。",
       "dismiss": "移除"
     },
     "title": "文件",

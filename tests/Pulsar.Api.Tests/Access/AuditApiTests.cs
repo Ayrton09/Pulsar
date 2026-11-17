@@ -82,8 +82,10 @@ public sealed class AuditApiTests(PulsarApiFactory factory) : IClassFixture<Puls
         Assert.Contains(page.Entries, e => e.Action == AuditActions.Role.Created && e.ActorDisplay == PulsarApiFactory.AdminUserName);
     }
 
-    [DatabaseFact]
-    public async Task FiltersKeepTheirBoundsAndCursor()
+    [DatabaseTheory]
+    [InlineData("2026-10-01T12:00:00Z", "2026-10-01T12:03:00Z")]
+    [InlineData("2026-10-01T09:00:00-03:00", "2026-10-01T17:33:00+05:30")]
+    public async Task FiltersKeepTheirBoundsAndCursor(string from, string until)
     {
         using var admin = await factory.CreateAdminClientAsync();
         var actor = UserId.New();
@@ -91,7 +93,7 @@ public sealed class AuditApiTests(PulsarApiFactory factory) : IClassFixture<Puls
         var target = Guid.NewGuid().ToString();
         AuditEntry Make(int minute, string resource) => AuditEntry.Create(start.AddMinutes(minute), "server.renamed",
             AuditOutcome.Success, AuditActor.ForUser(actor, "filter-test"), AuditRequestInfo.None).WithTarget("server", resource);
-        var first = Make(1, target);
+        var first = Make(0, target);
         var second = Make(2, target);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -100,7 +102,7 @@ public sealed class AuditApiTests(PulsarApiFactory factory) : IClassFixture<Puls
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var filter = $"action=server.&actorUserId={actor.Value}&from=2026-10-01T12:00:00Z&until=2026-10-01T12:03:00Z&targetType=server&targetId={target}";
+        var filter = $"action=server.&actorUserId={actor.Value}&from={Uri.EscapeDataString(from)}&until={Uri.EscapeDataString(until)}&targetType=server&targetId={target}";
         var page = await GetAsync(admin, $"/api/v1/audit?{filter}&limit=1");
         Assert.Equal(second.Id, Assert.Single(page.Entries).Id);
         var next = await GetAsync(admin, $"/api/v1/audit?{filter}&limit=1&before={page.NextBefore}");

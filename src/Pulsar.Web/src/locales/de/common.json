@@ -1772,6 +1772,7 @@
     "queue": {
       "queued": "In Warteschlange",
       "cancelled": "Abgebrochen",
+      "unconfirmed": "Die Datei wurde möglicherweise gespeichert. Prüfe den Zielordner, bevor du sie erneut hochlädst.",
       "dismiss": "Entfernen"
     },
     "title": "Dateien",

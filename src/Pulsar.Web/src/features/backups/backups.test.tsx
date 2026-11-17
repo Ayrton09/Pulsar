@@ -468,7 +468,18 @@ describe('backups tab', () => {
 
   it('keeps a number of backups, asking before deleting old ones', async () => {
     const limits: unknown[] = [];
-    let current = list;
+    const ordered = {
+      ...list,
+      // The server returns newest first, with fractional seconds omitted for exact seconds.
+      backups: [
+        backup({ id: 'newest', name: 'Newest', createdAt: '2026-10-03T10:00:00.2+00:00' }),
+        backup({ id: 'newer', name: 'Newer', createdAt: '2026-10-03T10:00:00.1+00:00' }),
+        backup({ id: 'locked', name: 'Locked', locked: true, createdAt: '2026-10-03T10:00:00.1+00:00' }),
+        backup({ createdAt: '2026-10-03T10:00:00+00:00' }),
+        backup({ id: 'broken', name: 'Broken', status: 'failed', createdAt: '2026-10-03T09:59:59+00:00' }),
+      ],
+    };
+    let current = ordered;
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details()),
@@ -476,7 +487,7 @@ describe('backups tab', () => {
       [`PUT /api/v1/servers/${serverId}/backups/settings`]: async (request) => {
         const body = (await request.json()) as { limit: number | null };
         limits.push(body);
-        current = { ...list, limit: body.limit };
+        current = { ...ordered, limit: body.limit };
         return json(current);
       },
     });

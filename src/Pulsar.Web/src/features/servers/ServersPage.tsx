@@ -42,7 +42,8 @@ export function ServersPage() {
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (value && value !== 'all' && !(key === 'sort' && value === 'name')) next.set(key, value);
+        const reset = !value || (key === 'state' && value === 'all') || (key === 'sort' && value === 'name');
+        if (!reset) next.set(key, value);
         else next.delete(key);
         return next;
       },
