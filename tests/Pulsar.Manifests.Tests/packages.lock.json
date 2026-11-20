@@ -4,9 +4,9 @@
     "net10.0": {
       "LateApexEarlySpeed.Json.Schema": {
         "type": "Direct",
-        "requested": "[4.2.4, )",
-        "resolved": "4.2.4",
-        "contentHash": "MUQ9rUtn9NtjDbnlqrY+RDSQGzqI6KcOL7q3zJq+cg41Q7ZxFK8LRCpsKVXQuqnH8wei5o2vCZxU+OFaPY5xXw==",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "2nGTQPRj91gLzJ156/H7BEAdW+YCsPdxhMSyKX3dgMnBUG7w+yLksX6yjEjODBdtKtlXun1gijboC8oiS2VbZA==",
         "dependencies": {
           "LateApexEarlySpeed.Nullability.Generic": "1.0.4",
           "Microsoft.Extensions.Http": "3.1.0"

@@ -11,6 +11,19 @@ updates:
         patterns: ['Serilog*']
       testing:
         patterns: ['xunit*']
+    # Pulsar stays on .NET 10 (LTS, supported until November 2028): the packages that follow the runtime's version get
+    # their 10.0.x patches, never the next .NET's major, which is meant for that runtime.
+    ignore:
+      - dependency-name: 'Microsoft.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'System.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Serilog*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Npgsql*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'EFCore.NamingConventions'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /src/Pulsar.Web
@@ -23,6 +36,10 @@ updates:
         patterns: ['vitest', 'jsdom', '@testing-library/*', '@playwright/test']
       build:
         patterns: ['vite', '@vitejs/*', 'tailwindcss', '@tailwindcss/*', 'typescript']
+    # The SignalR client follows the panel's ASP.NET Core version (.NET 10, see the nuget entry).
+    ignore:
+      - dependency-name: '@microsoft/signalr'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
