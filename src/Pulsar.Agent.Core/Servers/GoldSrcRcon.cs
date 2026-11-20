@@ -274,6 +274,22 @@ internal sealed class GoldSrcRconSession(UdpClient udp, string password, TimeSpa
         }
     }
 
+    /// <summary>
+    /// One datagram, or the wait's cancellation: on Windows a receive cancelled by <paramref name="wait"/> can end as an
+    /// aborted socket operation instead of a cancellation, which said "cannot reach RCON" when only the wait was over.
+    /// </summary>
+    private async Task<byte[]> ReceiveDatagramAsync(CancellationToken wait)
+    {
+        try
+        {
+            return (await udp.ReceiveAsync(wait)).Buffer;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted && wait.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(ex.Message, ex, wait);
+        }
+    }
+
     /// <summary>One datagram from the game: its payload after the -1 header, or (<paramref name="raw"/>) the whole of it.</summary>
     private async Task<byte[]> ReceiveAsync(CancellationToken wait, CancellationToken cancellationToken, bool raw = false, bool idleEndsAnswer = false)
     {
@@ -281,7 +297,7 @@ internal sealed class GoldSrcRconSession(UdpClient udp, string password, TimeSpa
         {
             try
             {
-                var datagram = (await udp.ReceiveAsync(wait)).Buffer;
+                var datagram = await ReceiveDatagramAsync(wait);
                 if (raw)
                 {
                     return datagram;
