@@ -244,8 +244,9 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         _processes.Last.Print("ter22 -Port=7777\n");
         Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("password hunter22", TestContext.Current.CancellationToken));
 
-        await EventuallyAsync(() => Text(supervisor).Contains("> password ********", StringComparison.Ordinal), () => Text(supervisor));
-        Assert.Contains("-ServerPassword=******** -Port=7777", Text(supervisor), StringComparison.Ordinal);
+        // The typed command's echo and the game's output come by different ways: either may be in the console first.
+        await EventuallyAsync(() => Text(supervisor).Contains("> password ********", StringComparison.Ordinal)
+            && Text(supervisor).Contains("-ServerPassword=******** -Port=7777", StringComparison.Ordinal), () => Text(supervisor));
         Assert.DoesNotContain("hunter22", Text(supervisor), StringComparison.Ordinal);
         Assert.Equal("password hunter22\n", _processes.Last.Input[^1]); // the game still gets it
     }

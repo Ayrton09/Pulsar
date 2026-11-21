@@ -153,8 +153,17 @@ public sealed class ServerHostTests : IAsyncDisposable
         Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), first))).Status);
         Assert.Equal(OperationOutcome.Failed, (await ResultAsync(first)).Outcome);
 
+        // The result is kept in the outbox a moment before the operation lets go of the server (the panel hears of it
+        // only after): a retry sent at once may still find it busy.
         var retry = Guid.NewGuid();
-        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), retry))).Status);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        CommandAck ack;
+        while ((ack = await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), retry))).Status == AckStatus.Busy && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(AckStatus.Accepted, ack.Status);
         Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(retry)).Outcome);
         Assert.Equal(2, _provisioner.Deprovisions);
         Assert.Null(_store.Load(serverId)); // it does not come back at the next start
