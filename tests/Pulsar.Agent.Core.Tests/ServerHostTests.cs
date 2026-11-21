@@ -1279,7 +1279,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         if (hosted)
         {
             _launcher ??= new InProcessHostLauncher(_games);
-            hosts = new GameHostManager(_games, _launcher, NullLogger<GameHostManager>.Instance);
+            hosts = new GameHostManager(_games, _launcher, TestLog.For<GameHostManager>());
         }
 
         var install = new InstallOptions();
@@ -1287,7 +1287,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
             firewall ?? new UnmanagedFirewall(), _fileCommands, new BackupStore(_backupFiles, NullLogger<BackupStore>.Instance), install,
-            channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
+            channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, TestLog.Factory(),
             hosts: hosts, snapshots: snapshots, panelBlock: panelBlock);
         return _host;
     }

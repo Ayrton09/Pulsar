@@ -24,7 +24,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public GameHostTests()
     {
         _launcher = new InProcessHostLauncher(_games);
-        _hosts = new GameHostManager(_games, _launcher, NullLogger<GameHostManager>.Instance);
+        _hosts = new GameHostManager(_games, _launcher, TestLog.For<GameHostManager>());
     }
 
     public ValueTask DisposeAsync() => _launcher.DisposeAsync();
@@ -107,7 +107,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task OutputTheHostCouldNotKeepIsReportedAsLost()
     {
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { OutputCapacity = 1024 });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var process = (IHostedGameProcess)await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
         var game = _games.Last;
         await process.DetachAsync();
@@ -269,7 +269,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task AHostWithNobodyToDecideEndsTheChildrenOfAnExitedGameAfterTheGrace()
     {
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { TreeGrace = TimeSpan.FromMilliseconds(100) });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var process = (IHostedGameProcess)await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
         var game = _games.Last;
         await process.DetachAsync();
@@ -286,7 +286,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task AnAgentThatLeavesBeforeItDecidesLeavesWhatIsLeftOfTheTreeToTheHost()
     {
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { TreeGrace = TimeSpan.FromMilliseconds(100) });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var process = (IHostedGameProcess)await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
         var game = _games.Last;
 
@@ -306,7 +306,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task AHostNobodyConnectsToEnds()
     {
         using var service = new GameHostService(_games, Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()),
-            new GameHostOptions { FirstConnectionTimeout = TimeSpan.FromMilliseconds(200) }, TimeProvider.System, NullLogger<GameHostService>.Instance);
+            new GameHostOptions { FirstConnectionTimeout = TimeSpan.FromMilliseconds(200) }, TimeProvider.System, TestLog.For<GameHostService>());
 
         Assert.Equal(0, await service.RunAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         Assert.Empty(_games.Started);
@@ -374,7 +374,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task AHostThatAcceptsTheConnectionButNeverAnswersIsKilled()
     {
         await using var launcher = new ScriptedHostLauncher(_ => null);
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { ReattachTimeout = TimeSpan.FromMilliseconds(300) };
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>()) { ReattachTimeout = TimeSpan.FromMilliseconds(300) };
         var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
 
         Assert.Null(await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
@@ -386,7 +386,7 @@ public sealed class GameHostTests : IAsyncDisposable
     {
         // An update of the agent that changed the protocol: killing the host would end its game.
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
 
         var error = await Assert.ThrowsAsync<GameProcessException>(() => hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken));
@@ -404,7 +404,7 @@ public sealed class GameHostTests : IAsyncDisposable
             HostSubscribe subscribe => new HostReply(subscribe.Id),
             _ => null, // stuck
         });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>()) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
         var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
         var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
         Assert.NotNull(process);
@@ -451,7 +451,7 @@ public sealed class GameHostTests : IAsyncDisposable
             HostSubscribe subscribe => new HostReply(subscribe.Id),
             _ => null, // stuck
         });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>()) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
         var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
         var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
         Assert.NotNull(process);
@@ -470,7 +470,7 @@ public sealed class GameHostTests : IAsyncDisposable
             HostSubscribe subscribe => new HostReply(subscribe.Id),
             _ => null, // stuck
         });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>()) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
         var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
         var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
         Assert.NotNull(process);
@@ -490,7 +490,7 @@ public sealed class GameHostTests : IAsyncDisposable
         // A game that froze: the user's command was refused (console.not_reading) and typed again. When the game reads
         // again, the copies the host still held must not run then.
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { InputTimeout = TimeSpan.FromMilliseconds(300) });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var process = await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
         var game = _games.Last;
         var gate = game.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -521,7 +521,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task ConsoleInputPilingUpInTheHostIsRefusedAtOnce()
     {
         await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { InputTimeout = TimeSpan.FromSeconds(30) });
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>());
         var process = await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
         var game = _games.Last;
         var gate = game.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -556,7 +556,7 @@ public sealed class GameHostTests : IAsyncDisposable
         // The panel waits 10 s for a kill's ack: a host that does not kill its game gets far less before it is killed itself.
         Assert.True(_hosts.TerminateTimeout <= TimeSpan.FromSeconds(3));
         await using var launcher = new ScriptedHostLauncher(StuckAfterStart);
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance)
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>())
         {
             RequestTimeout = TimeSpan.FromSeconds(30),
             TerminateTimeout = TimeSpan.FromMilliseconds(300),
@@ -576,7 +576,7 @@ public sealed class GameHostTests : IAsyncDisposable
     public async Task AStopThatTimesOutKillsAHostThatDoesNotAnswer()
     {
         await using var launcher = new ScriptedHostLauncher(StuckAfterStart);
-        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance)
+        var hosts = new GameHostManager(_games, launcher, TestLog.For<GameHostManager>())
         {
             RequestTimeout = TimeSpan.FromSeconds(30),
             TerminateTimeout = TimeSpan.FromMilliseconds(300),
@@ -790,7 +790,7 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
     public GameHostReference Launch(Guid serverId, string pipe, GameHostOptions hostOptions)
     {
         var service = new GameHostService(games, serverId, pipe, hostOptions, TimeProvider.System,
-            NullLogger<GameHostService>.Instance);
+            TestLog.For<GameHostService>());
         var kill = new CancellationTokenSource();
         var reference = new GameHostReference(pipe, Interlocked.Increment(ref _nextId), DateTimeOffset.UtcNow);
         _hosts[pipe] = new Host(reference, service, Task.Run(() => service.RunAsync(kill.Token)), kill);
