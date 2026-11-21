@@ -1847,6 +1847,9 @@ public sealed partial class ServerHost(
     /// <summary>An operation that keeps the server from starting and its files from changing is running.</summary>
     private bool Exclusive(Guid serverId) => _operations.TryGetValue(serverId, out var operation) && operation.Exclusive;
 
+    /// <summary>For tests: an operation still holds the server (its result may already be in the outbox).</summary>
+    internal bool HoldsOperation(Guid serverId) => _operations.ContainsKey(serverId);
+
     private async Task<CommandAck> Control(CommandEnvelope envelope, Guid serverId, Func<ServerSupervisor, Task<AckStatus>> action,
         bool allowedDuringOperation)
     {
