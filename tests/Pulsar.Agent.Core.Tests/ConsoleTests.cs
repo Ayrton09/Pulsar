@@ -189,7 +189,11 @@ public sealed class ConsoleLogTests : IDisposable
             for (var i = 0; i < 20; i++)
             {
                 log.Write($"line {i:00} {new string('x', 40)}\n", DateTimeOffset.UtcNow);
-                await Task.Delay(5, TestContext.Current.CancellationToken);
+                // Each line in a write of its own: lines queued together are written together, and the size is checked
+                // between writes (a slow runner had written all of them in two).
+                var written = $"line {i:00}";
+                await SupervisorConsoleTests.EventuallyAsync(() => File.Exists(Path.Combine(_root, "console.log"))
+                    && File.ReadAllText(Path.Combine(_root, "console.log")).Contains(written, StringComparison.Ordinal), () => written);
             }
         }
 
