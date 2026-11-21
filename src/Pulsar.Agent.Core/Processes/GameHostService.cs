@@ -605,6 +605,11 @@ public sealed partial class GameHostService(
 
             try
             {
+                if (_closed.IsCancellationRequested)
+                {
+                    return false; // ended: the pipe may already be the next agent's
+                }
+
                 await GameHostProtocol.WriteAsync(stream, frame, _closed.Token).ConfigureAwait(false);
                 return true;
             }
@@ -622,6 +627,10 @@ public sealed partial class GameHostService(
         public async ValueTask DisposeAsync()
         {
             await _closed.CancelAsync().ConfigureAwait(false);
+            // A write still going (the game's exit, told from WatchExitAsync as the agent left) ends before the session
+            // does: the host then takes the next agent on the same pipe, and the rest of this frame would reach that one,
+            // which hangs up on what it did not ask for (seen on Linux, where reattaching then failed and killed the host).
+            await _writeLock.WaitAsync().ConfigureAwait(false);
             await _forwarding.ConfigureAwait(false);
             await _inputs.ConfigureAwait(false);
             _closed.Dispose();
