@@ -742,6 +742,12 @@ public static class GameHostPipes
                 _ = DisconnectNamedPipe(server.SafePipeHandle);
             }
         }
+        catch (NullReferenceException) when (!OperatingSystem.IsWindows())
+        {
+            // .NET's Unix pipe, after a client that left before the wait for it returned: there is no accepted connection
+            // to close, and its Disconnect fails on that instead of saying so. Nothing to reset; uncaught, it ended the
+            // host and its game (seen on the Linux CI runner).
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
