@@ -130,7 +130,7 @@ public sealed partial class ServerSequences
 
         var ports = await specs.AssignPortsAsync(server, manifest, requested: null, cancellationToken);
         var valid = ports.IsSuccess
-            ? specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == to)])
+            ? await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == to)], cancellationToken: cancellationToken)
             : ports;
         DomainError? error = valid.Error;
         if (valid.IsSuccess)

@@ -23,7 +23,7 @@ import {
   type NodeAllocation,
   type PortInUse,
 } from './portChoices';
-import { newestOfEachGame } from './templateVersions';
+import { newestOfEachGame, runsOn } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { own } from '../../lib/own';
@@ -72,9 +72,18 @@ export function CreateServerDialog({
   const template = useTemplate(templateId || undefined);
   const allocations = useAllocations(nodeId || undefined);
   const me = useCurrentUser();
+  // A game runs only on the platforms its template names (a Windows game on no Linux node): once a game is chosen only
+  // nodes it runs on are offered, and once a node is chosen only games that run on it.
+  const chosenTemplate = templates.data?.find((option) => option.id === templateId);
   // The nodes listed include those the user only sees: they may create servers on some of them.
   const connected =
-    nodes.data?.filter((node) => node.connected && canOnNode(me, node.id, Permission.ServerCreate)) ?? [];
+    nodes.data?.filter(
+      (node) =>
+        node.connected &&
+        (!chosenTemplate || runsOn(chosenTemplate, node.platform)) &&
+        canOnNode(me, node.id, Permission.ServerCreate),
+    ) ?? [];
+  const chosenNode = connected.find((node) => node.id === nodeId);
   // The game's labels in the reader's language (the template's own English for an imported game).
   const gameText = useGameText(template.data?.template.key);
   const details = useMemo(
@@ -228,13 +237,15 @@ export function CreateServerDialog({
                   <option value="">{t('servers.chooseGame')}</option>
                   {/* The newest version of each game, by its name alone: a template's version read as the game's. Two
                       games of one name (imported under another key) say which template they are. */}
-                  {newestOfEachGame(templates.data ?? []).map((option, _, all) => (
-                    <option key={option.id} value={option.id}>
-                      {all.some((other) => other.id !== option.id && other.name === option.name)
-                        ? t('servers.gameWithTemplateVersion', { name: option.name, version: option.version })
-                        : option.name}
-                    </option>
-                  ))}
+                  {newestOfEachGame(templates.data ?? [])
+                    .filter((option) => !chosenNode || runsOn(option, chosenNode.platform))
+                    .map((option, _, all) => (
+                      <option key={option.id} value={option.id}>
+                        {all.some((other) => other.id !== option.id && other.name === option.name)
+                          ? t('servers.gameWithTemplateVersion', { name: option.name, version: option.version })
+                          : option.name}
+                      </option>
+                    ))}
                 </Select>
               )}
             </Field>

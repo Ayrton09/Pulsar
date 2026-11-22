@@ -19,7 +19,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.14")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1330,7 +1330,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_node_credentials_algorithm", "algorithm = 'ecdsa-p256-sha256'");
 
-                            t.HasCheckConstraint("ck_node_credentials_key_storage", "key_storage IN ('software', 'tpm')");
+                            t.HasCheckConstraint("ck_node_credentials_key_storage", "key_storage IN ('file', 'software', 'tpm')");
 
                             t.HasCheckConstraint("ck_node_credentials_status", "status IN ('active', 'pending', 'revoked', 'superseded')");
                         });
@@ -2305,6 +2305,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("name");
+
+                    b.PrimitiveCollection<string[]>("Platforms")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("platforms");
 
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("integer")
@@ -3685,6 +3690,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                                 .HasMaxLength(255)
                                 .HasColumnType("character varying(255)")
                                 .HasColumnName("os_description");
+
+                            b1.Property<string>("Platform")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("platform");
 
                             b1.Property<int>("ProtocolVersion")
                                 .HasColumnType("integer")

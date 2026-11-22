@@ -45,6 +45,16 @@ public sealed record GameManifest(
     public IReadOnlyList<AddonDefinition> AddonList => Addons ?? [];
 
     public IReadOnlyList<ModSourceDefinition> ModList => Mods ?? [];
+
+    /// <summary>
+    /// The runtime of its first platform. What the panel reads of a runtime (extra arguments, RCON, the commands kept out
+    /// of logs) is the same on every platform (<see cref="ManifestValidator"/> checks it), so it reads it from this one
+    /// whatever the server's node is. Null only for a manifest that is not valid.
+    /// </summary>
+    public RuntimeDefinition? FirstRuntime => Platforms.Count > 0 ? Runtime.GetValueOrDefault(Platforms[0]) : null;
+
+    /// <summary>Whether the game runs on <paramref name="platform"/> (a node's, <c>windows-x64</c> or <c>linux-x64</c>).</summary>
+    public bool RunsOn(string platform) => Platforms.Contains(platform) && Runtime.ContainsKey(platform);
 }
 
 /// <summary>

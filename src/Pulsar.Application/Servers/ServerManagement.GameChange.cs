@@ -96,7 +96,7 @@ public sealed partial class ServerManagement
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;

@@ -678,6 +678,8 @@
       "host_not_ended": "Das Spiel des Servers läuft noch in einem Host-Prozess, den der Agent weder beenden noch prüfen konnte. Versuchen Sie es in einem Moment erneut; es wird nie ein zweites Mal daneben gestartet.",
       "extra_arguments_invalid": "Zusätzliche Argumente sind einzelne Zeilen mit höchstens 512 Zeichen (maximal 32).",
       "extra_arguments_not_allowed": "Dieses Spiel erlaubt keine zusätzlichen Argumente.",
+      "platform_unsupported": "Dieses Spiel läuft nicht auf dem Betriebssystem dieses Nodes.",
+      "other_platform": "Ein Server kann nur auf einen Node mit demselben Betriebssystem (Windows oder Linux) verschoben oder kopiert werden.",
       "update_unsupported": "Dieses Spiel kann nicht aktualisiert werden.",
       "no_free_allocation": "Der Node hat keine freie Zuweisung für einen der Ports des Spiels. Fügen Sie dem Node Zuweisungen hinzu.",
       "allocation_unavailable": "Diese Zuweisung ist auf dem Node des Servers nicht frei.",
@@ -1096,7 +1098,7 @@
       "awaiting": "Genehmigung ausstehend"
     },
     "hostname": "Hostname",
-    "os": "Windows",
+    "os": "Betriebssystem",
     "cpu": "CPU",
     "cores_one": "{{count}} logischer Kern",
     "cores_other": "{{count}} logische Kerne",
@@ -1157,7 +1159,8 @@
       "reason": "Grund (optional)",
       "storage": {
         "tpm": "Im TPM gespeichert",
-        "software": "Von Windows verwaltet (Software)"
+        "software": "Von Windows verwaltet (Software)",
+        "file": "In einer Datei gespeichert, die nur root lesen kann (Linux)"
       },
       "states": {
         "active": "Aktiv",

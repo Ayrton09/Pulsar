@@ -20525,7 +20525,8 @@
       "NodeKeyStorage": {
         "enum": [
           "tpm",
-          "software"
+          "software",
+          "file"
         ]
       },
       "NodeMetricHistory": {
@@ -20686,7 +20687,8 @@
           "enrollmentTokenName",
           "credentialFingerprint",
           "connectedWithCertificate",
-          "agentCanUseCertificate"
+          "agentCanUseCertificate",
+          "platform"
         ],
         "type": "object",
         "properties": {
@@ -20772,6 +20774,9 @@
               "null",
               "boolean"
             ]
+          },
+          "platform": {
+            "type": "string"
           }
         }
       },
@@ -24626,7 +24631,8 @@
           "name",
           "description",
           "isTestGame",
-          "source"
+          "source",
+          "platforms"
         ],
         "type": "object",
         "properties": {
@@ -24654,6 +24660,12 @@
           },
           "source": {
             "$ref": "#/components/schemas/TemplateSource"
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

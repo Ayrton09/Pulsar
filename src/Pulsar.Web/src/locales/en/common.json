@@ -678,6 +678,8 @@
       "host_not_ended": "The server's game still runs in a host process that the agent could not end or check. Try again in a moment; it is never started a second time beside it.",
       "extra_arguments_invalid": "Extra arguments are single lines of up to 512 characters (32 at most).",
       "extra_arguments_not_allowed": "This game does not allow extra arguments.",
+      "platform_unsupported": "This game does not run on this node's operating system.",
+      "other_platform": "A server can only be moved or copied to a node with the same operating system (Windows or Linux).",
       "update_unsupported": "This game cannot be updated.",
       "no_free_allocation": "The node has no free allocation for one of the game's ports. Add allocations to the node.",
       "allocation_unavailable": "That allocation is not free on the server's node.",
@@ -1096,7 +1098,7 @@
       "awaiting": "Awaiting approval"
     },
     "hostname": "Host name",
-    "os": "Windows",
+    "os": "Operating system",
     "cpu": "CPU",
     "cores_one": "{{count}} logical core",
     "cores_other": "{{count}} logical cores",
@@ -1157,7 +1159,8 @@
       "reason": "Reason (optional)",
       "storage": {
         "tpm": "Kept in the TPM",
-        "software": "Kept by Windows (software)"
+        "software": "Kept by Windows (software)",
+        "file": "Kept in a file only root can read (Linux)"
       },
       "states": {
         "active": "Active",

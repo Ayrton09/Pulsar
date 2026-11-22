@@ -259,6 +259,11 @@ public sealed partial class ServerManagement(
 
         var server = created.Value;
         var manifest = ServerSpecs.Parse(template);
+        if (!manifest.RunsOn(await specs.PlatformOfAsync(nodeId, cancellationToken)))
+        {
+            return ServerErrors.PlatformUnsupported;
+        }
+
         if (!AgentReads(connection, manifest))
         {
             return ServerErrors.TemplateUnsupported;
@@ -314,7 +319,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -519,6 +524,11 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(next);
+        if (!manifest.RunsOn(await specs.PlatformOfAsync(server.NodeId, cancellationToken)))
+        {
+            return ServerErrors.PlatformUnsupported;
+        }
+
         if (!AgentReads(Connection(server.NodeId), manifest))
         {
             return ServerErrors.TemplateUnsupported;
@@ -558,7 +568,7 @@ public sealed partial class ServerManagement(
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         return valid.IsSuccess ? (server, current, next) : valid.Error!;
     }
 
@@ -682,7 +692,7 @@ public sealed partial class ServerManagement(
             return startup.Error!;
         }
 
-        var valid = specs.Check(server, manifest, await specs.AllocationsOf(server, cancellationToken));
+        var valid = await specs.CheckAsync(server, manifest, await specs.AllocationsOf(server, cancellationToken), cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -830,7 +840,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -1165,11 +1175,11 @@ public sealed partial class ServerManagement(
                     return new ServerVariableView(TemplateCatalog.Variable(definition), definition.Secret ? null : stored?.Value, stored is not null);
                 }),
             ],
-            server.ExtraArguments, manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.AllowExtraArguments == true, server.AutoStart,
+            server.ExtraArguments, manifest.FirstRuntime?.AllowExtraArguments == true, server.AutoStart,
             server.RestartOnCrash, HasRcon(manifest), server.RconPasswordProtected is not null);
     }
 
-    private static bool HasRcon(GameManifest manifest) => manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.Rcon is not null;
+    private static bool HasRcon(GameManifest manifest) => manifest.FirstRuntime?.Console.Rcon is not null;
 
     /// <summary>
     /// Chooses the server's RCON password (1.0.29), or goes back to one its agent makes (null): for programs other than
@@ -1220,7 +1230,7 @@ public sealed partial class ServerManagement(
         {
             var allocations = await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)
                 .ToListAsync(cancellationToken);
-            if (specs.Check(server, manifest, allocations, password) is { IsSuccess: false } unreadable)
+            if (await specs.CheckAsync(server, manifest, allocations, password, cancellationToken: cancellationToken) is { IsSuccess: false } unreadable)
             {
                 return unreadable.Error!;
             }

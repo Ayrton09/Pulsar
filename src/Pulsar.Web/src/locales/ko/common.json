@@ -678,6 +678,8 @@
       "host_not_ended": "서버의 게임이 에이전트가 종료하거나 확인할 수 없는 호스트 프로세스에서 아직 실행 중입니다. 잠시 후 다시 시도하세요. 동시에 두 번째로 시작되지는 않습니다.",
       "extra_arguments_invalid": "추가 인수는 한 줄, 최대 512자이며 최대 32개까지 입력할 수 있습니다.",
       "extra_arguments_not_allowed": "이 게임은 추가 인수를 허용하지 않습니다.",
+      "platform_unsupported": "이 게임은 이 노드의 운영 체제에서 실행되지 않습니다.",
+      "other_platform": "서버는 같은 운영 체제(Windows 또는 Linux)의 노드로만 이동하거나 복사할 수 있습니다.",
       "update_unsupported": "이 게임은 업데이트할 수 없습니다.",
       "no_free_allocation": "노드에 게임 포트 중 하나에 사용할 수 있는 여유 할당이 없습니다. 노드에 할당을 추가하세요.",
       "allocation_unavailable": "해당 할당은 서버의 노드에서 사용할 수 없습니다.",
@@ -1096,7 +1098,7 @@
       "awaiting": "승인 대기 중"
     },
     "hostname": "호스트 이름",
-    "os": "Windows",
+    "os": "운영 체제",
     "cpu": "CPU",
     "cores_one": "논리 코어 {{count}}개",
     "cores_other": "논리 코어 {{count}}개",
@@ -1157,7 +1159,8 @@
       "reason": "사유 (선택 사항)",
       "storage": {
         "tpm": "TPM에 보관됨",
-        "software": "Windows에서 보관 (소프트웨어)"
+        "software": "Windows에서 보관 (소프트웨어)",
+        "file": "root만 읽을 수 있는 파일에 보관 (Linux)"
       },
       "states": {
         "active": "활성",

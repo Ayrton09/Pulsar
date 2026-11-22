@@ -678,6 +678,8 @@
       "host_not_ended": "Le jeu du serveur tourne encore dans un processus hôte que l'agent n'a pas pu terminer ou vérifier. Réessayez dans un instant ; il n'est jamais lancé une seconde fois à côté.",
       "extra_arguments_invalid": "Les arguments supplémentaires tiennent chacun sur une seule ligne de 512 caractères au plus (32 au maximum).",
       "extra_arguments_not_allowed": "Ce jeu n'accepte pas d'arguments supplémentaires.",
+      "platform_unsupported": "Ce jeu ne fonctionne pas sur le système d'exploitation de ce nœud.",
+      "other_platform": "Un serveur ne peut être déplacé ou copié que vers un nœud ayant le même système d'exploitation (Windows ou Linux).",
       "update_unsupported": "Ce jeu ne peut pas être mis à jour.",
       "no_free_allocation": "Le nœud n'a aucune allocation libre pour l'un des ports du jeu. Ajoutez des allocations au nœud.",
       "allocation_unavailable": "Cette allocation n'est pas libre sur le nœud du serveur.",
@@ -1096,7 +1098,7 @@
       "awaiting": "En attente d'approbation"
     },
     "hostname": "Nom d'hôte",
-    "os": "Windows",
+    "os": "Système d'exploitation",
     "cpu": "CPU",
     "cores_one": "{{count}} cœur logique",
     "cores_other": "{{count}} cœurs logiques",
@@ -1157,7 +1159,8 @@
       "reason": "Motif (facultatif)",
       "storage": {
         "tpm": "Conservée dans le TPM",
-        "software": "Conservée par Windows (logiciel)"
+        "software": "Conservée par Windows (logiciel)",
+        "file": "Conservée dans un fichier que seul root peut lire (Linux)"
       },
       "states": {
         "active": "Actif",

@@ -22,7 +22,26 @@ internal static class TestManifests
         return result.Errors;
     }
 
-    public static string Change(string game, Action<JsonObject> change)
+    /// <summary>All the errors of a manifest, none for a valid one.</summary>
+    public static IReadOnlyList<ManifestError> ErrorsOrNone(string json) => ManifestParser.Parse(Encoding.UTF8.GetBytes(json)).Errors;
+
+    /// <summary>
+    /// The game's manifest, changed. The test game is its Windows one alone, as before the Linux agent: what these tests
+    /// change of its runtime need not be changed in its Linux one too (<see cref="ChangeWithLinux"/> keeps both).
+    /// </summary>
+    public static string Change(string game, Action<JsonObject> change) => ChangeWithLinux(game, manifest =>
+    {
+        if (game == "_test")
+        {
+            manifest["platforms"] = new JsonArray("windows-x64");
+            manifest["runtime"]!.AsObject().Remove("linux-x64");
+        }
+
+        change(manifest);
+    });
+
+    /// <summary>The game's manifest as it is in the repository, changed.</summary>
+    public static string ChangeWithLinux(string game, Action<JsonObject> change)
     {
         var manifest = JsonNode.Parse(File.ReadAllText(PathOf(game)))!.AsObject();
         change(manifest);

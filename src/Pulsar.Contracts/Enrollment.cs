@@ -7,6 +7,10 @@ public sealed record PanelKey(string KeyId, byte[] PublicKey);
 public sealed record PanelIdentityResponse(IReadOnlyList<PanelKey> Keys);
 
 /// <summary>What the node reports about itself (enrollment and every Hello).</summary>
+/// <param name="Platform">
+/// The platform its games run for, as manifests name them: <c>windows-x64</c> or <c>linux-x64</c> (Pulsar's Linux agent).
+/// Agents before it send none: they are Windows ones.
+/// </param>
 public sealed record NodeInventory(
     string Hostname,
     string OsDescription,
@@ -14,7 +18,8 @@ public sealed record NodeInventory(
     string? CpuModel,
     int LogicalCores,
     long MemoryTotalBytes,
-    string? ServersRoot);
+    string? ServersRoot,
+    string? Platform = null);
 
 /// <summary>
 /// <c>POST /agent/v1/enroll</c>. <see cref="Proof"/> signs

@@ -53,6 +53,7 @@ const online: Schemas['NodeSummary'] = {
   credentialFingerprint: 'sha256:node-key-fingerprint',
   connectedWithCertificate: false,
   agentCanUseCertificate: true,
+  platform: 'windows-x64',
 };
 const offline = { ...online, id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false };
 const pending: Schemas['NodeSummary'] = {

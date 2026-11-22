@@ -35,6 +35,7 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
             inventory.Property(i => i.ServersRoot).HasColumnName("servers_root").HasMaxLength(1024);
             inventory.Property(i => i.AgentVersion).HasColumnName("agent_version").HasMaxLength(32);
             inventory.Property(i => i.ProtocolVersion).HasColumnName("protocol_version");
+            inventory.Property(i => i.Platform).HasColumnName("platform").HasMaxLength(NodePlatforms.MaxLength);
         });
     }
 }

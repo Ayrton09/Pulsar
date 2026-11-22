@@ -678,6 +678,8 @@
       "host_not_ended": "Il gioco del server è ancora in esecuzione in un processo host che l'agent non ha potuto terminare né verificare. Riprovare tra un momento; non viene mai avviato una seconda volta accanto al primo.",
       "extra_arguments_invalid": "Gli argomenti aggiuntivi sono righe singole di massimo 512 caratteri (al massimo 32).",
       "extra_arguments_not_allowed": "Questo gioco non consente argomenti aggiuntivi.",
+      "platform_unsupported": "Questo gioco non funziona sul sistema operativo di questo nodo.",
+      "other_platform": "Un server può essere spostato o copiato solo su un nodo con lo stesso sistema operativo (Windows o Linux).",
       "update_unsupported": "Questo gioco non può essere aggiornato.",
       "no_free_allocation": "Il nodo non ha un'allocazione libera per una delle porte del gioco. Aggiungere allocazioni al nodo.",
       "allocation_unavailable": "Questa allocazione non è libera sul nodo del server.",
@@ -1096,7 +1098,7 @@
       "awaiting": "In attesa di approvazione"
     },
     "hostname": "Nome host",
-    "os": "Windows",
+    "os": "Sistema operativo",
     "cpu": "CPU",
     "cores_one": "{{count}} core logico",
     "cores_other": "{{count}} core logici",
@@ -1157,7 +1159,8 @@
       "reason": "Motivo (facoltativo)",
       "storage": {
         "tpm": "Conservata nel TPM",
-        "software": "Conservata da Windows (software)"
+        "software": "Conservata da Windows (software)",
+        "file": "Conservata in un file che solo root può leggere (Linux)"
       },
       "states": {
         "active": "Attiva",

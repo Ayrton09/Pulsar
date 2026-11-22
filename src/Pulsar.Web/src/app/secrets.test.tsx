@@ -171,6 +171,7 @@ describe('one-time secrets', () => {
       credentialFingerprint: null,
       connectedWithCertificate: null,
       agentCanUseCertificate: null,
+      platform: 'windows-x64',
     };
     fakeApi({
       'GET /api/v1/auth/session': session({

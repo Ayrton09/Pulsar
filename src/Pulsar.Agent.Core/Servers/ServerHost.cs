@@ -48,6 +48,12 @@ public sealed class ServerHostOptions
     /// read the files live, as before Phase 15, and say so.
     /// </summary>
     public bool BackupSnapshots { get; set; } = true;
+
+    /// <summary>
+    /// The platform whose runtime of a manifest this agent starts (<c>windows-x64</c>; <c>linux-x64</c> for the Linux agent).
+    /// The same as its inventory reports to the panel.
+    /// </summary>
+    public string Platform { get; set; } = ManifestValidator.WindowsX64;
 }
 
 /// <summary>
@@ -106,7 +112,6 @@ public sealed partial class ServerHost(
 
     private static readonly IVolumeSnapshots s_noSnapshots = new NoVolumeSnapshots();
 
-    private const string Platform = ManifestValidator.WindowsX64;
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<ServerHost>();
     private readonly ConcurrentDictionary<Guid, Server> _servers = new();
@@ -829,7 +834,7 @@ public sealed partial class ServerHost(
         {
             manifest = Parse(spec);
             // With the chosen RCON password, if any (a stand-in otherwise): refused here, before the record is saved.
-            if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, spec.RconPassword)) is { } error)
+            if (LaunchPlanRenderer.Check(manifest, options.Platform, Binding(spec, spec.RconPassword)) is { } error)
             {
                 return Rejected(envelope, "server.invalid_spec", error);
             }
@@ -862,7 +867,7 @@ public sealed partial class ServerHost(
         // The RCON password chosen for the server, or a new one at every provisioning (a reinstall rotates it), generated
         // here. So the server must be stopped, as for an install: a running game (or one taken over after the agent
         // restarts) keeps the password it was started with.
-        var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : spec.RconPassword ?? NewRconPassword();
+        var rconPassword = manifest.Runtime.GetValueOrDefault(options.Platform)?.Console.Rcon is null ? null : spec.RconPassword ?? NewRconPassword();
         const string stopFirst = "Stop the server before provisioning it again.";
         if (_servers.TryGetValue(command.ServerId, out var current) && current.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
@@ -2163,7 +2168,7 @@ public sealed partial class ServerHost(
             throw new LaunchPlanException("The server's Steam branch is not a branch name.");
         }
 
-        var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
+        var plan = LaunchPlanRenderer.Render(Parse(spec), options.Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
         return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash,
             ProcessLimits.From(spec.Limits));
     }

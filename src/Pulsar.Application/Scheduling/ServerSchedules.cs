@@ -444,7 +444,7 @@ public sealed class ServerSchedules(
         }
 
         var manifest = await ManifestAsync(server, cancellationToken);
-        var prefixes = manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.SensitiveCommandPrefixes ?? [];
+        var prefixes = manifest.FirstRuntime?.Console.SensitiveCommandPrefixes ?? [];
         foreach (var command in commands)
         {
             // A command that sets a secret would be kept in clear and shown to whoever sees the schedule.

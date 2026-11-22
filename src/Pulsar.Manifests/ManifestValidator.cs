@@ -9,6 +9,9 @@ public static partial class ManifestValidator
 {
     public const string WindowsX64 = "windows-x64";
 
+    /// <summary>Linux on x86_64 with systemd (Pulsar's Linux agent).</summary>
+    public const string LinuxX64 = "linux-x64";
+
     /// <summary>Manifest key of Pulsar's own test game (<c>games/_test</c>); the only one allowed the test server step.</summary>
     public const string TestGameKey = "pulsar-test";
 
@@ -17,18 +20,32 @@ public static partial class ManifestValidator
 
     internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
 
-    private static readonly string[] s_platforms = [WindowsX64];
+    private static readonly string[] s_platforms = [WindowsX64, LinuxX64];
     private static readonly string[] s_newlines = ["\n", "\r\n", "\r"];
     private static readonly HashSet<string> s_noPorts = [];
 
     // Set by the agent itself (docs/architecture/04, "Environment").
+    // Windows' and Linux' alike: a manifest for both platforms names none of either.
     private static readonly HashSet<string> s_reservedEnvironment = new(StringComparer.OrdinalIgnoreCase)
     {
         "PATH", "PATHEXT", "ComSpec", "SystemRoot", "windir", "PSModulePath", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+        "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR",
     };
 
-    // The .NET runtime's own settings (DOTNET_STARTUP_HOOKS, COR_PROFILER_PATH…) can load any DLL into the game's process.
-    private static readonly string[] s_codeLoadingEnvironment = ["DOTNET_", "COR_", "CORECLR_"];
+    // The .NET runtime's own settings (DOTNET_STARTUP_HOOKS, COR_PROFILER_PATH…) can load any DLL into the game's process,
+    // and Linux' dynamic loader takes LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH from anywhere. (XDG_ folders are the agent's.)
+    private static readonly string[] s_codeLoadingEnvironment = ["DOTNET_", "COR_", "CORECLR_", "LD_", "XDG_", "MONO_", "PYTHON", "PERL5", "GLIBC_"];
+
+    // Other runtimes' and the C library's ways to load code or a library chosen by name: Java's agents, Node's
+    // preloads, glibc's character conversion and locale modules, a shell's startup file.
+    private static readonly HashSet<string> s_codeLoadingNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "NODE_OPTIONS", "NODE_PATH", "GCONV_PATH", "LOCPATH", "NLSPATH",
+        "BASH_ENV", "ENV",
+    };
+
+    // Files Linux would start through an interpreter or another program: the agent starts only ELF programs there.
+    private static readonly string[] s_linuxNonPrograms = [".sh", ".bash", ".py", ".pl", ".rb", ".js", ".exe", ".bat", ".cmd", ".ps1", ".jar", ".dll"];
 
     /// <summary>Where a template is used: what it may reference depends on it.</summary>
     private enum TemplateUse
@@ -106,7 +123,8 @@ public static partial class ManifestValidator
             ValidateSteps("update", manifest, update, context);
         }
 
-        RuntimeDefinition? runtime = null;
+        // Each platform's runtime on its own: whether its arguments give the game the RCON password is its own too.
+        var runtimes = new List<(string Platform, RuntimeDefinition Runtime, bool ArgumentsUseRconPassword)>();
         foreach (var platform in manifest.Platforms)
         {
             if (!manifest.Runtime.TryGetValue(platform, out var platformRuntime))
@@ -115,15 +133,25 @@ public static partial class ManifestValidator
                 continue;
             }
 
-            runtime = platformRuntime;
-            ValidateRuntime($"runtime.{platform}", platformRuntime, context);
+            context.UsesRconPassword = false;
+            ValidateRuntime($"runtime.{platform}", platform, platformRuntime, context);
+            runtimes.Add((platform, platformRuntime, context.UsesRconPassword));
         }
 
-        context.HasRcon = runtime?.Console.Rcon is not null;
+        ValidateSamePanelFacts(manifest, Error);
+
+        context.HasRcon = runtimes.Any(r => r.Runtime.Console.Rcon is not null);
+        context.UsesRconPassword = false;
         ValidateConfigFiles(manifest.ConfigFileList, context);
-        if (context.HasRcon && !context.UsesRconPassword)
+        var configFilesUseRconPassword = context.UsesRconPassword;
+        foreach (var (platform, platformRuntime, argumentsUseRconPassword) in runtimes)
         {
-            Error("runtime", "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file.");
+            if (platformRuntime.Console.Rcon is not null && !argumentsUseRconPassword && !configFilesUseRconPassword)
+            {
+                Error("runtime", runtimes.Count == 1
+                    ? "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file."
+                    : $"The game must receive the RCON password on {platform}: use {{{{rcon.password}}}} in its arguments or a configuration file.");
+            }
         }
 
         if (manifest.Query is { } query)
@@ -131,8 +159,18 @@ public static partial class ManifestValidator
             ValidateQuery(query, ports, Error);
         }
 
-        ValidateReadiness(manifest.Readiness, runtime?.Console, manifest.Query, Error);
-        ValidateStop(manifest.Stop, runtime?.Console, Error);
+        // Readiness and stop steps must suit the console of every platform the game runs on.
+        foreach (var console in runtimes.Select(r => r.Runtime.Console).Distinct())
+        {
+            ValidateReadiness(manifest.Readiness, console, manifest.Query, Error);
+            ValidateStop(manifest.Stop, console, Error);
+        }
+
+        if (runtimes.Count == 0)
+        {
+            ValidateReadiness(manifest.Readiness, null, manifest.Query, Error);
+            ValidateStop(manifest.Stop, null, Error);
+        }
         if (manifest.Backup is { } backup)
         {
             ValidateGlobs("backup.include", backup.Include ?? [], Error);
@@ -190,9 +228,9 @@ public static partial class ManifestValidator
             {
                 error(path, "Reserved or invalid environment variable name.");
             }
-            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            else if (LoadsCode(name))
             {
-                error(path, "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+                error(path, "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
             }
             else if (runtimeNames.Contains(name))
             {
@@ -874,6 +912,11 @@ public static partial class ManifestValidator
         for (var i = 0; i < definition.Steps.Count; i++)
         {
             var path = $"{section}.steps[{i}]";
+            if (manifest.Platforms.Contains(LinuxX64) && !RunsOnLinux(definition.Steps[i]))
+            {
+                context.Error(path, "This step does not run on linux-x64 yet.");
+            }
+
             switch (definition.Steps[i])
             {
                 case SteamCmdStep steam:
@@ -996,6 +1039,14 @@ public static partial class ManifestValidator
         }
     }
 
+    /// <summary>An environment name that makes a runtime or the system's loader load code (refused on every platform).</summary>
+    private static bool LoadsCode(string name) =>
+        s_codeLoadingNames.Contains(name) || s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The steps the Linux agent carries out (the others download Windows programs).</summary>
+    private static bool RunsOnLinux(InstallStep step) => step is EnsureDirectoryStep or WriteFileIfMissingStep or CopyFileIfMissingStep
+        or TestGameServerStep or SteamCmdStep { SteamClient: null };
+
     /// <summary>
     /// The game's log: a relative path whose file name may hold one <c>*</c> (Pulsar 1.0.12), for a game that names its
     /// log by its start (Space Engineers' <c>SpaceEngineersDedicated_*.log</c>): the agent follows the newest file it matches.
@@ -1111,12 +1162,60 @@ public static partial class ManifestValidator
         context.Variables.TryGetValue(key, out var version) && !version.Secret
         && (version.Type == VariableType.Enum || (version.Type == VariableType.String && version.Pattern is not null));
 
-    private static void ValidateRuntime(string path, RuntimeDefinition runtime, Context context)
+    /// <summary>
+    /// What the panel reads of a runtime is the same on every platform: whether extra arguments are allowed, the RCON and the
+    /// commands kept out of the logs. The panel then reads it from <see cref="GameManifest.FirstRuntime"/>, whatever the node.
+    /// </summary>
+    private static void ValidateSamePanelFacts(GameManifest manifest, Action<string, string> error)
+    {
+        var runtimes = manifest.Platforms.Where(manifest.Runtime.ContainsKey).Select(p => (Platform: p, Runtime: manifest.Runtime[p])).ToList();
+        if (runtimes.Count < 2)
+        {
+            return;
+        }
+
+        var first = runtimes[0].Runtime;
+        foreach (var (platform, runtime) in runtimes.Skip(1))
+        {
+            if (runtime.AllowExtraArguments != first.AllowExtraArguments)
+            {
+                error($"runtime.{platform}.allowExtraArguments", "The same on every platform.");
+            }
+
+            if (runtime.Console.Rcon != first.Console.Rcon)
+            {
+                error($"runtime.{platform}.console.rcon", "The same on every platform.");
+            }
+
+            if (!(runtime.Console.SensitiveCommandPrefixes ?? []).Order(StringComparer.Ordinal)
+                    .SequenceEqual((first.Console.SensitiveCommandPrefixes ?? []).Order(StringComparer.Ordinal), StringComparer.Ordinal))
+            {
+                error($"runtime.{platform}.console.sensitiveCommandPrefixes", "The same on every platform.");
+            }
+        }
+    }
+
+    private static void ValidateRuntime(string path, string platform, RuntimeDefinition runtime, Context context)
     {
         ValidateRelativePath($"{path}.executable", runtime.Executable, context.Error);
-        if (IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        if (platform == WindowsX64 && IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             context.Error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
+        }
+        else if (platform == LinuxX64 && s_linuxNonPrograms.Any(e => runtime.Executable.EndsWith(e, StringComparison.OrdinalIgnoreCase)))
+        {
+            // The agent checks again, on the file itself, that it is an ELF program.
+            context.Error($"{path}.executable", "Only programs can be started (no scripts, installers or interpreters).");
+        }
+
+        if (platform == LinuxX64 && runtime.Console.Mode == ManifestConsoleMode.Pty)
+        {
+            context.Error($"{path}.console.mode", "Linux runs games with 'pipes' or 'logfile+rcon'.");
+        }
+
+        if (platform == LinuxX64 && runtime.Console.Encoding != ManifestConsoleEncoding.Utf8)
+        {
+            context.Error($"{path}.console.encoding", "Linux consoles are UTF-8.");
         }
 
         if (runtime.WorkingDirectory is { } workingDirectory)
@@ -1144,9 +1243,9 @@ public static partial class ManifestValidator
             {
                 context.Error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
             }
-            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            else if (LoadsCode(name))
             {
-                context.Error($"{path}.environment.{name}", "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+                context.Error($"{path}.environment.{name}", "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
             }
 
             ValidateTemplate($"{path}.environment.{name}", value, context, TemplateUse.Environment, guardedPorts: s_noPorts);

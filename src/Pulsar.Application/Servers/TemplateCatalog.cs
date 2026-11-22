@@ -28,7 +28,9 @@ public interface IBundledTemplates
     Task RegisterBundledAsync(CancellationToken cancellationToken);
 }
 
-public sealed record TemplateView(Guid Id, string Key, string Version, string Name, string? Description, bool IsTestGame, TemplateSource Source);
+/// <param name="Platforms">The nodes its servers may be on: <c>windows-x64</c>, <c>linux-x64</c>.</param>
+public sealed record TemplateView(Guid Id, string Key, string Version, string Name, string? Description, bool IsTestGame, TemplateSource Source,
+    IReadOnlyList<string> Platforms);
 
 public sealed record TemplateOption(string Value, string Label);
 
@@ -123,7 +125,7 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
         var exists = versions.Any(t => t.Version == manifest.Version);
         var previous = versions.Where(t => t.Version != manifest.Version).MaxBy(t => t.CreatedAt);
         var preview = GameTemplate.Create(manifest.Key, manifest.Version, manifest.SchemaVersion, manifest.Name, manifest.Description,
-            TemplateSource.Imported, content, result.Sha256, clock.GetUtcNow());
+            TemplateSource.Imported, content, result.Sha256, clock.GetUtcNow(), manifest.Platforms);
         return new TemplateImportPreview(true, [], Details(preview, manifest), exists, previous?.Version,
             previous is null ? [] : ChangedSections(previous.Content, content));
     }
@@ -151,14 +153,15 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
         }
 
         var template = GameTemplate.Create(manifest.Key, manifest.Version, manifest.SchemaVersion, manifest.Name, manifest.Description,
-            TemplateSource.Imported, content, result.Sha256, clock.GetUtcNow());
+            TemplateSource.Imported, content, result.Sha256, clock.GetUtcNow(), manifest.Platforms);
         db.GameTemplates.Add(template);
         audit.Record(AuditActions.Template.Imported, metadata: new
         {
             manifest.Key,
             manifest.Version,
             sha256 = Convert.ToHexStringLower(result.Sha256),
-            executable = manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Executable,
+            executable = manifest.FirstRuntime?.Executable,
+            platforms = manifest.Platforms,
         });
         try
         {
@@ -222,7 +225,7 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
             }
 
             db.GameTemplates.Add(GameTemplate.Create(manifest.Key, manifest.Version, manifest.SchemaVersion, manifest.Name, manifest.Description,
-                TemplateSource.Bundled, Encoding.UTF8.GetString(bytes), result.Sha256, clock.GetUtcNow()));
+                TemplateSource.Bundled, Encoding.UTF8.GetString(bytes), result.Sha256, clock.GetUtcNow(), manifest.Platforms));
             added++;
         }
 
@@ -239,11 +242,11 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
     public bool Offers(string key) => key != ManifestValidator.TestGameKey || options.EnableTestGame;
 
     internal static TemplateView View(GameTemplate t) =>
-        new(t.Id.Value, t.Key, t.Version, t.Name, t.Description, t.Key == ManifestValidator.TestGameKey, t.Source);
+        new(t.Id.Value, t.Key, t.Version, t.Name, t.Description, t.Key == ManifestValidator.TestGameKey, t.Source, t.Platforms);
 
     internal static TemplateDetails Details(GameTemplate template, GameManifest manifest)
     {
-        var runtime = manifest.Runtime[ManifestValidator.WindowsX64];
+        var runtime = manifest.FirstRuntime!;
         var steps = (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []);
         return new TemplateDetails(View(template), manifest.Requirements?.MinDiskGb, manifest.Requirements?.MinMemoryMb,
             [.. manifest.VariableList.Select(Variable)],

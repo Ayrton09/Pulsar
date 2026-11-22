@@ -25,6 +25,7 @@ internal sealed class GameTemplateConfiguration : IEntityTypeConfiguration<GameT
         builder.Property(t => t.Source).HasConversion<SnakeCaseEnumConverter<TemplateSource>>();
         // Text, not jsonb: jsonb would not keep the exact bytes the hash identifies (docs/architecture/02).
         builder.Property(t => t.Content).HasColumnType("text");
+        builder.PrimitiveCollection(t => t.Platforms);
         builder.HasIndex(t => new { t.Key, t.Version }).IsUnique();
     }
 }

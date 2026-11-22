@@ -25,11 +25,13 @@ public sealed class GameTemplate
         Name = null!;
         Content = null!;
         ContentSha256 = null!;
+        Platforms = null!;
     }
 
     private GameTemplate(TemplateId id, string key, string version, int schemaVersion, string name, string? description, TemplateSource source,
-        string content, byte[] contentSha256, DateTimeOffset now)
+        string content, byte[] contentSha256, DateTimeOffset now, string[] platforms)
     {
+        Platforms = platforms;
         Id = id;
         Key = key;
         Version = version;
@@ -63,15 +65,23 @@ public sealed class GameTemplate
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>The manifest's platforms (<see cref="Nodes.NodePlatforms"/>): the nodes its servers may be on.</summary>
+    public IReadOnlyList<string> Platforms { get; private set; }
+
+    /// <summary>Whether its servers may be on a node of <paramref name="platform"/>.</summary>
+    public bool RunsOn(string platform) => Platforms.Contains(platform);
+
     /// <summary>A template from an already validated manifest.</summary>
+    /// <param name="platforms">The manifest's platforms; Windows alone when not given.</param>
     public static GameTemplate Create(string key, string version, int schemaVersion, string name, string? description, TemplateSource source,
-        string content, byte[] contentSha256, DateTimeOffset now)
+        string content, byte[] contentSha256, DateTimeOffset now, IReadOnlyList<string>? platforms = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
         ArgumentException.ThrowIfNullOrWhiteSpace(content);
         ArgumentNullException.ThrowIfNull(contentSha256);
-        return new GameTemplate(TemplateId.New(), key, version, schemaVersion, name, description, source, content, contentSha256, now);
+        string[] chosen = platforms is { Count: > 0 } ? [.. platforms] : [Nodes.NodePlatforms.Windows];
+        return new GameTemplate(TemplateId.New(), key, version, schemaVersion, name, description, source, content, contentSha256, now, chosen);
     }
 
     /// <summary>

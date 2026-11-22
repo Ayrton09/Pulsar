@@ -23,7 +23,8 @@ public sealed class WindowsNodeSystem(TimeProvider clock) : INodeSystem
             ? cpu.Trim() : null,
         Environment.ProcessorCount,
         (long)Memory().ullTotalPhys,
-        serversRoot);
+        serversRoot,
+        Pulsar.Manifests.ManifestValidator.WindowsX64);
 
     public NodeMetrics SampleMetrics()
     {

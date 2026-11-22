@@ -19,6 +19,8 @@ public enum NodeKeyStorage
     Tpm,
     /// <summary>Non-exportable key in the software key storage provider.</summary>
     Software,
+    /// <summary>A key file only root can read (Pulsar's Linux agent).</summary>
+    File,
 }
 
 /// <summary>

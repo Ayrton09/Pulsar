@@ -42,6 +42,7 @@ const template: Schemas['TemplateView'] = {
   name: 'Counter-Strike: Source',
   description: null,
   isTestGame: false,
+  platforms: ['windows-x64'],
   source: 'bundled',
 };
 
@@ -213,12 +214,51 @@ afterEach(() => {
 });
 
 describe('creating a game server', () => {
+  it('offers a Linux node only the games that run there, and a Windows game only the nodes it runs on', async () => {
+    const linuxNode = '0192f1a0-0000-7000-8000-0000000000a7';
+    const linuxGame: Schemas['TemplateView'] = {
+      ...template,
+      id: '0192f1a0-0000-7000-8000-0000000000f7',
+      key: 'pulsar-test',
+      name: 'Pulsar test server',
+      platforms: ['windows-x64', 'linux-x64'],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () =>
+        json([
+          { id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' },
+          { id: linuxNode, name: 'Ubuntu 1', connected: true, status: 'active', platform: 'linux-x64' },
+        ]),
+      'GET /api/v1/templates': () => json([template, linuxGame]),
+      [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      [`GET /api/v1/nodes/${linuxNode}/allocations`]: () => json([]),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    const options = (label: string) =>
+      within(screen.getByLabelText(label))
+        .getAllByRole('option')
+        .map((option) => option.textContent);
+    await user.selectOptions(screen.getByLabelText('Node'), 'Ubuntu 1');
+    expect(options('Game')).toEqual(['Choose a game…', 'Pulsar test server']);
+
+    await user.selectOptions(screen.getByLabelText('Node'), '');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
+    expect(options('Node')).toEqual(['Choose a node…', 'Buenos Aires 1']);
+  });
+
   it('asks for the ports alone when the game needs nothing else, checking them before sending', async () => {
     let body: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
@@ -287,7 +327,8 @@ describe('creating a game server', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () =>
         json({
@@ -338,7 +379,8 @@ describe('creating a game server', () => {
     fakeApi({
       'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view', 'server.create'] }),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
@@ -435,7 +477,8 @@ describe('the list of games', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template, newer, other, namesake]),
     });
     renderAt('/servers');
@@ -463,7 +506,8 @@ describe('a required choice', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () => json({ ...templateDetails, variables: [eula] }),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
@@ -508,8 +552,8 @@ describe('changing the node of a server being created', () => {
       'GET /api/v1/servers': () => json([]),
       'GET /api/v1/nodes': () =>
         json([
-          { id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
-          { id: otherNode, name: 'Córdoba 1', connected: true, status: 'active' },
+          { id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' },
+          { id: otherNode, name: 'Córdoba 1', connected: true, status: 'active', platform: 'windows-x64' },
         ]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
@@ -578,7 +622,8 @@ describe("a game's options", () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () =>
         json({ ...templateDetails, variables: [hostname, gameMode, friendlyFire, roundTime] }),
@@ -1315,7 +1360,8 @@ describe('game templates', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/templates': () => json([template]),
-      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active', platform: 'windows-x64' }]),
       [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
     });
     renderAt('/templates');

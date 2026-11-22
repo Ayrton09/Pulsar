@@ -107,6 +107,17 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
 - `key` (`^[a-z0-9][a-z0-9-]{1,63}$`) + `version` (semver, ASCII digits only) identify an immutable template. `pulsar-test` is reserved for Pulsar's test game.
 - `requirements` (`minDiskGb`, `minMemoryMb`) are shown when creating a server, not enforced.
 
+### Platforms (Linux agent)
+
+`platforms` names where the game runs: `windows-x64`, and `linux-x64` for Pulsar's Linux agent (x86_64 with systemd). `runtime` has one entry for each, and only for those. A node reports its platform (agents before the Linux one report none and are Windows ones), and the panel offers a template only on nodes of its platforms: a server is created, its template changed or its game changed only where its game runs (`server.platform_unsupported`), and it moves or is copied only to a node of its own node's platform (`server.other_platform`): its files, the game's programs among them, are made for it. Each agent renders the runtime of its own platform.
+
+What the panel reads of a runtime is the same in all of them, and the validator refuses a manifest where it is not: `allowExtraArguments`, the console's `rcon` and its `sensitiveCommandPrefixes` (in any order). Everything else may differ: the executable, its arguments, the environment, the console's mode.
+
+`linux-x64` has rules of its own:
+- The executable is a program (ELF, which the agent checks on the file when it starts it), without an extension that makes Linux start it through an interpreter or another program: `.sh`, `.bash`, `.py`, `.pl`, `.rb`, `.js`, `.jar`, and Windows' `.exe`, `.bat`, `.cmd`, `.ps1`, `.dll`. Games' own launcher scripts (`srcds_run`, `start_server.sh`) are not used: the manifest starts their program with the arguments and environment those scripts would give it.
+- The console is `pipes` or `logfile+rcon`, in UTF-8: there is no pseudo console on Linux yet.
+- Its install and update steps are those the Linux agent carries out: `steamCmd` (without `steamClient`), `ensureDirectory`, `writeFileIfMissing`, `copyFileIfMissing` and the test game's. The others download Windows programs; a manifest for both platforms cannot use them yet.
+
 ### Variables
 
 | Type | Mandatory constraints |
@@ -154,7 +165,7 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 ### Environment
 
-`environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`; and every name starting with `DOTNET_`, `COR_` or `CORECLR_` (the .NET runtime's own settings, `DOTNET_STARTUP_HOOKS` and the profiler variables among them, load any DLL into the game). A `string` variable in a value needs a `pattern`, as anywhere else. Only the agent itself sets `DOTNET_ROOT` and `DOTNET_ROOT_X64`, to the server's `dotnet` folder, for a manifest whose install has a `dotnetRuntime` step (1.0.12, below).
+`environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list, on every platform: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, and Linux' `HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`; and every name starting with `DOTNET_`, `COR_` or `CORECLR_` (the .NET runtime's own settings, `DOTNET_STARTUP_HOOKS` and the profiler variables among them, load any DLL into the game), `LD_` (Linux' dynamic loader takes `LD_PRELOAD`, `LD_AUDIT` and `LD_LIBRARY_PATH` from anywhere) or `XDG_` (the agent's). A `string` variable in a value needs a `pattern`, as anywhere else. Only the agent itself sets `DOTNET_ROOT` and `DOTNET_ROOT_X64`, to the server's `dotnet` folder, for a manifest whose install has a `dotnetRuntime` step (1.0.12, below).
 
 ### Game database (1.0.37)
 
@@ -382,7 +393,7 @@ Bundled: every command and the three lists for Minecraft (`pardon`, `whitelist`,
 
 ### Reserved for later versions
 
-Additional `healthChecks`, managed `runtime`s, `linux-x64`. (A database from the game databases module is `database`, 1.0.37, above.)
+Additional `healthChecks`, managed `runtime`s, a pseudo console on `linux-x64`. (A database from the game databases module is `database`, 1.0.37, above.)
 
 ## Validation
 

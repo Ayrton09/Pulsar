@@ -678,6 +678,8 @@
       "host_not_ended": "このサーバーのゲームは、エージェントが終了も確認もできなかったホストプロセスでまだ動作しています。しばらくしてからもう一度お試しください。並行して2つ目が起動されることはありません。",
       "extra_arguments_invalid": "追加引数は、1行512文字以内で、最大32個までです。",
       "extra_arguments_not_allowed": "このゲームでは追加引数を使用できません。",
+      "platform_unsupported": "このゲームはこのノードのOSでは動作しません。",
+      "other_platform": "サーバーは同じOS(WindowsまたはLinux)のノードにのみ移動またはコピーできます。",
       "update_unsupported": "このゲームは更新できません。",
       "no_free_allocation": "ノードに、ゲームのポート用の空き割り当てがありません。ノードに割り当てを追加してください。",
       "allocation_unavailable": "その割り当ては、サーバーのノードで空いていません。",
@@ -1096,7 +1098,7 @@
       "awaiting": "承認待ち"
     },
     "hostname": "ホスト名",
-    "os": "Windows",
+    "os": "OS",
     "cpu": "CPU",
     "cores_one": "論理コア{{count}}個",
     "cores_other": "論理コア{{count}}個",
@@ -1157,7 +1159,8 @@
       "reason": "理由(任意)",
       "storage": {
         "tpm": "TPMに保管",
-        "software": "Windowsが保管(ソフトウェア)"
+        "software": "Windowsが保管(ソフトウェア)",
+        "file": "rootだけが読めるファイルに保管(Linux)"
       },
       "states": {
         "active": "有効",

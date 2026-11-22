@@ -17,7 +17,7 @@
         "name": { "type": "string", "minLength": 1, "maxLength": 128 },
         "description": { "type": "string", "maxLength": 1024 },
         "authors": { "type": "array", "items": { "type": "string" } },
-        "platforms": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["windows-x64"] } },
+        "platforms": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["windows-x64", "linux-x64"] } },
         "requirements": { "$ref": "#/$defs/RequirementsDefinition" },
         "variables": { "type": "array", "items": { "$ref": "#/$defs/VariableDefinition" } },
         "ports": { "type": "array", "items": { "$ref": "#/$defs/PortDefinition" } },
@@ -26,7 +26,7 @@
         "runtime": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "windows-x64": { "$ref": "#/$defs/RuntimeDefinition" } }
+          "properties": { "windows-x64": { "$ref": "#/$defs/WindowsRuntimeDefinition" }, "linux-x64": { "$ref": "#/$defs/LinuxRuntimeDefinition" } }
         },
         "configFiles": { "type": "array", "items": { "$ref": "#/$defs/ConfigFileDefinition" } },
         "readiness": { "$ref": "#/$defs/ReadinessDefinition" },
@@ -356,12 +356,31 @@
         "channel": { "type": "string", "pattern": "^([5-9]|[1-9][0-9])\\.0$", "description": "The runtime's major version, as Microsoft names its channels: '9.0'." }
       }
     },
+    "WindowsRuntimeDefinition": {
+      "description": "How the game runs on Windows: an .exe file.",
+      "allOf": [
+        { "$ref": "#/$defs/RuntimeDefinition" },
+        { "properties": { "executable": { "pattern": "\\.[eE][xX][eE]$" } } }
+      ]
+    },
+    "LinuxRuntimeDefinition": {
+      "description": "How the game runs on Linux (Pulsar's Linux agent): an ELF program (no script), its console through pipes or a log file and RCON, in UTF-8.",
+      "allOf": [
+        { "$ref": "#/$defs/RuntimeDefinition" },
+        {
+          "properties": {
+            "executable": { "not": { "pattern": "\\.([sS][hH]|[bB][aA][sS][hH]|[pP][yY]|[pP][lL]|[rR][bB]|[jJ][sS]|[eE][xX][eE]|[bB][aA][tT]|[cC][mM][dD]|[pP][sS]1|[jJ][aA][rR]|[dD][lL][lL])$" } },
+            "console": { "properties": { "mode": { "enum": ["pipes", "logfile+rcon"] }, "encoding": { "const": "utf-8" } } }
+          }
+        }
+      ]
+    },
     "RuntimeDefinition": {
       "type": "object",
       "additionalProperties": false,
       "required": ["executable", "console"],
       "properties": {
-        "executable": { "$ref": "#/$defs/RelativePath", "pattern": "\\.[eE][xX][eE]$" },
+        "executable": { "$ref": "#/$defs/RelativePath" },
         "workingDirectory": { "$ref": "#/$defs/RelativePath" },
         "userProfile": { "$ref": "#/$defs/RelativePath", "description": "A folder of the server the game takes for its user's: USERPROFILE, APPDATA and LOCALAPPDATA point there, so what it keeps in its account's AppData is in the server's folder (Pulsar 1.0.12)." },
         "arguments": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ArgumentTemplate" } },

@@ -678,6 +678,8 @@
       "host_not_ended": "该服务器的游戏仍在某个宿主进程中运行，代理无法结束或检查它。请稍后重试；绝不会在其旁边再次启动。",
       "extra_arguments_invalid": "额外参数为单行内容，每个最多 512 个字符（最多 32 个）。",
       "extra_arguments_not_allowed": "此游戏不允许使用额外参数。",
+      "platform_unsupported": "此游戏无法在该节点的操作系统上运行。",
+      "other_platform": "服务器只能移动或复制到操作系统相同（Windows 或 Linux）的节点。",
       "update_unsupported": "此游戏无法更新。",
       "no_free_allocation": "该节点没有可用于此游戏某个端口的空闲端口分配。请为节点添加端口分配。",
       "allocation_unavailable": "该端口分配在服务器所在节点上不可用。",
@@ -1096,7 +1098,7 @@
       "awaiting": "等待批准"
     },
     "hostname": "主机名",
-    "os": "Windows",
+    "os": "操作系统",
     "cpu": "CPU",
     "cores_one": "{{count}} 个逻辑核心",
     "cores_other": "{{count}} 个逻辑核心",
@@ -1157,7 +1159,8 @@
       "reason": "原因（可选）",
       "storage": {
         "tpm": "保存在 TPM 中",
-        "software": "由 Windows 保存（软件）"
+        "software": "由 Windows 保存（软件）",
+        "file": "保存在只有 root 可读的文件中（Linux）"
       },
       "states": {
         "active": "有效",

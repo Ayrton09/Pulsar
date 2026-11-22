@@ -58,6 +58,12 @@ public sealed partial class ServerManagement
             return ServerErrors.SameNode;
         }
 
+        // Its files (the game's programs among them) are made for its node's platform.
+        if (await specs.PlatformOfAsync(nodeId, cancellationToken) != await specs.PlatformOfAsync(server.NodeId, cancellationToken))
+        {
+            return ServerErrors.OtherPlatform;
+        }
+
         if (server.InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
