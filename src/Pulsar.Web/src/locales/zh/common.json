@@ -1144,6 +1144,9 @@
       "address": "面板地址",
       "code": "节点代码",
       "setupTrust": "代理只接受代码中指明的面板证书，并将其固定：无需手动复制任何内容，也不会更改机器的证书存储。若反向代理标明了其转发的内容（Forwarded、X-Forwarded-* 或 Via 标头），代码将不指明任何证书：此时机器必须已信任该代理的证书。若代理在转发时不作说明，则提供的证书与代码中的不同，安装程序会拒绝继续。",
+      "linuxTitle": "在 Linux 上安装",
+      "linuxSteps": "在 Linux 机器（带 systemd 的 x86_64：Debian 12、Ubuntu 24.04 或更高版本）的终端中运行此命令。它会从 GitHub 下载此面板的版本，用其签名清单进行校验，将代理安装为服务，并询问节点代码。",
+      "linuxCommand": "Linux 命令",
       "advanced": "高级：使用 PowerShell 安装"
     },
     "credentials": {

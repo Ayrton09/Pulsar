@@ -17346,6 +17346,7 @@ export interface components {
             nodeCode: null | string;
             agentSetupSha256: null | string;
             agentSetupAvailable?: boolean;
+            linuxAgentCommand?: null | string;
         };
         EnrollmentTokenView: {
             /** Format: uuid */

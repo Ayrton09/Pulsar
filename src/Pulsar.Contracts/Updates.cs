@@ -40,6 +40,12 @@ public static partial class UpdateRelease
     /// <summary>The release's ZIP, which holds the programs and Install-Pulsar.ps1.</summary>
     public static string ZipName(UpdateVersion version) => $"pulsar-{version}-windows-x64.zip";
 
+    /// <summary>The release's Linux tarball, which holds the panel, the agent and their scripts in <see cref="LinuxFolder"/>.</summary>
+    public static string LinuxTarballName(UpdateVersion version) => LinuxFolder(version) + ".tar.gz";
+
+    /// <summary>The one folder at the top of the Linux tarball.</summary>
+    public static string LinuxFolder(UpdateVersion version) => $"pulsar-{version}-linux-x64";
+
     /// <summary>
     /// Hosts a download may be sent to: GitHub, then the storage it redirects release files to. Over HTTPS only, and a
     /// redirect anywhere else is refused.

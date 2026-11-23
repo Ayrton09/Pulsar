@@ -112,7 +112,8 @@ internal sealed partial class LinuxAgentPlatform : IAgentPlatform
         builder.Services.AddSystemd();
         builder.Services.AddSingleton<INodeKeyStore>(new FileNodeKeyStore(paths.KeysDirectory));
         builder.Services.AddSingleton<INodeSystem>(services => new LinuxNodeSystem(services.GetRequiredService<TimeProvider>()));
-        builder.Services.AddSingleton<IUpdatePlatform, NoLinuxUpdates>();
+        // Updates of Pulsar on this machine from the project's releases, when the panel asks (docs/guides/update.md).
+        builder.Services.AddSingleton<IUpdatePlatform>(services => new LinuxUpdatePlatform(() => isDevelopment(services)));
 
         builder.Services.AddSingleton(services => new LinuxServerAccounts(services.GetRequiredService<ILogger<LinuxServerAccounts>>()));
         UseRuntimeDirectory();
@@ -208,18 +209,6 @@ internal sealed partial class LinuxAgentPlatform : IAgentPlatform
     {
         public Task<string> GetAsync(CancellationToken cancellationToken) =>
             throw new GameProcessException("steamcmd.unavailable", "SteamCMD is not available on the Linux agent yet.");
-    }
-
-    /// <summary>Until one-click updates come to the Linux agent.</summary>
-    private sealed class NoLinuxUpdates : IUpdatePlatform
-    {
-        public (string Code, string Message)? CannotUpdate() => ("update.unsupported", "One-click updates are not available on the Linux agent yet.");
-
-        public bool HostsPanel() => false;
-
-        public string PrepareFolder(string updatesRoot, string name) => throw new NotSupportedException();
-
-        public Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt) => throw new NotSupportedException();
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No cgroups for games under {Cgroup} ({Reason}): servers' CPU and memory cannot be capped")]

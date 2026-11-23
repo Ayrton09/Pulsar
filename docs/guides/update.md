@@ -38,11 +38,12 @@ With nothing to download or carry (Phase 19): **Administration → Updates**, fo
 - **What happens on each machine.** The panel tells the node's agent only which release to install. The agent downloads
   it from GitHub itself, checks its signature against the keys it trusts, that it is newer than what runs there, and the
   ZIP's SHA-256, unpacks it in `C:\ProgramData\Pulsar\Updates` and runs its `Install-Pulsar.ps1 -Update`, with the backup,
-  checks and rollback [below](#backup-checks-and-rollback). The node's row shows each step (*Downloading*, *Installing*)
+  checks and rollback [below](#backup-checks-and-rollback). A Linux node does the same with the Linux tarball, in
+  `/var/lib/pulsar/updates`, and runs its `install-pulsar-agent.sh --update` ([install.md](install.md#linux-nodes)). The node's row shows each step (*Downloading*, *Installing*)
   and how it ended: *Updated*, *Put back* (the new version did not start, so the previous one runs again, with its data
   as it was) or *Failed*, with why.
-- **Who cannot.** A node whose agent the agent MSI maintains, or a development agent, says so and is updated as before
-  (below). A node too old for the release (its notes say from which version it updates) is updated with the setups.
+- **Who cannot.** A node whose agent the agent MSI maintains, a Linux agent not installed by `install-pulsar-agent.sh`,
+  or a development agent, says so and is updated as before (below). A node too old for the release (its notes say from which version it updates) is updated with the setups.
 - **Repository.** Installations download releases anonymously, so this works once the project's repository is public.
 
 ## With the setups
@@ -73,9 +74,9 @@ against its signature as for an install:
 curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update
 ```
 
-or with the new tarball's `install-pulsar.sh --update` (extracted as for an install). No node runs on that machine, so
-the panel's one-click update cannot update it: the Updates page shows that command instead, and the nodes are updated
-from the page as always once the panel is. The update takes a lock (one at a time), backs up the database (`pg_dump`),
+or with the new tarball's `install-pulsar.sh --update` (extracted as for an install). When the machine is also a node
+(the agent on it, [install.md](install.md#linux-nodes)), **Update the panel** updates both with one click; otherwise the
+Updates page shows that command instead, and the nodes are updated from the page as always once the panel is. The update takes a lock (one at a time), backs up the database (`pg_dump`),
 the keys, certificates and settings into `/var/lib/pulsar/updates/backups/<version>-<time>` (the three newest are
 kept), stops the panel, moves its programs to `/var/lib/pulsar/updates/previous` and puts the new ones in their place,
 prepares the database, starts the panel and waits up to three minutes for it to answer. When the new version does not

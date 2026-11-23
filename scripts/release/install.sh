@@ -3,7 +3,12 @@
 #
 #   curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash
 #
-# Options after "bash -s --" go to install-pulsar.sh, for example:
+# or, with --agent first, the agent, which makes it a node of a panel (it asks for the node code of Nodes > Add node):
+#
+#   curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --agent
+#
+# --version X (first, or after --agent) installs that release instead of the newest: the panel's command for a node
+# names its own version. The other options after "bash -s --" go to install-pulsar.sh (or install-pulsar-agent.sh):
 #   curl -fsSL .../install.sh | sudo bash -s -- --host-name panel.example.com
 #   curl -fsSL .../install.sh | sudo bash -s -- --update
 #
@@ -26,7 +31,8 @@ export LC_ALL=C
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly REPOSITORY=Ayrton09/Pulsar
-readonly RELEASE_URL=https://github.com/$REPOSITORY/releases/latest/download
+# The newest release's files; one release's are under releases/download/v<version>.
+RELEASE_URL=https://github.com/$REPOSITORY/releases/latest/download
 # The update keys' public keys (ECDSA P-256, SubjectPublicKeyInfo in base64): UpdateKeys.Trusted, the same list.
 readonly TRUSTED_KEYS=(
     'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDoveNpq4aiT1Pmog9P4f2egClTyuGYeYtyaG9S6MVS15A31pequgC+TyKe0E7zDKqY7HXWwZWiY65JZ4vpafXA=='
@@ -206,13 +212,33 @@ main() {
     trap "rm -rf -- '$work'" EXIT
     chmod 0700 "$work"
 
-    printf '==> Checking the newest release of %s\n' "$REPOSITORY"
+    local script=install-pulsar.sh wanted=''
+    while (($# > 0)); do
+        case $1 in
+        --agent)
+            script=install-pulsar-agent.sh
+            shift
+            ;;
+        --version)
+            if (($# < 2)) || [[ ! $2 =~ $VERSION_PATTERN ]]; then
+                fail '--version must be a release version (1.2.3).' 2
+            fi
+            wanted=$2
+            RELEASE_URL=https://github.com/$REPOSITORY/releases/download/v$wanted
+            shift 2
+            ;;
+        *) break ;;
+        esac
+    done
+
+    printf '==> Checking %s of %s\n' "${wanted:-the newest release}" "$REPOSITORY"
     download "$RELEASE_URL/$MANIFEST_NAME" "$work/$MANIFEST_NAME" "$MAX_MANIFEST_BYTES"
     download "$RELEASE_URL/$SIGNATURE_NAME" "$work/$SIGNATURE_NAME" "$MAX_SIGNATURE_BYTES"
     verify_manifest "$work/$MANIFEST_NAME" "$work/$SIGNATURE_NAME" "$work" "${TRUSTED_KEYS[@]}"
     local entry version name size sha
     entry=$(tarball_entry "$work/$MANIFEST_NAME") || exit 1
     read -r version name size sha <<<"$entry"
+    [[ -z $wanted || $version == "$wanted" ]] || fail "The release named $wanted says it is $version: it is not installed."
 
     printf '==> Downloading Pulsar %s (%s MB)\n' "$version" "$((size / 1048576))"
     download "https://github.com/$REPOSITORY/releases/download/v$version/$name" "$work/$name" "$size"
@@ -223,10 +249,11 @@ main() {
     tar -xzf "$work/$name" -C "$work" --no-same-owner
     rm -f -- "$work/$name"
 
-    printf '==> Running install-pulsar.sh of Pulsar %s\n' "$version"
+    [[ -f $work/$top/$script ]] || fail "Release $version has no $script: it is older than what this script installs."
+    printf '==> Running %s of Pulsar %s\n' "$script" "$version"
     local status=0
     # Its questions go to the terminal (/dev/tty); stdin may be this script, piped from curl.
-    bash "$work/$top/install-pulsar.sh" "$@" </dev/null || status=$?
+    bash "$work/$top/$script" "$@" </dev/null || status=$?
     exit "$status"
 }
 

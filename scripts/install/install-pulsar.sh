@@ -9,8 +9,8 @@
 #   sudo /opt/pulsar/install-pulsar.sh --renew-certificate   new self-signed certificate for this machine's addresses now
 #   sudo /opt/pulsar/install-pulsar.sh --uninstall           remove the service and programs (keeps the database and data)
 #
-# Only the panel runs on Linux for now: its nodes (the machines that run game servers) are Windows machines with the
-# agent, added from the panel (Nodes > Add node).
+# This script installs the panel. Its nodes (the machines that run game servers, this one too) are Windows or Linux
+# machines with the agent, added from the panel (Nodes > Add node); on Linux, install-pulsar-agent.sh installs it.
 #
 # The panel's database is created in this machine's PostgreSQL (15 or later; installed from the distribution's packages
 # on Debian and Ubuntu when there is none), reached over its local socket as the system user 'pulsar' (peer
@@ -1325,7 +1325,7 @@ install_panel() {
         echo "  The certificate is self-signed: browsers warn until it is trusted ($PANEL_DATA/tls/panel.cer; docs/guides/install.md, \"Trusting the panel's certificate\")."
     fi
     echo "  SFTP: port $SFTP_PORT. Settings: $SETTINGS. Logs: journalctl -u $SERVICE, and $PANEL_LOGS."
-    echo "  Add Windows machines as nodes from the panel: Nodes > Add node."
+    echo "  Add the machines that run game servers (Windows or Linux, this one too) from the panel: Nodes > Add node."
     if [[ $restoring == true ]]; then echo '  Restored from the backup: sign in with its users. Nodes reconnect when the panel'"'"'s address leads here.'; fi
     echo "  Back up the panel: sudo $INSTALL_ROOT/backup-pulsar.sh --destination <folder> (docs/guides/backup.md)."
 }
@@ -1447,7 +1447,7 @@ roll_back_update() {
 write_update_result() {
     local status=$1 from=$2 to=$3 failure=${4:-}
     jq -n --arg status "$status" --arg from "$from" --arg to "$to" --arg failure "$failure" --arg at "$(date -u +%FT%TZ)" \
-        '{status: $status, from: $from, to: $to, at: $at} + (if $failure != "" then {error: $failure} else {} end)' >"$UPDATE_ROOT/last-update.json"
+        '{status: $status, from: $from, to: $to, at: $at, finishedAt: $at, parts: ["panel"]} + (if $failure != "" then {error: $failure} else {} end)' >"$UPDATE_ROOT/last-update.json"
 }
 
 resume_interrupted_update() {

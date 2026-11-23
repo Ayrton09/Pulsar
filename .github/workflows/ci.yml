@@ -184,7 +184,7 @@ jobs:
         run: |
           # Self-contained: the service runs as SYSTEM, which does not see the job's DOTNET_ROOT.
           dotnet publish src/Pulsar.Api -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/panel
-          dotnet publish src/Pulsar.Agent -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/agent
+          dotnet publish src/Pulsar.Agent -f net10.0-windows -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/agent
           # The agent MSI, as scripts/sandbox/agent-install/prepare.ps1 builds it: 1.0.0, a second build of 1.0.0, and 1.0.1.
           foreach ($build in @(@('1.0.0', 'msi'), @('1.0.0', 'msi/rebuild'), @('1.0.1', 'msi'))) {
             powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release/Build-AgentMsi.ps1 -AgentDir artifacts/agent-install-ci/agent -Version $build[0] -Output "artifacts/agent-install-ci/$($build[1])"
@@ -287,7 +287,8 @@ jobs:
         run: |
           release=artifacts/linux-install/pulsar-0.0.0-ci-linux-x64
           dotnet publish src/Pulsar.Api -c Release -r linux-x64 --self-contained -p:DebugType=none -p:RestoreLockedMode=true -o "$release/panel"
-          cp scripts/install/install-pulsar.sh scripts/install/backup-pulsar.sh LICENSE "$release/"
+          dotnet publish src/Pulsar.Agent -f net10.0 -c Release -r linux-x64 --self-contained -p:DebugType=none -p:RestoreLockedMode=true -o "$release/agent"
+          cp scripts/install/install-pulsar.sh scripts/install/install-pulsar-agent.sh scripts/install/backup-pulsar.sh LICENSE "$release/"
           jq -n --arg commit "$GITHUB_SHA" '{version: "0.0.0-ci", commit: $commit, postgresMinimum: "15"}' >"$release/release.json"
           dotnet run --project tools/Pulsar.ReleasePacker -c Release -- tar "$release" artifacts/linux-install/release.tar.gz "$(git show -s --format=%ct HEAD)"
           sudo mkdir -m 700 /root/pulsar-release

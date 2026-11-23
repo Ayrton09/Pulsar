@@ -3,8 +3,10 @@
 # the release's install-pulsar.sh installs the panel as docs/guides/install.md ("Linux") describes, then it is backed up
 # with backup-pulsar.sh, updated (a release that works, then one that breaks after changing the database, which must
 # be rolled back), refused an older release, its certificate renewed, removed, restored from the backup, and installed
-# with ufw active. It changes the machine (PostgreSQL's 'pulsar' database, the 'pulsar' user, ufw): never run it on a
-# machine you keep.
+# with ufw active. The release's install-pulsar-agent.sh makes the same machine a node of that panel with a node code,
+# updates the agent and the panel together, rolls back an agent that does not start and an update cut off, and removes
+# the agent. It changes the machine (PostgreSQL's 'pulsar' database, the 'pulsar' user, ufw): never run it on a machine
+# you keep.
 #   sudo bash scripts/sandbox/linux-install/run.sh <the extracted release folder> <report folder>
 # The release folder is pulsar-<version>-linux-x64 as the tarball extracts (root's, unchangeable by others). Results
 # go to <report folder>/summary.txt (PASS/FAIL lines); the exit code is 1 on any FAIL.
@@ -30,7 +32,7 @@ check() {
 }
 
 # A copy of the release as another version (its release.json), in a folder of root's; "broken" makes its panel one
-# whose migration changes the database and which never starts.
+# whose migration changes the database and which never starts, "agent-broken" its agent one that never starts.
 stage() {
     local version=$1 kind=${2:-} folder=/root/pulsar-check-$1
     rm -rf "$folder"
@@ -45,6 +47,8 @@ if [ "$1" = migrate ]; then
 fi
 exit 1
 EOF
+    elif [[ $kind == agent-broken ]]; then
+        printf '#!/bin/sh\nexit 1\n' >"$folder/agent/PulsarAgent"
     fi
     chown -R root:root "$folder"
     chmod -R go-w "$folder"
@@ -72,6 +76,35 @@ sign_in() {
             --data-binary @- -o /dev/null -w '%{http_code}' https://localhost:8443/api/v1/auth/login)
     rm -f "$jar" "$headers"
     printf '%s' "$status"
+}
+
+# The administrator's API, signed in once by admin_sign_in into $admin_jar: admin_api <method> <path> [curl options].
+admin_jar=/root/pulsar-check-cookies.txt
+admin_api() {
+    local method=$1 path=$2 headers token status=0
+    shift 2
+    headers=$(mktemp)
+    token=$(awk '$6 == "__Host-pulsar-xsrf" {print $7}' "$admin_jar" | tail -1)
+    printf 'X-XSRF-TOKEN: %b\n' "${token//%/\\x}" >"$headers"
+    curl -sS -k --pinnedpubkey "sha256//$(pin)" -b "$admin_jar" -c "$admin_jar" -H @"$headers" -X "$method" "$@" \
+        "https://localhost:8443$path" || status=$?
+    rm -f "$headers"
+    return "$status"
+}
+admin_sign_in() {
+    (umask 077 && : >"$admin_jar")
+    curl -sS -k --pinnedpubkey "sha256//$(pin)" -c "$admin_jar" -o /dev/null https://localhost:8443/api/v1/auth/session
+    PASSWORD=$(jq -r .adminPassword "$secrets") jq -n '{userName: "admin", password: env.PASSWORD, rememberMe: false}' |
+        admin_api POST /api/v1/auth/login -H 'Content-Type: application/json' --data-binary @- -o /dev/null -w '%{http_code}'
+}
+# Whether the node's agent is connected within a minute, and says it is a Linux one.
+node_connected() {
+    local _
+    for _ in $(seq 30); do
+        admin_api GET "/api/v1/nodes/$1" | jq -e '.node.connected and .node.platform == "linux-x64"' >/dev/null 2>&1 && return 0
+        sleep 2
+    done
+    return 1
 }
 
 sftp_key() { journalctl -u pulsar-panel --no-pager -o cat | grep -oE 'SFTP host key SHA256:[A-Za-z0-9+/]+' | tail -1; }
@@ -152,6 +185,66 @@ jq -n --arg backup "$latest" '{from: "9.0.1", to: "9.0.3", backup: $backup, stag
 check 'update after one cut off mid-swap: exit code 0' "$?" "$(tail -3 "$report/update-resumed.log")"
 grep -q 'cut off while it was swapping' "$report/update-resumed.log" && [[ $(jq -r .version /opt/pulsar/panel/release.json) == 9.0.3 && $(sign_in) == 200 ]]
 check 'update after one cut off mid-swap: rolled back first, then updated, and the panel signs in' "$?"
+
+echo '== Agent on the same machine'
+[[ $(admin_sign_in) == 200 ]]
+check 'agent: the administrator signs in to the API' "$?"
+created=$(jq -n '{name: "linux-check", description: null, publicHost: null}' |
+    admin_api POST /api/v1/nodes -H 'Content-Type: application/json' --data-binary @-)
+node=$(jq -r '.node.id // empty' <<<"$created")
+agent_secrets=/root/pulsar-check-agent-secrets.json
+(umask 077 && jq '{nodeCode: .enrollment.nodeCode}' <<<"$created" >"$agent_secrets")
+unset created
+[[ -n $node && $(jq -r '.nodeCode // ""' "$agent_secrets") == pulsar-node-1.* ]]
+check 'agent: the panel gives a node code for a new node' "$?"
+"$(stage 9.0.3)/install-pulsar-agent.sh" --unattended --secrets-file "$agent_secrets" >"$report/agent-install.log" 2>&1
+check 'agent install: exit code 0' "$?" "$(tail -3 "$report/agent-install.log")"
+systemctl is-active --quiet pulsar-agent && node_connected "$node"
+check 'agent install: the service runs and the node is connected, a linux-x64 one' "$?"
+admin_api GET /api/v1/updates | jq -e --arg node "$node" '.nodes[] | select(.nodeId == $node) | .canUpdate and .hostsPanel' >/dev/null
+check 'agent install: the node takes one-click updates, and hosts this panel' "$?"
+code_part=$(jq -r .nodeCode "$agent_secrets" | cut -c15-40)
+! grep -rqsF -- "$code_part" "$report/agent-install.log" /var/log/pulsar /etc/systemd/system/pulsar-agent.service &&
+    ! journalctl -u pulsar-agent --no-pager -o cat | grep -qF -- "$code_part"
+check 'agent install: the node code is in no log, journal or unit' "$?"
+"$(stage 9.0.3)/install-pulsar-agent.sh" --unattended --secrets-file "$agent_secrets" >/dev/null 2>&1
+code=$?
+[[ $code == 2 ]]
+check 'agent install again: refused, nothing changed' "$?" "exit code $code"
+"$(stage 9.0.4)/install-pulsar-agent.sh" --update --unattended >"$report/agent-update.log" 2>&1
+check 'agent update: exit code 0' "$?" "$(tail -3 "$report/agent-update.log")"
+[[ $(jq -r .version /opt/pulsar/agent/release.json) == 9.0.4 && $(jq -r .version /opt/pulsar/panel/release.json) == 9.0.4 ]] &&
+    [[ $(jq -c '[.status, .parts]' /var/lib/pulsar/updates/last-update.json) == '["succeeded",["agent","panel"]]' ]]
+check 'agent update: the agent and this machine'"'"'s panel are 9.0.4, and recorded' "$?" "$(cat /var/lib/pulsar/updates/last-update.json 2>/dev/null)"
+node_connected "$node" && [[ $(sign_in) == 200 ]]
+check 'agent update: the node connects again and the panel signs in' "$?"
+"$(stage 9.0.5 agent-broken)/install-pulsar-agent.sh" --update --unattended >"$report/agent-update-broken.log" 2>&1
+code=$?
+[[ $code == 7 && $(jq -r .version /opt/pulsar/agent/release.json) == 9.0.4 && $(jq -r .status /var/lib/pulsar/updates/last-update.json) == rolled_back ]]
+check 'agent update to an agent that does not start: exit code 7, 9.0.4 is back' "$?" "exit code $code"
+node_connected "$node" && [[ $(jq -r .version /opt/pulsar/panel/release.json) == 9.0.4 ]]
+check 'agent update to an agent that does not start: the node connects again, the panel is not touched' "$?"
+# An update cut off right after the agent moved away (the machine lost power): the next run puts it back first.
+systemctl stop pulsar-agent
+mv /opt/pulsar/agent /var/lib/pulsar/updates/previous-agent
+jq -n '{from: "9.0.4", to: "9.0.5", attempt: ""}' >/var/lib/pulsar/updates/agent-update.json
+"$(stage 9.0.6)/install-pulsar-agent.sh" --update --unattended >"$report/agent-update-resumed.log" 2>&1
+check 'agent update after one cut off: exit code 0' "$?" "$(tail -3 "$report/agent-update-resumed.log")"
+grep -q 'was cut off' "$report/agent-update-resumed.log" && [[ $(jq -r .version /opt/pulsar/agent/release.json) == 9.0.6 ]] &&
+    [[ ! -e /var/lib/pulsar/updates/agent-update.json ]] && node_connected "$node"
+check 'agent update after one cut off: rolled back first, then updated, and the node connects' "$?"
+"$(stage 9.0.0)/install-pulsar-agent.sh" --update --unattended >/dev/null 2>&1
+code=$?
+[[ $code == 2 && $(jq -r .version /opt/pulsar/agent/release.json) == 9.0.6 ]]
+check 'agent update to an older release: refused, nothing changed' "$?" "exit code $code"
+/opt/pulsar/install-pulsar-agent.sh --uninstall >"$report/agent-uninstall.log" 2>&1
+check 'agent uninstall: exit code 0' "$?" "$(tail -3 "$report/agent-uninstall.log")"
+[[ ! -e /opt/pulsar/agent && ! -e /etc/pulsar/agent-install.json && ! -e /etc/systemd/system/pulsar-agent.service ]] &&
+    ! systemctl is-active --quiet pulsar-agent
+check 'agent uninstall: the service, programs and settings are gone' "$?"
+systemctl is-active --quiet pulsar-panel && [[ -x /opt/pulsar/install-pulsar.sh && $(sign_in) == 200 ]]
+check 'agent uninstall: this machine'"'"'s panel keeps running' "$?"
+rm -f "$agent_secrets" "$admin_jar"
 
 echo '== Certificate'
 old=$(openssl x509 -in /var/lib/pulsar/panel/tls/panel.crt -noout -fingerprint -sha256)

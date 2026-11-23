@@ -1144,6 +1144,9 @@
       "address": "Indirizzo del pannello",
       "code": "Codice del nodo",
       "setupTrust": "L'agent accetta il certificato del pannello solo se è quello indicato nel codice, che viene fissato: nulla va copiato a mano e gli archivi di certificati della macchina non vengono modificati. Un reverse proxy che segnala ciò che inoltra (intestazioni Forwarded, X-Forwarded-* o Via) fa sì che il codice non indichi alcun certificato: la macchina deve allora già fidarsi di quello del proxy. Uno che inoltra senza segnalarlo presenta un certificato diverso da quello del codice, e il programma di installazione si rifiuta di continuare.",
+      "linuxTitle": "Installa su Linux",
+      "linuxSteps": "Sulla macchina Linux (x86_64 con systemd: Debian 12, Ubuntu 24.04 o successivi), esegui questo comando in un terminale. Scarica la versione di questo pannello da GitHub, la verifica con il suo manifesto firmato, installa l'agente come servizio e chiede il codice del nodo.",
+      "linuxCommand": "Comando per Linux",
       "advanced": "Avanzate: installa con PowerShell"
     },
     "credentials": {

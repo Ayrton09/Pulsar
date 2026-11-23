@@ -1144,6 +1144,9 @@
       "address": "Endereço do painel",
       "code": "Código do nó",
       "setupTrust": "O agente só aceita o certificado do painel quando é o citado no código, que ele fixa: nada é copiado manualmente e os repositórios de certificados da máquina não são alterados. Um proxy reverso que marca o que encaminha (cabeçalhos Forwarded, X-Forwarded-* ou Via) faz o código não citar nenhum certificado: a máquina deve então já confiar no do proxy. Um que encaminha sem avisar serve um certificado diferente do código, e o instalador se recusa a continuar.",
+      "linuxTitle": "Instalar no Linux",
+      "linuxSteps": "Na máquina Linux (x86_64 com systemd: Debian 12, Ubuntu 24.04 ou mais recente), execute este comando em um terminal. Ele baixa a versão deste painel do GitHub, confere-a com seu manifesto assinado, instala o agente como serviço e pede o código do nó.",
+      "linuxCommand": "Comando para Linux",
       "advanced": "Avançado: instalar com PowerShell"
     },
     "credentials": {

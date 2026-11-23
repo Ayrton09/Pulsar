@@ -1144,6 +1144,9 @@
       "address": "Adresse du panneau",
       "code": "Code du nœud",
       "setupTrust": "L'agent n'accepte le certificat du panneau que s'il est celui désigné dans le code, qu'il épingle : rien n'est copié à la main et les magasins de certificats de la machine ne sont pas modifiés. Un proxy inverse qui signale ce qu'il transmet (en-têtes Forwarded, X-Forwarded-* ou Via) fait que le code ne désigne aucun certificat : la machine doit alors déjà faire confiance à celui du proxy. Un proxy qui transmet sans le signaler présente un certificat différent de celui du code, et le programme d'installation refuse de continuer.",
+      "linuxTitle": "Installer sous Linux",
+      "linuxSteps": "Sur la machine Linux (x86_64 avec systemd : Debian 12, Ubuntu 24.04 ou plus récent), lancez cette commande dans un terminal. Elle télécharge la version de ce panneau depuis GitHub, la vérifie avec son manifeste signé, installe l'agent comme service et demande le code du nœud.",
+      "linuxCommand": "Commande Linux",
       "advanced": "Avancé : installer avec PowerShell"
     },
     "credentials": {

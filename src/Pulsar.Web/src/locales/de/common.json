@@ -1144,6 +1144,9 @@
       "address": "Panel-Adresse",
       "code": "Node-Code",
       "setupTrust": "Der Agent akzeptiert das Zertifikat des Panels nur, wenn es das im Code genannte ist, das er festschreibt: Es wird nichts von Hand kopiert, und die Zertifikatspeicher des Rechners bleiben unverändert. Ein Reverse-Proxy, der kennzeichnet, was er weiterleitet (Forwarded-, X-Forwarded-* oder Via-Header), führt dazu, dass der Code kein Zertifikat nennt: Der Rechner muss dann dem des Proxys bereits vertrauen. Einer, der ohne Kennzeichnung weiterleitet, liefert ein anderes Zertifikat als das im Code, und das Setup weigert sich fortzufahren.",
+      "linuxTitle": "Unter Linux installieren",
+      "linuxSteps": "Führe auf dem Linux-Rechner (x86_64 mit systemd: Debian 12, Ubuntu 24.04 oder neuer) diesen Befehl in einem Terminal aus. Er lädt die Version dieses Panels von GitHub, prüft sie anhand ihres signierten Manifests, installiert den Agenten als Dienst und fragt nach dem Node-Code.",
+      "linuxCommand": "Linux-Befehl",
       "advanced": "Erweitert: mit PowerShell installieren"
     },
     "credentials": {

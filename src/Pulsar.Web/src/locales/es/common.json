@@ -1144,6 +1144,9 @@
       "address": "Dirección del panel",
       "code": "Código del nodo",
       "setupTrust": "El agente acepta el certificado del panel solo si es el que nombra el código, y lo fija: no hay que copiar nada a mano y los almacenes de certificados de la máquina no cambian. Un proxy inverso que marca lo que reenvía (encabezados Forwarded, X-Forwarded-* o Via) hace que el código no nombre ningún certificado: la máquina ya tiene que confiar en el del proxy. Uno que reenvía sin decirlo sirve otro certificado que el del código, y el instalador no sigue.",
+      "linuxTitle": "Instalar en Linux",
+      "linuxSteps": "En la máquina Linux (x86_64 con systemd: Debian 12, Ubuntu 24.04 o posterior), ejecutá este comando en una terminal. Descarga la versión de este panel desde GitHub, la comprueba con su manifiesto firmado, instala el agente como servicio y pide el código del nodo.",
+      "linuxCommand": "Comando para Linux",
       "advanced": "Avanzado: instalar con PowerShell"
     },
     "credentials": {

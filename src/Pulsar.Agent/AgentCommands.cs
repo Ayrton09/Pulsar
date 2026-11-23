@@ -26,6 +26,9 @@ internal static class AgentCommands
     /// <summary>Where <c>enroll</c> also takes its token from (the process list shows command lines, not environments).</summary>
     public const string TokenVariable = "PULSAR_ENROLLMENT_TOKEN";
 
+    /// <summary>Where <c>enroll</c> also takes a node code from, for the same reason.</summary>
+    public const string CodeVariable = "PULSAR_NODE_CODE";
+
     /// <summary>How long unenroll waits for a service still stopping once the games it was waiting for are ended.</summary>
     private static readonly TimeSpan s_stoppedAfterEndingHosts = TimeSpan.FromSeconds(30);
 
@@ -41,6 +44,9 @@ internal static class AgentCommands
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
                                  [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
                                  [--log-file <file>] [--panel-certificate <sha256>]
+              PulsarAgent enroll --code -|<code> [--servers-root <dir>] [--backups-root <dir>] [...]
+                  The node code (Nodes > Add node) instead of the panel, token, key and certificate: pass
+                  --code - and paste it, or set {CodeVariable}, to keep it out of the process list.
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
                   starts the PulsarAgent service. Run it {Platform.ElevatedPrompt}. To keep the token out of
                   the process list, pass --token - and paste it, or set {TokenVariable} instead. A reusable
@@ -79,7 +85,7 @@ internal static class AgentCommands
 
     public static async Task<int> EnrollAsync(CommandLine line)
     {
-        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file", "panel-certificate");
+        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file", "panel-certificate", "code");
         return await LoggedAsync(line, "enroll", () => EnrollCoreAsync(line));
     }
 
@@ -92,9 +98,17 @@ internal static class AgentCommands
             await Console.Error.WriteAsync("Enrollment token: ");
         }
 
-        var request = new EnrollmentRequest(line.Required("panel"),
-            EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
-            DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"), line.Value("panel-certificate"));
+        if (line.Value("code") == "-" && !Console.IsInputRedirected)
+        {
+            await Console.Error.WriteAsync("Node code: ");
+        }
+
+        var request = Code(line, Environment.GetEnvironmentVariable(CodeVariable), Console.In) is { } nodeCode
+            ? new EnrollmentRequest(nodeCode.Url, nodeCode.Token, nodeCode.PanelKey, DirectoryOption(line, "servers-root"), development,
+                DirectoryOption(line, "backups-root"), nodeCode.CertificateSha256)
+            : new EnrollmentRequest(line.Required("panel"),
+                EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
+                DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"), line.Value("panel-certificate"));
         if (request.PanelCertificate is { } pin && !NodeCode.IsCertificateHash(pin))
         {
             await Console.Error.WriteLineAsync("--panel-certificate must be the SHA-256 of the panel's certificate in 64 lowercase hexadecimal digits, as the node code carries it.");
@@ -260,6 +274,34 @@ internal static class AgentCommands
         return token is { Length: > 0 }
             ? token
             : throw new UsageException($"--token is required (or pass '--token -' and type it, or set {TokenVariable}).");
+    }
+
+    /// <summary>
+    /// The node code (<c>--code &lt;code&gt;</c>, <c>--code -</c> read from standard input, or <see cref="CodeVariable"/>),
+    /// which gives the panel, the token, the panel key and its certificate together; null when none is given. Given with
+    /// any of those options, it is refused: one of them would be ignored.
+    /// </summary>
+    internal static NodeCode? Code(CommandLine line, string? environment, TextReader input)
+    {
+        var text = line.Value("code") switch
+        {
+            "-" => input.ReadLine()?.Trim(),
+            { } value => value.Trim(),
+            null => string.IsNullOrWhiteSpace(environment) ? null : environment.Trim(),
+        };
+        if (text is null)
+        {
+            return null;
+        }
+
+        if (line.Value("panel") is not null || line.Value("token") is not null || line.Value("panel-key") is not null || line.Value("panel-certificate") is not null)
+        {
+            throw new UsageException("A node code gives the panel, the token, the panel key and its certificate: leave out --panel, --token, --panel-key and --panel-certificate.");
+        }
+
+        return NodeCode.TryParse(text, out var code)
+            ? code
+            : throw new UsageException("That is not a node code: copy it again from Nodes > Add node (it starts with " + NodeCode.Prefix + ").");
     }
 
     /// <summary>

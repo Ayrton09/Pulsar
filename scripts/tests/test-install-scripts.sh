@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Checks the functions of the Linux install scripts (scripts/install/install-pulsar.sh, scripts/release/install.sh) that
-# decide what to trust: the signed manifest, the tarball, addresses for the certificate, folders only root can change,
+# Checks the functions of the Linux install scripts (scripts/install/install-pulsar.sh, install-pulsar-agent.sh,
+# scripts/release/install.sh) that decide what to trust: the signed manifest, the tarball, addresses for the certificate, folders only root can change,
 # versions. Nothing is installed. Run it on Linux with bash, openssl and jq (as root for the folder checks):
 #   bash scripts/tests/test-install-scripts.sh
 # Every check prints PASS or FAIL; the exit code is 1 on any FAIL. The scripts' main() runs only when they are executed,
@@ -10,6 +10,7 @@ export LC_ALL=C
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 installer=$repo/scripts/install/install-pulsar.sh
+agent_installer=$repo/scripts/install/install-pulsar-agent.sh
 one_command=$repo/scripts/release/install.sh
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
@@ -133,6 +134,61 @@ with tarfile.open(sys.argv[1], "w:gz") as t:
     done
 )
 while IFS='|' read -r name status; do [[ -n $name ]] && check "one command: $name" "$status"; done <<<"$results"
+
+# --- install.sh: which script and which release ------------------------------------------------------------------------
+results=$(
+    # shellcheck source=/dev/null
+    source "$one_command"
+    set +e
+    for version in 1.2 v1.2.3 1.2.3-rc1 '1.2.3;id' ''; do
+        refuses main --agent --version "$version"
+        echo "--version '$version' is refused before anything is downloaded|$?"
+    done
+    refuses main --version
+    echo "--version without a value is refused|$?"
+)
+while IFS='|' read -r name status; do [[ -n $name ]] && check "one command: $name" "$status"; done <<<"$results"
+
+# --- install-pulsar-agent.sh: options and the node code ----------------------------------------------------------------
+# shellcheck disable=SC2034 # the variables are the sourced script's, read by its functions
+results=$(
+    # shellcheck source=/dev/null
+    source "$agent_installer"
+    set +e
+    trap - EXIT
+    refuses parse_options --servers-root relative/servers
+    echo "a relative --servers-root is refused|$?"
+    refuses parse_options --update-attempt not-an-id
+    echo "an --update-attempt that is no request id is refused|$?"
+    refuses parse_options --update-attempt 0B6E8F9A-0000-4000-8000-000000000000
+    echo "an --update-attempt in capitals (.NET writes ids in lower case) is refused|$?"
+    refuses parse_options --servers-root $'/srv/a\nb'
+    echo "a control character in an option is refused|$?"
+    refuses parse_options --code x
+    echo "an unknown option (the code never goes on the command line) is refused|$?"
+    (parse_options --update --unattended --update-attempt 0b6e8f9a-0000-4000-8000-000000000000 && [[ $MODE == update && $UNATTENDED == true ]])
+    echo "--update --unattended --update-attempt <id> are taken|$?"
+    (NODE_CODE=' pulsar-node-1.eyJ1cmwiOiJ4In0 ' UNATTENDED=true && read_node_code && [[ $NODE_CODE == pulsar-node-1.eyJ1cmwiOiJ4In0 ]])
+    echo "a node code from the environment is taken, without its spaces|$?"
+    (NODE_CODE='not a code' UNATTENDED=true && refuses read_node_code)
+    echo "something else than a node code is refused|$?"
+    (NODE_CODE='' UNATTENDED=true && refuses read_node_code)
+    echo "unattended without a code: refused, nothing asked|$?"
+    if [[ $(id -u) == 0 ]]; then
+        secrets=$(mktemp -d /root/pulsar-test.XXXXXX)
+        printf '{"nodeCode":"pulsar-node-1.e30"}' >"$secrets/agent.json"
+        chmod 0600 "$secrets/agent.json"
+        (NODE_CODE='' SECRETS_FILE=$secrets/agent.json UNATTENDED=true && read_node_code && [[ $NODE_CODE == pulsar-node-1.e30 ]])
+        echo "a node code from a secrets file only root reads is taken|$?"
+        chmod 0644 "$secrets/agent.json"
+        (NODE_CODE='' SECRETS_FILE=$secrets/agent.json UNATTENDED=true && refuses read_node_code)
+        echo "a secrets file others can read is refused|$?"
+        rm -rf "$secrets"
+    else
+        echo "the secrets file checks need root (skipped)|0"
+    fi
+)
+while IFS='|' read -r name status; do [[ -n $name ]] && check "agent installer: $name" "$status"; done <<<"$results"
 
 # --- install-pulsar.sh: names, addresses, versions, folders ------------------------------------------------------------
 results=$(
@@ -316,7 +372,8 @@ results=$(
 while IFS='|' read -r name status; do [[ -n $name ]] && check "update: $name" "$status"; done <<<"$results"
 
 if command -v shellcheck >/dev/null 2>&1; then
-    (cd "$repo" && shellcheck -x scripts/install/install-pulsar.sh scripts/install/backup-pulsar.sh scripts/release/install.sh scripts/tests/test-install-scripts.sh)
+    (cd "$repo" && shellcheck -x scripts/install/install-pulsar.sh scripts/install/install-pulsar-agent.sh scripts/install/backup-pulsar.sh \
+        scripts/release/install.sh scripts/tests/test-install-scripts.sh scripts/sandbox/linux-install/run.sh)
     check 'shellcheck finds nothing in the scripts' "$?"
 fi
 

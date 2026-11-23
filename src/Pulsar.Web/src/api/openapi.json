@@ -19243,6 +19243,12 @@
           },
           "agentSetupAvailable": {
             "type": "boolean"
+          },
+          "linuxAgentCommand": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

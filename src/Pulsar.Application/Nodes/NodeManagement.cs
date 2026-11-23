@@ -105,6 +105,12 @@ public sealed record EnrollmentInstructions(string Token, DateTimeOffset Expires
     /// <summary>The panel serves <c>PulsarAgentSetup.exe</c> at <c>/downloads/PulsarAgentSetup.exe</c>.</summary>
     public bool AgentSetupAvailable => AgentSetupSha256 is not null;
 
+    /// <summary>
+    /// The command that installs the agent on a Linux machine (docs/guides/install.md, "Linux nodes"), which then asks for
+    /// <see cref="NodeCode"/>; null without a code. It holds no secret.
+    /// </summary>
+    public string? LinuxAgentCommand => NodeCode is null ? null : Updates.LinuxAgentInstall.Command(Updates.PanelUpdates.PanelVersion);
+
     // The token, and the code that carries it, are secrets: they must never reach a log through ToString.
     private bool PrintMembers(System.Text.StringBuilder builder)
     {
