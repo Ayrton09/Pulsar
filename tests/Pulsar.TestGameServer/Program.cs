@@ -200,7 +200,7 @@ while ((line = Console.ReadLine()) is not null)
             });
             break;
         case "whoami":
-            Console.WriteLine($"Test server: user={WindowsIdentity.GetCurrent().Name}");
+            Console.WriteLine($"Test server: user={(OperatingSystem.IsWindows() ? WindowsIdentity.GetCurrent().Name : Environment.UserName)}");
             break;
         case "env":
             Console.WriteLine($"Test server: {argument}={Environment.GetEnvironmentVariable(argument)}");
@@ -217,7 +217,7 @@ while ((line = Console.ReadLine()) is not null)
             break;
         case "handle":
             // A handle value that was valid in the agent is only valid here if it was inherited.
-            var valid = Native.GetHandleInformation(nint.Parse(argument, CultureInfo.InvariantCulture), out _);
+            var valid = OperatingSystem.IsWindows() && Native.GetHandleInformation(nint.Parse(argument, CultureInfo.InvariantCulture), out _);
             Console.WriteLine($"Test server: handle {argument} {(valid ? "valid" : "invalid")}");
             break;
         case "privileges":

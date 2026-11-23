@@ -456,8 +456,16 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(source, file).Replace(Path.DirectorySeparatorChar, '/');
-            using var content = File.OpenRead(file);
-            files.Write(serverDirectory, $"{destination}/{relative}", content);
+            using (var content = File.OpenRead(file))
+            {
+                files.Write(serverDirectory, $"{destination}/{relative}", content);
+            }
+
+            // Linux runs a program by its execute bits, which a copy does not keep.
+            if (!OperatingSystem.IsWindows() && File.GetUnixFileMode(file).HasFlag(UnixFileMode.UserExecute))
+            {
+                files.SetExecutable(serverDirectory, $"{destination}/{relative}");
+            }
         }
     }
 }

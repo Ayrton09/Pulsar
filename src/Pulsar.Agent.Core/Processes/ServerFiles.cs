@@ -34,6 +34,14 @@ public interface IServerFiles
     /// fails with an <see cref="IOException"/> rather than costing the agent the memory and time of listing it.
     /// </param>
     IReadOnlyList<(string Name, DateTimeOffset LastWrite)> ListFiles(string serverRoot, string relativeDirectory, int limit);
+
+    /// <summary>
+    /// Lets the file be run as a program (Linux' execute bits, for its owner, group and others as it may be read): a
+    /// program the agent copied in, as the test game's. Nothing on Windows, whose programs are run by their extension.
+    /// </summary>
+    void SetExecutable(string serverRoot, string relativePath)
+    {
+    }
 }
 
 /// <summary>
@@ -69,6 +77,22 @@ public sealed class DirectServerFiles : IServerFiles
     }
 
     public void CreateDirectory(string serverRoot, string relativePath) => Directory.CreateDirectory(InstallSteps.Resolve(serverRoot, relativePath));
+
+    public void SetExecutable(string serverRoot, string relativePath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            var path = InstallSteps.Resolve(serverRoot, relativePath);
+            var mode = File.GetUnixFileMode(path);
+            File.SetUnixFileMode(path, mode | Executable(mode));
+        }
+    }
+
+    /// <summary>The execute bits that go with the read bits a file has.</summary>
+    internal static UnixFileMode Executable(UnixFileMode mode) =>
+        (mode.HasFlag(UnixFileMode.UserRead) ? UnixFileMode.UserExecute : 0)
+        | (mode.HasFlag(UnixFileMode.GroupRead) ? UnixFileMode.GroupExecute : 0)
+        | (mode.HasFlag(UnixFileMode.OtherRead) ? UnixFileMode.OtherExecute : 0);
 
     public bool DeleteEmptyDirectory(string serverRoot, string relativePath)
     {

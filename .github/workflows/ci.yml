@@ -103,6 +103,16 @@ jobs:
           # Downloads SteamCMD from Valve and checks its signature (Windows only).
           PULSAR_NETWORK_TESTS: '1'
 
+      # The Linux agent's own tests that make users, run games as them and start their hosts in systemd units: as root, as
+      # the agent runs. A server's user must reach the tests' build (as an installed agent's), so the runner's home lets
+      # others pass through it; the runner is thrown away after the job.
+      - name: Test the Linux agent as root (Ubuntu)
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          sudo chmod o+x "$HOME"
+          sudo --preserve-env=DOTNET_ROOT "$PWD/tests/Pulsar.Agent.Linux.Tests/bin/Release/net10.0/Pulsar.Agent.Linux.Tests"
+
       # The install, update and backup scripts' own checks, in Windows PowerShell 5.1 as the setups run them. The runner
       # is elevated and thrown away after the job, so the checks that need elevation run too (-RequireElevation fails
       # the step instead of skipping them); they change nothing but folders of their own under -Scratch. That is in

@@ -17,7 +17,9 @@ public sealed class ProjectDependencyTests
         ["Pulsar.Api"] = ["Pulsar.Application", "Pulsar.Infrastructure", "Pulsar.Contracts", "Pulsar.Manifests"],
         ["Pulsar.Agent.Core"] = ["Pulsar.Contracts", "Pulsar.Manifests"],
         ["Pulsar.Agent.Windows"] = ["Pulsar.Agent.Core"],
-        ["Pulsar.Agent"] = ["Pulsar.Agent.Core", "Pulsar.Agent.Windows"],
+        ["Pulsar.Agent.Linux"] = ["Pulsar.Agent.Core"],
+        // Its Windows build references the Windows layer, its Linux build the Linux one.
+        ["Pulsar.Agent"] = ["Pulsar.Agent.Core", "Pulsar.Agent.Windows", "Pulsar.Agent.Linux"],
     };
 
     // Shared and core projects must stay free of infrastructure and web frameworks.

@@ -1,5 +1,13 @@
 using Pulsar.Agent;
 
+#if !WINDOWS
+// The last step of a game's start on Linux: its own arguments (the game's among them), never parsed as the agent's.
+if (args.Length > 0 && args[0] == Pulsar.Agent.Linux.GameExec.Command)
+{
+    return Pulsar.Agent.Linux.GameExec.Run(args);
+}
+
+#endif
 try
 {
     var line = CommandLine.Parse(args, AgentCommands.Flags);

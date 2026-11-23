@@ -10,14 +10,22 @@ namespace Pulsar.Agent.Core;
 /// </summary>
 public sealed class AgentPaths(string root)
 {
-    public static string DefaultRoot { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Pulsar", "Agent");
+    /// <summary>Windows: <c>%ProgramData%\Pulsar\Agent</c>. Linux: <c>/var/lib/pulsar/agent</c> (beside the panel's <c>/var/lib/pulsar/panel</c>).</summary>
+    public static string DefaultRoot { get; } = OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Pulsar", "Agent")
+        : "/var/lib/pulsar/agent";
 
     public string Root { get; } = Path.GetFullPath(root);
 
     public string ConfigDirectory => Path.Combine(Root, "config");
 
     public string ConfigFile => Path.Combine(ConfigDirectory, "agent.json");
+
+    /// <summary>The Linux agent's node keys (<c>FileNodeKeyStore</c>), one file each, in the configuration folder.</summary>
+    public string KeysDirectory => Path.Combine(ConfigDirectory, "keys");
+
+    /// <summary>The key the Linux agent encrypts its state with (<c>FileKeyStateProtector</c>).</summary>
+    public string StateKeyFile => Path.Combine(ConfigDirectory, "state.key");
 
     public string LogsDirectory => Path.Combine(Root, "logs");
 
@@ -50,9 +58,13 @@ public sealed class AgentPaths(string root)
 
     /// <summary>
     /// Copies of the agent's program that host processes run from, one per version: updating the agent replaces its
-    /// installed files while games keep running in hosts of the previous version.
+    /// installed files while games keep running in hosts of the previous version. On Linux they are beside the state
+    /// directory (<c>&lt;root&gt;-programs</c>), root's but readable by everyone, as an installed program is: a game's
+    /// start becomes its server's user in the copy's own program (<c>game-exec</c>), which must still read it.
     /// </summary>
-    public string HostProgramsDirectory => Path.Combine(Root, "host-programs");
+    public string HostProgramsDirectory => OperatingSystem.IsWindows()
+        ? Path.Combine(Root, "host-programs")
+        : Path.TrimEndingDirectorySeparator(Root) + "-programs";
 
     /// <summary>
     /// Asks the running agent to stop its game servers when it stops next (written by <c>unenroll</c> and <c>service stop
@@ -73,8 +85,9 @@ public sealed class AgentPaths(string root)
     public string PanelAddressesFile => Path.Combine(Root, "state", "panel-addresses.json");
 
     /// <summary>The folders the agent itself makes in <see cref="Root"/>: what securing it resets (nothing else in it).</summary>
-    public IReadOnlyList<string> OwnFolders =>
-        [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory, HostProgramsDirectory];
+    public IReadOnlyList<string> OwnFolders => OperatingSystem.IsWindows()
+        ? [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory, HostProgramsDirectory]
+        : [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory];
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>
@@ -123,7 +136,9 @@ public sealed record AgentConfig(
         ArgumentNullException.ThrowIfNull(paths);
         return development
             ? Path.Combine(paths.Root, "servers")
-            : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers");
+            : OperatingSystem.IsWindows()
+                ? Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers")
+                : "/var/lib/pulsar/servers";
     }
 
     /// <summary>

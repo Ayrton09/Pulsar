@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- The Windows agent, and the Linux one (Pulsar's Linux agent): the same program on each platform's own layer. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net10.0-windows;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <AssemblyName>PulsarAgent</AssemblyName>
     <RootNamespace>Pulsar.Agent</RootNamespace>
@@ -9,7 +11,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Settings.Configuration" />
     <PackageReference Include="Serilog.Sinks.Console" />
@@ -18,7 +19,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pulsar.Agent.Core\Pulsar.Agent.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <ProjectReference Include="..\Pulsar.Agent.Windows\Pulsar.Agent.Windows.csproj" />
+    <Compile Remove="Platform\Linux\**" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" />
+    <ProjectReference Include="..\Pulsar.Agent.Linux\Pulsar.Agent.Linux.csproj" />
+    <Compile Remove="Platform\Windows\**" />
   </ItemGroup>
 
   <ItemGroup>
