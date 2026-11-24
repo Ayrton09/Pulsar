@@ -360,7 +360,8 @@
       "description": "How the game runs on Windows: an .exe file.",
       "allOf": [
         { "$ref": "#/$defs/RuntimeDefinition" },
-        { "properties": { "executable": { "pattern": "\\.[eE][xX][eE]$" } } }
+        { "properties": { "executable": { "pattern": "\\.[eE][xX][eE]$" } } },
+        { "not": { "required": ["libraryPath"] } }
       ]
     },
     "LinuxRuntimeDefinition": {
@@ -383,6 +384,8 @@
         "executable": { "$ref": "#/$defs/RelativePath" },
         "workingDirectory": { "$ref": "#/$defs/RelativePath" },
         "userProfile": { "$ref": "#/$defs/RelativePath", "description": "A folder of the server the game takes for its user's: USERPROFILE, APPDATA and LOCALAPPDATA point there, so what it keeps in its account's AppData is in the server's folder (Pulsar 1.0.12)." },
+        "libraryPath": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "anyOf": [ { "const": "." }, { "allOf": [ { "$ref": "#/$defs/RelativePath" }, { "pattern": "^[^:;]+$" } ] } ] },
+          "description": "Linux only: folders of the server where the game's own libraries are, put in LD_LIBRARY_PATH as its start script would (Source's srcds_run: bin; GoldSrc's hlds_run: '.', the server's folder)." },
         "arguments": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ArgumentTemplate" } },
         "allowExtraArguments": { "type": "boolean", "default": false },
         "environment": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" }, "additionalProperties": { "type": "string" } },

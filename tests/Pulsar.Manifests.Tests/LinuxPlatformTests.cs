@@ -209,6 +209,47 @@ public sealed class LinuxPlatformTests
         Assert.DoesNotContain(errors, e => e.Path == "install.steps[2]");
     }
 
+    [Fact]
+    public void ALinuxGameNamesTheFoldersOfItsLibraries()
+    {
+        var manifest = TestManifests.Parse(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["linux-x64"]!["libraryPath"] = new JsonArray(".", "bin", "bin/linux64")));
+
+        var plan = LaunchPlanRenderer.Render(manifest, ManifestValidator.LinuxX64, new ServerBinding("abcd1234", new Dictionary<string, string?>()));
+
+        Assert.Equal([".", "bin", "bin/linux64"], plan.LibraryPath);
+        Assert.Equal(ManifestValidator.LinuxX64, plan.Platform);
+        Assert.Empty(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", new Dictionary<string, string?>())).LibraryPath);
+    }
+
+    [Fact]
+    public void OnlyALinuxRuntimeHasALibraryPath()
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["windows-x64"]!["libraryPath"] = new JsonArray("bin")));
+
+        Assert.Contains(errors, e => e.Path == "runtime.windows-x64.libraryPath");
+    }
+
+    [Theory]
+    [InlineData("../elsewhere")]
+    [InlineData("/usr/lib")]
+    [InlineData("bin:/tmp")]
+    [InlineData("bin;x")]
+    [InlineData(".pulsar/steamcmd")]
+    public void ALibraryFolderIsOneOfTheServersOwn(string folder)
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["linux-x64"]!["libraryPath"] = new JsonArray(folder)));
+
+        Assert.Contains(errors, e => e.Path.StartsWith("runtime.linux-x64.libraryPath", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ALibraryPathNamesAFewFolders()
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["linux-x64"]!["libraryPath"] = new JsonArray()));
+
+        Assert.Contains(errors, e => e.Path == "runtime.linux-x64.libraryPath");
+    }
+
     private static string WindowsOnly() => TestManifests.ChangeWithLinux("_test", m =>
     {
         m["platforms"] = new JsonArray("windows-x64");

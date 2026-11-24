@@ -24,6 +24,9 @@ public static partial class ManifestValidator
     private static readonly string[] s_newlines = ["\n", "\r\n", "\r"];
     private static readonly HashSet<string> s_noPorts = [];
 
+    /// <summary>Folders a runtime's library path may name.</summary>
+    public const int MaxLibraryFolders = 8;
+
     // Set by the agent itself (docs/architecture/04, "Environment").
     // Windows' and Linux' alike: a manifest for both platforms names none of either.
     private static readonly HashSet<string> s_reservedEnvironment = new(StringComparer.OrdinalIgnoreCase)
@@ -1226,6 +1229,32 @@ public static partial class ManifestValidator
         if (runtime.UserProfile is { } userProfile)
         {
             ValidateRelativePath($"{path}.userProfile", userProfile, context.Error);
+        }
+
+        if (runtime.LibraryPath is { } libraryPath)
+        {
+            if (platform != LinuxX64)
+            {
+                context.Error($"{path}.libraryPath", "Only a linux-x64 runtime has a library path.");
+            }
+            else if (libraryPath.Count is 0 or > MaxLibraryFolders)
+            {
+                context.Error($"{path}.libraryPath", $"Between 1 and {MaxLibraryFolders} folders.");
+            }
+
+            for (var i = 0; i < libraryPath.Count; i++)
+            {
+                // The loader splits LD_LIBRARY_PATH on ':' and ';'.
+                if (libraryPath[i].IndexOfAny([':', ';']) >= 0)
+                {
+                    context.Error($"{path}.libraryPath[{i}]", "A folder name without ':' or ';'.");
+                }
+                else if (libraryPath[i] != ".")
+                {
+                    // "." is the server's folder itself (GoldSrc's hlds_run: its engine's libraries are beside it).
+                    ValidateRelativePath($"{path}.libraryPath[{i}]", libraryPath[i], context.Error);
+                }
+            }
         }
 
         var console = runtime.Console;

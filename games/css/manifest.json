@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 4, "minMemoryMb": 1024 },
 
@@ -87,6 +87,30 @@
       "arguments": [
         "-game", "cstrike",
         "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "var.tickrate", "then": ["-tickrate", "{{var.tickrate}}"] },
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "cstrike/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "srcds_linux",
+      "libraryPath": ["bin"],
+      "arguments": [
+        "-game", "cstrike",
+        "-console", "-condebug",
         "-ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
         { "if": "var.tickrate", "then": ["-tickrate", "{{var.tickrate}}"] },

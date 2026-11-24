@@ -479,6 +479,11 @@ public sealed record DotnetRuntimeStep(string Channel) : InstallStep
 /// <c>APPDATA</c> and <c>LOCALAPPDATA</c> to it, so what the game keeps in its account's AppData (SCP: Secret
 /// Laboratory's LabAPI plugins, say) is in the server's folder, reached by the file manager and backed up.
 /// </param>
+/// <param name="LibraryPath">
+/// Folders of the server where a Linux game's own libraries are (Pulsar's Linux agent): the agent puts them in
+/// <c>LD_LIBRARY_PATH</c>, as the game's start script would (Source's <c>srcds_run</c>: <c>bin</c>; GoldSrc's
+/// <c>hlds_run</c>: <c>.</c>, the server's folder itself). Linux only.
+/// </param>
 public sealed record RuntimeDefinition(
     string Executable,
     ConsoleDefinition Console,
@@ -486,7 +491,8 @@ public sealed record RuntimeDefinition(
     string? WorkingDirectory = null,
     bool AllowExtraArguments = false,
     IReadOnlyDictionary<string, string>? Environment = null,
-    string? UserProfile = null)
+    string? UserProfile = null,
+    IReadOnlyList<string>? LibraryPath = null)
 {
     public IReadOnlyList<ArgumentTemplate> ArgumentList => Arguments ?? [];
 }

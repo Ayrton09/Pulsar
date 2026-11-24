@@ -37,6 +37,20 @@ public sealed class LocalPeersTests
     }
 
     [LinuxFact]
+    public async Task AConnectionNotAcceptedYetIsItsListenersProcess()
+    {
+        // A Source server accepts RCON only on its next frame: until then the connection waits in its listener's queue.
+        using var listener = new TcpListener(IPAddress.Any, 0);
+        listener.Start();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port, TestContext.Current.CancellationToken);
+
+        var peer = _peers.PeerProcess((IPEndPoint)client.Client.LocalEndPoint!, (IPEndPoint)client.Client.RemoteEndPoint!);
+
+        Assert.Equal(Environment.ProcessId, peer);
+    }
+
+    [LinuxFact]
     public void TheProcessesOnAUdpPortAreFound()
     {
         using var game = new UdpClient(new IPEndPoint(IPAddress.Any, 0));

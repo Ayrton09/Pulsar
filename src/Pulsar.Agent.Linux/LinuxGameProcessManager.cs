@@ -65,6 +65,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         var executable = LinuxServerPaths.ResolveFile(root, spec.Executable);
         var workingDirectory = LinuxServerPaths.ResolveDirectory(root, spec.WorkingDirectory);
         string? home = spec.UserProfile is { } profile ? LinuxServerPaths.Combine(root, profile) : null;
+        var libraries = LibraryPath(root, spec.LibraryPath);
         GameCgroup? cgroup = null;
         string? environmentFile = null;
         if (spec.Limits is not null && cgroups is null)
@@ -88,7 +89,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
                 : [TempDirectory(root), Path.Combine(home, ".config"), Path.Combine(home, ".local", "share")];
             // game-exec runs as root until it becomes the server's user: with the agent's own environment, never the game's
             // (its DOTNET_ROOT, its TMPDIR are the server's), which it reads from a file only root can read.
-            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home));
+            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries));
             foreach (var argument in GameExec.Arguments(account.Uid, account.Gid, environmentFile, cgroup?.Path, workingDirectory, executable,
                          spec.Arguments, directories))
             {
@@ -217,11 +218,28 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
     }
 
     /// <summary>
+    /// The folders of the server a game loads its own libraries from, as <c>LD_LIBRARY_PATH</c>: each one inside the
+    /// server's folder, or <c>.</c>, the folder itself (the game's account controls them, as it controls the game's
+    /// program); null when none.
+    /// </summary>
+    internal static string? LibraryPath(string root, IReadOnlyList<string>? folders)
+    {
+        if (folders is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return string.Join(':', folders.Select(folder => folder.IndexOfAny([':', ';']) >= 0
+            ? throw new GameProcessException("process.invalid_path", $"'{folder}' cannot be in a library path.")
+            : folder == "." ? root : LinuxServerPaths.Combine(root, folder)));
+    }
+
+    /// <summary>
     /// The game's environment: only what the agent sets (nothing of root's own), then the manifest's. Its home is the
     /// server's folder, or the folder of its user profile.
     /// </summary>
     internal static IReadOnlyDictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string> overrides, LinuxAccount account, string root,
-        string? home)
+        string? home, string? libraryPath = null)
     {
         var variables = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -232,6 +250,11 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             ["TMPDIR"] = TempDirectory(root),
             ["LANG"] = "C.UTF-8",
         };
+        if (libraryPath is not null)
+        {
+            variables["LD_LIBRARY_PATH"] = libraryPath;
+        }
+
         if (home is not null)
         {
             variables["XDG_CONFIG_HOME"] = Path.Combine(home, ".config");

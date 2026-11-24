@@ -693,7 +693,7 @@ internal static class AgentCommands
     }
 
     /// <summary>
-    /// Takes back the Steam login a server's SteamCMD may still hold (<see cref="SteamCmdRunner.LentLogin"/>), and its folder
+    /// Takes back the Steam login a server's SteamCMD may still hold (<see cref="SteamCmdLayout.LentLogins"/>), and its folder
     /// once empty: through the agent's own file access, which never follows a link out of the server's folder.
     /// </summary>
     private static void DeleteLentSteamLogin(IServerFiles files, string serverDirectory, string shortId, TextWriter errors)
@@ -703,18 +703,21 @@ internal static class AgentCommands
             return;
         }
 
-        try
+        foreach (var layout in (SteamCmdLayout[])[SteamCmdLayout.Windows, SteamCmdLayout.Linux])
         {
-            files.Delete(serverDirectory, SteamCmdRunner.LentLogin);
-            files.DeleteEmptyDirectory(serverDirectory, ServerFileRules.SteamLoginFolder);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // Never ran SteamCMD with a login (most games): nothing was lent.
-        }
-        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
-        {
-            errors.WriteLine($"The Steam login lent to server {shortId} could not be deleted ({ex.Message}); delete {SteamCmdRunner.LentLogin} in {serverDirectory} by hand.");
+            try
+            {
+                files.Delete(serverDirectory, layout.LentLogin);
+                files.DeleteEmptyDirectory(serverDirectory, layout.LoginFolder);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Never ran SteamCMD with a login (most games): nothing was lent.
+            }
+            catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+            {
+                errors.WriteLine($"The Steam login lent to server {shortId} could not be deleted ({ex.Message}); delete {layout.LentLogin} in {serverDirectory} by hand.");
+            }
         }
     }
 

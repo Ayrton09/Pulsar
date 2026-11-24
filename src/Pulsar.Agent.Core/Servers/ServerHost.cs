@@ -2131,7 +2131,11 @@ public sealed partial class ServerHost(
     {
         try
         {
-            files.Delete(provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), shortId).Directory, SteamCmdRunner.LentLogin);
+            var directory = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), shortId).Directory;
+            foreach (var lent in SteamCmdLayout.LentLogins)
+            {
+                files.Delete(directory, lent);
+            }
         }
         catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
         {

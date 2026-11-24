@@ -225,7 +225,8 @@ has_library() {
     grep -q "$1" <<<"$libraries"
 }
 
-# What the script and the agent need from the system: the tools, and the libraries .NET uses (ICU, OpenSSL 3).
+# What the script and the agent need from the system: the tools, the libraries .NET uses (ICU, OpenSSL 3), and the
+# 32-bit ones SteamCMD and the older Steam servers use.
 require_tools() {
     local missing=() tool
     for tool in jq flock useradd userdel getent systemd-run tar find; do
@@ -249,12 +250,16 @@ require_tools() {
         packages+=("${icu:-libicu}")
     fi
     has_library 'libssl\.so\.3' || packages+=(libssl3)
+    # SteamCMD and the 32-bit Source servers (srcds_linux) are 32-bit programs: the 32-bit GCC and C++ libraries (which
+    # bring the 32-bit C library).
+    has_library 'libgcc_s\.so\.1 (libc6) ' || packages+=(lib32gcc-s1)
+    has_library 'libstdc++\.so\.6 (libc6) ' || packages+=(lib32stdc++6)
     ((${#packages[@]} == 0)) && return 0
     mapfile -t packages < <(printf '%s\n' "${packages[@]}" | sort -u)
     if has_apt; then
         apt_install "${packages[@]}" || fail "$EXIT_UNSUPPORTED" "Could not install ${packages[*]} with apt-get."
     else
-        fail "$EXIT_UNSUPPORTED" "Install these first with your distribution's package manager: ${packages[*]} (and ICU and OpenSSL 3, which .NET needs)."
+        fail "$EXIT_UNSUPPORTED" "Install these first with your distribution's package manager: ${packages[*]} (and ICU and OpenSSL 3, which .NET needs, and the 32-bit libgcc and libstdc++, which SteamCMD needs)."
     fi
 }
 

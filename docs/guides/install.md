@@ -320,10 +320,12 @@ users can read; `--secrets-file FILE` (JSON `{"nodeCode": "..."}`, only root may
 names, as on Windows. From an extracted tarball (as [above](#from-the-tarball)):
 `sudo /root/pulsar-release/pulsar-<version>-linux-x64/install-pulsar-agent.sh`.
 
-What it does: installs `jq` and the libraries .NET needs when they are missing (`apt-get`), puts the agent in
+What it does: installs `jq`, the libraries .NET needs and the 32-bit ones SteamCMD and the older Steam servers need
+(`lib32gcc-s1`, `lib32stdc++6`) when they are missing (`apt-get`), puts the agent in
 `/opt/pulsar/agent` and enrolls the machine, which writes and starts the `pulsar-agent` systemd service (as root: it
 makes a system user for each game server, with no password or shell, and runs the server's game as it). The node shows
-in the panel as a Linux one, and only games that run on Linux can be created on it: today those that need no SteamCMD.
+in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike: Source,
+Half-Life 2: Deathmatch, Counter-Strike 1.6 and Half-Life Deathmatch, each downloaded by its own SteamCMD.
 
 | Option | What it does |
 |---|---|

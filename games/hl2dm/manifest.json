@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hl2dm",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "name": "Half-Life 2: Deathmatch",
   "description": "Half-Life 2: Deathmatch dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 3, "minMemoryMb": 1024 },
 
@@ -68,6 +68,29 @@
       "arguments": [
         "-game", "hl2mp",
         "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "hl2mp/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "srcds_linux",
+      "libraryPath": ["bin"],
+      "arguments": [
+        "-game", "hl2mp",
+        "-console", "-condebug",
         "-ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
         { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },

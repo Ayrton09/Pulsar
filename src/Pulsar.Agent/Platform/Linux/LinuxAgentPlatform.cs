@@ -149,7 +149,7 @@ internal sealed partial class LinuxAgentPlatform : IAgentPlatform
         });
         builder.Services.AddSingleton<IServerFileManager>(services => new LinuxServerFileManager(services.GetRequiredService<ServerFileIdentity>()));
         builder.Services.AddSingleton<IVolumeSnapshots>(new NoVolumeSnapshots());
-        builder.Services.AddSingleton<ISteamCmdSource, NoSteamCmd>();
+        builder.Services.AddSingleton<ISteamCmdSource, LinuxSteamCmdBootstrapper>();
     }
 
     public IGameProcessManager HostProcesses(AgentPaths paths, ILoggerFactory loggers, bool development, Serilog.ILogger log)
@@ -202,13 +202,6 @@ internal sealed partial class LinuxAgentPlatform : IAgentPlatform
             LogNoCgroups(logger, own, ex.Message);
             return null;
         }
-    }
-
-    /// <summary>Until SteamCMD comes to the Linux agent.</summary>
-    private sealed class NoSteamCmd : ISteamCmdSource
-    {
-        public Task<string> GetAsync(CancellationToken cancellationToken) =>
-            throw new GameProcessException("steamcmd.unavailable", "SteamCMD is not available on the Linux agent yet.");
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No cgroups for games under {Cgroup} ({Reason}): servers' CPU and memory cannot be capped")]

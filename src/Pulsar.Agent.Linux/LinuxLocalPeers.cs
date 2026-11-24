@@ -15,6 +15,7 @@ namespace Pulsar.Agent.Linux;
 public sealed class LinuxLocalPeers(LinuxServerAccounts accounts, string proc = "/proc") : ILocalPeers
 {
     private const string Established = "01";
+    private const string Listening = "0A";
 
     /// <summary>Stands for a socket no process is seen holding (never a process id).</summary>
     public const int Unheld = -1;
@@ -24,9 +25,31 @@ public sealed class LinuxLocalPeers(LinuxServerAccounts accounts, string proc = 
         ArgumentNullException.ThrowIfNull(local);
         ArgumentNullException.ThrowIfNull(remote);
         // The other end's socket: its local address is our remote one, and the other way round.
-        var inode = Sockets("tcp").Concat(Sockets("tcp6"))
-            .FirstOrDefault(s => s.State == Established && Same(s.Local, remote) && Same(s.Remote, local))?.Inode ?? 0;
-        return inode == 0 ? null : ProcessesWith(new HashSet<ulong> { inode }).FirstOrDefault() is var pid and > 0 ? pid : null;
+        var sockets = Sockets("tcp").Concat(Sockets("tcp6")).ToList();
+        var peer = sockets.FirstOrDefault(s => s.State == Established && Same(s.Local, remote) && Same(s.Remote, local));
+        if (peer is null)
+        {
+            return null;
+        }
+
+        if (peer.Inode != 0)
+        {
+            return ProcessesWith(new HashSet<ulong> { peer.Inode }).FirstOrDefault() is var pid and > 0 ? pid : null;
+        }
+
+        // Not accepted yet (in its listener's queue, the kernel shows no inode for it; a Source server accepts only on its
+        // next frame, and a hibernating one waits): only who holds the socket listening there can ever accept it. One
+        // process, or none: listeners held by several (SO_REUSEPORT, a socket passed on) fail closed.
+        var listeners = sockets.Where(s => s.State == Listening && s.Local.Port == remote.Port && (IsAny(s.Local.Address) || Same(s.Local.Address, remote.Address)))
+            .Select(s => s.Inode).ToHashSet();
+        if (listeners.Count == 0 || listeners.Contains(0))
+        {
+            return null;
+        }
+
+        var holders = HoldersOf(listeners);
+        var processes = holders.Values.SelectMany(pids => pids).Distinct().ToList();
+        return holders.Count == listeners.Count && processes.Count == 1 ? processes[0] : null;
     }
 
     public IReadOnlyList<int> UdpProcesses(IPAddress address, int port)

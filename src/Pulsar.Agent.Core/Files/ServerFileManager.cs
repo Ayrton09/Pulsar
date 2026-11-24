@@ -208,6 +208,12 @@ public static class ServerFileRules
     /// </summary>
     public const string SteamLoginFolder = ".pulsar/steamcmd/config";
 
+    /// <summary>
+    /// The home of a Linux server's SteamCMD, where it keeps its login, its cache and its Steam user's data
+    /// (<see cref="Steam.SteamCmdLayout.Linux"/>): kept as <see cref="SteamLoginFolder"/> is.
+    /// </summary>
+    public const string SteamCmdHomeFolder = ".pulsar/steamcmd/home";
+
     // A listing travels in one hub message: names are counted as if every character were escaped.
     private const int ListingBudget = (int)(AgentProtocol.MaximumMessageSize * 3 / 4);
 
@@ -219,11 +225,15 @@ public static class ServerFileRules
         }
     }
 
-    /// <summary>Whether <paramref name="path"/> (a <see cref="ServerFilePath"/>) is <see cref="SteamLoginFolder"/> or inside it, whatever its case.</summary>
+    /// <summary>
+    /// Whether <paramref name="path"/> (a <see cref="ServerFilePath"/>) is <see cref="SteamLoginFolder"/> or
+    /// <see cref="SteamCmdHomeFolder"/>, or inside one, whatever its case.
+    /// </summary>
     public static bool IsSteamLoginFolder(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return path.Equals(SteamLoginFolder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(SteamLoginFolder + "/", StringComparison.OrdinalIgnoreCase);
+        return ((string[])[SteamLoginFolder, SteamCmdHomeFolder]).Any(folder =>
+            path.Equals(folder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase));
     }
 
     public static FileManagerException SteamLoginRefused(string path) => new(FileErrors.AccessDenied, $"'{path}': Pulsar keeps this folder to itself.");

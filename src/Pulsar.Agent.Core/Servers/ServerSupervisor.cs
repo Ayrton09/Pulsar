@@ -685,10 +685,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         SetDesired(true);
         request?.Answer(AckStatus.Accepted);
         var plan = _definition.Plan;
-        // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
+        // logfile+rcon games still get a console on Windows: srcds dies without one (spike 0001), even though it writes nothing
+        // to it. Linux has pipes only, which srcds_linux runs with.
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
-            plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity,
-            _definition.Limits, plan.UserProfile);
+            plan.Console.Mode == ManifestConsoleMode.Pipes || plan.Platform == ManifestValidator.LinuxX64 ? ConsoleMode.Pipes : ConsoleMode.Pty,
+            Encoding(plan.Console.Encoding), _definition.Identity,
+            _definition.Limits, plan.UserProfile, plan.LibraryPath);
         IGameProcess process;
         try
         {
@@ -998,7 +1000,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             }
 
             // A Steam login lent to SteamCMD by an agent that stopped before it could take it back: never the game's.
-            _files.Delete(_definition.Directory, Steam.SteamCmdRunner.LentLogin);
+            foreach (var lent in Steam.SteamCmdLayout.LentLogins)
+            {
+                _files.Delete(_definition.Directory, lent);
+            }
 
             _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports,
                 _definition.Identity);

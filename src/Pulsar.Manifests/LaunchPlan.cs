@@ -49,6 +49,12 @@ public sealed record LaunchPlan(
     /// <summary>The folder of the server the game takes for its user's (<see cref="RuntimeDefinition.UserProfile"/>); null: its account's.</summary>
     public string? UserProfile { get; init; }
 
+    /// <summary>The server's folders a Linux game loads its own libraries from (<see cref="RuntimeDefinition.LibraryPath"/>).</summary>
+    public IReadOnlyList<string> LibraryPath { get; init; } = [];
+
+    /// <summary>The platform the plan was rendered for (<see cref="ManifestValidator.WindowsX64"/> when not said).</summary>
+    public string Platform { get; init; } = ManifestValidator.WindowsX64;
+
     // The default would print every argument and environment value, secrets among them (the RCON and database passwords).
     public override string ToString() => $"LaunchPlan {{ Executable = {Executable}, Arguments = {Arguments.Count} }}";
 }
@@ -539,6 +545,8 @@ public static partial class LaunchPlanRenderer
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,
             LineEdits = [.. manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true).SelectMany(a => a.LineEditList)],
             UserProfile = runtime.UserProfile,
+            LibraryPath = runtime.LibraryPath ?? [],
+            Platform = platform,
             Secrets = [.. manifest.VariableList.Where(v => v.Secret).Select(v => resolved.GetValueOrDefault(v.Key)).Append(rcon?.Password)
                 .Append(database?.Password).OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],
         };

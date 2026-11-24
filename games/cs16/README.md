@@ -36,3 +36,10 @@ The Players card kicks a player by name (`kick "…"`); not run with players on.
 A development agent runs games as the user who started it. On that check, the first start of a fresh install, while
 the user's own Steam client was open, stopped at the same "Unable to initialize Steam" dialog; every later start
 worked. Nodes run each game as its own Windows account, with no Steam client of its own.
+
+## Linux
+
+The template runs on Linux nodes too: the agent's SteamCMD downloads the game's Linux files and starts `hlds_linux` itself
+(Valve's start script is not used), a 32-bit program, with its own folder (`.`, as `hlds_run` does) as its library path. Checked for real on a Linux node
+(Ubuntu 24.04): installed, started with the configured map, `status` over RCON, stopped
+with `quit` and deleted. Like every 32-bit Steam server it needs the 32-bit C++ library, which the agent's installer adds.
