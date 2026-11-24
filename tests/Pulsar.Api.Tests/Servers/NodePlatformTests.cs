@@ -75,6 +75,43 @@ public sealed class NodePlatformTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task EachNodeIsSentItsOwnPlatformsManifest()
+    {
+        // An agent released before the Linux agent refuses a manifest with members it does not know: a Windows node is
+        // sent the Windows runtime alone.
+        using var admin = await factory.CreateAdminClientAsync();
+        var (windowsNode, windows) = await ConnectedAsync(admin, "platform-sent-windows", "windows-x64");
+        await using var _ = windows;
+        var (linuxNode, linux) = await ConnectedAsync(admin, "platform-sent-linux", "linux-x64");
+        await using var __ = linux;
+
+        await ServerApi.CreateAsync(admin, windowsNode, "Sent to Windows");
+        await ServerApi.CreateAsync(admin, linuxNode, "Sent to Linux");
+
+        var toWindows = await ProvisionedManifestAsync(windows);
+        var toLinux = await ProvisionedManifestAsync(linux);
+        Assert.Contains("\"windows-x64\"", toWindows, StringComparison.Ordinal);
+        Assert.DoesNotContain("linux-x64", toWindows, StringComparison.Ordinal);
+        Assert.Contains("\"linux-x64\"", toLinux, StringComparison.Ordinal);
+        Assert.DoesNotContain("windows-x64", toLinux, StringComparison.Ordinal);
+    }
+
+    private static async Task<string> ProvisionedManifestAsync(TestAgent agent)
+    {
+        string? manifest = null;
+        await InProcessAgent.EventuallyAsync(() =>
+        {
+            lock (agent.ReceivedCommands)
+            {
+                manifest = agent.ReceivedCommands.Select(c => c.Command).OfType<ProvisionServerCommand>().FirstOrDefault()?.Spec.Manifest;
+            }
+
+            return Task.FromResult(manifest is not null);
+        }, "provision sent");
+        return manifest!;
+    }
+
+    [DatabaseFact]
     public async Task AServerDoesNotMoveOrCopyToANodeOfAnotherPlatform()
     {
         using var admin = await factory.CreateAdminClientAsync();

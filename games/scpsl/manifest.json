@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "scpsl",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "name": "SCP: Secret Laboratory",
   "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, in config/config (config_gameplay.txt starts as the game's own template), and its plugins (LabAPI, EXILED) in profile/AppData/Roaming; LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 3, "minMemoryMb": 2048 },
 
@@ -91,6 +91,21 @@
       "allowExtraArguments": false,
       "userProfile": "profile",
       "console": { "mode": "pty", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "LocalAdmin",
+      "arguments": [
+        "{{port.game}}",
+        "--acceptEULA",
+        "--useDefault", "--noSetCursor", "--noTerminalTitle",
+        "--",
+        "-silent-crashes",
+        "-appdatapath", "{{server.dir}}/config/",
+        "-configpath", "{{server.dir}}/config/config/"
+      ],
+      "allowExtraArguments": false,
+      "userProfile": "profile",
+      "console": { "mode": "pipes", "encoding": "utf-8" }
     }
   },
 
@@ -149,7 +164,8 @@
   "addons": [
     { "key": "exiled", "name": "EXILED", "license": "CC-BY-SA-3.0", "url": "https://github.com/ExMod-Team/EXILED",
       "description": "The plugin framework most servers run, loaded by the game's LabAPI. Its plugins go in profile/AppData/Roaming/EXILED/Plugins, and LabAPI's own in profile/AppData/Roaming/SCP Secret Laboratory/LabAPI/plugins/global.",
-      "source": { "type": "githubRelease", "repo": "ExMod-Team/EXILED", "asset": "^Exiled\\.tar\\.gz$" },
+      "source": { "type": "githubRelease", "repo": "ExMod-Team/EXILED", "asset": "^Exiled\\.tar\\.gz$",
+        "linuxAsset": "^Exiled\\.tar\\.gz$" },
       "target": "profile/AppData/Roaming" }
   ]
 }

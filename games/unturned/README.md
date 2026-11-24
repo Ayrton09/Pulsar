@@ -22,3 +22,10 @@ They come from AMP's template and the game's server documentation; none was trie
 ## Players (1.0.11)
 
 The Players card kicks (`Kick`) and makes or unmakes admins (`Admin`, `Unadmin`) by name; names may have spaces, since Unturned's arguments end at `/`. Its ban's default length differs between sources, so the template has none yet. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `Unturned_Headless.x86_64` with `linux64` as its library path.
+There the game reads commands only from a terminal, which the Linux agent does not give it yet: the console page's
+commands do not reach it, and it stops with Ctrl+C, on which it saves its world (checked: its level files are written
+then). Checked for real on a Linux node (Ubuntu 24.04): installed, started, stopped with Ctrl+C and deleted.

@@ -33,6 +33,12 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG",
     };
 
+    /// <summary>A user profile's roaming data folder, as Windows lays it out (APPDATA there, XDG_CONFIG_HOME here).</summary>
+    internal static string RoamingFolder(string home) => Path.Combine(home, "AppData", "Roaming");
+
+    /// <summary>A user profile's local data folder, as Windows lays it out (LOCALAPPDATA there, XDG_DATA_HOME here).</summary>
+    internal static string LocalFolder(string home) => Path.Combine(home, "AppData", "Local");
+
     /// <summary>The server's temporary directory, inside its own directory (docs/architecture/06).</summary>
     public static string TempDirectory(string serverRoot) => Path.Combine(serverRoot, ".pulsar", "temp");
 
@@ -66,6 +72,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         var workingDirectory = LinuxServerPaths.ResolveDirectory(root, spec.WorkingDirectory);
         string? home = spec.UserProfile is { } profile ? LinuxServerPaths.Combine(root, profile) : null;
         var libraries = LibraryPath(root, spec.LibraryPath);
+        var preload = Preload(root, spec.Preload);
         GameCgroup? cgroup = null;
         string? environmentFile = null;
         if (spec.Limits is not null && cgroups is null)
@@ -86,10 +93,10 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             };
             string[] directories = home is null
                 ? [TempDirectory(root)]
-                : [TempDirectory(root), Path.Combine(home, ".config"), Path.Combine(home, ".local", "share")];
+                : [TempDirectory(root), RoamingFolder(home), LocalFolder(home)];
             // game-exec runs as root until it becomes the server's user: with the agent's own environment, never the game's
             // (its DOTNET_ROOT, its TMPDIR are the server's), which it reads from a file only root can read.
-            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries));
+            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries, preload));
             foreach (var argument in GameExec.Arguments(account.Uid, account.Gid, environmentFile, cgroup?.Path, workingDirectory, executable,
                          spec.Arguments, directories))
             {
@@ -235,11 +242,27 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
     }
 
     /// <summary>
+    /// The libraries of the server a game loads before its own, as <c>LD_PRELOAD</c> (an installed addon's loader): each
+    /// one a file inside the server's folder, given whole (the loader would look a bare name up elsewhere); null when none.
+    /// </summary>
+    internal static string? Preload(string root, IReadOnlyList<string>? libraries)
+    {
+        if (libraries is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return string.Join(':', libraries.Select(library => library.IndexOfAny([':', ';', ' ']) >= 0
+            ? throw new GameProcessException("process.invalid_path", $"'{library}' cannot be preloaded.")
+            : LinuxServerPaths.Combine(root, library)));
+    }
+
+    /// <summary>
     /// The game's environment: only what the agent sets (nothing of root's own), then the manifest's. Its home is the
     /// server's folder, or the folder of its user profile.
     /// </summary>
     internal static IReadOnlyDictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string> overrides, LinuxAccount account, string root,
-        string? home, string? libraryPath = null)
+        string? home, string? libraryPath = null, string? preload = null)
     {
         var variables = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -255,10 +278,17 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             variables["LD_LIBRARY_PATH"] = libraryPath;
         }
 
+        if (preload is not null)
+        {
+            variables["LD_PRELOAD"] = preload;
+        }
+
         if (home is not null)
         {
-            variables["XDG_CONFIG_HOME"] = Path.Combine(home, ".config");
-            variables["XDG_DATA_HOME"] = Path.Combine(home, ".local", "share");
+            // Laid out as on Windows (AppData/Roaming, AppData/Local): .NET and Mono take their ApplicationData and
+            // LocalApplicationData from these, so a game finds its plugins where the manifest puts them on both platforms.
+            variables["XDG_CONFIG_HOME"] = RoamingFolder(home);
+            variables["XDG_DATA_HOME"] = LocalFolder(home);
         }
 
         foreach (var (name, value) in overrides)

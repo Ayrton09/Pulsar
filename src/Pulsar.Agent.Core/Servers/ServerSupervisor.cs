@@ -690,7 +690,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
             plan.Console.Mode == ManifestConsoleMode.Pipes || plan.Platform == ManifestValidator.LinuxX64 ? ConsoleMode.Pipes : ConsoleMode.Pty,
             Encoding(plan.Console.Encoding), _definition.Identity,
-            _definition.Limits, plan.UserProfile, plan.LibraryPath);
+            _definition.Limits, plan.UserProfile, plan.LibraryPath, plan.Preload);
         IGameProcess process;
         try
         {

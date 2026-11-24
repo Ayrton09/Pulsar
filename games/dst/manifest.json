@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "dst",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Don't Starve Together",
   "description": "Don't Starve Together dedicated server (the overworld), installed anonymously with SteamCMD. Online with a Klei cluster token, on the local network without one. Its world and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 6, "minMemoryMb": 2048 },
 
@@ -44,6 +44,25 @@
   "runtime": {
     "windows-x64": {
       "executable": "bin64/dontstarve_dedicated_server_nullrenderer_x64.exe",
+      "workingDirectory": "bin64",
+      "arguments": [
+        "-console",
+        "-persistent_storage_root", "{{server.dir}}",
+        "-conf_dir", "save",
+        "-cluster", "Cluster_1",
+        "-shard", "Master",
+        "-port", "{{port.game}}",
+        "-players", "{{var.maxPlayers}}",
+        "-steam_master_server_port", "{{port.steam}}",
+        "-steam_authentication_port", "{{port.auth}}",
+        { "if": "var.clusterToken", "then": [], "else": ["-offline"] }
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "bin64/dontstarve_dedicated_server_nullrenderer_x64",
+      "libraryPath": ["bin64/lib64"],
       "workingDirectory": "bin64",
       "arguments": [
         "-console",

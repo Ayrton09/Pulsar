@@ -18,3 +18,11 @@ panel and agent:
 Version 1.2.0 adds these options: autosave interval, player-to-player damage, friendly fire, base raids, hardcore, Pals lost on death, Pal and player damage rates, player and Pal hunger and stamina rates, structure decay, item weight, equipment wear, bases on the server, buildings per player, supply drop interval, respawn delay, world backups, player list, client mods and public IP, then the death penalty (`DeathPenalty`) and the Pal randomizer (`RandomizerType`), 27 in all. Those two are written as bare words (`DeathPenalty=All`), as the game's own file and documentation have them: Pulsar writes a choice that is a plain word without quotes in a struct line (1.0.8), and quotes other text.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `Pal/Binaries/Linux/PalServer-Linux-Shipping` in that folder. Its
+settings are read from `Pal/Saved/Config/LinuxServer/PalWorldSettings.ini` there, so the template declares the file for
+each platform (both are backed up). The game finds Steam through the `steamclient.so` the agent copies to
+`~/.steam/sdk64` (its `PalServer.sh` copies one beside the program). Checked for real on a Linux node (Ubuntu 24.04): installed, started, `ShowPlayers` over RCON answered,
+stopped with `Save` and `Shutdown` over RCON and deleted.

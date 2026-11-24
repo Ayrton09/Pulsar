@@ -326,7 +326,8 @@ What it does: installs `jq`, the libraries .NET needs and the 32-bit ones SteamC
 makes a system user for each game server, with no password or shell, and runs the server's game as it). The node shows
 in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike 2,
 Counter-Strike: Source, Team Fortress 2, Left 4 Dead 2, Half-Life 2: Deathmatch, Pirates, Vikings and Knights II,
-Counter-Strike 1.6 and Half-Life Deathmatch, each downloaded by its own SteamCMD.
+Counter-Strike 1.6, Half-Life Deathmatch, Rust, Valheim, 7 Days to Die, Project Zomboid, Palworld, Unturned,
+Don't Starve Together, Arma Reforger and SCP: Secret Laboratory, each downloaded by its own SteamCMD.
 
 | Option | What it does |
 |---|---|

@@ -277,6 +277,70 @@ public sealed class LinuxPlatformTests
         Assert.Contains(errors, e => e.Path == "addons[0].source.linuxAsset");
     }
 
+    [Fact]
+    public void AnInstalledAddonsLoaderIsPreloadedOnLinuxOnly()
+    {
+        var manifest = TestManifests.Load("valheim");
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?> { ["password"] = "secret12" },
+            new Dictionary<string, PortAssignment> { ["game"] = new(PortAssignment.AnyAddress, 2456), ["query"] = new(PortAssignment.AnyAddress, 2457) }, Directory: "/srv/x");
+
+        var installed = LaunchPlanRenderer.Render(manifest, ManifestValidator.LinuxX64, binding with { Addons = ["bepinex"] });
+        var without = LaunchPlanRenderer.Render(manifest, ManifestValidator.LinuxX64, binding);
+        var windows = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding with { Addons = ["bepinex"] });
+
+        Assert.Equal(["doorstop_libs/libdoorstop_x64.so"], installed.Preload);
+        Assert.Equal("1", installed.Environment["DOORSTOP_ENABLED"]);
+        Assert.Empty(without.Preload);
+        Assert.False(without.Environment.ContainsKey("DOORSTOP_ENABLED"));
+        Assert.Empty(windows.Preload);
+        Assert.False(windows.Environment.ContainsKey("DOORSTOP_ENABLED"));
+    }
+
+    [Theory]
+    [InlineData("""{"preload": ["../other/libx.so"]}""", "addons[0].linux.preload[0]")]
+    [InlineData("""{"preload": ["/usr/lib/libx.so"]}""", "addons[0].linux.preload[0]")]
+    [InlineData("""{"preload": ["libs/a.so:libs/b.so"]}""", "addons[0].linux.preload[0]")]
+    [InlineData("""{"preload": ["libs/loader.dll"]}""", "addons[0].linux.preload[0]")]
+    [InlineData("""{"environment": {"LD_PRELOAD": "/tmp/x.so"}}""", "addons[0].linux.environment.LD_PRELOAD")]
+    [InlineData("""{"environment": {"HOME": "/root"}}""", "addons[0].linux.environment.HOME")]
+    [InlineData("""{"environment": {"DOORSTOP_ENABLED": "{{var.world}}"}}""", "addons[0].linux.environment.DOORSTOP_ENABLED")]
+    public void AnAddonsLinuxRunTakesOnlyTheServersLibrariesAndPlainVariables(string linux, string path)
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("valheim", m => m["addons"]![0]!["linux"] = JsonNode.Parse(linux)));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    [Fact]
+    public void ARuntimesOwnStopReplacesTheManifestsOnItsPlatform()
+    {
+        var manifest = TestManifests.Load("unturned");
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?>(),
+            manifest.PortList.ToDictionary(p => p.Name, p => new PortAssignment(PortAssignment.AnyAddress, p.Default)));
+
+        Assert.IsType<CtrlCStop>(Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.LinuxX64, binding).Stop.Steps));
+        Assert.Equal("Shutdown", Assert.IsType<ConsoleCommandStop>(Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding).Stop.Steps)).Command);
+    }
+
+    [Fact]
+    public void ARuntimesOwnStopSuitsItsConsole()
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("unturned", m =>
+            m["runtime"]!["linux-x64"]!["stop"] = JsonNode.Parse("""{"steps": [{"type": "rconCommand", "command": "quit"}], "timeoutSeconds": 0}""")));
+
+        Assert.Contains(errors, e => e.Path == "runtime.linux-x64.stop.timeoutSeconds");
+        Assert.Contains(errors, e => e.Path.StartsWith("runtime.linux-x64.stop.steps[0]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AStopTwoRuntimesShareIsReportedOnce()
+    {
+        // Counter-Strike: Source's two runtimes have the same console (log file and RCON): the manifest's stop is checked once.
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("css", m => m["stop"]!["timeoutSeconds"] = 0));
+
+        Assert.Single(errors, e => e.Path == "stop.timeoutSeconds");
+    }
+
     private static string WindowsOnly() => TestManifests.ChangeWithLinux("_test", m =>
     {
         m["platforms"] = new JsonArray("windows-x64");

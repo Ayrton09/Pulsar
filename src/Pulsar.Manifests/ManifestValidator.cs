@@ -145,7 +145,7 @@ public static partial class ManifestValidator
 
         context.HasRcon = runtimes.Any(r => r.Runtime.Console.Rcon is not null);
         context.UsesRconPassword = false;
-        ValidateConfigFiles(manifest.ConfigFileList, context);
+        ValidateConfigFiles(manifest.ConfigFileList, manifest.Platforms, context);
         var configFilesUseRconPassword = context.UsesRconPassword;
         foreach (var (platform, platformRuntime, argumentsUseRconPassword) in runtimes)
         {
@@ -162,11 +162,23 @@ public static partial class ManifestValidator
             ValidateQuery(query, ports, Error);
         }
 
-        // Readiness and stop steps must suit the console of every platform the game runs on.
-        foreach (var console in runtimes.Select(r => r.Runtime.Console).Distinct())
+        // Readiness and stop steps must suit the console of every platform the game runs on (a runtime's own stop, its own).
+        // By what the checks read of a console (its mode, whether it has RCON): a record holding lists never equals another.
+        foreach (var console in runtimes.Select(r => r.Runtime.Console).DistinctBy(c => (c.Mode, c.Rcon is null)))
         {
             ValidateReadiness(manifest.Readiness, console, manifest.Query, Error);
+        }
+
+        // The manifest's stop once per console it is used with (two runtimes with the same console would say each error
+        // twice), a runtime's own once.
+        foreach (var console in runtimes.Where(r => r.Runtime.Stop is null).Select(r => r.Runtime.Console).DistinctBy(c => (c.Mode, c.Rcon is null)))
+        {
             ValidateStop(manifest.Stop, console, Error);
+        }
+
+        foreach (var (platform, runtime, _) in runtimes.Where(r => r.Runtime.Stop is not null))
+        {
+            ValidateStop(runtime.Stop!, runtime.Console, Error, $"runtime.{platform}.stop");
         }
 
         if (runtimes.Count == 0)
@@ -495,6 +507,11 @@ public static partial class ManifestValidator
             if (!Uri.TryCreate(addon.Url, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps || addon.Url.Length > 256)
             {
                 error($"{path}.url", "The addon's home page, over https.");
+            }
+
+            if (addon.Linux is { } linux)
+            {
+                ValidateAddonLinuxRun($"{path}.linux", linux, error);
             }
 
             if (addon.Target.Length > 0)
@@ -1060,6 +1077,52 @@ public static partial class ManifestValidator
         }
     }
 
+    /// <summary>An addon's Linux run (<see cref="AddonLinuxRun"/>): its preloads are libraries of the server, its variables plain ones.</summary>
+    private static void ValidateAddonLinuxRun(string path, AddonLinuxRun linux, Action<string, string> error)
+    {
+        if (linux.PreloadList.Count > MaxLibraryFolders)
+        {
+            error($"{path}.preload", $"At most {MaxLibraryFolders} libraries.");
+        }
+
+        for (var i = 0; i < linux.PreloadList.Count; i++)
+        {
+            var library = linux.PreloadList[i];
+            // The loader splits LD_PRELOAD on ':' and spaces.
+            if (library.IndexOfAny([':', ' ', ';']) >= 0 || !library.EndsWith(".so", StringComparison.Ordinal))
+            {
+                error($"{path}.preload[{i}]", "A library of the server's folder (a '.so' file), without ':', ';' or spaces.");
+            }
+            else
+            {
+                ValidateRelativePath($"{path}.preload[{i}]", library, error);
+            }
+        }
+
+        var environment = linux.Environment ?? new Dictionary<string, string>();
+        if (environment.Count > 16)
+        {
+            error($"{path}.environment", "At most 16 variables.");
+        }
+
+        foreach (var (name, value) in environment)
+        {
+            if (s_reservedEnvironment.Contains(name) || !EnvironmentNamePattern().IsMatch(name))
+            {
+                error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
+            }
+            else if (LoadsCode(name))
+            {
+                error($"{path}.environment.{name}", "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
+            }
+
+            if (value.Length > 512 || value.Contains("{{", StringComparison.Ordinal) || value.Any(char.IsControl))
+            {
+                error($"{path}.environment.{name}", "A plain value of at most 512 characters, without placeholders or control characters.");
+            }
+        }
+    }
+
     /// <summary>An environment name that makes a runtime or the system's loader load code (refused on every platform).</summary>
     private static bool LoadsCode(string name) =>
         s_codeLoadingNames.Contains(name) || s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
@@ -1565,7 +1628,7 @@ public static partial class ManifestValidator
         }
     }
 
-    private static void ValidateConfigFiles(IReadOnlyList<ConfigFileDefinition> files, Context context)
+    private static void ValidateConfigFiles(IReadOnlyList<ConfigFileDefinition> files, IReadOnlyList<string> gamePlatforms, Context context)
     {
         if (files.Count > 16)
         {
@@ -1588,6 +1651,11 @@ public static partial class ManifestValidator
             var file = files[i];
             var path = $"configFiles[{i}]";
             ValidateRelativePath($"{path}.path", file.Path, context.Error);
+            if (file.Platforms is { } platforms && (platforms.Count == 0 || platforms.Distinct(StringComparer.Ordinal).Count() != platforms.Count
+                    || platforms.Any(p => !gamePlatforms.Contains(p))))
+            {
+                context.Error($"{path}.platforms", "Some of the platforms the game runs on, each once.");
+            }
             if (file.Set.Count is 0 or > 128)
             {
                 context.Error($"{path}.set", "Between 1 and 128 keys.");
@@ -1818,22 +1886,22 @@ public static partial class ManifestValidator
         }
     }
 
-    private static void ValidateStop(StopDefinition stop, ConsoleDefinition? console, Action<string, string> error)
+    private static void ValidateStop(StopDefinition stop, ConsoleDefinition? console, Action<string, string> error, string at = "stop")
     {
         if (stop.TimeoutSeconds is < 1 or > 3600)
         {
-            error("stop.timeoutSeconds", "Between 1 and 3600.");
+            error($"{at}.timeoutSeconds", "Between 1 and 3600.");
         }
 
         if (stop.Steps.Count > 16)
         {
-            error("stop.steps", "At most 16 steps.");
+            error($"{at}.steps", "At most 16 steps.");
         }
 
         var mode = console?.Mode;
         for (var i = 0; i < stop.Steps.Count; i++)
         {
-            var path = $"stop.steps[{i}]";
+            var path = $"{at}.steps[{i}]";
             switch (stop.Steps[i])
             {
                 case ConsoleCommandStop command:

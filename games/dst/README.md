@@ -23,3 +23,9 @@ through a development panel and agent:
   exits with code 0 in about 4 s. No Steam query answered offline, so the template has none.
 - The Players card's `TheNet:Kick("…")` and `TheNet:Ban("…")` take a player's Klei id (`KU_…`), which `c_listallplayers()`
   shows; they were not tried with players on.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `bin64/dontstarve_dedicated_server_nullrenderer_x64` in `bin64`,
+with `bin64/lib64` as its library path. Checked for real on a Linux node (Ubuntu 24.04): installed, started, `c_announce` from the console reached the game, stopped with
+`c_shutdown(true)` and deleted.

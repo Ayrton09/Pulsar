@@ -30,3 +30,11 @@ BepInEx loaded all three (`Chainloader startup complete (3 loaded, 0 skipped, 0 
 Version 1.2.0 adds backups kept, first and later backup intervals (`-backups`, `-backupshort`, `-backuplong`), fire hazards (`-setkey fire`) and the crossplay instance id (`-instanceid`). The backup arguments come from the Pelican egg and the game's own server documentation, the others from AMP's template.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `valheim_server.x86_64` with `linux64` as its library path, as
+Valheim's `start_server.sh` does. Checked for real on a Linux node (Ubuntu 24.04): installed, started, world generated, stopped with Ctrl+C and deleted.
+BepInEx loads there as well: its Thunderstore pack carries Linux's doorstop, which the addon's `linux` block preloads
+(`doorstop_libs/libdoorstop_x64.so`, with `DOORSTOP_ENABLED` and `DOORSTOP_TARGET_ASSEMBLY`), as the pack's
+`start_server_bepinex.sh` would; checked: its chainloader started on the Linux node.

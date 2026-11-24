@@ -492,6 +492,10 @@ public sealed record DotnetRuntimeStep(string Channel) : InstallStep
 /// <c>LD_LIBRARY_PATH</c>, as the game's start script would (Source's <c>srcds_run</c>: <c>bin</c>; GoldSrc's
 /// <c>hlds_run</c>: <c>.</c>, the server's folder itself). Linux only.
 /// </param>
+/// <param name="Stop">
+/// How the game stops on this platform, in place of the manifest's: Unturned reads commands only from a terminal on
+/// Linux, where it saves and stops on Ctrl+C instead.
+/// </param>
 public sealed record RuntimeDefinition(
     string Executable,
     ConsoleDefinition Console,
@@ -500,7 +504,8 @@ public sealed record RuntimeDefinition(
     bool AllowExtraArguments = false,
     IReadOnlyDictionary<string, string>? Environment = null,
     string? UserProfile = null,
-    IReadOnlyList<string>? LibraryPath = null)
+    IReadOnlyList<string>? LibraryPath = null,
+    StopDefinition? Stop = null)
 {
     public IReadOnlyList<ArgumentTemplate> ArgumentList => Arguments ?? [];
 }
@@ -748,9 +753,17 @@ public enum ConfigFileMode
 /// Arma Reforger's <c>/game/mods</c>), by the array's pointer. The panel's ids are merged into the array, not written
 /// over it: see <see cref="ConfigListDefinition"/>.
 /// </param>
+/// <param name="Platforms">
+/// The platforms the file is written on; null: all. Palworld reads its settings from
+/// <c>Pal/Saved/Config/WindowsServer</c> on Windows and <c>Pal/Saved/Config/LinuxServer</c> on Linux.
+/// </param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
     string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null, IReadOnlyList<string>? WriteIfEmpty = null,
-    IReadOnlyDictionary<string, ConfigListDefinition>? Lists = null);
+    IReadOnlyDictionary<string, ConfigListDefinition>? Lists = null, IReadOnlyList<string>? Platforms = null)
+{
+    /// <summary>Whether the file is written on <paramref name="platform"/>.</summary>
+    public bool WrittenOn(string platform) => Platforms is null || Platforms.Contains(platform);
+}
 
 /// <summary>
 /// An array of objects that list the ids of <see cref="Variable"/>, each in its member <see cref="Key"/> (Arma

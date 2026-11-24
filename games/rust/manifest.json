@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "rust",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "name": "Rust",
   "description": "Rust dedicated server, installed anonymously with SteamCMD (about 6 GB). Generating a new map takes several minutes and a lot of memory.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 15, "minMemoryMb": 8192 },
 
@@ -122,6 +122,57 @@
         "rcon": { "protocol": "source", "port": "game" },
         "sensitiveCommandPrefixes": ["rcon.password", "server.password"]
       }
+    },
+    "linux-x64": {
+      "executable": "RustDedicated",
+      "libraryPath": ["RustDedicated_Data/Plugins", "RustDedicated_Data/Plugins/x86_64"],
+      "arguments": [
+        "-batchmode", "-nographics",
+        "-logfile", "output.log",
+        "+server.ip", "{{port.game.ip}}",
+        "+server.port", "{{port.game}}",
+        "+server.queryport", "{{port.query}}",
+        "+rcon.ip", "{{port.game.ip}}",
+        "+rcon.port", "{{port.game}}",
+        "+rcon.password", "{{rcon.password}}",
+        "+rcon.web", "0",
+        { "if": "port.app", "then": ["+app.port", "{{port.app}}"], "else": ["+app.port", "-1"] },
+        "+server.identity", "pulsar",
+        "+server.level", "{{var.level.name}}",
+        "+server.seed", "{{var.seed}}",
+        "+server.worldsize", "{{var.worldSize}}",
+        "+server.maxplayers", "{{var.maxPlayers}}",
+        { "if": "var.hostname", "then": ["+server.hostname", "{{var.hostname}}"] },
+        "+server.description", "{{var.description}}",
+        { "if": "var.pve", "then": ["+server.pve", "{{var.pve.value}}"] },
+        { "if": "var.globalChat", "then": ["+server.globalchat", "{{var.globalChat.value}}"] },
+        { "if": "var.saveInterval", "then": ["+server.saveinterval", "{{var.saveInterval}}"] },
+        { "if": "var.decayScale", "then": ["+decay.scale", "{{var.decayScale}}"] },
+        { "if": "var.upkeep", "then": ["+decay.upkeep", "{{var.upkeep.value}}"] },
+        { "if": "var.stability", "then": ["+server.stability", "{{var.stability.value}}"] },
+        { "if": "var.secure", "then": ["+server.secure", "{{var.secure.value}}"] },
+        { "if": "var.instantCraft", "then": ["+craft.instant", "{{var.instantCraft.value}}"] },
+        { "if": "var.airdropMinPlayers", "then": ["+server.airdropminplayers", "{{var.airdropMinPlayers}}"] },
+        { "if": "var.tags", "then": ["+server.tags", "{{var.tags}}"] },
+        { "if": "var.url", "then": ["+server.url", "{{var.url}}"] },
+        { "if": "var.headerImage", "then": ["+server.headerimage", "{{var.headerImage}}"] },
+        { "if": "var.gamemode", "then": ["+server.gamemode", "{{var.gamemode}}"] },
+        { "if": "var.tickRate", "then": ["+server.tickrate", "{{var.tickRate}}"] },
+        { "if": "var.salt", "then": ["+server.salt", "{{var.salt}}"] },
+        { "if": "var.levelUrl", "then": ["+server.levelurl", "{{var.levelUrl}}"] },
+        { "if": "var.maxTeamSize", "then": ["+relationshipmanager.maxteamsize", "{{var.maxTeamSize}}"] },
+        { "if": "var.radiation", "then": ["+server.radiation", "{{var.radiation.value}}"] },
+        { "if": "var.upkeepPeriod", "then": ["+decay.upkeep_period_minutes", "{{var.upkeepPeriod}}"] },
+        { "if": "var.saveBackups", "then": ["+server.savebackupcount", "{{var.saveBackups}}"] },
+        { "if": "var.logoImage", "then": ["+server.logoimage", "{{var.logoImage}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "output.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon.password", "server.password"]
+      }
     }
   },
 
@@ -142,12 +193,16 @@
   "addons": [
     { "key": "oxide", "name": "Oxide (uMod)", "license": "MIT", "url": "https://umod.org/games/rust",
       "description": "Server plugins in C#. It replaces some of Rust's own files, so it is installed again after every game update. Plugins go in oxide/plugins.",
-      "source": { "type": "githubRelease", "repo": "OxideMod/Oxide.Rust", "asset": "^Oxide\\.Rust\\.zip$" },
+      "source": { "type": "githubRelease", "repo": "OxideMod/Oxide.Rust", "asset": "^Oxide\\.Rust\\.zip$", "linuxAsset": "^Oxide\\.Rust-linux\\.zip$" },
       "reinstallAfterUpdate": true,
       "conflicts": ["carbon"] },
     { "key": "carbon", "name": "Carbon", "license": "GPL-3.0", "url": "https://carbonmod.gg/",
       "description": "Server plugins in C#, compatible with most Oxide plugins. Installed again after every game update. Plugins go in carbon/plugins.",
-      "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$", "tag": "production_build" },
+      "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$",
+        "linuxAsset": "^Carbon\\.Linux\\.Release\\.tar\\.gz$", "tag": "production_build" },
+      "linux": {
+        "preload": ["libdoorstop.so"],
+        "environment": { "DOORSTOP_ENABLED": "1", "DOORSTOP_TARGET_ASSEMBLY": "./carbon/managed/Carbon.Preloader.dll" } },
       "reinstallAfterUpdate": true,
       "conflicts": ["oxide"] }
   ],

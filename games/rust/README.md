@@ -31,3 +31,12 @@ comes and goes. Each file is checked against the SHA-1 uMod lists for its newest
 ## Players (1.0.11)
 
 The Players card kicks and bans a player who is on the server by name (`kick "…"`, `ban "…"`). Unbanning and owners take a Steam ID (`unban`, `ownerid`): use the console. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `RustDedicated` with `RustDedicated_Data/Plugins` and its `x86_64`
+folder as its library path, as `runds.sh` does. Checked for real on a Linux node (Ubuntu 24.04): installed, started (secure, connected to Steam), `status` over RCON, stopped
+with `quit` and deleted. Oxide comes from its Linux asset (`Oxide.Rust-linux.zip`); Carbon from its
+`Carbon.Linux.Release.tar.gz`, whose doorstop the addon's `linux` block preloads (`libdoorstop.so`, with
+`DOORSTOP_ENABLED` and `DOORSTOP_TARGET_ASSEMBLY`) as Carbon's `environment.sh` would. Both were installed from the
+panel there and answered `oxide.version` and `c.version`.

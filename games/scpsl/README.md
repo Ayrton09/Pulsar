@@ -45,3 +45,10 @@ Checked on 2026-10-26 with the server of that day and EXILED 9.15.2, through a d
   (`Exiled root path set to: …\profile\AppData\Roaming\EXILED`). Removing it deletes its files; the configs it wrote stay.
 - EXILED's plugins go in `profile/AppData/Roaming/EXILED/Plugins` (their dependencies in `Plugins/dependencies`), LabAPI's
   own in `profile/AppData/Roaming/SCP Secret Laboratory/LabAPI/plugins/global`.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `LocalAdmin`, with the server's `profile` folder as the game's
+home and its `AppData/Roaming` and `AppData/Local` as `XDG_CONFIG_HOME` and `XDG_DATA_HOME`, so the game keeps LabAPI's
+and EXILED's folders where it does on Windows. Checked for real on a Linux node (Ubuntu 24.04): installed, started, `players` answered, stopped with `exit` and deleted. EXILED
+installed from the panel (the same `Exiled.tar.gz` serves both platforms) was enabled by LabAPI there.

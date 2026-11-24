@@ -24,3 +24,9 @@ They come from AMP's template for the game (and, where noted, other panels' temp
 ## Players (1.0.11)
 
 The Players card kicks and bans (for ten years: `ban add "…" 10 years`) a player who is on the server, by name. Removing a ban takes the player's platform id (`ban remove`): use the console. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `7DaysToDieServer.x86_64` with the server's folder as its library
+path, as `startserver.sh` does (the game ships its own `libstdc++`). Checked for real on a Linux node (Ubuntu 24.04): installed, started ("StartGame done"), `listplayers`
+over telnet answered, stopped with `shutdown` and deleted.

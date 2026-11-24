@@ -36,15 +36,19 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
                 $"Template {template.Key} {template.Version} is not valid anymore: {string.Join("; ", result.Errors)}");
     }
 
-    /// <summary>The spec the agent renders the server from: manifest text, values (secrets decrypted) and ports.</summary>
+    /// <summary>
+    /// The spec the agent renders the server from: manifest text (as the node's platform reads it, <see cref="ManifestPlatforms"/>),
+    /// values (secrets decrypted) and ports.
+    /// </summary>
     public async Task<ServerRuntimeSpec> BuildAsync(Server server, GameTemplate template, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(template);
         var allocations = await AllocationsOf(server, cancellationToken);
         var addons = await ServerAddons.InstalledKeysAsync(db, server.Id, cancellationToken);
+        var manifest = ManifestPlatforms.For(template.Content, await PlatformOfAsync(server.NodeId, cancellationToken));
         // A suspended server is started by nobody (1.0.24): neither with its node nor after a crash.
-        return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
+        return new ServerRuntimeSpec(server.ShortId, manifest, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
             server.RestartOnCrash && !server.IsSuspended,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
             server.SteamBranch, server.RconPasswordProtected is { } rcon ? protector.Unprotect(rcon) : null,
