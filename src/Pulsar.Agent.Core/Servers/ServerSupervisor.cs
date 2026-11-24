@@ -686,10 +686,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         request?.Answer(AckStatus.Accepted);
         var plan = _definition.Plan;
         // logfile+rcon games still get a console on Windows: srcds dies without one (spike 0001), even though it writes nothing
-        // to it. Linux has pipes only, which srcds_linux runs with.
+        // to it. On Linux srcds_linux runs with pipes, and only a 'pty' game gets a pseudo terminal.
+        var mode = plan.Console.Mode switch
+        {
+            ManifestConsoleMode.Pipes => ConsoleMode.Pipes,
+            ManifestConsoleMode.Pty => ConsoleMode.Pty,
+            _ => plan.Platform == ManifestValidator.LinuxX64 ? ConsoleMode.Pipes : ConsoleMode.Pty,
+        };
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
-            plan.Console.Mode == ManifestConsoleMode.Pipes || plan.Platform == ManifestValidator.LinuxX64 ? ConsoleMode.Pipes : ConsoleMode.Pty,
-            Encoding(plan.Console.Encoding), _definition.Identity,
+            mode, Encoding(plan.Console.Encoding), _definition.Identity,
             _definition.Limits, plan.UserProfile, plan.LibraryPath, plan.Preload);
         IGameProcess process;
         try
@@ -1328,13 +1333,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return;
         }
 
-        if (plan.Console.Mode == ManifestConsoleMode.Pipes)
+        // Pipes do not echo, and neither does a Linux pseudo terminal (its echo is off): the console shows the command itself.
+        if (plan.Console.Mode == ManifestConsoleMode.Pipes || plan.Platform == ManifestValidator.LinuxX64)
         {
             _console.Write($"> {ConsoleCommandRedaction.Redact(line, plan.Console.SensitiveCommandPrefixes ?? [])}\n", now);
         }
     }
 
-    private static string InputNewline(LaunchPlan plan) => plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
+    /// <summary>A Windows console takes CR LF; a Linux terminal turns CR into a line end of its own, so LF alone there.</summary>
+    private static string InputNewline(LaunchPlan plan) =>
+        plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty && plan.Platform != ManifestValidator.LinuxX64 ? "\r\n" : "\n");
 
     /// <summary>
     /// Writes the console input of one process, in order: a game that stopped reading its input (frozen) keeps a write

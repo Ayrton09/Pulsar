@@ -1292,11 +1292,6 @@ public static partial class ManifestValidator
             context.Error($"{path}.executable", "Only programs can be started (no scripts, installers or interpreters).");
         }
 
-        if (platform == LinuxX64 && runtime.Console.Mode == ManifestConsoleMode.Pty)
-        {
-            context.Error($"{path}.console.mode", "Linux runs games with 'pipes' or 'logfile+rcon'.");
-        }
-
         if (platform == LinuxX64 && runtime.Console.Encoding != ManifestConsoleEncoding.Utf8)
         {
             context.Error($"{path}.console.encoding", "Linux consoles are UTF-8.");

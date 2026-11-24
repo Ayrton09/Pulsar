@@ -27,18 +27,24 @@ public static partial class GameExec
 
     /// <summary>
     /// The arguments the agent passes:
-    /// <c>game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]</c>.
+    /// <c>game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]</c>.
     /// </summary>
     /// <param name="environmentFile">The game's environment (<see cref="WriteEnvironment"/>): never this process's own.</param>
     /// <param name="directories">Folders of the server made (when missing) as its user, before the game starts: its temporary folder, say.</param>
+    /// <param name="terminal">A pseudo terminal's slave (<see cref="PseudoTerminal"/>): the game's controlling terminal and standard streams.</param>
     public static IReadOnlyList<string> Arguments(uint uid, uint gid, string environmentFile, string? cgroup, string workingDirectory, string executable,
-        IEnumerable<string> arguments, IEnumerable<string>? directories = null)
+        IEnumerable<string> arguments, IEnumerable<string>? directories = null, string? terminal = null)
     {
         List<string> list =
             [Command, "--uid", uid.ToString(CultureInfo.InvariantCulture), "--gid", gid.ToString(CultureInfo.InvariantCulture), "--env-file", environmentFile];
         if (cgroup is not null)
         {
             list.AddRange(["--cgroup", cgroup]);
+        }
+
+        if (terminal is not null)
+        {
+            list.AddRange(["--tty", terminal]);
         }
 
         foreach (var directory in directories ?? [])
@@ -155,14 +161,16 @@ public static partial class GameExec
         public IReadOnlyList<string> Directories { get; init; } = [];
 
         public string EnvironmentFile { get; init; } = "";
+
+        public string? Terminal { get; init; }
     }
 
     internal static bool TryParse(IReadOnlyList<string> args, out Request request, out string usage)
     {
         request = null!;
-        usage = "usage: game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]";
+        usage = "usage: game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]";
         uint? uid = null, gid = null;
-        string? cgroup = null, cwd = null, environmentFile = null;
+        string? cgroup = null, cwd = null, environmentFile = null, terminal = null;
         var directories = new List<string>();
         var i = args.Count > 0 && args[0] == Command ? 1 : 0;
         for (; i < args.Count && args[i] != "--"; i += 2)
@@ -193,6 +201,9 @@ public static partial class GameExec
                 case "--env-file" when Path.IsPathFullyQualified(value):
                     environmentFile = value;
                     break;
+                case "--tty" when TerminalPattern().IsMatch(value):
+                    terminal = value;
+                    break;
                 default:
                     return false;
             }
@@ -211,7 +222,7 @@ public static partial class GameExec
             return false;
         }
 
-        request = new Request(user, group, cgroup, cwd, args[i + 1], [.. args.Skip(i + 2)]) { Directories = directories, EnvironmentFile = environmentFile };
+        request = new Request(user, group, cgroup, cwd, args[i + 1], [.. args.Skip(i + 2)]) { Directories = directories, EnvironmentFile = environmentFile, Terminal = terminal };
         return true;
     }
 
@@ -220,6 +231,31 @@ public static partial class GameExec
         // The game's tree: a group of processes the agent kills at once (setsid fails only for a group leader, which a
         // process the agent just started is not).
         _ = setsid();
+        if (request.Terminal is { } terminal)
+        {
+            // Opened while still root (the device is root's), as the session's controlling terminal, and made the game's
+            // standard streams: what fails from here on is said there.
+            var descriptor = open(terminal, 2 /* O_RDWR */);
+            if (descriptor < 0)
+            {
+                throw new IOException($"{terminal} could not be opened: {Describe(Marshal.GetLastPInvokeError())}");
+            }
+
+            Check(ioctl(descriptor, 0x540E /* TIOCSCTTY */, 0), "ioctl(TIOCSCTTY)");
+            for (var stream = 0; stream <= 2; stream++)
+            {
+                if (dup2(descriptor, stream) < 0)
+                {
+                    throw new IOException($"dup2 failed: {Describe(Marshal.GetLastPInvokeError())}");
+                }
+            }
+
+            if (descriptor > 2)
+            {
+                _ = close(descriptor);
+            }
+        }
+
         if (request.Cgroup is { } cgroup)
         {
             // Into the game's cgroup before anything of the game runs: everything it starts is born there.
@@ -374,4 +410,20 @@ public static partial class GameExec
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial int execve(IntPtr path, IntPtr argv, IntPtr envp);
+
+    [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int open(string path, int flags);
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int ioctl(int descriptor, ulong request, int argument);
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int dup2(int descriptor, int target);
+
+    [LibraryImport("libc")]
+    private static partial int close(int descriptor);
+
+    /// <summary>A pseudo terminal's slave device, and nothing else.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\A/dev/pts/[0-9]{1,9}\z")]
+    private static partial System.Text.RegularExpressions.Regex TerminalPattern();
 }

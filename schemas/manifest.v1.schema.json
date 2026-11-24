@@ -377,13 +377,13 @@
       ]
     },
     "LinuxRuntimeDefinition": {
-      "description": "How the game runs on Linux (Pulsar's Linux agent): an ELF program (no script), its console through pipes or a log file and RCON, in UTF-8.",
+      "description": "How the game runs on Linux (Pulsar's Linux agent): an ELF program (no script), its console in UTF-8 (a 'pty' game gets a pseudo terminal).",
       "allOf": [
         { "$ref": "#/$defs/RuntimeDefinition" },
         {
           "properties": {
             "executable": { "not": { "pattern": "\\.([sS][hH]|[bB][aA][sS][hH]|[pP][yY]|[pP][lL]|[rR][bB]|[jJ][sS]|[eE][xX][eE]|[bB][aA][tT]|[cC][mM][dD]|[pP][sS]1|[jJ][aA][rR]|[dD][lL][lL])$" } },
-            "console": { "properties": { "mode": { "enum": ["pipes", "logfile+rcon"] }, "encoding": { "const": "utf-8" } } }
+            "console": { "properties": { "encoding": { "const": "utf-8" } } }
           }
         }
       ]

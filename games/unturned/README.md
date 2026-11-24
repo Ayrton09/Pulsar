@@ -26,6 +26,7 @@ The Players card kicks (`Kick`) and makes or unmakes admins (`Admin`, `Unadmin`)
 ## Linux
 
 The template runs on Linux nodes too: the agent starts `Unturned_Headless.x86_64` with `linux64` as its library path.
-There the game reads commands only from a terminal, which the Linux agent does not give it yet: the console page's
-commands do not reach it, and it stops with Ctrl+C, on which it saves its world (checked: its level files are written
-then). Checked for real on a Linux node (Ubuntu 24.04): installed, started, stopped with Ctrl+C and deleted.
+There the game reads commands only from a terminal (with pipes it takes none), so its Linux runtime's console is
+`pty`: the agent gives it a pseudo terminal of its own. Checked for real on a Linux node (Ubuntu 24.04): installed,
+started, `Players` from the console page answered (also after the agent restarted with the game running), stopped
+with `Shutdown` and deleted.

@@ -62,11 +62,10 @@
     },
     "linux-x64": {
       "executable": "Unturned_Headless.x86_64",
-      "stop": { "steps": [ { "type": "ctrlC" } ], "timeoutSeconds": 60 },
       "libraryPath": ["linux64"],
       "arguments": ["-batchmode", "-nographics", "+InternetServer/pulsar"],
       "allowExtraArguments": true,
-      "console": { "mode": "pipes", "encoding": "utf-8", "sensitiveCommandPrefixes": ["password", "gslt"] }
+      "console": { "mode": "pty", "encoding": "utf-8", "sensitiveCommandPrefixes": ["password", "gslt"] }
     }
   },
 

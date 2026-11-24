@@ -54,6 +54,29 @@ public sealed class GameProcessTests : IAsyncLifetime
     }
 
     [LinuxRootFact]
+    public async Task APtyGameReadsItsCommandsFromATerminalOfItsOwn()
+    {
+        // Unturned on Linux reads its commands only from a terminal.
+        var (server, account) = Provision();
+        await using var game = new RunningGame(await Manager().StartAsync(Spec(server, ["--ready-after", "0"]) with { ConsoleMode = ConsoleMode.Pty },
+            TestContext.Current.CancellationToken));
+
+        await game.WaitForAsync("Test server ready");
+        var input = new FileInfo($"/proc/{game.Process.ProcessId}/fd/0").LinkTarget;
+        Assert.StartsWith("/dev/pts/", input, StringComparison.Ordinal);
+        Assert.Equal(input, new FileInfo($"/proc/{game.Process.ProcessId}/fd/1").LinkTarget);
+        Assert.Equal(0x180u, Libc.Lstat(input!)!.Value.Permissions); // 0600: root's alone, whatever devpts gives
+        Assert.Equal(0u, Libc.Lstat(input!)!.Value.Uid);
+        await game.Process.WriteInputAsync("whoami\n", TestContext.Current.CancellationToken);
+        var answer = await game.WaitForAsync($"user={account.Name}");
+        Assert.DoesNotContain("whoami", answer, StringComparison.Ordinal); // the terminal does not echo it
+
+        await game.Process.WriteInputAsync("quit\n", TestContext.Current.CancellationToken);
+        Assert.Equal(0, await game.Process.Exited.WaitAsync(s_wait, TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("whoami", await game.AllOutputAsync(), StringComparison.Ordinal);
+    }
+
+    [LinuxRootFact]
     public async Task AGamesUserCannotReadRootsFilesNorTakeRootBack()
     {
         var (server, _) = Provision();
@@ -158,6 +181,27 @@ public sealed class GameProcessTests : IAsyncLifetime
         Assert.Equal((1000u, 1001u, "/srv", "/srv/game"), (request.Uid, request.Gid, request.WorkingDirectory, request.Executable));
         Assert.Equal(["-x", "--y"], request.Arguments);
         Assert.Equal(["/srv/a"], request.Directories);
+    }
+
+    [LinuxTheory]
+    [InlineData("/dev/pts/5", true)]
+    [InlineData("/dev/pts/123456789", true)]
+    [InlineData("/dev/pts/", false)]
+    [InlineData("/dev/pts/../tty1", false)]
+    [InlineData("/dev/pts/5\n", false)]
+    [InlineData("/etc/passwd", false)]
+    [InlineData("/dev/tty1", false)]
+    public void GameExecTakesOnlyAPseudoTerminalsSlave(string terminal, bool taken)
+    {
+        var args = GameExec.Arguments(1000, 1001, "/run/env", null, "/srv", "/srv/game", ["-x"], terminal: terminal);
+
+        Assert.Equal(["--tty", terminal], args.SkipWhile(a => a != "--tty").Take(2));
+        Assert.Equal(taken, GameExec.TryParse(args, out var request, out _));
+        if (taken)
+        {
+            Assert.Equal(terminal, request.Terminal);
+            Assert.Equal(["-x"], request.Arguments);
+        }
     }
 
     [LinuxRootFact]

@@ -87,11 +87,12 @@ public sealed class LinuxPlatformTests
     }
 
     [Fact]
-    public void LinuxHasNoPseudoConsole()
+    public void ALinuxGameMayHaveAPseudoTerminal()
     {
-        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["linux-x64"]!["console"]!["mode"] = "pty"));
+        // Unturned reads its commands only from a terminal on Linux.
+        var errors = TestManifests.ErrorsOrNone(TestManifests.ChangeWithLinux("_test", m => m["runtime"]!["linux-x64"]!["console"]!["mode"] = "pty"));
 
-        Assert.Contains(errors, e => e.Path == "runtime.linux-x64.console.mode");
+        Assert.DoesNotContain(errors, e => e.Path == "runtime.linux-x64.console.mode");
     }
 
     [Fact]
@@ -314,7 +315,8 @@ public sealed class LinuxPlatformTests
     [Fact]
     public void ARuntimesOwnStopReplacesTheManifestsOnItsPlatform()
     {
-        var manifest = TestManifests.Load("unturned");
+        var manifest = TestManifests.Parse(TestManifests.ChangeWithLinux("unturned", m =>
+            m["runtime"]!["linux-x64"]!["stop"] = JsonNode.Parse("""{"steps": [{"type": "ctrlC"}], "timeoutSeconds": 60}""")));
         var binding = new ServerBinding("abcd1234", new Dictionary<string, string?>(),
             manifest.PortList.ToDictionary(p => p.Name, p => new PortAssignment(PortAssignment.AnyAddress, p.Default)));
 

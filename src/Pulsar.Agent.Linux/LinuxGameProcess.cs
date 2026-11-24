@@ -29,20 +29,31 @@ internal sealed class LinuxGameProcess : IGameProcess
     private readonly SemaphoreSlim _inputLock = new(1, 1);
     private readonly Task<int> _exited;
     private readonly string? _environmentFile;
+    private readonly PseudoTerminal? _terminal;
     private int _readersRunning;
     private int _disposed;
 
-    internal LinuxGameProcess(Process process, GameCgroup? cgroup, TimeProvider clock, string? environmentFile = null)
+    /// <param name="terminal">
+    /// The game's pseudo terminal (its console is 'pty'): its input goes there and its output comes from there, and from
+    /// its pipes what <c>game-exec</c> said before the game had its terminal.
+    /// </param>
+    internal LinuxGameProcess(Process process, GameCgroup? cgroup, TimeProvider clock, string? environmentFile = null, PseudoTerminal? terminal = null)
     {
         _environmentFile = environmentFile;
+        _terminal = terminal;
         _process = process;
         _cgroup = cgroup;
         _clock = clock;
         ProcessId = process.Id;
         StartedAt = clock.GetUtcNow();
-        _input = process.StandardInput.BaseStream;
+        _input = terminal?.OpenWriter() ?? process.StandardInput.BaseStream;
         StartReader(process.StandardOutput.BaseStream, "out");
         StartReader(process.StandardError.BaseStream, "err");
+        if (terminal is not null)
+        {
+            StartReader(terminal.OpenReader(), "tty");
+        }
+
         _exited = WaitForExitAsync();
     }
 
@@ -217,6 +228,7 @@ internal sealed class LinuxGameProcess : IGameProcess
         }
 
         DeleteEnvironmentFile();
+        _terminal?.Dispose();
         _cgroup?.Dispose();
         _process.Dispose();
     }
@@ -226,6 +238,8 @@ internal sealed class LinuxGameProcess : IGameProcess
         await _process.WaitForExitAsync().ConfigureAwait(false);
         // game-exec deletes the game's environment as it reads it; one that ended before (or was killed) leaves it.
         DeleteEnvironmentFile();
+        // Reading the terminal ends once nothing of the game holds its slave any more (EIO), this side's copy included.
+        _terminal?.CloseSlave();
         return _process.ExitCode;
     }
 

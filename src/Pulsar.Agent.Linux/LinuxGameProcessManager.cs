@@ -46,11 +46,6 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
     {
         ArgumentNullException.ThrowIfNull(spec);
         cancellationToken.ThrowIfCancellationRequested();
-        if (spec.ConsoleMode != ConsoleMode.Pipes)
-        {
-            throw new GameProcessException("process.console_unsupported", "Linux runs games with pipes: there is no pseudo console on Linux yet.");
-        }
-
         var root = LinuxServerPaths.NormalizeRoot(spec.ServerRoot);
         LinuxAccount account;
         if (spec.Identity is ProcessIdentity.AccountIdentity named)
@@ -75,6 +70,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         var preload = Preload(root, spec.Preload);
         GameCgroup? cgroup = null;
         string? environmentFile = null;
+        PseudoTerminal? terminal = null;
         if (spec.Limits is not null && cgroups is null)
         {
             throw new GameProcessException("process.limits_failed", "This node cannot cap a server's CPU or memory: it has no cgroups for its games.");
@@ -83,6 +79,8 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         try
         {
             cgroup = cgroups?.Create(spec.ServerId, spec.Limits);
+            // A game that reads commands only from a terminal gets one (its manifest's console is 'pty').
+            terminal = spec.ConsoleMode == ConsoleMode.Pty ? PseudoTerminal.Open() : null;
             var start = new ProcessStartInfo(agentExecutable)
             {
                 RedirectStandardInput = true,
@@ -98,7 +96,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             // (its DOTNET_ROOT, its TMPDIR are the server's), which it reads from a file only root can read.
             environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries, preload));
             foreach (var argument in GameExec.Arguments(account.Uid, account.Gid, environmentFile, cgroup?.Path, workingDirectory, executable,
-                         spec.Arguments, directories))
+                         spec.Arguments, directories, terminal?.SlavePath))
             {
                 start.ArgumentList.Add(argument);
             }
@@ -119,9 +117,10 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
 
             var process = Process.Start(start) ?? throw new GameProcessException("process.start_failed", "The game's process could not be started.");
 
-            var game = new LinuxGameProcess(process, cgroup, clock, environmentFile);
+            var game = new LinuxGameProcess(process, cgroup, clock, environmentFile, terminal);
             cgroup = null; // the game's now
             environmentFile = null; // game-exec deletes it as it reads it, the game's process once it ends
+            terminal = null;
             LogStarted(spec.ServerId, game.ProcessId, account.Name);
             return Task.FromResult<IGameProcess>(game);
         }
@@ -135,6 +134,7 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         }
         finally
         {
+            terminal?.Dispose();
             cgroup?.Dispose();
             if (environmentFile is not null)
             {
