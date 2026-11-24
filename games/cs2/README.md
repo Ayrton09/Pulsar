@@ -27,3 +27,15 @@ They come from AMP's template (tags, LAN, cheats, Workshop and map group) and fr
 ## Players (1.0.11)
 
 The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent's SteamCMD downloads the game's Linux files (about 71 GB) and starts
+`game/bin/linuxsteamrt64/cs2` itself in `game`, with that folder as its library path and `ENABLE_PATHMATCH=1`, as
+`cs2.sh` sets them. Its server finds Steam through Steam's `steamclient.so` in `~/.steam/sdk64`, which the agent copies
+there from its SteamCMD after every install and update (`steamClient`'s folder is Windows' only). Metamod:Source and
+CounterStrikeSharp come from their Linux assets (`linuxAsset`). Checked for real on a Linux node (Ubuntu 24.04):
+installed, started on de_dust2 (connected to Steam), `status` and `meta list` over RCON, Metamod installed from the
+panel and loaded, stopped with `quit` and deleted. CounterStrikeSharp 1.0.380 installed and loaded its .NET runtime but
+the game crashed at map load: CS2 build 26879581 broke it on every platform (its project's open issue of 2026-11-24),
+not something of the Linux node.

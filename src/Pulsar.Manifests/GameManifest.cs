@@ -328,7 +328,14 @@ public abstract record InstallStep;
 /// <param name="SteamClient">
 /// A folder of the server the Steam client's libraries are copied into after every run, from the server's SteamCMD
 /// (Pulsar 1.0.25): a game server that does not ship them (Counter-Strike 2) looks for them beside its executable, or
-/// in a Steam client the server's account does not have.
+/// in a Steam client the server's account does not have. On Linux the folder is not used: the libraries go where Steam
+/// for Linux keeps them, <c>.steam/sdk64</c> and <c>.steam/sdk32</c> in the game's home (the server's folder, or its
+/// runtime's user profile).
+/// </param>
+/// <param name="WindowsFirstOnLinux">
+/// On a Linux node, a first install downloads the app's Windows files, then its Linux ones over them (with every file
+/// checked): Left 4 Dead 2's dedicated server lists only Windows until it is installed ("Invalid platform"). Later
+/// installs and updates are plain Linux ones.
 /// </param>
 public sealed record SteamCmdStep(
     int AppId,
@@ -336,7 +343,8 @@ public sealed record SteamCmdStep(
     string? Beta = null,
     string? BetaPasswordVar = null,
     bool Validate = false,
-    string? SteamClient = null) : InstallStep
+    string? SteamClient = null,
+    bool WindowsFirstOnLinux = false) : InstallStep
 {
     public const string AnonymousLogin = "anonymous";
     public const string AccountLogin = "account";

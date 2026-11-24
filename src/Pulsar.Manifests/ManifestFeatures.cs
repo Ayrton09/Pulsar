@@ -141,7 +141,8 @@ public static class ManifestFeatures
     public static bool UsesTarAddons(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.AddonList.Any(a => a.Source is GitHubReleaseSource github && AddonFormat(github) == "tar.gz");
+        return manifest.AddonList.Any(a => a.Source is GitHubReleaseSource github
+            && (AddonFormat(github) == "tar.gz" || AddonFormat(github.For(ManifestValidator.LinuxX64)) == "tar.gz"));
     }
 
     /// <summary>A game server installed from a GitHub release (<see cref="GitHubReleaseStep"/>, Pulsar 1.0.12).</summary>

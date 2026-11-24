@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "l4d2",
-  "version": "1.3.4",
+  "version": "1.4.0",
   "name": "Left 4 Dead 2",
   "description": "Left 4 Dead 2 dedicated server (srcds), installed anonymously with SteamCMD (about 10 GB).",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 16, "minMemoryMb": 2048 },
 
@@ -55,8 +55,8 @@
       "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." }
   ],
 
-  "install": { "steps": [ { "type": "steamcmd", "appId": 222860 } ] },
-  "update": { "steps": [ { "type": "steamcmd", "appId": 222860 } ] },
+  "install": { "steps": [ { "type": "steamcmd", "appId": 222860, "windowsFirstOnLinux": true } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 222860, "windowsFirstOnLinux": true } ] },
 
   "runtime": {
     "windows-x64": {
@@ -64,6 +64,27 @@
       "arguments": [
         "-game", "left4dead2",
         "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "left4dead2/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "srcds_linux",
+      "libraryPath": [".", "bin"],
+      "arguments": [
+        "-game", "left4dead2",
+        "-console", "-condebug",
         "-ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
         "+map", "{{var.map}}",

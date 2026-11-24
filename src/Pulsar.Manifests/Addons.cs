@@ -47,7 +47,16 @@ public abstract record AddonSource;
 /// </summary>
 /// <param name="Repo"><c>owner/name</c>.</param>
 /// <param name="Asset">A regular expression the asset's file name must match (one asset of the release).</param>
-public sealed record GitHubReleaseSource(string Repo, string Asset, string? Tag = null, bool Prerelease = false) : AddonSource;
+/// <param name="LinuxAsset">
+/// The asset a Linux node takes instead (Metamod:Source's <c>-linux.tar.gz</c>): an addon of a manifest that runs on
+/// Linux must name one, since the Windows asset's programs do not run there.
+/// </param>
+public sealed record GitHubReleaseSource(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string? LinuxAsset = null) : AddonSource
+{
+    /// <summary>The source as a node of <paramref name="platform"/> downloads it: its own asset in place of Windows' one.</summary>
+    public GitHubReleaseSource For(string platform) =>
+        platform == ManifestValidator.LinuxX64 && LinuxAsset is { } linux ? this with { Asset = linux, LinuxAsset = null } : this;
+}
 
 /// <summary>
 /// Keeps <see cref="Line"/> right after the first line of <see cref="Path"/> that starts with <see cref="After"/> (both

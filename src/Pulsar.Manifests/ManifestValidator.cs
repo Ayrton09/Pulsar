@@ -185,6 +185,16 @@ public static partial class ManifestValidator
         }
 
         ValidateAddons(manifest.AddonList, Error);
+        if (manifest.Platforms.Contains(LinuxX64))
+        {
+            for (var i = 0; i < manifest.AddonList.Count; i++)
+            {
+                if (manifest.AddonList[i].Source is GitHubReleaseSource { LinuxAsset: null })
+                {
+                    Error($"addons[{i}].source.linuxAsset", "A manifest that runs on linux-x64 names its addon's Linux asset: the Windows one's programs do not run there.");
+                }
+            }
+        }
         if (manifest.Commands is { } commands)
         {
             ValidateCommands(commands, Error);
@@ -611,14 +621,22 @@ public static partial class ManifestValidator
             error($"{path}.repo", "A GitHub repository, 'owner/name'.");
         }
 
-        if (github.Asset.Length is 0 or > 200 || CompileError(github.Asset) is not null)
+        foreach (var (name, asset) in (IEnumerable<(string, string?)>)[("asset", github.Asset), ("linuxAsset", github.LinuxAsset)])
         {
-            error($"{path}.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
-        }
-        else if (ManifestFeatures.AddonFormat(github) is null)
-        {
-            // What the agent unpacks is known from the manifest: a .tar.gz goes only to agents that read one.
-            error($"{path}.asset", @"Must end with the archive's extension, which the agent unpacks: '\.zip$', '\.tar\.gz$' or '\.tgz$'.");
+            if (asset is null)
+            {
+                continue;
+            }
+
+            if (asset.Length is 0 or > 200 || CompileError(asset) is not null)
+            {
+                error($"{path}.{name}", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
+            }
+            else if (ManifestFeatures.AddonFormat(github with { Asset = asset }) is null)
+            {
+                // What the agent unpacks is known from the manifest: a .tar.gz goes only to agents that read one.
+                error($"{path}.{name}", @"Must end with the archive's extension, which the agent unpacks: '\.zip$', '\.tar\.gz$' or '\.tgz$'.");
+            }
         }
 
         // A tag goes into the API's URL as one segment: '.' and '..' would be read as a path.
@@ -1048,7 +1066,7 @@ public static partial class ManifestValidator
 
     /// <summary>The steps the Linux agent carries out (the others download Windows programs).</summary>
     private static bool RunsOnLinux(InstallStep step) => step is EnsureDirectoryStep or WriteFileIfMissingStep or CopyFileIfMissingStep
-        or TestGameServerStep or SteamCmdStep { SteamClient: null };
+        or TestGameServerStep or SteamCmdStep;
 
     /// <summary>
     /// The game's log: a relative path whose file name may hold one <c>*</c> (Pulsar 1.0.12), for a game that names its

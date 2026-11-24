@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Core.Servers;
 
 namespace Pulsar.Agent.Linux;
 
@@ -14,8 +15,12 @@ public sealed class LinuxServerFiles(IServerFiles? inner = null) : IServerFiles
 {
     private readonly IServerFiles _inner = inner ?? new DirectServerFiles();
 
-    public Stream? OpenRead(string serverRoot, string relativePath) =>
-        ServerFileIdentity.RunAsOwnerOf(serverRoot, () => _inner.OpenRead(serverRoot, relativePath));
+    /// <summary>
+    /// As the portable one, but only a regular file is opened, and without waiting: a named pipe the server's account
+    /// left at the path would otherwise hold the agent's thread until something writes to it.
+    /// </summary>
+    public Stream? OpenRead(string serverRoot, string relativePath) => ServerFileIdentity.RunAsOwnerOf(serverRoot, () =>
+        _inner is DirectServerFiles ? OpenRegular(InstallSteps.Resolve(serverRoot, relativePath)) : _inner.OpenRead(serverRoot, relativePath));
 
     public void Write(string serverRoot, string relativePath, Stream content) =>
         Do(serverRoot, () => _inner.Write(serverRoot, relativePath, content));
@@ -31,6 +36,25 @@ public sealed class LinuxServerFiles(IServerFiles? inner = null) : IServerFiles
         ServerFileIdentity.RunAsOwnerOf(serverRoot, () => _inner.ListFiles(serverRoot, relativeDirectory, limit));
 
     public void SetExecutable(string serverRoot, string relativePath) => Do(serverRoot, () => _inner.SetExecutable(serverRoot, relativePath));
+
+    /// <summary>A regular file opened to read, never waiting; null when it does not exist (<see cref="Libc.OpenRegularFile"/>).</summary>
+    internal static Stream? OpenRegular(string path)
+    {
+        if (Libc.OpenRegularFile(path) is not { } handle)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new FileStream(handle, FileAccess.Read, bufferSize: 0);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
 
     private static void Do(string serverRoot, Action action) => ServerFileIdentity.RunAsOwnerOf(serverRoot, () =>
     {

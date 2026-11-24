@@ -1253,6 +1253,16 @@ public sealed class LinuxSteamCmdRunnerTests : IDisposable
         Assert.Equal("token", _logins.Load(login) is { } kept ? System.Text.Encoding.UTF8.GetString(kept) : null);
     }
 
+    [Fact]
+    public void AForcedPlatformComesBeforeTheInstallFolderAndOnlyWindowsOrLinux()
+    {
+        var arguments = SteamCmdRunner.Arguments(Job() with { ForcePlatform = "windows" });
+
+        Assert.Equal(["+@sSteamCmdForcePlatformType", "windows", "+force_install_dir"], arguments.SkipWhile(a => a != "+@sSteamCmdForcePlatformType").Take(3));
+        Assert.DoesNotContain("+@sSteamCmdForcePlatformType", SteamCmdRunner.Arguments(Job()));
+        Assert.Throws<GameProcessException>(() => SteamCmdRunner.Arguments(Job() with { ForcePlatform = "windows +quit" }));
+    }
+
     [Theory]
     [InlineData(".pulsar/steamcmd/home")]
     [InlineData(".pulsar/steamcmd/home/Steam/config/config.vdf")]

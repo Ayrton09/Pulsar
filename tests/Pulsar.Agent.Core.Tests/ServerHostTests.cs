@@ -109,6 +109,31 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public void AWindowsFirstAppGetsItsWindowsFilesFirstOnlyUntilItIsInstalled()
+    {
+        var job = new Steam.SteamCmdJob(Guid.NewGuid(), _root, Processes.ProcessIdentity.CurrentUser, 222860, null, null, Validate: false);
+
+        // A first install: Windows' files, then Linux' ones, every file checked.
+        Assert.Equal([("windows", false), (null, true)], ServerHost.SteamRuns(job, windowsFirst: true, () => false, () => false)
+            .Select(r => (r.ForcePlatform, r.Validate)));
+        // Cut off between the two runs: SteamCMD counts the Windows build as installed, so Linux' files come with every file checked.
+        Assert.Equal([(null, true)], ServerHost.SteamRuns(job, windowsFirst: true, () => true, () => false).Select(r => (r.ForcePlatform, r.Validate)));
+        // Installed for Linux: a plain update.
+        Assert.Equal([job], ServerHost.SteamRuns(job, windowsFirst: true, () => true, () => true));
+        // Any other step, and Windows nodes, never look.
+        Assert.Equal([job], ServerHost.SteamRuns(job, windowsFirst: false, () => throw new InvalidOperationException(), () => throw new InvalidOperationException()));
+    }
+
+    [Fact]
+    public void ALinuxAgentCopiesSteamsClientLibrariesWithoutCheckingSignatures()
+    {
+        Assert.Contains(AgentCapabilities.SteamClient,
+            Host(options: new ServerHostOptions { ConsoleLog = null, Platform = Pulsar.Manifests.ManifestValidator.LinuxX64 }).Capabilities);
+        // A Windows agent that cannot check Valve's signature still does not offer it.
+        Assert.DoesNotContain(AgentCapabilities.SteamClient, Host().Capabilities);
+    }
+
+    [Fact]
     public async Task ASteamLoginLeftInAServersFolderIsDeletedWhenTheAgentStarts()
     {
         // The agent stopped while SteamCMD had it: the game must not find it at its next start.

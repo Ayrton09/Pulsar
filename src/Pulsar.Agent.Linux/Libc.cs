@@ -36,6 +36,45 @@ internal static partial class Libc
     [LibraryImport("libc", EntryPoint = "lstat", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int LstatNative(string path, out Stat buffer);
 
+    [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int OpenNative(string path, int flags);
+
+    [LibraryImport("libc", EntryPoint = "fstat", SetLastError = true)]
+    private static partial int FstatNative(int descriptor, out Stat buffer);
+
+    /// <summary>
+    /// Opens a regular file to read without ever waiting: <c>O_NONBLOCK</c> (a named pipe answers at once instead of
+    /// waiting for a writer), <c>O_NOFOLLOW</c> (never through a final link) and <c>O_CLOEXEC</c>; what was opened is
+    /// then checked to be a regular file (<c>fstat</c> on the descriptor itself). Null when it does not exist, or is a folder.
+    /// </summary>
+    /// <exception cref="IOException">It is not a regular file (a pipe, a device, a link), or could not be opened.</exception>
+    /// <exception cref="UnauthorizedAccessException">The calling thread's user may not read it.</exception>
+    public static Microsoft.Win32.SafeHandles.SafeFileHandle? OpenRegularFile(string path)
+    {
+        const int ReadOnly = 0, NonBlocking = 0x800, NoFollow = 0x20000, CloseOnExec = 0x80000;
+        var descriptor = OpenNative(path, ReadOnly | NonBlocking | NoFollow | CloseOnExec);
+        if (descriptor < 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            return error switch
+            {
+                2 or 20 => null, // ENOENT, ENOTDIR
+                1 or 13 => throw new UnauthorizedAccessException($"Access to {path} is denied."), // EPERM, EACCES: as .NET says it
+                _ => throw Failure("open", path, error), // ELOOP: a link
+            };
+        }
+
+        var handle = new Microsoft.Win32.SafeHandles.SafeFileHandle(descriptor, ownsHandle: true);
+        if (FstatNative(descriptor, out var stat) != 0 || !stat.IsRegularFile)
+        {
+            handle.Dispose();
+            // A folder is no file, as File.Exists says; a pipe or a device is refused.
+            return stat.IsDirectory ? null : throw new IOException($"{path} is not a regular file: it is not read.");
+        }
+
+        return handle;
+    }
+
     [LibraryImport("libc", EntryPoint = "lchown", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int LchownNative(string path, uint owner, uint group);
 

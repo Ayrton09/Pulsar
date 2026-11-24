@@ -250,6 +250,33 @@ public sealed class LinuxPlatformTests
         Assert.Contains(errors, e => e.Path == "runtime.linux-x64.libraryPath");
     }
 
+    [Fact]
+    public void AnAddonOfALinuxGameNamesItsLinuxAsset()
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("cs2", m => m["addons"]![0]!["source"]!.AsObject().Remove("linuxAsset")));
+
+        Assert.Contains(errors, e => e.Path == "addons[0].source.linuxAsset");
+    }
+
+    [Fact]
+    public void EachPlatformDownloadsItsOwnAsset()
+    {
+        var metamod = Assert.IsType<GitHubReleaseSource>(TestManifests.Load("cs2").AddonList.Single(a => a.Key == "metamod").Source);
+
+        Assert.Matches(metamod.For(ManifestValidator.WindowsX64).Asset, "mmsource-2.0.0-git1491-windows.zip");
+        Assert.Matches(metamod.For(ManifestValidator.LinuxX64).Asset, "mmsource-2.0.0-git1491-linux.tar.gz");
+        Assert.DoesNotMatch(metamod.For(ManifestValidator.LinuxX64).Asset, "mmsource-2.0.0-git1491-windows.zip");
+        Assert.Equal("tar.gz", ManifestFeatures.AddonFormat(metamod.For(ManifestValidator.LinuxX64)));
+    }
+
+    [Fact]
+    public void ALinuxAssetIsAnArchiveToo()
+    {
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("cs2", m => m["addons"]![0]!["source"]!["linuxAsset"] = "^mmsource-linux$"));
+
+        Assert.Contains(errors, e => e.Path == "addons[0].source.linuxAsset");
+    }
+
     private static string WindowsOnly() => TestManifests.ChangeWithLinux("_test", m =>
     {
         m["platforms"] = new JsonArray("windows-x64");

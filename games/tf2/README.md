@@ -23,3 +23,11 @@ They come from AMP's template; none was tried on a real server.
 ## Players (1.0.11)
 
 The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent's SteamCMD downloads the game's Linux files and starts its 64-bit
+`srcds_linux64` itself (Valve's start script is not used), with `bin` and `bin/linux64` as its library path, as
+`srcds_run_64` sets them. Its server connects to Steam only with Steam's `steamclient.so` in `~/.steam/sdk64`, which the
+agent copies there from its SteamCMD after every install and update. Checked for real on a Linux node (Ubuntu 24.04):
+installed, started with the configured map (secure, VAC on), `status` over RCON, stopped with `quit` and deleted.

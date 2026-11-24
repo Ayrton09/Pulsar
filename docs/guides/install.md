@@ -324,8 +324,9 @@ What it does: installs `jq`, the libraries .NET needs and the 32-bit ones SteamC
 (`lib32gcc-s1`, `lib32stdc++6`) when they are missing (`apt-get`), puts the agent in
 `/opt/pulsar/agent` and enrolls the machine, which writes and starts the `pulsar-agent` systemd service (as root: it
 makes a system user for each game server, with no password or shell, and runs the server's game as it). The node shows
-in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike: Source,
-Half-Life 2: Deathmatch, Counter-Strike 1.6 and Half-Life Deathmatch, each downloaded by its own SteamCMD.
+in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike 2,
+Counter-Strike: Source, Team Fortress 2, Left 4 Dead 2, Half-Life 2: Deathmatch, Pirates, Vikings and Knights II,
+Counter-Strike 1.6 and Half-Life Deathmatch, each downloaded by its own SteamCMD.
 
 | Option | What it does |
 |---|---|

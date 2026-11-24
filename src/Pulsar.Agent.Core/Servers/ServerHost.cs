@@ -219,6 +219,11 @@ public sealed partial class ServerHost(
                 yield return AgentCapabilities.MinecraftBedrock;
                 yield return AgentCapabilities.SteamClient;
             }
+            else if (options.Platform == ManifestValidator.LinuxX64)
+            {
+                // Linux copies the server's own steamclient.so into its own home: nothing to check a signature of (InstallSteps.CopyLinuxSteamClient).
+                yield return AgentCapabilities.SteamClient;
+            }
 
             if (installOptions.TestGameAvailable)
             {
@@ -1020,7 +1025,60 @@ public sealed partial class ServerHost(
         static string Cut(string text) => text.Length <= GameUpdateCheck.MaxMessageLength ? text : text[..GameUpdateCheck.MaxMessageLength];
     }
 
-    private AddonInstaller Addons => new(files, installOptions.HttpHandler);
+    private AddonInstaller Addons => new(files, installOptions.HttpHandler, platform: options.Platform);
+
+    /// <summary>
+    /// The SteamCMD runs of one step (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>): an app not installed yet gets its
+    /// Windows files first, then its Linux ones with every file checked; an app installed but without the game's Linux
+    /// program (a first install cut off between the two runs: SteamCMD already counts the Windows build as installed) gets
+    /// its Linux files with every file checked; any other run is the job as it is.
+    /// </summary>
+    internal static IReadOnlyList<SteamCmdJob> SteamRuns(SteamCmdJob job, bool windowsFirst, Func<bool> installed, Func<bool> programThere)
+    {
+        if (!windowsFirst)
+        {
+            return [job];
+        }
+
+        if (!installed())
+        {
+            return [job with { ForcePlatform = "windows" }, job with { Validate = true }];
+        }
+
+        return programThere() ? [job] : [job with { Validate = true }];
+    }
+
+    /// <summary>Whether the game's program for this node's platform is in the server's folder.</summary>
+    private bool ProgramThere(string directory, GameManifest manifest)
+    {
+        if (manifest.Runtime.GetValueOrDefault(options.Platform)?.Executable is not { } executable)
+        {
+            return false;
+        }
+
+        return Readable(directory, executable);
+    }
+
+    /// <summary>Whether SteamCMD has installed <paramref name="appId"/> in the server's folder (its app manifest is there).</summary>
+    private bool Installed(string directory, int appId) =>
+        Readable(directory, $"steamapps/appmanifest_{appId.ToString(System.Globalization.CultureInfo.InvariantCulture)}.acf");
+
+    /// <summary>
+    /// Whether the file is in the server's folder and can be read as one: what cannot (a link, a pipe the server's account
+    /// left there) counts as missing, and a run with every file checked puts it right.
+    /// </summary>
+    private bool Readable(string directory, string relativePath)
+    {
+        try
+        {
+            using var file = files.OpenRead(directory, relativePath);
+            return file is not null;
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The Steam branch a step installs (Pulsar 1.0.14): the server's own for the game's app, the template's otherwise.
@@ -1291,11 +1349,36 @@ public sealed partial class ServerHost(
                 var betaPassword = beta == steam.Beta && steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, beta, betaPassword,
                     validate ?? steam.Validate, login);
-                await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
-                if (steam.SteamClient is { } folder)
+                var runs = SteamRuns(job, steam.WindowsFirstOnLinux && options.Platform == ManifestValidator.LinuxX64,
+                    () => Installed(provisioned.Directory, steam.AppId), () => ProgramThere(provisioned.Directory, server.Manifest));
+                if (runs.Count > 1)
                 {
-                    console.Note($"Copying Steam's client libraries to {folder}", clock.GetUtcNow());
-                    installSteps.CopySteamClient(provisioned.Directory, folder);
+                    console.Note("Steam lists this server for Windows only until it is installed: its Windows files come first, then its Linux ones",
+                        clock.GetUtcNow());
+                }
+
+                foreach (var run in runs)
+                {
+                    await steamCmd.RunAsync(run, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
+                }
+                if (options.Platform == ManifestValidator.LinuxX64)
+                {
+                    // Every Linux game gets them where Steam for Linux keeps them (TF2's and PVKII's servers find Steam
+                    // only there); a manifest that names steamClient cannot do without them.
+                    var home = server.Manifest.Runtime.GetValueOrDefault(options.Platform)?.UserProfile;
+                    try
+                    {
+                        installSteps.CopyLinuxSteamClient(provisioned.Directory, home);
+                    }
+                    catch (Exception ex) when ((ex is GameProcessException or IOException or UnauthorizedAccessException) && steam.SteamClient is null)
+                    {
+                        console.Note($"Steam's client libraries were not copied to {(home is null ? "" : home + "/")}.steam: {ex.Message}", clock.GetUtcNow());
+                    }
+                }
+                else if (steam.SteamClient is { } windowsFolder)
+                {
+                    console.Note($"Copying Steam's client libraries to {windowsFolder}", clock.GetUtcNow());
+                    installSteps.CopySteamClient(provisioned.Directory, windowsFolder);
                 }
             }
             else

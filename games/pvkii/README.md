@@ -23,3 +23,11 @@ through a development panel and agent:
 ## Players
 
 The Players card kicks a player by name (`kick "…"`), as in the other Source games; not run with players on.
+
+## Linux
+
+The template runs on Linux nodes too, with the game's 32-bit `srcds_linux32` and the server's folder and `bin` as its
+library path. Its 64-bit `srcds_linux64` (the default its `launch_settings.txt` names) stopped right after loading its
+modules, before printing anything, on the Linux node it was tried on, even through the game's own `srcds_run`; the
+32-bit one runs. Checked for real on a Linux node (Ubuntu 24.04): installed, started with the configured map (secure,
+VAC on), `status` over RCON, stopped with `quit` and deleted.

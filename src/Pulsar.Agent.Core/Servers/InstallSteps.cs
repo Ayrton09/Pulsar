@@ -422,6 +422,38 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         }
     }
 
+    /// <summary>
+    /// The Steam client's libraries of the server's Linux SteamCMD and where Steam for Linux keeps them in its user's home
+    /// (<c>~/.steam/sdk64</c>, <c>~/.steam/sdk32</c>), where a Linux game server looks for them (Counter-Strike 2).
+    /// </summary>
+    public static readonly IReadOnlyList<(string Source, string Destination)> LinuxSteamClientFiles =
+    [
+        ("linux64/steamclient.so", ".steam/sdk64/steamclient.so"),
+        ("linux32/steamclient.so", ".steam/sdk32/steamclient.so"),
+    ];
+
+    /// <summary>
+    /// <see cref="SteamCmdStep.SteamClient"/> on Linux: the server's SteamCMD's <c>steamclient.so</c> files are copied
+    /// into the game's home (<paramref name="home"/>: the server's folder, or its runtime's user profile), every run, as
+    /// SteamCMD updates them. Linux libraries carry no signature to check; both ends are the server's own (its SteamCMD
+    /// copy, its home), read and written as its user, and only its own game loads them, so nothing crosses to another
+    /// account.
+    /// </summary>
+    public void CopyLinuxSteamClient(string serverDirectory, string? home)
+    {
+        foreach (var (source, destination) in LinuxSteamClientFiles)
+        {
+            using var stream = files.OpenRead(serverDirectory, $"{Steam.SteamCmdRunner.WorkingDirectory}/{source}")
+                ?? throw new GameProcessException("steamclient.missing", $"SteamCMD has no {source} to copy.");
+            if (stream.CanSeek && stream.Length > MaxSteamClientFileSize)
+            {
+                throw new GameProcessException("steamclient.too_large", $"SteamCMD's {source} is larger than {MaxSteamClientFileSize / 1024 / 1024} MiB.");
+            }
+
+            files.Write(serverDirectory, home is { Length: > 0 } ? $"{home}/{destination}" : destination, stream);
+        }
+    }
+
     /// <summary>A path inside the server directory whose existing components are real directories, never links.</summary>
     public static string Resolve(string serverDirectory, string relativePath)
     {

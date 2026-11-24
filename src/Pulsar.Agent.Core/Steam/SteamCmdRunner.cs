@@ -50,9 +50,16 @@ public sealed class SteamCmdOptions
 
 /// <summary>An app to install or update in a server directory.</summary>
 /// <param name="Login">The Steam account to log in with (Phase 13); null: anonymous.</param>
+/// <param name="ForcePlatform">
+/// The platform whose files SteamCMD downloads instead of its own (<c>windows</c> or <c>linux</c>): a Linux node's first
+/// install of an app that lists only Windows until it is installed (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>).
+/// </param>
 public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdentity Identity, int AppId, string? Beta, string? BetaPassword, bool Validate,
-    SteamLogin? Login = null)
+    SteamLogin? Login = null, string? ForcePlatform = null)
 {
+    /// <summary>The platforms <see cref="ForcePlatform"/> may name.</summary>
+    public static readonly IReadOnlyList<string> Platforms = ["windows", "linux"];
+
     public override string ToString() => $"SteamCmdJob {{ ServerId = {ServerId}, AppId = {AppId}, Login = {Login?.UserName ?? "anonymous"} }}";
 }
 
@@ -420,10 +427,19 @@ public sealed partial class SteamCmdRunner(
             // Exit on the first failed command instead of carrying on, and never wait for a password at a prompt.
             "+@ShutdownOnFailedCommand", "1",
             "+@NoPromptForPassword", "1",
-            // Before the login, or SteamCMD ignores it (docs/architecture/06).
-            "+force_install_dir", Path.TrimEndingDirectorySeparator(job.ServerRoot),
-            "+login",
         };
+        if (job.ForcePlatform is { } platform)
+        {
+            if (!SteamCmdJob.Platforms.Contains(platform))
+            {
+                throw new GameProcessException("steamcmd.failed", $"SteamCMD downloads no '{platform}' files.");
+            }
+
+            arguments.AddRange(["+@sSteamCmdForcePlatformType", platform]);
+        }
+
+        // Before the login, or SteamCMD ignores it (docs/architecture/06).
+        arguments.AddRange(["+force_install_dir", Path.TrimEndingDirectorySeparator(job.ServerRoot), "+login"]);
         if (job.Login is not { } login)
         {
             arguments.Add("anonymous");

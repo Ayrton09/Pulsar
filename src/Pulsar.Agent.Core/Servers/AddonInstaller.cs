@@ -28,7 +28,9 @@ public sealed record AddonRecord(string Key, string Release, string Asset, strin
 /// the same way by its install step (<see cref="GitHubReleaseStep"/>), recorded in another folder.
 /// </summary>
 /// <param name="recordDirectory">Where what was installed is recorded: <see cref="RecordDirectory"/> for addons.</param>
-public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandler handler, string recordDirectory = AddonInstaller.RecordDirectory)
+/// <param name="platform">The node's platform: a release's asset for it is downloaded (<see cref="GitHubReleaseSource.For"/>).</param>
+public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandler handler, string recordDirectory = AddonInstaller.RecordDirectory,
+    string platform = ManifestValidator.WindowsX64)
 {
     public const string RecordDirectory = ".pulsar/addons";
 
@@ -77,11 +79,12 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             return await InstallPackageAsync(serverDirectory, addon, package, force, progress, cancellationToken);
         }
 
-        if (addon.Source is not GitHubReleaseSource source)
+        if (addon.Source is not GitHubReleaseSource github)
         {
             throw Failed("addon.unsupported_source", $"This agent cannot install {addon.Name} from its source.");
         }
 
+        var source = github.For(platform);
         using var http = GitHubClient();
         var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
         try
@@ -135,11 +138,12 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(update);
         ArgumentNullException.ThrowIfNull(progress);
-        if (addon.Source is not GitHubReleaseSource source)
+        if (addon.Source is not GitHubReleaseSource github)
         {
             throw Failed("addon.unsupported_source", $"This agent cannot install {addon.Name} from its source.");
         }
 
+        var source = github.For(platform);
         using var http = GitHubClient();
         var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
         string file;
@@ -197,6 +201,7 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
     public async Task<GameBuild> CheckAsync(string serverDirectory, string key, GitHubReleaseSource source, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
+        source = source.For(platform);
         using var http = GitHubClient();
         var client = new VerifiedDownloader(http, s_hosts, "addon", "addons");
         try
