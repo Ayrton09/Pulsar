@@ -455,6 +455,19 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         }
     }
 
+    [DatabaseFact]
+    public async Task ATemplateWhoseLinuxServerIsAnotherAppListsBothApps()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var soulmask = JsonNode.Parse(File.ReadAllText(GamePath("soulmask")))!.AsObject();
+        soulmask["key"] = "soulmask-community";
+
+        var preview = await PreviewAsync(admin, soulmask.ToJsonString());
+
+        Assert.True(preview.Valid);
+        Assert.Equal([3017310, 3017300], preview.Details!.Capabilities.SteamAppIds);
+    }
+
     private static async Task<TemplateImportPreview> PreviewAsync(PanelClient client, string content)
     {
         using var response = await client.PostAsync("/api/v1/templates/preview", new TemplateContentRequest(content));

@@ -337,6 +337,10 @@ public abstract record InstallStep;
 /// checked): Left 4 Dead 2's dedicated server lists only Windows until it is installed ("Invalid platform"). Later
 /// installs and updates are plain Linux ones.
 /// </param>
+/// <param name="LinuxAppId">
+/// The app a Linux node installs instead, for a game whose Linux server is a Steam app of its own (Soulmask's): the
+/// panel sends a Linux node the step with it as <see cref="AppId"/> (<see cref="ManifestPlatforms"/>).
+/// </param>
 public sealed record SteamCmdStep(
     int AppId,
     string Login = SteamCmdStep.AnonymousLogin,
@@ -344,7 +348,8 @@ public sealed record SteamCmdStep(
     string? BetaPasswordVar = null,
     bool Validate = false,
     string? SteamClient = null,
-    bool WindowsFirstOnLinux = false) : InstallStep
+    bool WindowsFirstOnLinux = false,
+    int? LinuxAppId = null) : InstallStep
 {
     public const string AnonymousLogin = "anonymous";
     public const string AccountLogin = "account";

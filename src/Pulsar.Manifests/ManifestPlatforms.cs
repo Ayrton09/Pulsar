@@ -73,6 +73,20 @@ public static class ManifestPlatforms
             }
         }
 
+        // A Linux node is given the step of its own app; no node reads the member itself.
+        foreach (var section in (string[])["install", "update"])
+        {
+            foreach (var step in (root[section]?["steps"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                if (step["linuxAppId"] is { } linuxApp && platform == ManifestValidator.LinuxX64)
+                {
+                    step["appId"] = linuxApp.DeepClone();
+                }
+
+                step.Remove("linuxAppId");
+            }
+        }
+
         if (platform != ManifestValidator.LinuxX64)
         {
             foreach (var addon in (root["addons"] as JsonArray ?? []).OfType<JsonObject>())

@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "soulmask",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Soulmask",
   "description": "Soulmask dedicated server, installed anonymously with SteamCMD. Its world lives in the server's folder; Pulsar saves it and stops it through the game's own console.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 25, "minMemoryMb": 8192 },
 
@@ -31,14 +31,41 @@
       "description": "The game's RCON, on this machine only, with a password Pulsar makes: the console's commands, saves and a clean stop." }
   ],
 
-  "install": { "steps": [ { "type": "steamcmd", "appId": 3017310 } ] },
-  "update": { "steps": [ { "type": "steamcmd", "appId": 3017310 } ] },
+  "install": { "steps": [ { "type": "steamcmd", "appId": 3017310, "linuxAppId": 3017300 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 3017310, "linuxAppId": 3017300 } ] },
 
   "runtime": {
     "windows-x64": {
       "executable": "WS/Binaries/Win64/WSServer-Win64-Shipping.exe",
       "arguments": [
         "Level01_Main", "-server", "-log", "-UTF8Output", "-forcepassthrough",
+        "-MULTIHOME={{port.game.ip}}",
+        "-Port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        "-EchoPort=0",
+        "-rconaddr=127.0.0.1",
+        "-rconport={{port.rcon}}",
+        "-rconpsw={{rcon.password}}",
+        { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },
+        "-MaxPlayers={{var.maxPlayers}}",
+        { "if": "var.password", "then": ["-PSW={{var.password}}"] },
+        "-adminpsw={{var.adminPassword}}",
+        { "if": "var.pvp", "then": ["-pvp"], "else": ["-pve"] },
+        { "if": "var.saveInterval", "then": ["-saving={{var.saveInterval}}"] },
+        { "if": "var.backupInterval", "then": ["-backup={{var.backupInterval}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon", "logsCommands": true }
+      }
+    },
+    "linux-x64": {
+      "executable": "WS/Binaries/Linux/WSServer-Linux-Shipping",
+      "libraryPath": ["linux64"],
+      "arguments": [
+        "WS", "Level01_Main", "-server", "-log", "-UTF8Output", "-forcepassthrough",
         "-MULTIHOME={{port.game.ip}}",
         "-Port={{port.game}}",
         "-QueryPort={{port.query}}",

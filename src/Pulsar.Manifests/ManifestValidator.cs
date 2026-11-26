@@ -969,6 +969,11 @@ public static partial class ManifestValidator
                         context.Error($"{path}.appId", "A Steam app id.");
                     }
 
+                    if (steam.LinuxAppId is { } linuxApp && (linuxApp <= 0 || !manifest.Platforms.Contains(LinuxX64)))
+                    {
+                        context.Error($"{path}.linuxAppId", "A Steam app id, for a manifest that runs on linux-x64.");
+                    }
+
                     if (steam.Login is not (SteamCmdStep.AnonymousLogin or SteamCmdStep.AccountLogin))
                     {
                         context.Error($"{path}.login", "'anonymous', or 'account' for a server only an account that owns it may download.");

@@ -23,3 +23,12 @@ through a development panel and agent:
 - A backup while it runs first sends `SaveWorld 1` and waits 10 s (no line confirms the save): an 11 MB backup was made
   in 10 s. A stop sends `SaveAndExit 1`: the game saves its database (`WORLD IS TEARING DOWN, SAVE ALL PLAYERS`) and
   exits with code 0 in 12 to 25 s.
+
+## Linux
+
+The template runs on Linux nodes too. Soulmask's Linux server is a Steam app of its own (3017300; Windows' is
+3017310), which a Linux node installs; the agent starts `WS/Binaries/Linux/WSServer-Linux-Shipping` with `WS` first
+and `linux64` as its library path, as `WSServer.sh` does. Checked for real on a Linux node (Ubuntu 24.04): installed,
+started, answered `help` and `lp` over RCON and stopped with `SaveAndExit 1`, which saved its database
+(`WORLD IS TEARING DOWN, SAVE ALL PLAYERS`) before it exited; on Linux it exits with code 110 after saving, which the
+panel takes as the stop it asked for. Then deleted.

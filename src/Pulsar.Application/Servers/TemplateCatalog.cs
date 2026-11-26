@@ -252,7 +252,7 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
             [.. manifest.VariableList.Select(Variable)],
             [.. manifest.PortList.Select(p => new TemplatePort(p.Name, p.Label, p.Protocols, p.Default, p.Required, p.Description, p.Follows?.Port, p.Follows?.Offset))],
             runtime.AllowExtraArguments, manifest.Update is not null,
-            new TemplateCapabilities(runtime.Executable, [.. steps.OfType<SteamCmdStep>().Select(s => s.AppId).Distinct()],
+            new TemplateCapabilities(runtime.Executable, [.. steps.OfType<SteamCmdStep>().SelectMany(s => s.LinuxAppId is { } linux ? [s.AppId, linux] : new[] { s.AppId }).Distinct()],
                 [.. manifest.ConfigFileList.Select(f => f.Path)], runtime.Console.Mode,
                 [.. manifest.AddonList.Select(a => a.Source switch
                 {

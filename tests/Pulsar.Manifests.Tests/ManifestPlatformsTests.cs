@@ -69,6 +69,35 @@ public sealed class ManifestPlatformsTests
     }
 
     [Fact]
+    public void ALinuxNodeIsGivenTheStepOfItsOwnAppAndNoNodeReadsTheMember()
+    {
+        var text = TestManifests.ChangeWithLinux("_test", m =>
+            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "steamcmd", ["appId"] = 3017310, ["linuxAppId"] = 3017300 }));
+        Assert.Equal(3017300, Assert.Single(TestManifests.Parse(text).Install!.Steps.OfType<SteamCmdStep>()).LinuxAppId);
+
+        var linux = ManifestPlatforms.For(text, ManifestValidator.LinuxX64);
+        var windows = ManifestPlatforms.For(text, ManifestValidator.WindowsX64);
+
+        Assert.Equal(3017300, Assert.Single(TestManifests.Parse(linux).Install!.Steps.OfType<SteamCmdStep>()).AppId);
+        Assert.Equal(3017310, Assert.Single(TestManifests.Parse(windows).Install!.Steps.OfType<SteamCmdStep>()).AppId);
+        Assert.DoesNotContain("linuxAppId", linux, StringComparison.Ordinal);
+        Assert.DoesNotContain("linuxAppId", windows, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALinuxAppIsOnlyForAManifestThatRunsOnLinux()
+    {
+        var errors = TestManifests.ErrorsOrNone(TestManifests.ChangeWithLinux("_test", m =>
+        {
+            m["platforms"] = new JsonArray("windows-x64");
+            m["runtime"]!.AsObject().Remove("linux-x64");
+            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "steamcmd", ["appId"] = 3017310, ["linuxAppId"] = 3017300 });
+        }));
+
+        Assert.Contains(errors, e => e.Path.EndsWith(".linuxAppId", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BothConfigFilesOfAGameAreItsBackupsToo()
     {
         var palworld = TestManifests.Load("palworld");

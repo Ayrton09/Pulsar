@@ -16,3 +16,11 @@ through a development panel and agent:
   ran at once.
 - It reads no commands from its console. Ctrl+C, sent by the server's host to the console the game opened (agents of
   1.0.12), ends it with code 0 in about 2 s (`Exit: Exiting.`). It keeps no world.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `Binaries/Win64/KFGameSteamServer.bin.x86_64` (the Linux
+build keeps that folder's name) with `Binaries/Win64/lib64` as its library path, and the settings go to
+`KFGame/Config/LinuxServer-KFGame.ini`, the file the Linux server reads. Its log is its own output there. Checked for
+real on a Linux node (Ubuntu 24.04): installed, started (ready once the Steam query answered), the server's name and
+message of the day written to `LinuxServer-KFGame.ini` by the next start, stopped with Ctrl+C and deleted.

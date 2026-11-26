@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "squad",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Squad",
   "description": "Squad dedicated server, installed anonymously with SteamCMD, with commands over RCON. Its settings are the files of its SquadGame/ServerConfig folder.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 20, "minMemoryMb": 8192 },
 
@@ -45,6 +45,25 @@
     "windows-x64": {
       "executable": "SquadGame/Binaries/Win64/SquadGameServer.exe",
       "arguments": [
+        "Port={{port.game}}",
+        "QueryPort={{port.query}}",
+        "beaconport={{port.beacon}}",
+        "RCONPORT={{port.rcon}}",
+        "FIXEDMAXPLAYERS={{var.maxPlayers}}",
+        "RANDOM=NONE",
+        "-log"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" }
+      }
+    },
+    "linux-x64": {
+      "executable": "SquadGame/Binaries/Linux/SquadGameServer",
+      "arguments": [
+        "SquadGame",
         "Port={{port.game}}",
         "QueryPort={{port.query}}",
         "beaconport={{port.beacon}}",

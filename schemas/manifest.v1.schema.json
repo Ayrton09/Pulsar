@@ -270,6 +270,7 @@
         "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password. The agent fails the install (steamcmd.beta_password_invalid) when its value is one SteamCMD would not receive whole: more than 64 characters, spaces, double quotes or control characters, or a leading + or -." },
         "validate": { "type": "boolean", "default": false },
         "steamClient": { "$ref": "#/$defs/RelativePath", "description": "A folder (the game executable's) the Steam client's libraries (steamclient64.dll, tier0_s64.dll, vstdlib_s64.dll) are copied into from the server's SteamCMD after every run, each checked as signed by Valve: for a game server that does not ship them and would look for an installed Steam client (Counter-Strike 2). Agents read it from Pulsar 1.0.25. On Linux the folder is not used: the server's steamclient.so files go to .steam/sdk64 and .steam/sdk32 in the game's home, as they do for every game there." },
+        "linuxAppId": { "type": "integer", "minimum": 1, "description": "The app a Linux node installs instead, for a game whose Linux server is a Steam app of its own (Soulmask's). Only for a manifest that runs on linux-x64." },
         "windowsFirstOnLinux": { "type": "boolean", "default": false, "description": "On a Linux node, a first install downloads the app's Windows files, then its Linux ones over them with every file checked: for an app Steam lists for Windows only until it is installed (Left 4 Dead 2)." }
       }
     },

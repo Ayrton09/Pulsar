@@ -22,3 +22,10 @@ through a development panel and agent:
   level, the slots and whether a password is needed (set by `?Password=` in the travel URL).
 - Without a Game Server Login Token (for app 581320) the server runs but is not listed in the game's browser; no token
   was tried. The Players card's `kick` and `permban` take a name or a player id; they were not tried with players on.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `Insurgency/Binaries/Linux/InsurgencyServer-Linux-Shipping`,
+and the settings go to `Insurgency/Saved/Config/LinuxServer/Game.ini`, the folder the Linux server reads. Checked for
+real on a Linux node (Ubuntu 24.04): installed, started, its RCON settings written to the Linux `Game.ini`, answered
+`listplayers` over RCON, stopped with RCON `quit` and deleted.

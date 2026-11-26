@@ -2,14 +2,15 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "kf2",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Killing Floor 2",
-  "description": "Killing Floor 2 dedicated server, installed anonymously with SteamCMD. Its settings are the PCServer files of KFGame/Config, which its first start writes.",
+  "description": "Killing Floor 2 dedicated server, installed anonymously with SteamCMD. Its settings are the PCServer files of KFGame/Config (the LinuxServer ones on Linux), which its first start writes.",
   "authors": [
     "Pulsar contributors"
   ],
   "platforms": [
-    "windows-x64"
+    "windows-x64",
+    "linux-x64"
   ],
   "requirements": {
     "minDiskGb": 30,
@@ -427,6 +428,23 @@
         "encoding": "utf-8",
         "logFile": "KFGame/Logs/Launch.log"
       }
+    },
+    "linux-x64": {
+      "executable": "Binaries/Win64/KFGameSteamServer.bin.x86_64",
+      "workingDirectory": "Binaries/Win64",
+      "arguments": [
+        "{{var.map}}?Game={{var.mode.class}}?Difficulty={{var.difficulty}}?GameLength={{var.length}}?MaxPlayers={{var.maxPlayers}}",
+        "-Port={{port.game}}",
+        "-QueryPort={{port.query}}"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8"
+      },
+      "libraryPath": [
+        "Binaries/Win64/lib64"
+      ]
     }
   },
   "configFiles": [
@@ -438,7 +456,27 @@
       "set": {
         "ServerName": "{{var.name}}"
       },
-      "keepIfEmpty": ["ServerName"]
+      "keepIfEmpty": [
+        "ServerName"
+      ],
+      "platforms": [
+        "windows-x64"
+      ]
+    },
+    {
+      "path": "KFGame/Config/LinuxServer-KFGame.ini",
+      "format": "unreal-ini",
+      "mode": "patch",
+      "section": "Engine.GameReplicationInfo",
+      "set": {
+        "ServerName": "{{var.name}}"
+      },
+      "keepIfEmpty": [
+        "ServerName"
+      ],
+      "platforms": [
+        "linux-x64"
+      ]
     },
     {
       "path": "KFGame/Config/PCServer-KFGame.ini",
@@ -448,7 +486,23 @@
       "set": {
         "GamePassword": "{{var.password}}",
         "AdminPassword": "{{var.adminPassword}}"
-      }
+      },
+      "platforms": [
+        "windows-x64"
+      ]
+    },
+    {
+      "path": "KFGame/Config/LinuxServer-KFGame.ini",
+      "format": "unreal-ini",
+      "mode": "patch",
+      "section": "Engine.AccessControl",
+      "set": {
+        "GamePassword": "{{var.password}}",
+        "AdminPassword": "{{var.adminPassword}}"
+      },
+      "platforms": [
+        "linux-x64"
+      ]
     },
     {
       "path": "KFGame/Config/PCServer-KFGame.ini",
@@ -470,6 +524,34 @@
         "bDisableKickVote",
         "bDisablePublicTextChat",
         "bDisableVOIP"
+      ],
+      "platforms": [
+        "windows-x64"
+      ]
+    },
+    {
+      "path": "KFGame/Config/LinuxServer-KFGame.ini",
+      "format": "unreal-ini",
+      "mode": "patch",
+      "section": "KFGame.KFGameInfo",
+      "set": {
+        "ServerMOTD": "{{var.motd}}",
+        "FriendlyFireScale": "{{var.friendlyFire}}",
+        "bDisableMapVote": "{{var.mapVote}}",
+        "bDisableKickVote": "{{var.kickVote}}",
+        "bDisablePublicTextChat": "{{var.textChat}}",
+        "bDisableVOIP": "{{var.voice}}"
+      },
+      "keepIfEmpty": [
+        "ServerMOTD",
+        "FriendlyFireScale",
+        "bDisableMapVote",
+        "bDisableKickVote",
+        "bDisablePublicTextChat",
+        "bDisableVOIP"
+      ],
+      "platforms": [
+        "linux-x64"
       ]
     }
   ],
@@ -492,6 +574,7 @@
   "backup": {
     "include": [
       "KFGame/Config/PCServer-*.ini",
+      "KFGame/Config/LinuxServer-*.ini",
       "KFGame/Config/KFWeb.ini"
     ]
   }
