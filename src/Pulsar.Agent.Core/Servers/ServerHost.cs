@@ -222,6 +222,8 @@ public sealed partial class ServerHost(
             else if (options.Platform == ManifestValidator.LinuxX64)
             {
                 // Linux copies the server's own steamclient.so into its own home: nothing to check a signature of (InstallSteps.CopyLinuxSteamClient).
+                // Mojang's Linux Bedrock server is not signed: only its hosts over HTTPS vouch for it (MinecraftBedrockInstaller).
+                yield return AgentCapabilities.MinecraftBedrock;
                 yield return AgentCapabilities.SteamClient;
             }
 

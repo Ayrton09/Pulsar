@@ -5,6 +5,9 @@ namespace Pulsar.Agent.Core.Servers;
 
 public sealed class InstallOptions
 {
+    /// <summary>The node's platform: what the steps download is its build (a release's Linux asset, Linux' runtimes).</summary>
+    public string Platform { get; init; } = ManifestValidator.WindowsX64;
+
     /// <summary>
     /// Build output of Pulsar's test game server. Only set in development and CI: it enables the <c>pulsar-test</c>
     /// manifest (its <c>testGameServer</c> step copies these files into the server directory).
@@ -75,16 +78,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         ArgumentNullException.ThrowIfNull(progress);
         if (step is MinecraftServerStep minecraft)
         {
-            return await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory))
+            return await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory), options.Platform)
                 .InstallAsync(serverDirectory, Choice(minecraft, variables), progress, cancellationToken);
         }
 
         if (step is MinecraftBedrockStep bedrock)
         {
             var version = bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null;
-            var signatures = options.CodeSignatures
-                ?? throw new GameProcessException("bedrock.untrusted", "This agent cannot check code signatures, so it does not install the Bedrock server.");
-            await new MinecraftBedrockInstaller(files, options.HttpHandler, signatures).InstallAsync(serverDirectory, version, progress, cancellationToken);
+            await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures, options.Platform)
+                .InstallAsync(serverDirectory, version, progress, cancellationToken);
             return null;
         }
 
@@ -107,7 +109,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 
         if (step is DotnetRuntimeStep dotnet)
         {
-            await new DotnetRuntimeInstaller(files, options.HttpHandler).InstallAsync(serverDirectory, dotnet.Channel, progress, cancellationToken);
+            await new DotnetRuntimeInstaller(files, options.HttpHandler, options.Platform).InstallAsync(serverDirectory, dotnet.Channel, progress, cancellationToken);
             return null;
         }
 
@@ -124,7 +126,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         step is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep or GitHubReleaseStep or DotnetRuntimeStep;
 
     /// <summary>Installs <see cref="GitHubReleaseStep"/>s as addons are installed, recorded apart from the addons.</summary>
-    private AddonInstaller Releases => new(files, options.HttpHandler, GitHubReleaseStep.RecordDirectory);
+    private AddonInstaller Releases => new(files, options.HttpHandler, GitHubReleaseStep.RecordDirectory, options.Platform);
 
     /// <summary>A release step as the addon the installer takes: its repository names it in messages.</summary>
     private static AddonDefinition AsAddon(GitHubReleaseStep step) =>
@@ -144,13 +146,13 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         ArgumentNullException.ThrowIfNull(variables);
         return step switch
         {
-            MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler)
+            MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler, platform: options.Platform)
                 .CheckAsync(serverDirectory, Choice(minecraft, variables), cancellationToken),
             // A check downloads nothing, so it has no signature to verify.
-            MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures ?? Unsigned.Instance)
+            MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures, options.Platform)
                 .CheckAsync(serverDirectory, bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
             GitHubReleaseStep release => await Releases.CheckAsync(serverDirectory, release.RecordKey, release.Source, cancellationToken),
-            DotnetRuntimeStep dotnet => await new DotnetRuntimeInstaller(files, options.HttpHandler).CheckAsync(serverDirectory, dotnet.Channel, cancellationToken),
+            DotnetRuntimeStep dotnet => await new DotnetRuntimeInstaller(files, options.HttpHandler, options.Platform).CheckAsync(serverDirectory, dotnet.Channel, cancellationToken),
             _ => null,
         };
     }
@@ -212,7 +214,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
     /// prints goes to the console; one that stalls or runs too long is stopped.
     /// </summary>
     private Task RunJavaAsync(InstallContext context, string serverDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
-        RunAsServerAsync(context, serverDirectory, "java/bin/java.exe", "", arguments, ConsoleMode.Pipes, "minecraft.installer", "The installer",
+        RunAsServerAsync(context, serverDirectory, $"{MinecraftInstaller.JavaDirectory}/{MinecraftInstaller.JavaProgram(options.Platform)}", "", arguments, ConsoleMode.Pipes, "minecraft.installer", "The installer",
             cancellationToken);
 
     /// <summary>
@@ -507,11 +509,3 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 /// <param name="Latest">What the step would install now.</param>
 /// <param name="Available">The step would install something the server does not have.</param>
 public sealed record GameBuild(string? Installed, string Latest, bool Available);
-
-/// <summary>Vouches for nothing: for code that downloads no executable.</summary>
-internal sealed class Unsigned : ICodeSignatures
-{
-    public static Unsigned Instance { get; } = new();
-
-    public bool IsSignedBy(string path, string organization) => false;
-}

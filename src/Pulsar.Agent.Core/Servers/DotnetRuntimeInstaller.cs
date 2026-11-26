@@ -14,11 +14,12 @@ namespace Pulsar.Agent.Core.Servers;
 /// <summary>
 /// Installs Microsoft's .NET runtime of a channel in a server's <see cref="DotnetRuntimeStep.Folder"/> folder
 /// (<see cref="DotnetRuntimeStep"/>, Pulsar 1.0.12): the channel's latest runtime from Microsoft's release metadata, its
-/// Windows x64 zip checked against the SHA-512 the metadata lists, all from Microsoft's download host. The folder holds that
-/// runtime's files and <see cref="Marker"/>, which lists them: an update removes the previous runtime's. Every write goes
-/// through the agent's link-safe file access.
+/// Windows x64 zip (a Linux node's: its x64 .tar.gz) checked against the SHA-512 the metadata lists, all from Microsoft's
+/// download host. The folder holds that runtime's files and <see cref="Marker"/>, which lists them: an update removes
+/// the previous runtime's. Every write goes through the agent's link-safe file access.
 /// </summary>
-public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessageHandler handler)
+/// <param name="platform">The node's platform, whose build is installed.</param>
+public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessageHandler handler, string platform = ManifestValidator.WindowsX64)
 {
     /// <summary>The installed runtime's version, then its files.</summary>
     public const string Marker = DotnetRuntimeStep.Folder + "/pulsar-dotnet.txt";
@@ -26,9 +27,8 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
     /// <summary>Microsoft's host for the release metadata and the runtimes (no redirect leaves it).</summary>
     public const string Host = "builds.dotnet.microsoft.com";
 
-    private const string RuntimeZip = "dotnet-runtime-win-x64.zip";
-    private const string Muxer = "dotnet.exe";
     private const long MaximumExtracted = 512L * 1024 * 1024;
+    private const long MaximumTarOverhead = 16L * 1024 * 1024;
     private const int MaximumEntries = 5_000;
     private const int MaximumMarkerSize = 1024 * 1024; // a runtime lists about 250 files
 
@@ -53,7 +53,7 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
         try
         {
             await progress(InstallStages.Preparing, null);
-            var latest = await LatestAsync(client, channel, cancellationToken);
+            var latest = await LatestAsync(client, channel, Linux, cancellationToken);
             var installed = ReadMarker(serverDirectory);
             if (installed?.Version == latest.Version && files.OpenRead(serverDirectory, $"{DotnetRuntimeStep.Folder}/{Muxer}") is { } existing)
             {
@@ -64,7 +64,8 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
             await using var download = await client.DownloadAsync(VerifiedDownloader.Https(latest.Url, "dotnet"), HashAlgorithmName.SHA512, latest.Sha512,
                 percent => progress(InstallStages.Downloading, percent), cancellationToken);
             await progress(InstallStages.Installing, null);
-            using var archive = new ZipArchive(download, ZipArchiveMode.Read);
+            using var archive = ServerArchive.Open(download, Path.GetFileName(latest.Url), within: null, MaximumExtracted + MaximumTarOverhead,
+                MaximumEntries + 1_000, message => Failed("dotnet.bad_archive", $"The .NET runtime archive is not one Pulsar unpacks: {message}"));
             var entries = Entries(archive);
 
             // The marker goes first: a removal or an unpacking that fails midway leaves no runtime a retry takes as installed.
@@ -82,14 +83,18 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
                 files.DeleteEmptyDirectory(serverDirectory, $"{DotnetRuntimeStep.Folder}/{folder}");
             }
 
-            foreach (var (entry, relative) in entries)
+            archive.Extract((index, content) =>
             {
-                await using var content = BoundedEntryStream.Open(entry);
+                var (relative, program) = entries[index];
                 files.Write(serverDirectory, $"{DotnetRuntimeStep.Folder}/{relative}", content);
-            }
+                if (program && Linux)
+                {
+                    files.SetExecutable(serverDirectory, $"{DotnetRuntimeStep.Folder}/{relative}");
+                }
+            });
 
             var marker = new StringBuilder().Append(latest.Version).Append('\n');
-            foreach (var (_, relative) in entries)
+            foreach (var (relative, _) in entries)
             {
                 marker.Append(relative).Append('\n');
             }
@@ -113,7 +118,7 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
         using var http = Client();
         try
         {
-            var latest = await LatestAsync(Downloader(http), channel, cancellationToken);
+            var latest = await LatestAsync(Downloader(http), channel, Linux, cancellationToken);
             var installed = ReadMarker(serverDirectory)?.Version;
             return new GameBuild(installed is null ? null : $".NET {installed}", $".NET {latest.Version}", installed != latest.Version);
         }
@@ -124,8 +129,13 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
         }
     }
 
-    /// <summary>The channel's latest runtime and its Windows x64 zip, as Microsoft's metadata lists them.</summary>
-    private static async Task<(string Version, string Url, string Sha512)> LatestAsync(VerifiedDownloader client, string channel,
+    private bool Linux => platform == ManifestValidator.LinuxX64;
+
+    /// <summary>The runtime's program, which starts .NET programs (<c>dotnet.exe</c>; on Linux, <c>dotnet</c>).</summary>
+    private string Muxer => Linux ? "dotnet" : "dotnet.exe";
+
+    /// <summary>The channel's latest runtime and its x64 archive for the platform, as Microsoft's metadata lists them.</summary>
+    private static async Task<(string Version, string Url, string Sha512)> LatestAsync(VerifiedDownloader client, string channel, bool linux,
         CancellationToken cancellationToken)
     {
         var metadata = await client.GetJsonAsync<ReleaseIndex>(MetadataUri(channel), sha1: null, cancellationToken);
@@ -137,46 +147,45 @@ public sealed partial class DotnetRuntimeInstaller(IServerFiles files, HttpMessa
         }
 
         var file = (metadata.Releases ?? []).Where(r => r.Runtime?.Version == version).SelectMany(r => r.Runtime!.Files ?? [])
-            .FirstOrDefault(f => f.Rid == "win-x64" && f.Name == RuntimeZip);
-        if (file is not { Url: { } url, Hash: { } hash } || !Sha512Pattern().IsMatch(hash))
+            .FirstOrDefault(f => linux ? f is { Rid: "linux-x64", Name: "dotnet-runtime-linux-x64.tar.gz" } : f is { Rid: "win-x64", Name: "dotnet-runtime-win-x64.zip" });
+        if (file is not { Url: { } url, Hash: { } hash } || !Sha512Pattern().IsMatch(hash)
+            || !url.EndsWith(linux ? ".tar.gz" : ".zip", StringComparison.OrdinalIgnoreCase))
         {
-            throw Failed("dotnet.no_runtime", $"Microsoft lists no Windows x64 runtime with a checksum for .NET {version}.");
+            throw Failed("dotnet.no_runtime", $"Microsoft lists no {(linux ? "Linux" : "Windows")} x64 runtime with a checksum for .NET {version}.");
         }
 
         return (version, url, hash);
     }
 
-    /// <summary>The archive's files, which are the runtime's folder (<c>dotnet.exe</c>, <c>host/</c>, <c>shared/</c>).</summary>
-    private static List<(ZipArchiveEntry Entry, string Relative)> Entries(ZipArchive archive)
+    /// <summary>
+    /// The archive's files, which are the runtime's folder (<c>dotnet.exe</c>, <c>host/</c>, <c>shared/</c>), and whether
+    /// each is a program.
+    /// </summary>
+    private List<(string Relative, bool Program)> Entries(ServerArchive archive)
     {
-        var entries = new List<(ZipArchiveEntry, string)>();
+        var entries = new List<(string, bool)>();
         // One file once, by any case: Windows takes two names that differ only in case for the same file.
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long total = 0;
-        foreach (var entry in archive.Entries)
+        foreach (var (name, length, program) in archive.Files())
         {
-            var relative = entry.FullName.Replace('\\', '/');
-            if (relative.EndsWith('/'))
-            {
-                continue;
-            }
-
+            var relative = name.Replace('\\', '/');
             if (!ManifestValidator.IsValidRelativePath($"{DotnetRuntimeStep.Folder}/{relative}") || $"{DotnetRuntimeStep.Folder}/{relative}".Equals(Marker, StringComparison.OrdinalIgnoreCase)
                 || !names.Add(relative))
             {
-                throw Failed("dotnet.bad_archive", $"The .NET runtime archive has an unexpected entry '{entry.FullName}'.");
+                throw Failed("dotnet.bad_archive", $"The .NET runtime archive has an unexpected entry '{name}'.");
             }
 
-            total += entry.Length;
+            total += length;
             if (total > MaximumExtracted || entries.Count >= MaximumEntries)
             {
                 throw Failed("dotnet.bad_archive", "The .NET runtime archive is larger than expected.");
             }
 
-            entries.Add((entry, relative));
+            entries.Add((relative, program));
         }
 
-        return entries.Any(e => e.Item2 == Muxer)
+        return entries.Any(e => e.Item1 == Muxer)
             ? entries
             : throw Failed("dotnet.bad_archive", $"The .NET runtime archive does not contain {Muxer}.");
     }

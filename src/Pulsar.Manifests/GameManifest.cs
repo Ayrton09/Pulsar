@@ -436,8 +436,12 @@ public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallSt
 /// unpacked over it (AO 2027's <c>CoverAO.Server.exe actualizar --desde &lt;zip&gt;</c>, which keeps the files and settings
 /// the host changed and adds the new settings to <c>Server.ini</c>).
 /// </param>
+/// <param name="LinuxAsset">
+/// The asset a Linux node takes instead (TShock's <c>linux-x64</c> build): a step of a manifest that runs on Linux must
+/// name one, since the Windows asset's programs do not run there.
+/// </param>
 public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "",
-    IReadOnlyList<string>? Keep = null, ReleaseUpdater? Updater = null) : InstallStep
+    IReadOnlyList<string>? Keep = null, ReleaseUpdater? Updater = null, string? LinuxAsset = null) : InstallStep
 {
     /// <summary>At most this many <see cref="Keep"/> paths.</summary>
     public const int MaxKeep = 16;
@@ -447,7 +451,7 @@ public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = 
     /// <summary>Where the agent records what each such step installed (not an addon: the addons' records are elsewhere).</summary>
     public const string RecordDirectory = ".pulsar/releases";
 
-    public GitHubReleaseSource Source => new(Repo, Asset, Tag, Prerelease);
+    public GitHubReleaseSource Source => new(Repo, Asset, Tag, Prerelease, LinuxAsset);
 
     /// <summary>The name of the step's record: its repository's, lowercase, <c>/</c> as <c>_</c>.</summary>
     public string RecordKey => Repo.Replace('/', '_').ToLowerInvariant();

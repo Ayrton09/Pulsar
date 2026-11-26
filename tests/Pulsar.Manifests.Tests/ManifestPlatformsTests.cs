@@ -52,6 +52,10 @@ public sealed class ManifestPlatformsTests
 
         Assert.NotNull(Assert.Single(linux.AddonList).Linux);
         Assert.Equal(["linux64"], linux.Runtime[ManifestValidator.LinuxX64].LibraryPath);
+
+        var terraria = TestManifests.Parse(ManifestPlatforms.For(File.ReadAllText(TestManifests.PathOf("terraria")), ManifestValidator.LinuxX64));
+        var release = Assert.IsType<GitHubReleaseStep>(terraria.Install!.Steps[0]);
+        Assert.Equal("^TShock-.*-linux-x64-Release\\.zip$", release.Source.For(ManifestValidator.LinuxX64).Asset);
     }
 
     [Theory]

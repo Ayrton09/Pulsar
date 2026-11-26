@@ -598,6 +598,73 @@ public sealed class AddonInstallerTests : IDisposable
         Assert.Equal("addon.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_exiled))).Code);
     }
 
+    // TShock's Linux build: a zip whose only file is a tar, which keeps its programs' execute bits.
+    private static readonly AddonDefinition s_tshock = new("tshock", "TShock", "GPL-3.0", "https://github.com/Pryaxis/TShock",
+        new GitHubReleaseSource("OxideMod/Oxide.Rust", "^TShock-win\\.zip$", LinuxAsset: "^TShock-linux\\.zip$"));
+
+    private static byte[] TShockLinux() => TestTars.Zip(("TShock-Beta-linux-x64-Release.tar", TestTars.Tar(
+        TestTars.File("TShock.Server", "server", TestTars.Program), TestTars.Folder("bin"), TestTars.File("bin/OTAPI.dll", "otapi"),
+        TestTars.File("./ServerPlugins/TShockAPI.dll", "api"))));
+
+    [Fact]
+    public async Task AZipHoldingOnlyATarIsThatTarAndLinuxMakesItsProgramsExecutable()
+    {
+        Release("v6.2.1", TShockLinux(), asset: "TShock-linux.zip");
+        var files = new ExecutableFiles();
+
+        var record = await new AddonInstaller(files, _http, platform: ManifestValidator.LinuxX64)
+            .InstallAsync(_root, s_tshock, force: false, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal("TShock-linux.zip", record.Asset);
+        Assert.Equal(["TShock.Server", "bin/OTAPI.dll", "ServerPlugins/TShockAPI.dll"], record.Added);
+        Assert.Equal("server", File.ReadAllText(Path.Combine(_root, "TShock.Server")));
+        Assert.Equal("api", File.ReadAllText(Path.Combine(_root, "ServerPlugins", "TShockAPI.dll")));
+        Assert.False(File.Exists(Path.Combine(_root, "TShock-Beta-linux-x64-Release.tar")));
+        Assert.Equal(["TShock.Server"], files.Executables);
+    }
+
+    [Fact]
+    public async Task OnWindowsAZipHoldingOnlyATarIsAZipAsBefore()
+    {
+        Release("v6.2.1", TShockLinux(), asset: "TShock-win.zip");
+        var files = new ExecutableFiles();
+
+        var record = await new AddonInstaller(files, _http)
+            .InstallAsync(_root, s_tshock, force: false, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["TShock-Beta-linux-x64-Release.tar"], record.Added);
+        Assert.False(File.Exists(Path.Combine(_root, "TShock.Server")));
+        Assert.Empty(files.Executables);
+    }
+
+    [Fact]
+    public async Task WindowsSetsNoExecuteBitsAndAZipWithMoreThanATarIsAZip()
+    {
+        Release("v6.2.1", TestTars.Zip(("TShock.tar", TestTars.Tar(TestTars.File("TShock.Server", "server", TestTars.Program))),
+            ("README.txt", Encoding.UTF8.GetBytes("read me"))), asset: "TShock-win.zip");
+        var files = new ExecutableFiles();
+
+        var record = await new AddonInstaller(files, _http)
+            .InstallAsync(_root, s_tshock, force: false, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["README.txt", "TShock.tar"], record.Added.Order(StringComparer.Ordinal));
+        Assert.True(File.Exists(Path.Combine(_root, "TShock.tar")));
+        Assert.Empty(files.Executables);
+    }
+
+    [Fact]
+    public async Task ATarInAZipIsCheckedAsATarGzIs()
+    {
+        var odd = new PaxTarEntry(TarEntryType.SymbolicLink, "TShock.Server") { LinkName = "/etc/passwd" };
+        Release("v6.2.1", TestTars.Zip(("TShock.tar", TestTars.Tar(TestTars.File("bin/OTAPI.dll", "otapi"), odd))), asset: "TShock-linux.zip");
+
+        var failure = await Assert.ThrowsAsync<GameProcessException>(() => new AddonInstaller(new DirectServerFiles(), _http, platform: ManifestValidator.LinuxX64)
+            .InstallAsync(_root, s_tshock, force: false, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("addon.bad_archive", failure.Code);
+        Assert.False(File.Exists(Path.Combine(_root, "bin", "OTAPI.dll")));
+    }
+
     private static PaxTarEntry Folder(string name) => new(TarEntryType.Directory, name);
 
     private static PaxTarEntry File_(string name, string content) =>

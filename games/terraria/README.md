@@ -24,3 +24,10 @@ runtime, through a development panel and agent:
   8 MB with a medium world, TShock's database included).
 - The Players card's `/kick "…"` and `/ban add "…"` take a player's name (spaces allowed); they were not tried with
   players on.
+
+## Linux
+
+The template runs on Linux nodes too: the agent installs TShock's `linux-x64` release (a zip holding a tar, which
+keeps `TShock.Server` executable) and the .NET runtime's Linux build, and starts `TShock.Server` on a terminal of
+its own. Checked for real on a Linux node (Ubuntu 24.04) with TShock 6.2.1 and .NET 9.0.23: installed, world
+generated, answered `playing` from the console, stopped with `exit` and deleted.

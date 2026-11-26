@@ -86,6 +86,7 @@ public static class ManifestPlatforms
                 foreach (var step in (root[section]?["steps"] as JsonArray ?? []).OfType<JsonObject>())
                 {
                     step.Remove("windowsFirstOnLinux");
+                    step.Remove("linuxAsset");
                 }
             }
         }

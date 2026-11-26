@@ -189,25 +189,34 @@ public sealed class LinuxPlatformTests
     }
 
     [Fact]
-    public void StepsThatDownloadWindowsProgramsAreRefusedOnLinux()
+    public void AReleaseOfALinuxGameNamesItsLinuxAsset()
     {
-        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m =>
-            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "dotnetRuntime", ["channel"] = "9.0" })));
+        static JsonObject Release() => new() { ["type"] = "githubRelease", ["repo"] = "Pryaxis/TShock", ["asset"] = "^TShock-.*-win-x64-Release\\.zip$" };
 
-        Assert.Contains(errors, e => e.Path == "install.steps[2]" && e.Message.Contains("linux-x64", StringComparison.Ordinal));
+        var errors = TestManifests.Errors(TestManifests.ChangeWithLinux("_test", m => m["install"]!["steps"]!.AsArray().Add(Release())));
+        var named = TestManifests.ErrorsOrNone(TestManifests.ChangeWithLinux("_test", m =>
+        {
+            var release = Release();
+            release["linuxAsset"] = "^TShock-.*-linux-x64-Release\\.zip$";
+            m["install"]!["steps"]!.AsArray().Add(release);
+            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "dotnetRuntime", ["channel"] = "9.0" });
+        }));
+
+        Assert.Contains(errors, e => e.Path == "install.steps[2].linuxAsset");
+        Assert.DoesNotContain(named, e => e.Path.StartsWith("install.steps[2]", StringComparison.Ordinal) || e.Path.StartsWith("install.steps[3]", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void TheSameStepsStayValidForWindowsOnly()
+    public void AReleaseOfAWindowsOnlyGameNeedsNoLinuxAsset()
     {
         var errors = TestManifests.ErrorsOrNone(TestManifests.ChangeWithLinux("_test", m =>
         {
             m["platforms"] = new JsonArray("windows-x64");
             m["runtime"]!.AsObject().Remove("linux-x64");
-            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "dotnetRuntime", ["channel"] = "9.0" });
+            m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "githubRelease", ["repo"] = "Pryaxis/TShock", ["asset"] = "^a\\.zip$" });
         }));
 
-        Assert.DoesNotContain(errors, e => e.Path == "install.steps[2]");
+        Assert.DoesNotContain(errors, e => e.Path.StartsWith("install.steps[2]", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -341,6 +341,7 @@
         "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name, ending with its archive's extension (zip, tar.gz or tgz, then $)." },
         "tag": { "type": "string", "pattern": "^(?!\\.\\.?$)[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
         "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." },
+        "linuxAsset": { "type": "string", "maxLength": 200, "description": "The asset a Linux node downloads instead, the same kind of regular expression (a zip holding only a .tar is unpacked as that tar). Required when the manifest runs on linux-x64." },
         "target": { "type": "string", "maxLength": 260, "default": "", "description": "The folder of the server it is unpacked into; the server's own folder by default. Not the dotnet folder of a dotnetRuntime step." },
         "keep": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "maxLength": 260 },
           "description": "Files of the release (paths of the server's folder, inside the target) written only while they are missing: an update never replaces or removes them once they exist (settings the release ships a default of)." },

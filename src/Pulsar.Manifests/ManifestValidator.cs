@@ -206,6 +206,17 @@ public static partial class ManifestValidator
                     Error($"addons[{i}].source.linuxAsset", "A manifest that runs on linux-x64 names its addon's Linux asset: the Windows one's programs do not run there.");
                 }
             }
+
+            foreach (var (section, steps) in (IEnumerable<(string, InstallDefinition?)>)[("install", manifest.Install), ("update", manifest.Update)])
+            {
+                for (var i = 0; i < (steps?.Steps.Count ?? 0); i++)
+                {
+                    if (steps!.Steps[i] is GitHubReleaseStep { LinuxAsset: null })
+                    {
+                        Error($"{section}.steps[{i}].linuxAsset", "A manifest that runs on linux-x64 names the release's Linux asset: the Windows one's programs do not run there.");
+                    }
+                }
+            }
         }
         if (manifest.Commands is { } commands)
         {
@@ -950,11 +961,6 @@ public static partial class ManifestValidator
         for (var i = 0; i < definition.Steps.Count; i++)
         {
             var path = $"{section}.steps[{i}]";
-            if (manifest.Platforms.Contains(LinuxX64) && !RunsOnLinux(definition.Steps[i]))
-            {
-                context.Error(path, "This step does not run on linux-x64 yet.");
-            }
-
             switch (definition.Steps[i])
             {
                 case SteamCmdStep steam:
@@ -1127,9 +1133,6 @@ public static partial class ManifestValidator
     private static bool LoadsCode(string name) =>
         s_codeLoadingNames.Contains(name) || s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The steps the Linux agent carries out (the others download Windows programs).</summary>
-    private static bool RunsOnLinux(InstallStep step) => step is EnsureDirectoryStep or WriteFileIfMissingStep or CopyFileIfMissingStep
-        or TestGameServerStep or SteamCmdStep;
 
     /// <summary>
     /// The game's log: a relative path whose file name may hold one <c>*</c> (Pulsar 1.0.12), for a game that names its

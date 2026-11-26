@@ -1,4 +1,3 @@
-using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -406,10 +405,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
         AddonRecord? previous, string? within = null, IReadOnlyCollection<string>? keep = null)
     {
         var kept = new HashSet<string>(keep ?? [], StringComparer.OrdinalIgnoreCase);
-        using var archive = IsTarGz(asset) ? (AddonArchive)new TarGzArchive(download, asset) : new ZipAddonArchive(download, within);
+        using var archive = Open(download, asset, within);
         var entries = new List<string>();
+        var programs = new HashSet<int>();
         long total = 0;
-        foreach (var (entryName, length) in archive.Files())
+        foreach (var (entryName, length, program) in archive.Files())
         {
             var name = entryName.Replace('\\', '/');
             var path = addon.Target.Length == 0 ? name : $"{addon.Target}/{name}";
@@ -422,6 +422,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             if (total > MaximumExtracted || entries.Count >= MaximumEntries)
             {
                 throw Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks.");
+            }
+
+            if (program && platform == ManifestValidator.LinuxX64)
+            {
+                programs.Add(entries.Count);
             }
 
             entries.Add(path);
@@ -469,6 +474,10 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
             if (!skipped.Contains(index))
             {
                 files.Write(serverDirectory, entries[index], content);
+                if (programs.Contains(index))
+                {
+                    files.SetExecutable(serverDirectory, entries[index]);
+                }
             }
         });
 
@@ -558,141 +567,11 @@ public sealed partial class AddonInstaller(IServerFiles files, HttpMessageHandle
 
     private static GameProcessException Failed(string code, string message, Exception? inner = null) => new(code, message, inner);
 
-    private static bool IsTarGz(string asset) =>
-        asset.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) || asset.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase);
+    private static bool IsTarGz(string asset) => ServerArchive.IsTarGz(asset);
 
-    /// <summary>An addon's archive: its files (folders left out), then their contents, by their place in that list.</summary>
-    private abstract class AddonArchive : IDisposable
-    {
-        public abstract IReadOnlyList<(string Name, long Length)> Files();
-
-        public abstract void Extract(Action<int, Stream> write);
-
-        public abstract void Dispose();
-    }
-
-    /// <param name="within">Only the files of this folder of the zip, named from it; all of them when null or empty.</param>
-    private sealed class ZipAddonArchive(Stream download, string? within = null) : AddonArchive
-    {
-        private readonly ZipArchive _zip = new(download, ZipArchiveMode.Read);
-
-        private readonly string? _prefix = string.IsNullOrEmpty(within) ? null : within + "/";
-
-        public override IReadOnlyList<(string Name, long Length)> Files() =>
-            [.. FileEntries().Select(e => (_prefix is null ? e.FullName : e.FullName.Replace('\\', '/')[_prefix.Length..], e.Length))];
-
-        public override void Extract(Action<int, Stream> write)
-        {
-            var index = 0;
-            foreach (var entry in FileEntries())
-            {
-                using var content = BoundedEntryStream.Open(entry);
-                write(index++, content);
-            }
-        }
-
-        public override void Dispose() => _zip.Dispose();
-
-        private IEnumerable<ZipArchiveEntry> FileEntries() => _zip.Entries.Where(e => e.FullName.Replace('\\', '/') is var name && !name.EndsWith('/')
-            && (_prefix is null || (name.StartsWith(_prefix, StringComparison.Ordinal) && name.Length > _prefix.Length)));
-    }
-
-    /// <summary>
-    /// A .tar.gz, read twice from the verified download (a file): once for its files, which are checked before anything is
-    /// written, once to write them. Only plain files and folders: a link, a device or anything else fails it, and a file's
-    /// content ends where its header says. What either reading decompresses is counted, headers and skipped data included:
-    /// past the size of the files Pulsar unpacks and room for their headers, the archive is refused (a small download
-    /// can hold far more).
-    /// </summary>
-    private sealed class TarGzArchive(Stream download, string asset) : AddonArchive
-    {
-        public override IReadOnlyList<(string Name, long Length)> Files()
-        {
-            var files = new List<(string Name, long Length)>();
-            Read(entry => files.Add((Name(entry), entry.Length)));
-            return files;
-        }
-
-        public override void Extract(Action<int, Stream> write)
-        {
-            var index = 0;
-            Read(entry => write(index++, entry.DataStream ?? Stream.Null));
-        }
-
-        public override void Dispose()
-        {
-        }
-
-        private void Read(Action<TarEntry> file)
-        {
-            download.Seek(0, SeekOrigin.Begin);
-            using var gzip = new GZipStream(download, CompressionMode.Decompress, leaveOpen: true);
-            using var counted = new BoundedReadStream(gzip, MaximumExtracted + MaximumTarOverhead,
-                () => Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks."));
-            using var reader = new TarReader(counted, leaveOpen: true);
-            var entries = 0;
-            while (reader.GetNextEntry() is { } entry)
-            {
-                if (++entries > MaximumEntries)
-                {
-                    throw Failed("addon.bad_archive", $"{asset} is larger than Pulsar unpacks.");
-                }
-
-                switch (entry.EntryType)
-                {
-                    case TarEntryType.RegularFile or TarEntryType.V7RegularFile:
-                        file(entry);
-                        break;
-                    case TarEntryType.Directory or TarEntryType.GlobalExtendedAttributes:
-                        break;
-                    default:
-                        throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entry.Name}' ({entry.EntryType}).");
-                }
-            }
-        }
-
-        // Tar names often start with ./ (a folder packed from inside it).
-        private static string Name(TarEntry entry) => entry.Name.StartsWith("./", StringComparison.Ordinal) ? entry.Name[2..] : entry.Name;
-    }
-
-    /// <summary>Reads another stream up to a number of bytes in all; reading further throws what <c>tooLarge</c> makes.</summary>
-    private sealed class BoundedReadStream(Stream inner, long maximum, Func<Exception> tooLarge) : Stream
-    {
-        private long _read;
-
-        public override bool CanRead => true;
-
-        public override bool CanSeek => false;
-
-        public override bool CanWrite => false;
-
-        public override long Length => throw new NotSupportedException();
-
-        public override long Position
-        {
-            get => _read;
-            set => throw new NotSupportedException();
-        }
-
-        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
-
-        public override int Read(Span<byte> buffer)
-        {
-            var read = inner.Read(buffer);
-            _read += read;
-            return _read > maximum ? throw tooLarge() : read;
-        }
-
-        public override void Flush()
-        {
-        }
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    }
+    private ServerArchive Open(Stream download, string asset, string? within) =>
+        ServerArchive.Open(download, asset, within, MaximumExtracted + MaximumTarOverhead, MaximumEntries, message => Failed("addon.bad_archive", message),
+            tarInZip: platform == ManifestValidator.LinuxX64);
 
     private sealed record ThunderstorePackage(ThunderstoreVersion? Latest);
 

@@ -17,7 +17,7 @@ public sealed record MinecraftChoice(string? Version, string? Type = null, strin
 }
 
 /// <summary>
-/// Runs the server's Java runtime (<c>java/bin/java.exe</c>) with <paramref name="arguments"/>, as the server's account
+/// Runs the server's Java runtime (<c>java/bin/java.exe</c>, Linux' <c>java/bin/java</c>) with <paramref name="arguments"/>, as the server's account
 /// in its folder, its output in the server's console.
 /// </summary>
 /// <exception cref="GameProcessException">It could not start, exited with an error, or stalled.</exception>
@@ -31,7 +31,9 @@ public delegate Task JavaRunner(IReadOnlyList<string> arguments, CancellationTok
 /// Other server types (Pulsar 1.0.9) are in MinecraftLoaders.cs.
 /// </summary>
 /// <param name="java">Runs Forge's and NeoForge's installers; without one, those types cannot be installed.</param>
-public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHandler handler, JavaRunner? java = null)
+/// <param name="platform">The node's platform, whose Java runtime is installed (Linux': Adoptium's x64 .tar.gz).</param>
+public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHandler handler, JavaRunner? java = null,
+    string platform = ManifestValidator.WindowsX64)
 {
     /// <summary>Mojang's list of versions (the launcher's own source).</summary>
     public static readonly Uri VersionManifestUrl = new("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
@@ -39,6 +41,9 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
     public const string ServerJar = "server.jar";
 
     public const string JavaDirectory = "java";
+
+    /// <summary>The Java program of the runtime, in <see cref="JavaDirectory"/>, on <paramref name="platform"/>.</summary>
+    public static string JavaProgram(string platform) => platform == ManifestValidator.LinuxX64 ? "bin/java" : "bin/java.exe";
 
     /// <summary>The runtime's release and the files it installed, so an update replaces exactly those.</summary>
     private const string JavaMarker = JavaDirectory + "/pulsar-java.txt";
@@ -50,6 +55,7 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
     private const long MaximumJarSize = 1024L * 1024 * 1024;
 
     private const long MaximumExtracted = 2L * 1024 * 1024 * 1024;
+    private const long MaximumTarOverhead = 64L * 1024 * 1024;
     private const int MaximumEntries = 20_000;
     private const int MaximumMarkerSize = 1024 * 1024; // a runtime lists about 300 files of a few dozen characters
 
@@ -286,18 +292,21 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
     private async Task InstallJavaAsync(VerifiedDownloader client, string serverDirectory, int major, Func<double, Task> progress,
         CancellationToken cancellationToken)
     {
+        var linux = platform == ManifestValidator.LinuxX64;
         var assets = await GetJsonAsync<AdoptiumAsset[]>(client,
-            new Uri($"https://api.adoptium.net/v3/assets/latest/{major}/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse"),
+            new Uri($"https://api.adoptium.net/v3/assets/latest/{major}/hotspot?architecture=x64&image_type=jre&os={(linux ? "linux" : "windows")}&vendor=eclipse"),
             sha1: null, cancellationToken);
         var (release, package) = assets.Select(a => (a.ReleaseName, a.Binary?.Package))
-            .FirstOrDefault(a => a is { ReleaseName: not null, Package: { Link: not null, Checksum: not null } });
+            .FirstOrDefault(a => a is { ReleaseName: not null, Package: { Link: not null, Checksum: not null } }
+                && a.Package.Link.EndsWith(linux ? ".tar.gz" : ".zip", StringComparison.OrdinalIgnoreCase));
         if (release is null || package is null)
         {
-            throw Failed("minecraft.no_java", $"Adoptium has no Java {major} runtime for Windows x64.");
+            throw Failed("minecraft.no_java", $"Adoptium has no Java {major} runtime for {(linux ? "Linux" : "Windows")} x64.");
         }
 
+        var program = JavaProgram(platform);
         var installed = ReadMarker(serverDirectory);
-        if (installed?.Release == release && files.OpenRead(serverDirectory, $"{JavaDirectory}/bin/java.exe") is { } existing)
+        if (installed?.Release == release && files.OpenRead(serverDirectory, $"{JavaDirectory}/{program}") is { } existing)
         {
             existing.Dispose();
             return; // already there: an update of the same Minecraft version downloads only server.jar
@@ -305,8 +314,9 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
 
         await using var download = await DownloadAsync(client, Https(package.Link!), HashAlgorithmName.SHA256, package.Checksum!, progress,
             cancellationToken);
-        using var archive = new ZipArchive(download, ZipArchiveMode.Read);
-        var entries = Entries(archive);
+        using var archive = ServerArchive.Open(download, package.Link!, within: null, MaximumExtracted + MaximumTarOverhead, MaximumEntries + 2_000,
+            message => Failed("minecraft.bad_archive", $"The Java runtime archive is not one Pulsar unpacks: {message}"), LicenseLink);
+        var entries = Entries(archive, program);
 
         await progress(100);
         foreach (var old in (installed?.Files ?? []).Append("pulsar-java.txt"))
@@ -320,14 +330,18 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
                 // already gone with its folder
             }
         }
-        foreach (var (entry, relative) in entries)
+        archive.Extract((index, content) =>
         {
-            await using var content = BoundedEntryStream.Open(entry);
+            var (relative, executable) = entries[index];
             files.Write(serverDirectory, $"{JavaDirectory}/{relative}", content);
-        }
+            if (executable && linux)
+            {
+                files.SetExecutable(serverDirectory, $"{JavaDirectory}/{relative}");
+            }
+        });
 
         var marker = new StringBuilder().Append(release).Append('\n');
-        foreach (var (_, relative) in entries)
+        foreach (var (relative, _) in entries)
         {
             marker.Append(relative).Append('\n');
         }
@@ -336,38 +350,36 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
         files.Write(serverDirectory, JavaMarker, markerContent);
     }
 
-    /// <summary>The archive's files without its top folder (<c>jdk-25.0.4.1+1-jre/bin/java.exe</c> → <c>bin/java.exe</c>).</summary>
-    private static List<(ZipArchiveEntry Entry, string Relative)> Entries(ZipArchive archive)
+    /// <summary>
+    /// The archive's files without its top folder (<c>jdk-25.0.4.1+1-jre/bin/java.exe</c> → <c>bin/java.exe</c>), and
+    /// whether each is a program; it must hold <paramref name="program"/>.
+    /// </summary>
+    private static List<(string Relative, bool Program)> Entries(ServerArchive archive, string program)
     {
-        var entries = new List<(ZipArchiveEntry, string)>();
+        var entries = new List<(string, bool)>();
         long total = 0;
-        foreach (var entry in archive.Entries)
+        foreach (var (entryName, length, executable) in archive.Files())
         {
-            var name = entry.FullName.Replace('\\', '/');
-            if (name.EndsWith('/'))
-            {
-                continue;
-            }
-
+            var name = entryName.Replace('\\', '/');
             var slash = name.IndexOf('/', StringComparison.Ordinal);
             var relative = slash < 0 ? null : name[(slash + 1)..];
             if (relative is null || !ManifestValidator.IsValidRelativePath($"{JavaDirectory}/{relative}") || relative == "pulsar-java.txt")
             {
-                throw Failed("minecraft.bad_archive", $"The Java runtime archive has an unexpected entry '{entry.FullName}'.");
+                throw Failed("minecraft.bad_archive", $"The Java runtime archive has an unexpected entry '{entryName}'.");
             }
 
-            total += entry.Length;
+            total += length;
             if (total > MaximumExtracted || entries.Count >= MaximumEntries)
             {
                 throw Failed("minecraft.bad_archive", "The Java runtime archive is larger than expected.");
             }
 
-            entries.Add((entry, relative));
+            entries.Add((relative, executable));
         }
 
-        return entries.Any(e => e.Item2 == "bin/java.exe")
+        return entries.Any(e => e.Item1 == program)
             ? entries
-            : throw Failed("minecraft.bad_archive", "The Java runtime archive does not contain bin/java.exe.");
+            : throw Failed("minecraft.bad_archive", $"The Java runtime archive does not contain {program}.");
     }
 
     private (string Release, IReadOnlyList<string> Files)? ReadMarker(string serverDirectory)
@@ -391,6 +403,12 @@ public sealed partial class MinecraftInstaller(IServerFiles files, HttpMessageHa
             ? null
             : (lines[0], [.. lines.Skip(1).Where(l => ManifestValidator.IsValidRelativePath($"{JavaDirectory}/{l}"))]);
     }
+
+    /// <summary>
+    /// A link Adoptium's Linux runtimes have between their license texts (<c>jdk-25.0.5.1+2-jre/legal/java.sql/LICENSE</c>
+    /// → <c>../java.base/LICENSE</c>): left out, not written. Any other link fails the archive.
+    /// </summary>
+    private static bool LicenseLink(string name) => name.Split('/') is [_, "legal", _, _];
 
     private static Task<T> GetJsonAsync<T>(VerifiedDownloader client, Uri uri, string? sha1, CancellationToken cancellationToken) =>
         client.GetJsonAsync<T>(uri, sha1, cancellationToken);
