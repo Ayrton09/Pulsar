@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "vrising",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "name": "V Rising",
   "description": "V Rising dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the save-data folder of the server.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 6, "minMemoryMb": 4096 },
 
@@ -136,6 +136,32 @@
       "allowExtraArguments": true,
       "console": {
         "mode": "pty",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" },
+        "sensitiveCommandPrefixes": ["password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "VRisingServer.exe", "wine": true,
+      "arguments": [
+        "-persistentDataPath", "save-data",
+        { "if": "var.name", "then": ["-serverName", "{{var.name}}"] },
+        { "if": "var.description", "then": ["-description", "{{var.description}}"] },
+        "-saveName", "{{var.saveName}}",
+        "-address", "{{port.game.ip}}",
+        "-gamePort", "{{port.game}}",
+        "-queryPort", "{{port.query}}",
+        "-maxUsers", "{{var.maxPlayers}}",
+        "-listOnSteam", "{{var.listed.steam}}",
+        "-listOnEOS", "{{var.listed.steam}}",
+        { "if": "var.difficulty", "then": ["-difficultyPreset", "{{var.difficulty}}"] },
+        { "if": "var.autoSave", "then": ["-saveInterval", "{{var.autoSave}}"] },
+        "-rconPort", "{{port.rcon}}"
+      ],
+      "environment": { "SteamAppId": "1604030" },
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
         "encoding": "utf-8",
         "rcon": { "protocol": "source", "port": "rcon" },
         "sensitiveCommandPrefixes": ["password"]

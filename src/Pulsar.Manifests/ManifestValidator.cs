@@ -12,6 +12,9 @@ public static partial class ManifestValidator
     /// <summary>Linux on x86_64 with systemd (Pulsar's Linux agent).</summary>
     public const string LinuxX64 = "linux-x64";
 
+    /// <summary>The variable naming a game's Wine prefix, which only the agent sets (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public const string WinePrefixVariable = "WINEPREFIX";
+
     /// <summary>Manifest key of Pulsar's own test game (<c>games/_test</c>); the only one allowed the test server step.</summary>
     public const string TestGameKey = "pulsar-test";
 
@@ -197,7 +200,11 @@ public static partial class ManifestValidator
         }
 
         ValidateAddons(manifest.AddonList, Error);
-        if (manifest.Platforms.Contains(LinuxX64))
+        if (manifest.RunsWithWine(LinuxX64))
+        {
+            ValidateWineInstall(manifest, Error);
+        }
+        else if (manifest.Platforms.Contains(LinuxX64))
         {
             for (var i = 0; i < manifest.AddonList.Count; i++)
             {
@@ -1287,12 +1294,77 @@ public static partial class ManifestValidator
         }
     }
 
+    /// <summary>
+    /// A game run with Wine installs its Windows files on Linux too (<see cref="GameManifest.InstallPlatform"/>): with
+    /// SteamCMD and the file steps only, since the other steps and addons fetch the node's own builds, and nothing only a
+    /// Linux install reads.
+    /// </summary>
+    private static void ValidateWineInstall(GameManifest manifest, Action<string, string> error)
+    {
+        if (manifest.AddonList.Count > 0)
+        {
+            error("addons", "A game run with Wine has no addons: they would be fetched for Linux.");
+        }
+
+        foreach (var (section, steps) in (IEnumerable<(string, InstallDefinition?)>)[("install", manifest.Install), ("update", manifest.Update)])
+        {
+            for (var i = 0; i < (steps?.Steps.Count ?? 0); i++)
+            {
+                switch (steps!.Steps[i])
+                {
+                    case SteamCmdStep { WindowsFirstOnLinux: true }:
+                        error($"{section}.steps[{i}].windowsFirstOnLinux", "A game run with Wine installs its Windows files on Linux too.");
+                        break;
+                    case SteamCmdStep { LinuxAppId: not null }:
+                        error($"{section}.steps[{i}].linuxAppId", "A game run with Wine installs its Windows files on Linux too.");
+                        break;
+                    case SteamCmdStep { SteamClient: not null }:
+                        // Its libraries would come from the node's SteamCMD, a Linux one.
+                        error($"{section}.steps[{i}].steamClient", "A game run with Wine gets no Steam client libraries copied.");
+                        break;
+                    case SteamCmdStep or EnsureDirectoryStep or WriteFileIfMissingStep or CopyFileIfMissingStep:
+                        break;
+                    default:
+                        error($"{section}.steps[{i}]", "A game run with Wine installs with SteamCMD and the file steps only: the other steps fetch Linux builds.");
+                        break;
+                }
+            }
+        }
+    }
+
     private static void ValidateRuntime(string path, string platform, RuntimeDefinition runtime, Context context)
     {
         ValidateRelativePath($"{path}.executable", runtime.Executable, context.Error);
         if (platform == WindowsX64 && IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             context.Error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
+        }
+        else if (runtime.Wine)
+        {
+            if (platform != LinuxX64)
+            {
+                context.Error($"{path}.wine", "Only a linux-x64 runtime runs with Wine.");
+            }
+            else if (IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Error($"{path}.executable", "Wine starts the game's Windows program: an .exe file.");
+            }
+
+            if (runtime.LibraryPath is not null)
+            {
+                context.Error($"{path}.libraryPath", "A Windows program run with Wine takes no library path.");
+            }
+
+            if (runtime.UserProfile is not null)
+            {
+                // Wine keeps the user's folders in its prefix (.pulsar/wine), never the server's own.
+                context.Error($"{path}.userProfile", "A game run with Wine keeps its user's folders in its Wine prefix.");
+            }
+
+            if (runtime.Environment?.Keys.FirstOrDefault(name => name.Equals(WinePrefixVariable, StringComparison.Ordinal)) is { } prefix)
+            {
+                context.Error($"{path}.environment.{prefix}", "The agent sets the server's Wine prefix.");
+            }
         }
         else if (platform == LinuxX64 && s_linuxNonPrograms.Any(e => runtime.Executable.EndsWith(e, StringComparison.OrdinalIgnoreCase)))
         {

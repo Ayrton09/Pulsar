@@ -56,7 +56,7 @@ public sealed partial class ServerManagement
         }
 
         var manifest = ServerSpecs.Parse(next);
-        if (!AgentReads(connection, manifest)
+        if (!AgentReads(connection, manifest, await specs.PlatformOfAsync(server.NodeId, cancellationToken))
             || (next.Key == Manifests.ManifestValidator.TestGameKey && !Announces(connection, AgentCapabilities.TestGame)))
         {
             return ServerErrors.TemplateUnsupported;

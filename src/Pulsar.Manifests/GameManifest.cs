@@ -55,6 +55,15 @@ public sealed record GameManifest(
 
     /// <summary>Whether the game runs on <paramref name="platform"/> (a node's, <c>windows-x64</c> or <c>linux-x64</c>).</summary>
     public bool RunsOn(string platform) => Platforms.Contains(platform) && Runtime.ContainsKey(platform);
+
+    /// <summary>Whether the game runs with Wine on <paramref name="platform"/> (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool RunsWithWine(string platform) => Runtime.GetValueOrDefault(platform)?.Wine == true;
+
+    /// <summary>
+    /// The platform whose files the steps install on a node of <paramref name="platform"/>: Windows' for a game run with
+    /// Wine (its SteamCMD depots, a release's and an addon's Windows asset), the node's own otherwise.
+    /// </summary>
+    public string InstallPlatform(string platform) => RunsWithWine(platform) ? ManifestValidator.WindowsX64 : platform;
 }
 
 /// <summary>
@@ -505,6 +514,12 @@ public sealed record DotnetRuntimeStep(string Channel) : InstallStep
 /// How the game stops on this platform, in place of the manifest's: Unturned reads commands only from a terminal on
 /// Linux, where it saves and stops on Ctrl+C instead.
 /// </param>
+/// <param name="Wine">
+/// The game's program is its Windows one (an <c>.exe</c>), run with Wine (Pulsar's Linux agent; <c>linux-x64</c> only),
+/// for a game whose dedicated server has no Linux build: the node installs the Windows files (SteamCMD's Windows
+/// depots), and the agent starts Wine with the program, a Wine prefix of the server's own in <c>.pulsar/wine</c>, and no
+/// display (Wine's null graphics driver). Only a node with Wine installed takes it (<c>manifest.wine</c>).
+/// </param>
 public sealed record RuntimeDefinition(
     string Executable,
     ConsoleDefinition Console,
@@ -514,7 +529,8 @@ public sealed record RuntimeDefinition(
     IReadOnlyDictionary<string, string>? Environment = null,
     string? UserProfile = null,
     IReadOnlyList<string>? LibraryPath = null,
-    StopDefinition? Stop = null)
+    StopDefinition? Stop = null,
+    bool Wine = false)
 {
     public IReadOnlyList<ArgumentTemplate> ArgumentList => Arguments ?? [];
 }

@@ -811,6 +811,12 @@ public static class AgentCapabilities
     public const string MinecraftBedrock = "manifest.minecraft_bedrock";
 
     /// <summary>
+    /// Not a command: a Linux agent runs games with Wine (<c>runtime.linux-x64.wine</c>): Wine is installed on its machine.
+    /// The panel gives a Linux node such a game only when it announces this.
+    /// </summary>
+    public const string Wine = "manifest.wine";
+
+    /// <summary>
     /// Not a command: the agent reads manifests with console commands for the players (Pulsar 1.0.9,
     /// <c>commands</c>); an older one refuses them.
     /// </summary>

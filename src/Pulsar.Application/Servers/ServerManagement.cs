@@ -259,12 +259,13 @@ public sealed partial class ServerManagement(
 
         var server = created.Value;
         var manifest = ServerSpecs.Parse(template);
-        if (!manifest.RunsOn(await specs.PlatformOfAsync(nodeId, cancellationToken)))
+        var platform = await specs.PlatformOfAsync(nodeId, cancellationToken);
+        if (!manifest.RunsOn(platform))
         {
             return ServerErrors.PlatformUnsupported;
         }
 
-        if (!AgentReads(connection, manifest))
+        if (!AgentReads(connection, manifest, platform))
         {
             return ServerErrors.TemplateUnsupported;
         }
@@ -524,12 +525,13 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(next);
-        if (!manifest.RunsOn(await specs.PlatformOfAsync(server.NodeId, cancellationToken)))
+        var platform = await specs.PlatformOfAsync(server.NodeId, cancellationToken);
+        if (!manifest.RunsOn(platform))
         {
             return ServerErrors.PlatformUnsupported;
         }
 
-        if (!AgentReads(Connection(server.NodeId), manifest))
+        if (!AgentReads(Connection(server.NodeId), manifest, platform))
         {
             return ServerErrors.TemplateUnsupported;
         }
@@ -918,9 +920,11 @@ public sealed partial class ServerManagement(
     /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
     /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12, GoldSrc's RCON 1.0.15,
     /// the Steam client's libraries 1.0.25, reserved HTTP URLs and a release's kept files 1.0.35, a game database 1.0.37.
+    /// A game a node of <paramref name="platform"/> runs with Wine needs a node with Wine.
     /// </summary>
-    private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
-        (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
+    private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest, string platform) =>
+        (!ManifestFeatures.UsesWine(manifest, platform) || Announces(connection, AgentCapabilities.Wine))
+        && (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
         && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
         && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
         && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands))

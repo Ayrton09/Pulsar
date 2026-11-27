@@ -27,13 +27,17 @@ public static partial class GameExec
 
     /// <summary>
     /// The arguments the agent passes:
-    /// <c>game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]</c>.
+    /// <c>game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... [--wine-prefix DIR] --cwd DIR -- EXECUTABLE [ARG...]</c>.
     /// </summary>
     /// <param name="environmentFile">The game's environment (<see cref="WriteEnvironment"/>): never this process's own.</param>
     /// <param name="directories">Folders of the server made (when missing) as its user, before the game starts: its temporary folder, say.</param>
     /// <param name="terminal">A pseudo terminal's slave (<see cref="PseudoTerminal"/>): the game's controlling terminal and standard streams.</param>
+    /// <param name="winePrefix">
+    /// A game run with Wine: its prefix, made as the server's user when it has no registry yet, with the one a new prefix
+    /// starts with (<see cref="LinuxWine.UserRegistry"/>).
+    /// </param>
     public static IReadOnlyList<string> Arguments(uint uid, uint gid, string environmentFile, string? cgroup, string workingDirectory, string executable,
-        IEnumerable<string> arguments, IEnumerable<string>? directories = null, string? terminal = null)
+        IEnumerable<string> arguments, IEnumerable<string>? directories = null, string? terminal = null, string? winePrefix = null)
     {
         List<string> list =
             [Command, "--uid", uid.ToString(CultureInfo.InvariantCulture), "--gid", gid.ToString(CultureInfo.InvariantCulture), "--env-file", environmentFile];
@@ -50,6 +54,11 @@ public static partial class GameExec
         foreach (var directory in directories ?? [])
         {
             list.AddRange(["--mkdir", directory]);
+        }
+
+        if (winePrefix is not null)
+        {
+            list.AddRange(["--wine-prefix", winePrefix]);
         }
 
         list.AddRange(["--cwd", workingDirectory, "--", executable]);
@@ -163,14 +172,16 @@ public static partial class GameExec
         public string EnvironmentFile { get; init; } = "";
 
         public string? Terminal { get; init; }
+
+        public string? WinePrefix { get; init; }
     }
 
     internal static bool TryParse(IReadOnlyList<string> args, out Request request, out string usage)
     {
         request = null!;
-        usage = "usage: game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... --cwd DIR -- EXECUTABLE [ARG...]";
+        usage = "usage: game-exec --uid U --gid G --env-file FILE [--cgroup DIR] [--tty /dev/pts/N] [--mkdir DIR]... [--wine-prefix DIR] --cwd DIR -- EXECUTABLE [ARG...]";
         uint? uid = null, gid = null;
-        string? cgroup = null, cwd = null, environmentFile = null, terminal = null;
+        string? cgroup = null, cwd = null, environmentFile = null, terminal = null, winePrefix = null;
         var directories = new List<string>();
         var i = args.Count > 0 && args[0] == Command ? 1 : 0;
         for (; i < args.Count && args[i] != "--"; i += 2)
@@ -204,6 +215,9 @@ public static partial class GameExec
                 case "--tty" when TerminalPattern().IsMatch(value):
                     terminal = value;
                     break;
+                case "--wine-prefix" when Path.IsPathFullyQualified(value) && winePrefix is null:
+                    winePrefix = value;
+                    break;
                 default:
                     return false;
             }
@@ -222,7 +236,7 @@ public static partial class GameExec
             return false;
         }
 
-        request = new Request(user, group, cgroup, cwd, args[i + 1], [.. args.Skip(i + 2)]) { Directories = directories, EnvironmentFile = environmentFile, Terminal = terminal };
+        request = new Request(user, group, cgroup, cwd, args[i + 1], [.. args.Skip(i + 2)]) { Directories = directories, EnvironmentFile = environmentFile, Terminal = terminal, WinePrefix = winePrefix };
         return true;
     }
 
@@ -278,6 +292,11 @@ public static partial class GameExec
             Directory.CreateDirectory(directory);
         }
 
+        if (request.WinePrefix is { } prefix)
+        {
+            PrepareWinePrefix(prefix);
+        }
+
         Check(chdir(request.WorkingDirectory), $"chdir {request.WorkingDirectory}");
         // .NET ignores SIGPIPE and may block signals; the game starts with the defaults a program expects.
         _ = signal(SigPipe, IntPtr.Zero);
@@ -289,6 +308,28 @@ public static partial class GameExec
                 _ = sigprocmask(SigSetMask, (IntPtr)set, IntPtr.Zero);
             }
         }
+    }
+
+    /// <summary>
+    /// A new prefix (one without the registry Wine writes as it makes it) gets the registry it starts with, so Wine makes
+    /// the rest around it; a prefix Wine already made is the game's, as it left it. Run as the server's user.
+    /// </summary>
+    internal static void PrepareWinePrefix(string prefix)
+    {
+        Directory.CreateDirectory(prefix, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var registry = Path.Combine(prefix, "user.reg");
+        if (File.Exists(registry) || Directory.Exists(registry))
+        {
+            return;
+        }
+
+        using var file = new FileStream(registry, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
+        file.Write(System.Text.Encoding.UTF8.GetBytes(LinuxWine.UserRegistry));
     }
 
     /// <summary>The executable is an ELF program the server's user may run; null when it is.</summary>

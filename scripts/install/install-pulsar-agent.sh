@@ -10,6 +10,9 @@
 #   sudo ./install-pulsar-agent.sh --update        replace the agent's programs (its game servers keep running)
 #   sudo /opt/pulsar/install-pulsar-agent.sh --uninstall   remove the agent from Pulsar (keeps the servers' folders)
 #
+# --wine (with an install or an update) installs Wine too: games whose dedicated server is only for Windows (V Rising,
+# Enshrouded...) run with it on this node.
+#
 # The node code comes from the panel (Nodes > Add node). It carries a single-use enrollment token, so it never goes on
 # the command line, which other users can read: it is pasted on the terminal when asked for, or comes from the
 # environment (PULSAR_NODE_CODE) or from --secrets-file (a JSON file only root can read: {"nodeCode": ...}).
@@ -62,6 +65,7 @@ SERVERS_ROOT=
 BACKUPS_ROOT=
 SECRETS_FILE=${PULSAR_SECRETS_FILE:-}
 UNATTENDED=false
+WINE=false
 UPDATE_ATTEMPT=
 NODE_CODE=${PULSAR_NODE_CODE:-}
 unset PULSAR_NODE_CODE
@@ -74,6 +78,7 @@ Options:
   --backups-root DIR      Where their backups go (default the agent's state folder).
   --secrets-file FILE     Secrets as JSON, readable by root only: {"nodeCode": ...}.
   --unattended            Never prompt: what is missing is an error.
+  --wine                  Install Wine too (Debian's and Ubuntu's wine64): games only for Windows run with it.
   --update                Update the installed agent to this release (and the panel, when this machine has it too).
   --update-attempt ID     With --update: the panel's id for the request, written in the result (the agent passes it).
   --uninstall             Remove the agent from Pulsar.
@@ -261,6 +266,29 @@ require_tools() {
     else
         fail "$EXIT_UNSUPPORTED" "Install these first with your distribution's package manager: ${packages[*]} (and ICU and OpenSSL 3, which .NET needs, and the 32-bit libgcc and libstdc++, which SteamCMD needs)."
     fi
+}
+
+# Wine's loader where the agent looks for it (LinuxWine.Candidates): games only for Windows run with it.
+has_wine() {
+    local program
+    for program in /usr/lib/wine/wine64 /usr/bin/wine64 /usr/bin/wine /opt/wine-stable/bin/wine64 /opt/wine-stable/bin/wine; do
+        [[ -f $program && ! -L $program ]] && return 0
+    done
+    return 1
+}
+
+require_wine() {
+    [[ $WINE == true ]] || return 0
+    if has_wine; then
+        step 'Wine is installed'
+        return 0
+    fi
+    if has_apt; then
+        apt_install wine64 || fail "$EXIT_UNSUPPORTED" 'Could not install wine64 with apt-get.'
+    else
+        fail "$EXIT_UNSUPPORTED" "Install Wine first with your distribution's package manager (its 64-bit loader: wine64 or wine)."
+    fi
+    has_wine || fail "$EXIT_UNSUPPORTED" "Wine was installed, but its loader is not where the agent looks for it (/usr/lib/wine/wine64, /usr/bin/wine64, /usr/bin/wine)."
 }
 
 take_lock() {
@@ -543,6 +571,10 @@ parse_options() {
             UNATTENDED=true
             shift
             ;;
+        --wine)
+            WINE=true
+            shift
+            ;;
         --update)
             MODE=update
             shift
@@ -582,6 +614,7 @@ main() {
     require_release
     require_trusted_parents
     require_tools
+    require_wine
     case $MODE in
     install) install_agent ;;
     update) update_agent ;;

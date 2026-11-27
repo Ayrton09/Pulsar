@@ -30,6 +30,9 @@ public sealed class InstallOptions
     /// </summary>
     public ICodeSignatures? CodeSignatures { get; init; }
 
+    /// <summary>A Linux node whose machine has Wine (its program found when the agent started): it runs games with it (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool Wine { get; init; }
+
     /// <summary>An installer the agent runs (Forge's, NeoForge's) that prints nothing for this long is stopped.</summary>
     public TimeSpan InstallerStallTimeout { get; init; } = TimeSpan.FromMinutes(5);
 

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Linux;
 
@@ -64,6 +65,14 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
         }
 
         var executable = LinuxServerPaths.ResolveFile(root, spec.Executable);
+        // A Windows program runs with Wine's loader, which takes the program as its first argument.
+        string? wine = null;
+        if (spec.Wine)
+        {
+            wine = LinuxWine.Find() ?? throw new GameProcessException("process.wine_missing",
+                "This game runs with Wine, which is not installed on this machine (sudo apt-get install wine64), or not where its packages put it.");
+        }
+
         var workingDirectory = LinuxServerPaths.ResolveDirectory(root, spec.WorkingDirectory);
         string? home = spec.UserProfile is { } profile ? LinuxServerPaths.Combine(root, profile) : null;
         var libraries = LibraryPath(root, spec.LibraryPath);
@@ -94,9 +103,11 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
                 : [TempDirectory(root), RoamingFolder(home), LocalFolder(home)];
             // game-exec runs as root until it becomes the server's user: with the agent's own environment, never the game's
             // (its DOTNET_ROOT, its TMPDIR are the server's), which it reads from a file only root can read.
-            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries, preload));
-            foreach (var argument in GameExec.Arguments(account.Uid, account.Gid, environmentFile, cgroup?.Path, workingDirectory, executable,
-                         spec.Arguments, directories, terminal?.SlavePath))
+            environmentFile = GameExec.WriteEnvironment(BuildEnvironment(spec.Environment, account, root, home, libraries, preload,
+                wine is null ? null : LinuxWine.PrefixOf(root)));
+            foreach (var argument in GameExec.Arguments(account.Uid, account.Gid, environmentFile, cgroup?.Path, workingDirectory, wine ?? executable,
+                         wine is null ? spec.Arguments : [executable, .. spec.Arguments], directories, terminal?.SlavePath,
+                         wine is null ? null : LinuxWine.PrefixOf(root)))
             {
                 start.ArgumentList.Add(argument);
             }
@@ -259,10 +270,11 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
 
     /// <summary>
     /// The game's environment: only what the agent sets (nothing of root's own), then the manifest's. Its home is the
-    /// server's folder, or the folder of its user profile.
+    /// server's folder, or the folder of its user profile. A game run with Wine gets its prefix, which the manifest cannot
+    /// change, and Wine's quiet defaults, which it can.
     /// </summary>
     internal static IReadOnlyDictionary<string, string> BuildEnvironment(IReadOnlyDictionary<string, string> overrides, LinuxAccount account, string root,
-        string? home, string? libraryPath = null, string? preload = null)
+        string? home, string? libraryPath = null, string? preload = null, string? winePrefix = null)
     {
         var variables = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -283,6 +295,14 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             variables["LD_PRELOAD"] = preload;
         }
 
+        if (winePrefix is not null)
+        {
+            foreach (var (name, value) in LinuxWine.Defaults)
+            {
+                variables[name] = value;
+            }
+        }
+
         if (home is not null)
         {
             // Laid out as on Windows (AppData/Roaming, AppData/Local): .NET and Mono take their ApplicationData and
@@ -300,6 +320,15 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
             }
 
             variables[name] = value;
+        }
+
+        if (winePrefix is not null)
+        {
+            // After the manifest's: the prefix is the agent's, made by game-exec as the server's user.
+            variables[ManifestValidator.WinePrefixVariable] = winePrefix;
+            // Wine 9.0 aborts at its start ("free(): invalid pointer") whenever TMPDIR is set, wherever it points; without
+            // it, the Windows program's temporary folder is its user's in the prefix, in the server's folder all the same.
+            variables.Remove("TMPDIR");
         }
 
         return variables;

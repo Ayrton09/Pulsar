@@ -55,6 +55,9 @@ public sealed record LaunchPlan(
     /// <summary>Libraries of the server's folder a Linux game loads first: its installed addons' (<see cref="AddonLinuxRun.Preload"/>).</summary>
     public IReadOnlyList<string> Preload { get; init; } = [];
 
+    /// <summary>The executable is a Windows program the Linux agent runs with Wine (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool Wine { get; init; }
+
     /// <summary>The platform the plan was rendered for (<see cref="ManifestValidator.WindowsX64"/> when not said).</summary>
     public string Platform { get; init; } = ManifestValidator.WindowsX64;
 
@@ -559,6 +562,7 @@ public static partial class LaunchPlanRenderer
             UserProfile = runtime.UserProfile,
             LibraryPath = runtime.LibraryPath ?? [],
             Preload = [.. addonRuns.SelectMany(r => r.PreloadList).Distinct(StringComparer.Ordinal)],
+            Wine = runtime.Wine,
             Platform = platform,
             Secrets = [.. manifest.VariableList.Where(v => v.Secret).Select(v => resolved.GetValueOrDefault(v.Key)).Append(rcon?.Password)
                 .Append(database?.Password).OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],

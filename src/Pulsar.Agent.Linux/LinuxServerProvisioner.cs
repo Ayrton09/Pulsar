@@ -61,6 +61,12 @@ public sealed partial class LinuxServerProvisioner(LinuxServerAccounts accounts,
         DeleteTree(directory);
         if (!development)
         {
+            // What Wine's server left in /tmp for the account's uid (a game run with Wine), which a later account could get.
+            if (accounts.Lookup(LinuxServerAccounts.AccountName(shortId)) is { Uid: > 0 } account)
+            {
+                DeleteTree(WineServerFolder(account.Uid));
+            }
+
             accounts.Delete(LinuxServerAccounts.AccountName(shortId));
         }
 
@@ -95,6 +101,9 @@ public sealed partial class LinuxServerProvisioner(LinuxServerAccounts accounts,
             throw new GameProcessException("server.delete_failed", $"The server's folder {directory} could not be deleted: {ex.Message}", ex);
         }
     }
+
+    /// <summary>Where Wine's server keeps its sockets for a user (<c>/tmp/.wine-UID</c>, which Wine names whatever <c>TMPDIR</c> says).</summary>
+    internal static string WineServerFolder(uint uid) => $"/tmp/.wine-{uid.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
     private static string Root(string serversRoot)
     {

@@ -34,6 +34,13 @@ public static class ManifestFeatures
         return manifest.ConfigFileList.Any(f => f.Format is ConfigFileFormat.Json or ConfigFileFormat.Space);
     }
 
+    /// <summary>Whether a node of <paramref name="platform"/> runs the game with Wine (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public static bool UsesWine(GameManifest manifest, string platform)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.RunsWithWine(platform);
+    }
+
     /// <summary>Minecraft: Bedrock Edition's install step (Pulsar 1.0.8).</summary>
     public static bool UsesMinecraftBedrock(GameManifest manifest)
     {

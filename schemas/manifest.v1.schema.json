@@ -375,17 +375,28 @@
       "allOf": [
         { "$ref": "#/$defs/RuntimeDefinition" },
         { "properties": { "executable": { "pattern": "\\.[eE][xX][eE]$" } } },
-        { "not": { "required": ["libraryPath"] } }
+        { "not": { "required": ["libraryPath"] } },
+        { "not": { "required": ["wine"] } }
       ]
     },
     "LinuxRuntimeDefinition": {
-      "description": "How the game runs on Linux (Pulsar's Linux agent): an ELF program (no script), its console in UTF-8 (a 'pty' game gets a pseudo terminal).",
+      "description": "How the game runs on Linux (Pulsar's Linux agent): an ELF program (no script), or with 'wine' the game's Windows .exe, its console in UTF-8 (a 'pty' game gets a pseudo terminal).",
       "allOf": [
         { "$ref": "#/$defs/RuntimeDefinition" },
+        { "properties": { "console": { "properties": { "encoding": { "const": "utf-8" } } } } },
         {
-          "properties": {
-            "executable": { "not": { "pattern": "\\.([sS][hH]|[bB][aA][sS][hH]|[pP][yY]|[pP][lL]|[rR][bB]|[jJ][sS]|[eE][xX][eE]|[bB][aA][tT]|[cC][mM][dD]|[pP][sS]1|[jJ][aA][rR]|[dD][lL][lL])$" } },
-            "console": { "properties": { "encoding": { "const": "utf-8" } } }
+          "if": { "properties": { "wine": { "const": true } }, "required": ["wine"] },
+          "then": {
+            "properties": {
+              "executable": { "pattern": "\\.[eE][xX][eE]$" },
+              "environment": { "not": { "required": ["WINEPREFIX"] } }
+            },
+            "not": { "anyOf": [ { "required": ["libraryPath"] }, { "required": ["userProfile"] } ] }
+          },
+          "else": {
+            "properties": {
+              "executable": { "not": { "pattern": "\\.([sS][hH]|[bB][aA][sS][hH]|[pP][yY]|[pP][lL]|[rR][bB]|[jJ][sS]|[eE][xX][eE]|[bB][aA][tT]|[cC][mM][dD]|[pP][sS]1|[jJ][aA][rR]|[dD][lL][lL])$" } }
+            }
           }
         }
       ]
@@ -404,7 +415,8 @@
         "allowExtraArguments": { "type": "boolean", "default": false },
         "environment": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" }, "additionalProperties": { "type": "string" } },
         "console": { "$ref": "#/$defs/ConsoleDefinition" },
-        "stop": { "$ref": "#/$defs/StopDefinition", "description": "How the game stops on this platform, in place of the manifest's 'stop' (Unturned on Linux: Ctrl+C)." }
+        "stop": { "$ref": "#/$defs/StopDefinition", "description": "How the game stops on this platform, in place of the manifest's 'stop' (Unturned on Linux: Ctrl+C)." },
+        "wine": { "type": "boolean", "description": "Linux only: the executable is the game's Windows program, run with Wine in a prefix of the server's own (.pulsar/wine) and without a display; the node installs the Windows files. Only nodes with Wine take it." }
       }
     },
     "ArgumentTemplate": {

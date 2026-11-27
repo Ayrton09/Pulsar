@@ -695,7 +695,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         };
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
             mode, Encoding(plan.Console.Encoding), _definition.Identity,
-            _definition.Limits, plan.UserProfile, plan.LibraryPath, plan.Preload);
+            _definition.Limits, plan.UserProfile, plan.LibraryPath, plan.Preload, plan.Wine);
         IGameProcess process;
         try
         {

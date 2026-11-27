@@ -75,6 +75,33 @@ public sealed class NodePlatformTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task AGameRunWithWineIsCreatedOnlyOnALinuxNodeWithWine()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var (bare, bareAgent) = await ConnectedAsync(admin, "platform-no-wine", "linux-x64", without: AgentCapabilities.Wine);
+        await using var _ = bareAgent;
+        var (wine, wineAgent) = await ConnectedAsync(admin, "platform-wine", "linux-x64");
+        await using var __ = wineAgent;
+        var (windows, windowsAgent) = await ConnectedAsync(admin, "platform-wine-windows", "windows-x64", without: AgentCapabilities.Wine);
+        await using var ___ = windowsAgent;
+        foreach (var node in (Guid[])[bare, wine, windows])
+        {
+            await GameServerTests.AllocateAsync(admin, node, "0.0.0.0", "9876-9878");
+            await GameServerTests.AllocateAsync(admin, node, "127.0.0.1", "25575");
+        }
+
+        var vrising = await TemplateAsync(admin, "vrising");
+
+        using var refused = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(bare, vrising.Id, "No Wine here", null));
+        await Auth.SetupTests.AssertProblemAsync(refused, HttpStatusCode.Conflict, "server.template_unsupported");
+        using var created = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(wine, vrising.Id, "With Wine", null));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        // A Windows node runs the game itself: it needs no Wine.
+        using var onWindows = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(windows, vrising.Id, "On Windows", null));
+        Assert.Equal(HttpStatusCode.Created, onWindows.StatusCode);
+    }
+
+    [DatabaseFact]
     public async Task EachNodeIsSentItsOwnPlatformsManifest()
     {
         // An agent released before the Linux agent refuses a manifest with members it does not know: a Windows node is
@@ -181,14 +208,14 @@ public sealed class NodePlatformTests(PulsarApiFactory factory) : IClassFixture<
         return directory!.FullName;
     }
 
-    private async Task<(Guid Node, TestAgent Agent)> ConnectedAsync(PanelClient admin, string name, string? platform)
+    private async Task<(Guid Node, TestAgent Agent)> ConnectedAsync(PanelClient admin, string name, string? platform, string? without = null)
     {
         var node = await NodeApi.CreateAsync(admin, name);
         var agent = new TestAgent(factory) { HelloInventory = TestAgent.Inventory with { Platform = platform } };
         await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
         // Everything an agent of this version can do: only the platform tells the nodes apart.
         string[] capabilities = [.. typeof(AgentCapabilities).GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!).Where(c => c != without)];
         await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
         await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, node.Node.Id)).Node.Connected, "agent connected");
         return (node.Node.Id, agent);

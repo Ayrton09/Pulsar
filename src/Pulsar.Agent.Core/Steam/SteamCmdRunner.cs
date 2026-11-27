@@ -52,7 +52,8 @@ public sealed class SteamCmdOptions
 /// <param name="Login">The Steam account to log in with (Phase 13); null: anonymous.</param>
 /// <param name="ForcePlatform">
 /// The platform whose files SteamCMD downloads instead of its own (<c>windows</c> or <c>linux</c>): a Linux node's first
-/// install of an app that lists only Windows until it is installed (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>).
+/// install of an app that lists only Windows until it is installed (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>), and
+/// every run for a game the Linux node runs with Wine (<see cref="RuntimeDefinition.Wine"/>).
 /// </param>
 public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdentity Identity, int AppId, string? Beta, string? BetaPassword, bool Validate,
     SteamLogin? Login = null, string? ForcePlatform = null)

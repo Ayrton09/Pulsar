@@ -225,6 +225,10 @@ public sealed partial class ServerHost(
                 // Mojang's Linux Bedrock server is not signed: only its hosts over HTTPS vouch for it (MinecraftBedrockInstaller).
                 yield return AgentCapabilities.MinecraftBedrock;
                 yield return AgentCapabilities.SteamClient;
+                if (installOptions.Wine)
+                {
+                    yield return AgentCapabilities.Wine;
+                }
             }
 
             if (installOptions.TestGameAvailable)
@@ -1033,10 +1037,16 @@ public sealed partial class ServerHost(
     /// The SteamCMD runs of one step (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>): an app not installed yet gets its
     /// Windows files first, then its Linux ones with every file checked; an app installed but without the game's Linux
     /// program (a first install cut off between the two runs: SteamCMD already counts the Windows build as installed) gets
-    /// its Linux files with every file checked; any other run is the job as it is.
+    /// its Linux files with every file checked; a game run with Wine (<see cref="GameManifest.RunsWithWine"/>) gets the
+    /// app's Windows files on every run; any other run is the job as it is.
     /// </summary>
-    internal static IReadOnlyList<SteamCmdJob> SteamRuns(SteamCmdJob job, bool windowsFirst, Func<bool> installed, Func<bool> programThere)
+    internal static IReadOnlyList<SteamCmdJob> SteamRuns(SteamCmdJob job, bool windowsFirst, Func<bool> installed, Func<bool> programThere, bool wine = false)
     {
+        if (wine)
+        {
+            return [job with { ForcePlatform = "windows" }];
+        }
+
         if (!windowsFirst)
         {
             return [job];
@@ -1351,8 +1361,9 @@ public sealed partial class ServerHost(
                 var betaPassword = beta == steam.Beta && steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, beta, betaPassword,
                     validate ?? steam.Validate, login);
+                var wine = server.Manifest.RunsWithWine(options.Platform);
                 var runs = SteamRuns(job, steam.WindowsFirstOnLinux && options.Platform == ManifestValidator.LinuxX64,
-                    () => Installed(provisioned.Directory, steam.AppId), () => ProgramThere(provisioned.Directory, server.Manifest));
+                    () => Installed(provisioned.Directory, steam.AppId), () => ProgramThere(provisioned.Directory, server.Manifest), wine);
                 if (runs.Count > 1)
                 {
                     console.Note("Steam lists this server for Windows only until it is installed: its Windows files come first, then its Linux ones",
@@ -1363,7 +1374,7 @@ public sealed partial class ServerHost(
                 {
                     await steamCmd.RunAsync(run, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
                 }
-                if (options.Platform == ManifestValidator.LinuxX64)
+                if (options.Platform == ManifestValidator.LinuxX64 && !wine)
                 {
                     // Every Linux game gets them where Steam for Linux keeps them (TF2's and PVKII's servers find Steam
                     // only there); a manifest that names steamClient cannot do without them.

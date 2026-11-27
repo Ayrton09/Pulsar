@@ -86,7 +86,7 @@ public sealed partial class ServerManagement
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
-        if (!AgentReads(target, manifest)
+        if (!AgentReads(target, manifest, await specs.PlatformOfAsync(nodeId, cancellationToken))
             || (template.Key == Manifests.ManifestValidator.TestGameKey && !Announces(target, AgentCapabilities.TestGame)))
         {
             return ServerErrors.TemplateUnsupported;
