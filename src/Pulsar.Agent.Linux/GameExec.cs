@@ -270,6 +270,13 @@ public static partial class GameExec
             }
         }
 
+        if (request.WinePrefix is not null)
+        {
+            // Still root: the folder in the shared /tmp where Wine's server keeps its socket, which another server's user
+            // could otherwise make first (Wine refuses a folder its user does not own, and the game would never start).
+            PrepareWineServerFolder(LinuxServerProvisioner.WineServerFolder(request.Uid), request.Uid, request.Gid);
+        }
+
         if (request.Cgroup is { } cgroup)
         {
             // Into the game's cgroup before anything of the game runs: everything it starts is born there.
@@ -307,6 +314,70 @@ public static partial class GameExec
             {
                 _ = sigprocmask(SigSetMask, (IntPtr)set, IntPtr.Zero);
             }
+        }
+    }
+
+    /// <summary>
+    /// Run as root: <paramref name="folder"/> (<c>/tmp/.wine-UID</c>) is a folder of the user's alone (0700), never a link.
+    /// Anything else there (another user's folder, a link, a file) is moved aside and deleted, never followed, and the
+    /// folder is made anew with <c>mkdir</c>, which fails rather than reuse what someone put there in between.
+    /// </summary>
+    internal static void PrepareWineServerFolder(string folder, uint uid, uint gid)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (Libc.Lstat(folder) is { } stat)
+            {
+                if (stat.IsDirectory && stat.Uid == uid && (stat.Permissions & 0x3F) == 0)
+                {
+                    return;
+                }
+
+                var aside = $"{folder}.removed-{Guid.NewGuid():N}";
+                if (rename(folder, aside) == 0)
+                {
+                    RemoveAside(aside);
+                }
+                else if (Marshal.GetLastPInvokeError() is var error and not 2)
+                {
+                    throw new IOException($"rename {folder} failed: {Describe(error)}");
+                }
+
+                // ENOENT: gone in between (Wine's server of an earlier run let go of it); made below.
+            }
+
+            if (mkdir(folder, 0x1C0) != 0)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                if (error == 17)
+                {
+                    continue; // EEXIST: made again in between; looked at once more
+                }
+
+                throw new IOException($"mkdir {folder} failed: {Describe(error)}");
+            }
+
+            Libc.Lchown(folder, uid, gid);
+            Libc.ChmodNoFollow(folder, 0x1C0);
+            return;
+        }
+
+        throw new IOException($"{folder} keeps being made by someone else.");
+    }
+
+    /// <summary>What was moved aside: GNU <c>rm</c> deletes it without following a link, on this file system only.</summary>
+    private static void RemoveAside(string path)
+    {
+        using var rm = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/rm")
+        {
+            ArgumentList = { "-r", "-f", "--one-file-system", "--preserve-root=all", "--", path },
+            UseShellExecute = false,
+        });
+        rm?.WaitForExit();
+        if (rm is not { ExitCode: 0 })
+        {
+            // The start goes on: the folder Wine uses is made anew all the same.
+            Console.Error.WriteLine($"Pulsar could not delete {path}, which another user had put in Wine's place: delete it by hand.");
         }
     }
 
@@ -442,6 +513,12 @@ public static partial class GameExec
 
     [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int chdir(string path);
+
+    [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int mkdir(string path, uint mode);
+
+    [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int rename(string from, string to);
 
     [LibraryImport("libc")]
     private static partial IntPtr signal(int signal, IntPtr handler);

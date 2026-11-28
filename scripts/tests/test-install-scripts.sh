@@ -158,6 +158,12 @@ results=$(
     trap - EXIT
     refuses parse_options --servers-root relative/servers
     echo "a relative --servers-root is refused|$?"
+    refuses parse_options --servers-root /tmp/servers
+    echo "a --servers-root in /tmp (each game has one of its own) is refused|$?"
+    refuses parse_options --servers-root /var//tmp
+    echo "a --servers-root in /var/tmp, however written, is refused|$?"
+    (parse_options --servers-root /srv/tmp/servers && [[ $SERVERS_ROOT == /srv/tmp/servers ]])
+    echo "a --servers-root elsewhere is taken|$?"
     refuses parse_options --update-attempt not-an-id
     echo "an --update-attempt that is no request id is refused|$?"
     refuses parse_options --update-attempt 0B6E8F9A-0000-4000-8000-000000000000

@@ -13,8 +13,8 @@ public sealed class GameHostTests : IAsyncLifetime
 {
     private static readonly TimeSpan s_wait = TimeSpan.FromSeconds(30);
 
-    private readonly string _data = LinuxOnly.NewFolder();
-    private readonly string _servers = Path.Combine(LinuxOnly.NewFolder(), "servers");
+    private readonly string _data = LinuxOnly.NewServersFolder(); // the hosts write their logs there, out of their own /tmp
+    private readonly string _servers = Path.Combine(LinuxOnly.NewServersFolder(), "servers");
     private readonly LinuxServerAccounts _accounts = new(NullLogger<LinuxServerAccounts>.Instance);
     private readonly List<string> _shortIds = [];
     private readonly List<GameHostReference> _hosts = [];
@@ -41,6 +41,14 @@ public sealed class GameHostTests : IAsyncLifetime
         }
 
         GameHostPipes.SocketDirectory = null;
+        foreach (var folder in (string[])[Path.GetDirectoryName(_servers)!, _data])
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+
         return ValueTask.CompletedTask;
     }
 

@@ -19,14 +19,9 @@ public sealed class WineTests
     }
 
     [Fact]
-    public void ItInstallsTheWindowsFilesOnLinuxToo()
+    public void ANativeLinuxGameDoesNotRunWithWine()
     {
-        var wine = TestManifests.Load("vrising");
-        var native = TestManifests.Load("valheim");
-
-        Assert.Equal(ManifestValidator.WindowsX64, wine.InstallPlatform(ManifestValidator.LinuxX64));
-        Assert.Equal(ManifestValidator.WindowsX64, wine.InstallPlatform(ManifestValidator.WindowsX64));
-        Assert.Equal(ManifestValidator.LinuxX64, native.InstallPlatform(ManifestValidator.LinuxX64));
+        Assert.False(TestManifests.Load("valheim").RunsWithWine(ManifestValidator.LinuxX64));
     }
 
     [Fact]

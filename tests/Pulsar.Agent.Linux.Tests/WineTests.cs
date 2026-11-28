@@ -22,7 +22,7 @@ public sealed class WineTests
         Assert.Equal($"{Root}/.pulsar/wine", environment[ManifestValidator.WinePrefixVariable]);
         // Wine's quiet defaults are the manifest's to change.
         Assert.Equal("err+all", environment["WINEDEBUG"]);
-        Assert.Equal("mscoree,mshtml=", environment["WINEDLLOVERRIDES"]);
+        Assert.Equal("mscoree,mshtml=;winedbg.exe=d", environment["WINEDLLOVERRIDES"]);
         Assert.Equal(Root, environment["HOME"]);
         // Wine 9.0 aborts at its start with TMPDIR set.
         Assert.False(environment.ContainsKey("TMPDIR"));
@@ -91,6 +91,42 @@ public sealed class WineTests
         Assert.False(LinuxWine.IsTrusted(copy));
         Assert.False(LinuxWine.IsTrusted("/usr/bin/no-such-wine"));
         Assert.False(LinuxWine.IsTrusted("/etc/passwd")); // not a program
+    }
+
+    [LinuxRootFact]
+    public void WinesServerFolderIsTheUsersAloneWhateverSomeoneElsePutThere()
+    {
+        // Another server's user made it first (Wine would refuse it), or put a link there: root moves it aside, never
+        // follows it, and makes the folder anew for the game's user.
+        var root = LinuxOnly.NewFolder();
+        var target = Path.Combine(root, "elsewhere");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "keep"), "x");
+        foreach (var squat in (string[])["folder", "link", "none"])
+        {
+            var folder = Path.Combine(root, $".wine-{squat}");
+            if (squat == "folder")
+            {
+                Directory.CreateDirectory(folder);
+                Libc.Lchown(folder, 54321, 54321);
+            }
+            else if (squat == "link")
+            {
+                File.CreateSymbolicLink(folder, target);
+            }
+
+            GameExec.PrepareWineServerFolder(folder, 12345, 12346);
+
+            var stat = Libc.Lstat(folder)!.Value;
+            Assert.True(stat.IsDirectory && !stat.IsSymbolicLink, squat);
+            Assert.Equal((12345u, 12346u, 0x1C0u), (stat.Uid, stat.Gid, stat.Permissions));
+            // Kept as it is the next time.
+            GameExec.PrepareWineServerFolder(folder, 12345, 12346);
+            Assert.Equal(stat.Inode, Libc.Lstat(folder)!.Value.Inode);
+        }
+
+        Assert.True(File.Exists(Path.Combine(target, "keep")));
+        Assert.DoesNotContain(Directory.EnumerateFileSystemEntries(root), entry => entry.Contains(".removed-", StringComparison.Ordinal));
     }
 
     [LinuxRootFact]

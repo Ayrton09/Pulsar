@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "enshrouded",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "name": "Enshrouded",
   "description": "Enshrouded dedicated server, installed anonymously with SteamCMD. Its settings are in enshrouded_server.json and its world in the savegame folder of the server.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 8, "minMemoryMb": 8192 },
 
@@ -112,6 +112,12 @@
       "arguments": [],
       "allowExtraArguments": true,
       "console": { "mode": "pty", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "enshrouded_server.exe", "wine": true,
+      "arguments": [],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
     }
   },
 

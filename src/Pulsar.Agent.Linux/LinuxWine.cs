@@ -42,13 +42,15 @@ public static class LinuxWine
         """;
 
     /// <summary>
-    /// What Wine is told besides the prefix: no debug output (it would flood the console), and no prompt to install Wine's
-    /// own .NET and browser engine, which nobody could answer. The game's manifest may say otherwise.
+    /// What Wine is told besides the prefix: no debug output (it would flood the console); no prompt to install Wine's own
+    /// .NET and browser engine, which nobody could answer; and no debugger for a program that faults (Wine starts
+    /// <c>winedbg</c>, which holds the program until someone answers it: the game would never exit, nor be seen to
+    /// crash). The game's manifest may say otherwise.
     /// </summary>
     public static IReadOnlyDictionary<string, string> Defaults { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["WINEDEBUG"] = "-all",
-        ["WINEDLLOVERRIDES"] = "mscoree,mshtml=",
+        ["WINEDLLOVERRIDES"] = "mscoree,mshtml=;winedbg.exe=d",
     };
 
     /// <summary>The loader, or null when Wine is not installed.</summary>

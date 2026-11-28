@@ -327,14 +327,20 @@ makes a system user for each game server, with no password or shell, and runs th
 in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike 2,
 Counter-Strike: Source, Team Fortress 2, Left 4 Dead 2, Half-Life 2: Deathmatch, Pirates, Vikings and Knights II,
 Counter-Strike 1.6, Half-Life Deathmatch, Rust, Valheim, 7 Days to Die, Project Zomboid, Palworld, Unturned,
-Don't Starve Together, Arma Reforger and SCP: Secret Laboratory, each downloaded by its own SteamCMD.
+Don't Starve Together, Arma Reforger, SCP: Secret Laboratory, Killing Floor 2, Squad, Insurgency: Sandstorm and
+Soulmask, each downloaded by its own SteamCMD, and Minecraft (Java and Bedrock) and Terraria.
+
+Games whose dedicated server is only for Windows (V Rising, Enshrouded, Abiotic Factor, Icarus, Sons of the Forest,
+Conan Exiles, ARK: Survival Ascended) run on a Linux node with Wine, when the node has it: `--wine` installs it (Debian's and Ubuntu's
+`wine64`). Installed later by hand, the agent finds it once it restarts (`sudo systemctl restart pulsar-agent`).
 
 | Option | What it does |
 |---|---|
-| `--servers-root DIR` | Where the game servers' folders go (default `/var/lib/pulsar/servers`). |
+| `--servers-root DIR` | Where the game servers' folders go (default `/var/lib/pulsar/servers`); not in `/tmp` or `/var/tmp`, which each game server has of its own. |
 | `--backups-root DIR` | Where their backups go (default the agent's state folder). |
 | `--secrets-file FILE` | The node code as JSON (`nodeCode`), in a file only root can read. |
 | `--unattended` | Asks for nothing: a missing node code is an error. |
+| `--wine` | Installs Wine too, for the games only for Windows. |
 | `--update` | Replaces the agent's programs with this release's (the game servers keep running). |
 | `--uninstall` | Removes the agent from Pulsar (below). |
 

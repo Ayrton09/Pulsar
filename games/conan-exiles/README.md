@@ -20,3 +20,12 @@ the Unreal Engine 5 "Enhanced" version, about 4.5 GB), through a development pan
   only. The Players card's `kickplayer name …` and `banplayer name …` were not tried with players on.
 - Ctrl+C, sent by the server's host to the console the game opened (agents of 1.0.12), ends it with code 0 in 87 to
   93 s, after writing its database (its `-wal` and `-shm` files are gone afterwards): the stop's timeout is 180 s.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `ConanSandbox/Binaries/Win64/ConanSandboxServer-Win64-Shipping.exe` with Wine, in a prefix of
+the server's own (`.pulsar/wine`), without a display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo
+apt-get install wine64` and a restart of the agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0):
+installed, started (ready once its Steam query answered), answered `help` over RCON, stopped with Ctrl+C (it takes up
+to two minutes there to let go of a web request before it exits) and deleted.

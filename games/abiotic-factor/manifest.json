@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "abiotic-factor",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Abiotic Factor",
   "description": "Abiotic Factor dedicated server, installed anonymously with SteamCMD. Its world and its sandbox rules live in the server's folder.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 6, "minMemoryMb": 4096 },
 
@@ -60,6 +60,22 @@
   "runtime": {
     "windows-x64": {
       "executable": "AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe",
+      "arguments": [
+        "-log", "-useperfthreads", "-NoAsyncLoadingThread",
+        { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },
+        "-WorldSaveName={{var.world}}",
+        "-MaxServerPlayers={{var.maxPlayers}}",
+        "-PORT={{port.game}}",
+        "-QueryPort={{port.query}}",
+        { "if": "var.password", "then": ["-ServerPassword={{var.password}}"] },
+        { "if": "var.adminPassword", "then": ["-AdminPassword={{var.adminPassword}}"] },
+        "-SandboxIniPath=Config/WindowsServer/SandboxSettings.ini"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe", "wine": true,
       "arguments": [
         "-log", "-useperfthreads", "-NoAsyncLoadingThread",
         { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },

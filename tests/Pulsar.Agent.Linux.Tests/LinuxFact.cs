@@ -35,6 +35,17 @@ public static class LinuxOnly
 {
     public static bool IsLinux => OperatingSystem.IsLinux();
 
+    /// <summary>
+    /// A new empty folder for servers that game hosts run: outside /tmp and /var/tmp, which a host has of its own
+    /// (<c>PrivateTmp</c>), as the agent's servers root is.
+    /// </summary>
+    public static string NewServersFolder()
+    {
+        var folder = Path.Combine("/var/lib/pulsar-linux-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        return folder;
+    }
+
     /// <summary>A new empty folder under the system's temporary folder (on Linux' own file system, never a Windows drive).</summary>
     public static string NewFolder()
     {

@@ -38,19 +38,19 @@ public sealed class NodePlatformTests(PulsarApiFactory factory) : IClassFixture<
 
         Assert.Equal(["windows-x64", "linux-x64"], templates.Single(t => t.IsTestGame).Platforms);
         Assert.Equal(["windows-x64", "linux-x64"], templates.Last(t => t.Key == "css").Platforms);
-        Assert.Equal(["windows-x64"], templates.Last(t => t.Key == "ark-sa").Platforms);
+        Assert.Equal(["windows-x64"], templates.Last(t => t.Key == "ao2027").Platforms);
     }
 
     [DatabaseFact]
     public async Task AWindowsOnlyGameIsNotCreatedOnALinuxNode()
     {
         using var admin = await factory.CreateAdminClientAsync();
-        var (node, agent) = await ConnectedAsync(admin, "platform-no-ark", "linux-x64");
+        var (node, agent) = await ConnectedAsync(admin, "platform-no-ao", "linux-x64");
         await using var _ = agent;
-        await GameServerTests.AllocateAsync(admin, node, "0.0.0.0", "7777-7780");
-        var ark = await TemplateAsync(admin, "ark-sa");
+        await GameServerTests.AllocateAsync(admin, node, "0.0.0.0", "7666-7672");
+        var ao = await TemplateAsync(admin, "ao2027");
 
-        using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node, ark.Id, "Not on Linux", null));
+        using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node, ao.Id, "Not on Linux", null));
 
         await Auth.SetupTests.AssertProblemAsync(response, HttpStatusCode.Conflict, "server.platform_unsupported");
     }

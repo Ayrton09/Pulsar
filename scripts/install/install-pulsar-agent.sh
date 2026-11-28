@@ -593,6 +593,12 @@ parse_options() {
     if [[ -n $SERVERS_ROOT && $SERVERS_ROOT != /* ]] || [[ -n $BACKUPS_ROOT && $BACKUPS_ROOT != /* ]]; then
         fail "$EXIT_USAGE" '--servers-root and --backups-root must be absolute paths.'
     fi
+    # Each game's host has a /tmp and a /var/tmp of its own (PrivateTmp): a server there would be out of its game's sight.
+    local servers
+    servers=$(tr -s / <<<"$SERVERS_ROOT")
+    case ${servers%/}/ in
+    /tmp/* | /var/tmp/*) fail "$EXIT_USAGE" '--servers-root cannot be in /tmp or /var/tmp: each game server has those of its own.' ;;
+    esac
 }
 
 main() {

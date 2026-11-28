@@ -1600,8 +1600,47 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _stopReason = reason;
         Transition(RuntimeState.Stopping, reason);
         PostLater(StopTimeLimit(budget), new StopTimeout(_generation));
-        _mailbox.Writer.TryWrite(new NextStopStep(_generation, 0));
+        _ = CloseConsoleRconThenStopAsync(_generation);
     }
+
+    /// <summary>
+    /// The console's RCON session, kept since its last command, goes before the stop's first step: a game may not quit
+    /// while a client is still connected (V Rising run with Wine faults as it quits then, and never exits). The steps
+    /// start once it is closed, or after two seconds when a console command still holds it.
+    /// </summary>
+    private async Task CloseConsoleRconThenStopAsync(int generation)
+    {
+        try
+        {
+            if (await _rconLock.WaitAsync(s_consoleRconCloseWait, _stopping.Token))
+            {
+                try
+                {
+                    await CloseConsoleRconAsync();
+                }
+                finally
+                {
+                    _rconLock.Release();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // The supervisor is going away.
+        }
+        catch (Exception ex)
+        {
+            // A session that fails as it closes (its socket's error) never holds the stop back.
+            LogStopStepFailed(ServerId, -1, ex.Message);
+        }
+        finally
+        {
+            _mailbox.Writer.TryWrite(new NextStopStep(generation, 0));
+        }
+    }
+
+    /// <summary>How long a stop waits for a console command over RCON to let go of the session before its steps run anyway.</summary>
+    private static readonly TimeSpan s_consoleRconCloseWait = TimeSpan.FromSeconds(2);
 
     /// <summary>How long a stop may take before the tree is killed: the manifest's timeout, within <paramref name="budget"/>.</summary>
     private TimeSpan StopTimeLimit(TimeSpan? budget)

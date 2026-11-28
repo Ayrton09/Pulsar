@@ -1295,7 +1295,7 @@ public static partial class ManifestValidator
     }
 
     /// <summary>
-    /// A game run with Wine installs its Windows files on Linux too (<see cref="GameManifest.InstallPlatform"/>): with
+    /// A game run with Wine installs its Windows files on Linux too (SteamCMD's Windows depots, ServerHost.SteamRuns): with
     /// SteamCMD and the file steps only, since the other steps and addons fetch the node's own builds, and nothing only a
     /// Linux install reads.
     /// </summary>

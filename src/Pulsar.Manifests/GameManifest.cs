@@ -58,12 +58,6 @@ public sealed record GameManifest(
 
     /// <summary>Whether the game runs with Wine on <paramref name="platform"/> (<see cref="RuntimeDefinition.Wine"/>).</summary>
     public bool RunsWithWine(string platform) => Runtime.GetValueOrDefault(platform)?.Wine == true;
-
-    /// <summary>
-    /// The platform whose files the steps install on a node of <paramref name="platform"/>: Windows' for a game run with
-    /// Wine (its SteamCMD depots, a release's and an addon's Windows asset), the node's own otherwise.
-    /// </summary>
-    public string InstallPlatform(string platform) => RunsWithWine(platform) ? ManifestValidator.WindowsX64 : platform;
 }
 
 /// <summary>

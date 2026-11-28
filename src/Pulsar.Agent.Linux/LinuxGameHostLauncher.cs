@@ -176,6 +176,9 @@ public sealed partial class LinuxGameHostLauncher(Func<string> program, string d
                 "--property", "TimeoutStopSec=30", "--property", "UMask=0077",
                 // A game sees its own user's processes alone: other servers' command lines hold their passwords.
                 "--property", "ProtectProc=invisible",
+                // And a /tmp of its own, gone with its host: what a game keeps there (Wine's server socket, in
+                // /tmp/.wine-<uid>) no other server's user can make first, read or fill.
+                "--property", "PrivateTmp=yes",
                 "--setenv", "DOTNET_NOLOGO=1", "--setenv", "DOTNET_CLI_TELEMETRY_OPTOUT=1",
                 .. Environment.SelectMany(v => (string[])["--setenv", $"{v.Key}={v.Value}"]),
                 "--working-directory", Path.GetDirectoryName(executable)!,
