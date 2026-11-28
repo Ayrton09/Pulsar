@@ -25,7 +25,7 @@ let agentOutput = '';
 
 test.beforeAll(() => {
   test.setTimeout(240_000);
-  execFileSync('dotnet', ['publish', agentProject, '-c', 'Release', '-o', agentDir], { stdio: 'inherit' });
+  execFileSync('dotnet', ['publish', agentProject, '-f', 'net10.0-windows', '-c', 'Release', '-o', agentDir], { stdio: 'inherit' });
   dataDir = mkdtempSync(join(tmpdir(), 'pulsar-e2e-agent-'));
 });
 

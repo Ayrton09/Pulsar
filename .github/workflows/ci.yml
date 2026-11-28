@@ -190,7 +190,7 @@ jobs:
             powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release/Build-AgentMsi.ps1 -AgentDir artifacts/agent-install-ci/agent -Version $build[0] -Output "artifacts/agent-install-ci/$($build[1])"
             if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
           }
-          dotnet publish tests/Pulsar.TestGameServer -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/testgame
+          dotnet publish tests/Pulsar.TestGameServer -f net10.0-windows -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/testgame
           # The check makes sure the ZIP's installer leaves an agent from the MSI alone (as prepare.ps1 bundles it).
           Copy-Item scripts/install/Install-Pulsar.ps1 artifacts/agent-install-ci/
 
