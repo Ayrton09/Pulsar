@@ -140,7 +140,9 @@ internal sealed partial class LinuxAgentPlatform : IAgentPlatform
         // Games run with Wine only on a machine that has it (installed before the agent starts).
         builder.Services.AddSingleton(new InstallOptions
         {
-            TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"], Platform = ManifestValidator.LinuxX64, Wine = LinuxWine.Find() is not null,
+            TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"],
+            Platform = ManifestValidator.LinuxX64,
+            Wine = LinuxWine.Find() is not null,
         });
         // The agent reaches the servers' folders as their users (docs/architecture/08, "File manager").
         builder.Services.AddSingleton<IServerFiles>(new LinuxServerFiles());
