@@ -83,7 +83,14 @@ public sealed class WineTests
     [LinuxFact]
     public void OnlyAProgramOfRootsInRootsFoldersIsWines()
     {
-        Assert.True(LinuxWine.IsTrusted("/usr/bin/true"), Describe("/usr/bin/true"));
+        // A program of root's in root's folders. Some systems have /usr/bin/true as a link (CI's Ubuntu runners): a link is
+        // never taken, the program it leads to is.
+        var program = new FileInfo("/usr/bin/true").ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? "/usr/bin/true";
+        Assert.True(LinuxWine.IsTrusted(program), Describe(program));
+        if (program != "/usr/bin/true")
+        {
+            Assert.False(LinuxWine.IsTrusted("/usr/bin/true"));
+        }
 
         // A copy anyone could have put there: in the temporary folder, which every user can write to.
         var copy = Path.Combine(LinuxOnly.NewFolder(), "wine64");
