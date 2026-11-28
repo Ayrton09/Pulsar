@@ -83,7 +83,7 @@ public sealed class WineTests
     [LinuxFact]
     public void OnlyAProgramOfRootsInRootsFoldersIsWines()
     {
-        Assert.True(LinuxWine.IsTrusted("/usr/bin/true"));
+        Assert.True(LinuxWine.IsTrusted("/usr/bin/true"), Describe("/usr/bin/true"));
 
         // A copy anyone could have put there: in the temporary folder, which every user can write to.
         var copy = Path.Combine(LinuxOnly.NewFolder(), "wine64");
@@ -91,6 +91,18 @@ public sealed class WineTests
         Assert.False(LinuxWine.IsTrusted(copy));
         Assert.False(LinuxWine.IsTrusted("/usr/bin/no-such-wine"));
         Assert.False(LinuxWine.IsTrusted("/etc/passwd")); // not a program
+    }
+
+    // What each part of the path is, for a machine where a program of root's is not taken.
+    private static string Describe(string path)
+    {
+        var parts = new List<string>();
+        for (var at = path; !string.IsNullOrEmpty(at); at = Path.GetDirectoryName(at))
+        {
+            parts.Add(Libc.Lstat(at) is { } stat ? $"{at}: uid {stat.Uid}, mode {Convert.ToString(stat.Mode, 8)}" : $"{at}: missing");
+        }
+
+        return string.Join("; ", parts);
     }
 
     [LinuxRootFact]

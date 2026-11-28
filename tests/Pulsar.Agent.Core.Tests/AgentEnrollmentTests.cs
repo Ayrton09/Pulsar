@@ -133,7 +133,10 @@ public sealed class AgentEnrollmentTests : IDisposable
         Assert.Equal(production.NodeId, configs.Load()!.NodeId);
 
         // A production enrollment may replace another one (re-enrollment), and a development one a development one.
-        var enrolled = await RunAsync(Enrollment(panel).EnrollAsync(Request() with { Development = false }, TestContext.Current.CancellationToken));
+        // Its servers in the test's folder: a production agent's default one (C:\PulsarServers, /var/lib/pulsar/servers) is
+        // the machine's, which the tests do not touch.
+        var enrolled = await RunAsync(Enrollment(panel).EnrollAsync(Request() with { Development = false, ServersRoot = Path.Combine(_root, "servers") },
+            TestContext.Current.CancellationToken));
         Assert.False(enrolled.Development);
         configs.Save(enrolled with { Development = true });
         Assert.True((await RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken))).Development);
