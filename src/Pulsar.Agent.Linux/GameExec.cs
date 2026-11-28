@@ -242,6 +242,13 @@ public static partial class GameExec
 
     private static void Prepare(Request request)
     {
+        // A development agent (--dev, never root) runs games as its own user: there is no user to change to.
+        var root = geteuid() == 0;
+        if (!root && (request.Uid != getuid() || request.Gid != getgid()))
+        {
+            throw new IOException("only root runs a game as another user.");
+        }
+
         // The game's tree: a group of processes the agent kills at once (setsid fails only for a group leader, which a
         // process the agent just started is not).
         _ = setsid();
@@ -270,7 +277,7 @@ public static partial class GameExec
             }
         }
 
-        if (request.WinePrefix is not null)
+        if (request.WinePrefix is not null && root)
         {
             // Still root: the folder in the shared /tmp where Wine's server keeps its socket, which another server's user
             // could otherwise make first (Wine refuses a folder its user does not own, and the game would never start).
@@ -283,9 +290,13 @@ public static partial class GameExec
             File.WriteAllText(Path.Combine(cgroup, "cgroup.procs"), "0\n");
         }
 
-        Check(setgroups(0, IntPtr.Zero), "setgroups");
-        Check(setresgid(request.Gid, request.Gid, request.Gid), "setresgid");
-        Check(setresuid(request.Uid, request.Uid, request.Uid), "setresuid");
+        if (root)
+        {
+            Check(setgroups(0, IntPtr.Zero), "setgroups");
+            Check(setresgid(request.Gid, request.Gid, request.Gid), "setresgid");
+            Check(setresuid(request.Uid, request.Uid, request.Uid), "setresuid");
+        }
+
         // Root's way back must be gone: a failed or partial change never runs the game with root's rights.
         if (getuid() != request.Uid || geteuid() != request.Uid || getgid() != request.Gid || setresuid(0, 0, 0) == 0)
         {

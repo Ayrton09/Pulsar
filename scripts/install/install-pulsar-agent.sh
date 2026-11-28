@@ -596,6 +596,10 @@ parse_options() {
     # Each game's host has a /tmp and a /var/tmp of its own (PrivateTmp): a server there would be out of its game's sight.
     local servers
     servers=$(tr -s / <<<"$SERVERS_ROOT")
+    # A . or .. in it could lead there however it is written (/srv/../tmp): it is written plainly or not at all.
+    case ${servers%/}/ in
+    */./* | */../*) fail "$EXIT_USAGE" '--servers-root cannot have . or .. in it: write the folder plainly.' ;;
+    esac
     case ${servers%/}/ in
     /tmp/* | /var/tmp/*) fail "$EXIT_USAGE" '--servers-root cannot be in /tmp or /var/tmp: each game server has those of its own.' ;;
     esac

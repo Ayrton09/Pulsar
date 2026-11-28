@@ -24,7 +24,8 @@ public sealed partial class LinuxServerAccounts(ILogger<LinuxServerAccounts> log
     private const string Marker = "managed by the Pulsar agent";
 
     /// <summary>The programs it runs, and how a test replaces them.</summary>
-    internal Func<string, IReadOnlyList<string>, string> Run { get; init; } = (program, arguments) => SystemdUnits.Run(program, arguments);
+    // A kept folder made root's on delete (chown -R) can be a large game's whole tree: they get as long as a deletion does.
+    internal Func<string, IReadOnlyList<string>, string> Run { get; init; } = (program, arguments) => SystemdUnits.Run(program, arguments, TimeSpan.FromMinutes(30));
 
     /// <summary>Raised with the account's name once <see cref="Delete"/> removed it (the file access forgets its ids).</summary>
     public event Action<string>? Deleted;

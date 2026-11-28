@@ -162,6 +162,10 @@ results=$(
     echo "a --servers-root in /tmp (each game has one of its own) is refused|$?"
     refuses parse_options --servers-root /var//tmp
     echo "a --servers-root in /var/tmp, however written, is refused|$?"
+    refuses parse_options --servers-root /srv/../tmp/servers
+    echo "a --servers-root with .. in it is refused|$?"
+    refuses parse_options --servers-root /tmp/./servers
+    echo "a --servers-root with . in it is refused|$?"
     (parse_options --servers-root /srv/tmp/servers && [[ $SERVERS_ROOT == /srv/tmp/servers ]])
     echo "a --servers-root elsewhere is taken|$?"
     refuses parse_options --update-attempt not-an-id

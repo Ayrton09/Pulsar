@@ -128,7 +128,27 @@ public sealed partial class LinuxGameProcessManager(LinuxServerAccounts accounts
 
             var process = Process.Start(start) ?? throw new GameProcessException("process.start_failed", "The game's process could not be started.");
 
-            var game = new LinuxGameProcess(process, cgroup, clock, environmentFile, terminal);
+            LinuxGameProcess game;
+            try
+            {
+                game = new LinuxGameProcess(process, cgroup, clock, environmentFile, terminal);
+            }
+            catch
+            {
+                // Already running, with nothing to watch or stop it (without a cgroup nothing else would end it).
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+                {
+                    // It ended on its own.
+                }
+
+                process.Dispose();
+                throw;
+            }
+
             cgroup = null; // the game's now
             environmentFile = null; // game-exec deletes it as it reads it, the game's process once it ends
             terminal = null;
