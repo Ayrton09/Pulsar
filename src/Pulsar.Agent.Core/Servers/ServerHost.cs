@@ -48,6 +48,12 @@ public sealed class ServerHostOptions
     /// read the files live, as before Phase 15, and say so.
     /// </summary>
     public bool BackupSnapshots { get; set; } = true;
+
+    /// <summary>
+    /// The platform whose runtime of a manifest this agent starts (<c>windows-x64</c>; <c>linux-x64</c> for the Linux agent).
+    /// The same as its inventory reports to the panel.
+    /// </summary>
+    public string Platform { get; set; } = ManifestValidator.WindowsX64;
 }
 
 /// <summary>
@@ -106,7 +112,6 @@ public sealed partial class ServerHost(
 
     private static readonly IVolumeSnapshots s_noSnapshots = new NoVolumeSnapshots();
 
-    private const string Platform = ManifestValidator.WindowsX64;
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<ServerHost>();
     private readonly ConcurrentDictionary<Guid, Server> _servers = new();
@@ -213,6 +218,17 @@ public sealed partial class ServerHost(
             {
                 yield return AgentCapabilities.MinecraftBedrock;
                 yield return AgentCapabilities.SteamClient;
+            }
+            else if (options.Platform == ManifestValidator.LinuxX64)
+            {
+                // Linux copies the server's own steamclient.so into its own home: nothing to check a signature of (InstallSteps.CopyLinuxSteamClient).
+                // Mojang's Linux Bedrock server is not signed: only its hosts over HTTPS vouch for it (MinecraftBedrockInstaller).
+                yield return AgentCapabilities.MinecraftBedrock;
+                yield return AgentCapabilities.SteamClient;
+                if (installOptions.Wine)
+                {
+                    yield return AgentCapabilities.Wine;
+                }
             }
 
             if (installOptions.TestGameAvailable)
@@ -829,7 +845,7 @@ public sealed partial class ServerHost(
         {
             manifest = Parse(spec);
             // With the chosen RCON password, if any (a stand-in otherwise): refused here, before the record is saved.
-            if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, spec.RconPassword)) is { } error)
+            if (LaunchPlanRenderer.Check(manifest, options.Platform, Binding(spec, spec.RconPassword)) is { } error)
             {
                 return Rejected(envelope, "server.invalid_spec", error);
             }
@@ -862,7 +878,7 @@ public sealed partial class ServerHost(
         // The RCON password chosen for the server, or a new one at every provisioning (a reinstall rotates it), generated
         // here. So the server must be stopped, as for an install: a running game (or one taken over after the agent
         // restarts) keeps the password it was started with.
-        var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : spec.RconPassword ?? NewRconPassword();
+        var rconPassword = manifest.Runtime.GetValueOrDefault(options.Platform)?.Console.Rcon is null ? null : spec.RconPassword ?? NewRconPassword();
         const string stopFirst = "Stop the server before provisioning it again.";
         if (_servers.TryGetValue(command.ServerId, out var current) && current.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
@@ -1015,7 +1031,66 @@ public sealed partial class ServerHost(
         static string Cut(string text) => text.Length <= GameUpdateCheck.MaxMessageLength ? text : text[..GameUpdateCheck.MaxMessageLength];
     }
 
-    private AddonInstaller Addons => new(files, installOptions.HttpHandler);
+    private AddonInstaller Addons => new(files, installOptions.HttpHandler, platform: options.Platform);
+
+    /// <summary>
+    /// The SteamCMD runs of one step (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>): an app not installed yet gets its
+    /// Windows files first, then its Linux ones with every file checked; an app installed but without the game's Linux
+    /// program (a first install cut off between the two runs: SteamCMD already counts the Windows build as installed) gets
+    /// its Linux files with every file checked; a game run with Wine (<see cref="GameManifest.RunsWithWine"/>) gets the
+    /// app's Windows files on every run; any other run is the job as it is.
+    /// </summary>
+    internal static IReadOnlyList<SteamCmdJob> SteamRuns(SteamCmdJob job, bool windowsFirst, Func<bool> installed, Func<bool> programThere, bool wine = false)
+    {
+        if (wine)
+        {
+            return [job with { ForcePlatform = "windows" }];
+        }
+
+        if (!windowsFirst)
+        {
+            return [job];
+        }
+
+        if (!installed())
+        {
+            return [job with { ForcePlatform = "windows" }, job with { Validate = true }];
+        }
+
+        return programThere() ? [job] : [job with { Validate = true }];
+    }
+
+    /// <summary>Whether the game's program for this node's platform is in the server's folder.</summary>
+    private bool ProgramThere(string directory, GameManifest manifest)
+    {
+        if (manifest.Runtime.GetValueOrDefault(options.Platform)?.Executable is not { } executable)
+        {
+            return false;
+        }
+
+        return Readable(directory, executable);
+    }
+
+    /// <summary>Whether SteamCMD has installed <paramref name="appId"/> in the server's folder (its app manifest is there).</summary>
+    private bool Installed(string directory, int appId) =>
+        Readable(directory, $"steamapps/appmanifest_{appId.ToString(System.Globalization.CultureInfo.InvariantCulture)}.acf");
+
+    /// <summary>
+    /// Whether the file is in the server's folder and can be read as one: what cannot (a link, a pipe the server's account
+    /// left there) counts as missing, and a run with every file checked puts it right.
+    /// </summary>
+    private bool Readable(string directory, string relativePath)
+    {
+        try
+        {
+            using var file = files.OpenRead(directory, relativePath);
+            return file is not null;
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The Steam branch a step installs (Pulsar 1.0.14): the server's own for the game's app, the template's otherwise.
@@ -1286,11 +1361,37 @@ public sealed partial class ServerHost(
                 var betaPassword = beta == steam.Beta && steam.BetaPasswordVar is { } key ? values.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, beta, betaPassword,
                     validate ?? steam.Validate, login);
-                await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
-                if (steam.SteamClient is { } folder)
+                var wine = server.Manifest.RunsWithWine(options.Platform);
+                var runs = SteamRuns(job, steam.WindowsFirstOnLinux && options.Platform == ManifestValidator.LinuxX64,
+                    () => Installed(provisioned.Directory, steam.AppId), () => ProgramThere(provisioned.Directory, server.Manifest), wine);
+                if (runs.Count > 1)
                 {
-                    console.Note($"Copying Steam's client libraries to {folder}", clock.GetUtcNow());
-                    installSteps.CopySteamClient(provisioned.Directory, folder);
+                    console.Note("Steam lists this server for Windows only until it is installed: its Windows files come first, then its Linux ones",
+                        clock.GetUtcNow());
+                }
+
+                foreach (var run in runs)
+                {
+                    await steamCmd.RunAsync(run, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
+                }
+                if (options.Platform == ManifestValidator.LinuxX64 && !wine)
+                {
+                    // Every Linux game gets them where Steam for Linux keeps them (TF2's and PVKII's servers find Steam
+                    // only there); a manifest that names steamClient cannot do without them.
+                    var home = server.Manifest.Runtime.GetValueOrDefault(options.Platform)?.UserProfile;
+                    try
+                    {
+                        installSteps.CopyLinuxSteamClient(provisioned.Directory, home);
+                    }
+                    catch (Exception ex) when ((ex is GameProcessException or IOException or UnauthorizedAccessException) && steam.SteamClient is null)
+                    {
+                        console.Note($"Steam's client libraries were not copied to {(home is null ? "" : home + "/")}.steam: {ex.Message}", clock.GetUtcNow());
+                    }
+                }
+                else if (steam.SteamClient is { } windowsFolder)
+                {
+                    console.Note($"Copying Steam's client libraries to {windowsFolder}", clock.GetUtcNow());
+                    installSteps.CopySteamClient(provisioned.Directory, windowsFolder);
                 }
             }
             else
@@ -2126,7 +2227,11 @@ public sealed partial class ServerHost(
     {
         try
         {
-            files.Delete(provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), shortId).Directory, SteamCmdRunner.LentLogin);
+            var directory = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), shortId).Directory;
+            foreach (var lent in SteamCmdLayout.LentLogins)
+            {
+                files.Delete(directory, lent);
+            }
         }
         catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
         {
@@ -2163,7 +2268,7 @@ public sealed partial class ServerHost(
             throw new LaunchPlanException("The server's Steam branch is not a branch name.");
         }
 
-        var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
+        var plan = LaunchPlanRenderer.Render(Parse(spec), options.Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
         return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash,
             ProcessLimits.From(spec.Limits));
     }

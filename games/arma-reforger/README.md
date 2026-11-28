@@ -34,3 +34,8 @@ with build 24870635:
 - A mod that does not compile with the current build of the game ("Can't compile "Game" script module" in the
   console) leaves the server starting until its readiness times out: take it out of the list and start again.
 - Backups leave `profile/addons` out; the server downloads the mods again.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `ArmaReforgerServer` with the same `server.json` and profile.
+Checked for real on a Linux node (Ubuntu 24.04): installed, started (registered with the backend), stopped with Ctrl+C and deleted.

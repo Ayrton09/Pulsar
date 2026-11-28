@@ -171,7 +171,10 @@ public static partial class AgentInput
             inventory.MemoryTotalBytes,
             inventory.ServersRoot is null ? null : Text(inventory.ServersRoot, MaxServersRootLength),
             Text(agentVersion, MaxAgentVersionLength),
-            protocolVersion);
+            protocolVersion,
+            // None, or a blank one, is a Windows agent's (before the Linux agent). One the panel does not know is kept as said:
+            // no template runs there, so nothing is started on a machine nobody knows the programs of.
+            string.IsNullOrWhiteSpace(inventory.Platform) ? NodePlatforms.Windows : Text(inventory.Platform, NodePlatforms.MaxLength));
     }
 
     public static NodeMetrics Metrics(NodeMetrics metrics)

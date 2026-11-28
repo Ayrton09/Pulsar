@@ -56,7 +56,7 @@ public sealed partial class ServerManagement
         }
 
         var manifest = ServerSpecs.Parse(next);
-        if (!AgentReads(connection, manifest)
+        if (!AgentReads(connection, manifest, await specs.PlatformOfAsync(server.NodeId, cancellationToken))
             || (next.Key == Manifests.ManifestValidator.TestGameKey && !Announces(connection, AgentCapabilities.TestGame)))
         {
             return ServerErrors.TemplateUnsupported;
@@ -96,7 +96,7 @@ public sealed partial class ServerManagement
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;

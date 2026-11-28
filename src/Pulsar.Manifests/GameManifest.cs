@@ -45,6 +45,19 @@ public sealed record GameManifest(
     public IReadOnlyList<AddonDefinition> AddonList => Addons ?? [];
 
     public IReadOnlyList<ModSourceDefinition> ModList => Mods ?? [];
+
+    /// <summary>
+    /// The runtime of its first platform. What the panel reads of a runtime (extra arguments, RCON, the commands kept out
+    /// of logs) is the same on every platform (<see cref="ManifestValidator"/> checks it), so it reads it from this one
+    /// whatever the server's node is. Null only for a manifest that is not valid.
+    /// </summary>
+    public RuntimeDefinition? FirstRuntime => Platforms.Count > 0 ? Runtime.GetValueOrDefault(Platforms[0]) : null;
+
+    /// <summary>Whether the game runs on <paramref name="platform"/> (a node's, <c>windows-x64</c> or <c>linux-x64</c>).</summary>
+    public bool RunsOn(string platform) => Platforms.Contains(platform) && Runtime.ContainsKey(platform);
+
+    /// <summary>Whether the game runs with Wine on <paramref name="platform"/> (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool RunsWithWine(string platform) => Runtime.GetValueOrDefault(platform)?.Wine == true;
 }
 
 /// <summary>
@@ -318,7 +331,18 @@ public abstract record InstallStep;
 /// <param name="SteamClient">
 /// A folder of the server the Steam client's libraries are copied into after every run, from the server's SteamCMD
 /// (Pulsar 1.0.25): a game server that does not ship them (Counter-Strike 2) looks for them beside its executable, or
-/// in a Steam client the server's account does not have.
+/// in a Steam client the server's account does not have. On Linux the folder is not used: the libraries go where Steam
+/// for Linux keeps them, <c>.steam/sdk64</c> and <c>.steam/sdk32</c> in the game's home (the server's folder, or its
+/// runtime's user profile).
+/// </param>
+/// <param name="WindowsFirstOnLinux">
+/// On a Linux node, a first install downloads the app's Windows files, then its Linux ones over them (with every file
+/// checked): Left 4 Dead 2's dedicated server lists only Windows until it is installed ("Invalid platform"). Later
+/// installs and updates are plain Linux ones.
+/// </param>
+/// <param name="LinuxAppId">
+/// The app a Linux node installs instead, for a game whose Linux server is a Steam app of its own (Soulmask's): the
+/// panel sends a Linux node the step with it as <see cref="AppId"/> (<see cref="ManifestPlatforms"/>).
 /// </param>
 public sealed record SteamCmdStep(
     int AppId,
@@ -326,7 +350,9 @@ public sealed record SteamCmdStep(
     string? Beta = null,
     string? BetaPasswordVar = null,
     bool Validate = false,
-    string? SteamClient = null) : InstallStep
+    string? SteamClient = null,
+    bool WindowsFirstOnLinux = false,
+    int? LinuxAppId = null) : InstallStep
 {
     public const string AnonymousLogin = "anonymous";
     public const string AccountLogin = "account";
@@ -418,8 +444,12 @@ public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallSt
 /// unpacked over it (AO 2027's <c>CoverAO.Server.exe actualizar --desde &lt;zip&gt;</c>, which keeps the files and settings
 /// the host changed and adds the new settings to <c>Server.ini</c>).
 /// </param>
+/// <param name="LinuxAsset">
+/// The asset a Linux node takes instead (TShock's <c>linux-x64</c> build): a step of a manifest that runs on Linux must
+/// name one, since the Windows asset's programs do not run there.
+/// </param>
 public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string Target = "",
-    IReadOnlyList<string>? Keep = null, ReleaseUpdater? Updater = null) : InstallStep
+    IReadOnlyList<string>? Keep = null, ReleaseUpdater? Updater = null, string? LinuxAsset = null) : InstallStep
 {
     /// <summary>At most this many <see cref="Keep"/> paths.</summary>
     public const int MaxKeep = 16;
@@ -429,7 +459,7 @@ public sealed record GitHubReleaseStep(string Repo, string Asset, string? Tag = 
     /// <summary>Where the agent records what each such step installed (not an addon: the addons' records are elsewhere).</summary>
     public const string RecordDirectory = ".pulsar/releases";
 
-    public GitHubReleaseSource Source => new(Repo, Asset, Tag, Prerelease);
+    public GitHubReleaseSource Source => new(Repo, Asset, Tag, Prerelease, LinuxAsset);
 
     /// <summary>The name of the step's record: its repository's, lowercase, <c>/</c> as <c>_</c>.</summary>
     public string RecordKey => Repo.Replace('/', '_').ToLowerInvariant();
@@ -469,6 +499,21 @@ public sealed record DotnetRuntimeStep(string Channel) : InstallStep
 /// <c>APPDATA</c> and <c>LOCALAPPDATA</c> to it, so what the game keeps in its account's AppData (SCP: Secret
 /// Laboratory's LabAPI plugins, say) is in the server's folder, reached by the file manager and backed up.
 /// </param>
+/// <param name="LibraryPath">
+/// Folders of the server where a Linux game's own libraries are (Pulsar's Linux agent): the agent puts them in
+/// <c>LD_LIBRARY_PATH</c>, as the game's start script would (Source's <c>srcds_run</c>: <c>bin</c>; GoldSrc's
+/// <c>hlds_run</c>: <c>.</c>, the server's folder itself). Linux only.
+/// </param>
+/// <param name="Stop">
+/// How the game stops on this platform, in place of the manifest's: Unturned reads commands only from a terminal on
+/// Linux, where it saves and stops on Ctrl+C instead.
+/// </param>
+/// <param name="Wine">
+/// The game's program is its Windows one (an <c>.exe</c>), run with Wine (Pulsar's Linux agent; <c>linux-x64</c> only),
+/// for a game whose dedicated server has no Linux build: the node installs the Windows files (SteamCMD's Windows
+/// depots), and the agent starts Wine with the program, a Wine prefix of the server's own in <c>.pulsar/wine</c>, and no
+/// display (Wine's null graphics driver). Only a node with Wine installed takes it (<c>manifest.wine</c>).
+/// </param>
 public sealed record RuntimeDefinition(
     string Executable,
     ConsoleDefinition Console,
@@ -476,7 +521,10 @@ public sealed record RuntimeDefinition(
     string? WorkingDirectory = null,
     bool AllowExtraArguments = false,
     IReadOnlyDictionary<string, string>? Environment = null,
-    string? UserProfile = null)
+    string? UserProfile = null,
+    IReadOnlyList<string>? LibraryPath = null,
+    StopDefinition? Stop = null,
+    bool Wine = false)
 {
     public IReadOnlyList<ArgumentTemplate> ArgumentList => Arguments ?? [];
 }
@@ -724,9 +772,17 @@ public enum ConfigFileMode
 /// Arma Reforger's <c>/game/mods</c>), by the array's pointer. The panel's ids are merged into the array, not written
 /// over it: see <see cref="ConfigListDefinition"/>.
 /// </param>
+/// <param name="Platforms">
+/// The platforms the file is written on; null: all. Palworld reads its settings from
+/// <c>Pal/Saved/Config/WindowsServer</c> on Windows and <c>Pal/Saved/Config/LinuxServer</c> on Linux.
+/// </param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
     string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null, IReadOnlyList<string>? WriteIfEmpty = null,
-    IReadOnlyDictionary<string, ConfigListDefinition>? Lists = null);
+    IReadOnlyDictionary<string, ConfigListDefinition>? Lists = null, IReadOnlyList<string>? Platforms = null)
+{
+    /// <summary>Whether the file is written on <paramref name="platform"/>.</summary>
+    public bool WrittenOn(string platform) => Platforms is null || Platforms.Contains(platform);
+}
 
 /// <summary>
 /// An array of objects that list the ids of <see cref="Variable"/>, each in its member <see cref="Key"/> (Arma

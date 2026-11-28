@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ark-sa",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "name": "ARK: Survival Ascended",
   "description": "ARK: Survival Ascended dedicated server, installed anonymously with SteamCMD (about 12 GB). Dedicated servers are for personal, non-commercial use unless you have a licence from its publisher; read this game's README.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 25, "minMemoryMb": 16384 },
 
@@ -100,6 +100,26 @@
   "runtime": {
     "windows-x64": {
       "executable": "ShooterGame/Binaries/Win64/ArkAscendedServer.exe",
+      "workingDirectory": "ShooterGame/Binaries/Win64",
+      "arguments": [
+        { "if": "var.sessionName",
+          "then": ["{{var.map}}?listen?SessionName={{var.sessionName}}?Port={{port.game}}"],
+          "else": ["{{var.map}}?listen?Port={{port.game}}"] },
+        "-WinLiveMaxPlayers={{var.maxPlayers}}",
+        { "if": "var.mods", "then": ["-mods={{var.mods}}"] },
+        { "if": "var.battleye", "then": [], "else": ["-NoBattlEye"] },
+        "-servergamelog"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "ShooterGame/Saved/Logs/ShooterGame.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["ServerAdminPassword", "SetServerPassword", "ServerPassword", "SpectatorPassword"]
+      }
+    },
+    "linux-x64": {
+      "executable": "ShooterGame/Binaries/Win64/ArkAscendedServer.exe", "wine": true,
       "workingDirectory": "ShooterGame/Binaries/Win64",
       "arguments": [
         { "if": "var.sessionName",

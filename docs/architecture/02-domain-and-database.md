@@ -290,6 +290,7 @@ CREATE TABLE nodes (
     cpu_logical_cores   integer,
     memory_total_bytes  bigint,
     servers_root        text,
+    platform            varchar(32),         -- what its games run for: windows-x64, linux-x64 (null before its agent said)
     last_seen_at        timestamptz,
     offline_notified_at timestamptz,         -- told offline (notifications); cleared, and told, when it is back
     disk_low_notified_at timestamptz,        -- told a drive is low; cleared when every drive has room again
@@ -305,7 +306,7 @@ CREATE TABLE node_credentials (
     algorithm      text NOT NULL CHECK (algorithm IN ('ecdsa-p256-sha256')),
     public_key     bytea NOT NULL,               -- SubjectPublicKeyInfo DER
     fingerprint    varchar(80) NOT NULL UNIQUE,  -- 'sha256:<base64url>'
-    key_storage    text NOT NULL CHECK (key_storage IN ('tpm','software')),  -- informational
+    key_storage    text NOT NULL CHECK (key_storage IN ('tpm','software','file')),  -- informational; file: Linux, root-only key file
     status         text NOT NULL CHECK (status IN ('pending','active','superseded','revoked')),
     created_at     timestamptz NOT NULL,         -- a pending key expires 24 h after it
     activated_at   timestamptz,
@@ -354,6 +355,7 @@ CREATE TABLE game_templates (
     source          text NOT NULL CHECK (source IN ('bundled','imported')),
     content         text NOT NULL,              -- exact manifest bytes (text, not jsonb: jsonb does not preserve the original and breaks the hash)
     content_sha256  bytea NOT NULL,
+    platforms       text[] NOT NULL,            -- the manifest's: windows-x64, linux-x64
     is_enabled      boolean NOT NULL DEFAULT true,
     imported_by     uuid REFERENCES users(id) ON DELETE SET NULL,
     imported_at     timestamptz NOT NULL,

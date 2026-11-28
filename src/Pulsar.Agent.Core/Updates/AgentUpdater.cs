@@ -7,9 +7,27 @@ using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Updates;
 
-/// <summary>What updating Pulsar needs of the machine (Windows: <c>WindowsUpdatePlatform</c>).</summary>
+/// <summary>
+/// What updating Pulsar needs of the machine (Windows: <c>WindowsUpdatePlatform</c>, Linux: <c>LinuxUpdatePlatform</c>). The
+/// release's file, its unpacking, its installer and folders default to Windows'.
+/// </summary>
 public interface IUpdatePlatform
 {
+    /// <summary>The release file with this machine's programs and installer.</summary>
+    string ArchiveName(UpdateVersion version) => UpdateRelease.ZipName(version);
+
+    /// <summary>The installer, at the top of the unpacked release.</summary>
+    string InstallerName => "Install-Pulsar.ps1";
+
+    /// <summary>Unpacks the release file (<see cref="ArchiveName"/>, its SHA-256 checked) into a new folder, its files at the top.</summary>
+    void Extract(string archive, string destination, UpdateVersion version) => UpdateArchive.Extract(archive, destination);
+
+    /// <summary>Where releases are unpacked and the installer writes its result: <c>%ProgramData%\Pulsar\Updates</c>.</summary>
+    string UpdatesRoot(AgentPaths paths) => Path.Combine(Path.GetDirectoryName(paths.Root) ?? paths.Root, "Updates");
+
+    /// <summary>Where the installer writes its logs: <c>%ProgramData%\Pulsar\Setup\logs</c>.</summary>
+    string SetupLogs(string updatesRoot) => Path.Combine(Path.GetDirectoryName(updatesRoot) ?? updatesRoot, "Setup", "logs");
+
     /// <summary>Null when this agent can update Pulsar on its machine; otherwise the error code and why not.</summary>
     (string Code, string Message)? CannotUpdate();
 
@@ -18,13 +36,15 @@ public interface IUpdatePlatform
 
     /// <summary>
     /// A new, empty folder named <paramref name="name"/> in <paramref name="updatesRoot"/>, which only SYSTEM and
-    /// Administrators can change: made so when missing, refused when someone else could change it or it is a link.
+    /// Administrators (root on Linux) can change: made so when missing, refused when someone else could change it or it is
+    /// a link.
     /// </summary>
     string PrepareFolder(string updatesRoot, string name);
 
     /// <summary>
     /// Starts the release's installer (<c>Install-Pulsar.ps1 -Update -Unattended</c>, with <c>-UpdateAttempt</c> when the panel
-    /// gave the request an id: the installer writes it in its result), detached: it stops this agent. The task ends with
+    /// gave the request an id: the installer writes it in its result; <c>install-pulsar-agent.sh --update</c> on Linux),
+    /// detached: it stops this agent. The task ends with
     /// its exit code only when it ends while this agent still runs (it refused, or failed before updating).
     /// </summary>
     Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt);
@@ -43,7 +63,7 @@ public sealed record AgentUpdaterOptions
     /// <summary>The longest an update may take before this agent takes another (the installer stops the agent long before).</summary>
     public TimeSpan Deadline { get; init; } = TimeSpan.FromHours(1);
 
-    /// <summary>Where releases are unpacked and the installer writes its result; null: beside the agent's state folder.</summary>
+    /// <summary>Where releases are unpacked and the installer writes its result; null: the platform's (<see cref="IUpdatePlatform.UpdatesRoot"/>).</summary>
     public string? UpdatesRoot { get; init; }
 
     /// <summary>
@@ -65,8 +85,8 @@ public sealed record AgentUpdaterOptions
 /// <summary>
 /// Updates Pulsar on this machine when the panel asks (<see cref="UpdatePulsarCommand"/>, Phase 19), trusting nothing
 /// the panel sends but the version and the manifest's SHA-256: the release comes from GitHub, its manifest must be signed
-/// by a trusted update key and newer than this agent, and the ZIP must have the manifest's size and SHA-256. It is
-/// unpacked into a folder only SYSTEM and Administrators can change, and its installer does the rest (backup, update,
+/// by a trusted update key and newer than this agent, and the ZIP (the tarball on Linux) must have the manifest's size and
+/// SHA-256. It is unpacked into a folder only SYSTEM and Administrators (root) can change, and its installer does the rest (backup, update,
 /// checks, rollback) and writes its result in <see cref="ResultFile"/>, which this agent reports after each Hello. Every
 /// report carries the panel's id for the request (<see cref="UpdatePulsarCommand.Attempt"/>), the installer's result too:
 /// the panel never takes an earlier request's result, sent again, for a later one's.
@@ -103,19 +123,19 @@ public sealed partial class AgentUpdater : IDisposable
         _clock = clock;
         _logger = logger;
         _options = options ?? new AgentUpdaterOptions();
-        UpdatesRoot = _options.UpdatesRoot ?? Path.Combine(Path.GetDirectoryName(paths.Root) ?? paths.Root, "Updates");
+        UpdatesRoot = _options.UpdatesRoot ?? platform.UpdatesRoot(paths);
         channel.OnConnected(ct => ReportResultAsync(always: true, ct));
         _poll = clock.CreateTimer(_ => _ = ReportResultAsync(always: false, CancellationToken.None), null, _options.ResultPoll, _options.ResultPoll);
     }
 
-    /// <summary>Beside the agent's state folder: <c>%ProgramData%\Pulsar\Updates</c>, the installer's too.</summary>
+    /// <summary><c>%ProgramData%\Pulsar\Updates</c> or <c>/var/lib/pulsar/updates</c>, the installer's too.</summary>
     public string UpdatesRoot { get; }
 
     /// <summary>Where the installer writes how its last update ended (docs/guides/update.md).</summary>
     public string ResultFile => Path.Combine(UpdatesRoot, "last-update.json");
 
-    /// <summary>Where the installer writes its logs: <c>%ProgramData%\Pulsar\Setup\logs</c>.</summary>
-    private string SetupLogs => Path.Combine(Path.GetDirectoryName(UpdatesRoot) ?? UpdatesRoot, "Setup", "logs");
+    /// <summary>Where the installer writes its logs.</summary>
+    private string SetupLogs => _platform.SetupLogs(UpdatesRoot);
 
     /// <summary>What this agent announces: that it can update Pulsar here, and whether the panel runs here.</summary>
     public IEnumerable<string> Capabilities =>
@@ -197,17 +217,19 @@ public sealed partial class AgentUpdater : IDisposable
                 throw new UpdateDownloadException($"{version} updates {minimum} and later: update to {minimum} first, or use the setups.");
             }
 
-            var zip = release.Find(UpdateRelease.ZipName(version))!;
+            var name = _platform.ArchiveName(version);
+            var file = release.Find(name)
+                ?? throw new UpdateDownloadException($"The release {version} has no {name} for this machine: nothing was installed.");
             folder = _platform.PrepareFolder(UpdatesRoot, $"{version}-{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4))}");
-            var archive = Path.Combine(folder, zip.Name);
-            await UpdateDownloads.DownloadAsync(client, UpdateRelease.File(version, zip.Name), zip, archive, CancellationToken.None);
+            var archive = Path.Combine(folder, file.Name);
+            await UpdateDownloads.DownloadAsync(client, UpdateRelease.File(version, file.Name), file, archive, CancellationToken.None);
             var unpacked = Path.Combine(folder, "release");
-            UpdateArchive.Extract(archive, unpacked);
+            _platform.Extract(archive, unpacked, version);
             File.Delete(archive);
-            var script = Path.Combine(unpacked, "Install-Pulsar.ps1");
+            var script = Path.Combine(unpacked, _platform.InstallerName);
             if (!File.Exists(script) || ReleaseVersion(Path.Combine(unpacked, "release.json")) != version.ToString())
             {
-                throw new UpdateDownloadException($"The release {version}'s ZIP is not a Pulsar release of that version.");
+                throw new UpdateDownloadException($"The release {version}'s {name} is not a Pulsar release of that version.");
             }
 
             await ReportAsync(UpdateStatuses.Installing, from, version, attempt, null);

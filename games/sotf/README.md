@@ -21,3 +21,11 @@ through a development panel and agent:
 Version 1.1.0 adds the 15 Custom game mode settings (`CustomGameModeSettings`: enemies, animals, seasons, day length, survival rules), which the game reads only with the `Custom` game mode and when a new save is created, and the idle day cycle speed and the active and idle frame rates. The json writer creates `CustomGameModeSettings` when the file does not have it.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `SonsOfTheForestDS.exe` with Wine, in a prefix of the server's own (`.pulsar/wine`), without a
+display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo apt-get install wine64` and a restart of the
+agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0): installed, started (ready once it said it was
+loaded), stopped with Ctrl+C and deleted.

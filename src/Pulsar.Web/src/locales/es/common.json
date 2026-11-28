@@ -678,6 +678,8 @@
       "host_not_ended": "El juego del servidor sigue corriendo en un proceso anfitrión que el agente no pudo terminar ni verificar. Probá de nuevo en un momento; nunca se inicia una segunda copia a su lado.",
       "extra_arguments_invalid": "Los argumentos extra son líneas de hasta 512 caracteres (32 como máximo).",
       "extra_arguments_not_allowed": "Este juego no permite argumentos extra.",
+      "platform_unsupported": "Este juego no corre en el sistema operativo de este nodo.",
+      "other_platform": "Un servidor solo se puede mover o copiar a un nodo con el mismo sistema operativo (Windows o Linux).",
       "update_unsupported": "Este juego no se puede actualizar.",
       "no_free_allocation": "El nodo no tiene una asignación libre para alguno de los puertos del juego. Agregá asignaciones al nodo.",
       "allocation_unavailable": "Esa asignación no está libre en el nodo del servidor.",
@@ -1096,7 +1098,7 @@
       "awaiting": "Esperando aprobación"
     },
     "hostname": "Nombre de host",
-    "os": "Windows",
+    "os": "Sistema operativo",
     "cpu": "CPU",
     "cores_one": "{{count}} núcleo lógico",
     "cores_other": "{{count}} núcleos lógicos",
@@ -1142,6 +1144,9 @@
       "address": "Dirección del panel",
       "code": "Código del nodo",
       "setupTrust": "El agente acepta el certificado del panel solo si es el que nombra el código, y lo fija: no hay que copiar nada a mano y los almacenes de certificados de la máquina no cambian. Un proxy inverso que marca lo que reenvía (encabezados Forwarded, X-Forwarded-* o Via) hace que el código no nombre ningún certificado: la máquina ya tiene que confiar en el del proxy. Uno que reenvía sin decirlo sirve otro certificado que el del código, y el instalador no sigue.",
+      "linuxTitle": "Instalar en Linux",
+      "linuxSteps": "En la máquina Linux (x86_64 con systemd: Debian 12, Ubuntu 24.04 o posterior), ejecutá este comando en una terminal. Descarga la versión de este panel desde GitHub, la comprueba con su manifiesto firmado, instala el agente como servicio y pide el código del nodo.",
+      "linuxCommand": "Comando para Linux",
       "advanced": "Avanzado: instalar con PowerShell"
     },
     "credentials": {
@@ -1157,7 +1162,8 @@
       "reason": "Motivo (opcional)",
       "storage": {
         "tpm": "Guardada en la TPM",
-        "software": "Guardada por Windows (software)"
+        "software": "Guardada por Windows (software)",
+        "file": "Guardada en un archivo que solo root puede leer (Linux)"
       },
       "states": {
         "active": "Activa",

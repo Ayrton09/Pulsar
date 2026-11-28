@@ -1617,7 +1617,7 @@ $buildRelease = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\relea
 $buildMsi = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\Build-AgentMsi.ps1')
 Check 'release: the ZIP''s panel and agent are framework-dependent, for the newest patch the SDK knows' ($buildRelease -match "\`$zipOptions = \`$common \+ @\('--no-self-contained', '-p:TargetLatestRuntimePatch=true'\)" -and
     $buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Api'\) @zipOptions" -and $buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @zipOptions")
-Check 'release: the MSI''s agent is self-contained' ($buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @common --self-contained -o \`$msiAgent" -and $buildRelease -match '-AgentDir \$msiAgent')
+Check 'release: the MSI''s agent is self-contained' ($buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @common --self-contained -f net10.0-windows -o \`$msiAgent" -and $buildRelease -match '-AgentDir \$msiAgent')
 Check 'release: the ZIP records the runtimes it was built for (release.json)' ($buildRelease -match "Join-Path \`$staging 'release.json'")
 $releaseWorkflow = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\.github\workflows\release.yml')
 Check 'release: CI builds the setups with Inno Setup 7.1.0 pinned by SHA-256 and signer, and fails without them' (

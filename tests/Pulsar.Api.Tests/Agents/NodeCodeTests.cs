@@ -233,6 +233,20 @@ public sealed class PanelAddressTests
         Assert.Contains("AgentSetupAvailable = True", printed, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheLinuxCommandInstallsThePanelsOwnReleaseAndHoldsNoSecret()
+    {
+        var release = Pulsar.Application.Updates.LinuxAgentInstall.Command((new UpdateVersion(1, 2, 3), false));
+        var development = Pulsar.Application.Updates.LinuxAgentInstall.Command((new UpdateVersion(1, 2, 3), true));
+        var instructions = new EnrollmentInstructions("one-time-token", DateTimeOffset.UnixEpoch, "sha256:panel-key", "pulsar-node-1.the-code", null);
+
+        Assert.Equal("curl -fsSL https://github.com/Ayrton09/Pulsar/releases/download/v1.2.3/install.sh | sudo bash -s -- --agent --version 1.2.3", release);
+        Assert.Equal("curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --agent", development);
+        Assert.DoesNotContain("one-time-token", instructions.LinuxAgentCommand, StringComparison.Ordinal);
+        Assert.DoesNotContain("the-code", instructions.LinuxAgentCommand, StringComparison.Ordinal);
+        Assert.Null((instructions with { NodeCode = null }).LinuxAgentCommand);
+    }
+
     private static DefaultHttpContext Request(string scheme, string host)
     {
         var http = new DefaultHttpContext();

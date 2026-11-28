@@ -14,6 +14,7 @@ namespace Pulsar.Manifests;
 /// <param name="Conflicts">Addons that cannot be installed with it.</param>
 /// <param name="ReinstallAfterUpdate">The game's updates overwrite it (Oxide replaces Rust's files): its latest release is installed again after every update.</param>
 /// <param name="LineEdits">Lines the addon needs in the game's files, kept there before every start while it is installed.</param>
+/// <param name="Linux">What the game needs on a Linux node to load the addon while it is installed (BepInEx's doorstop).</param>
 public sealed record AddonDefinition(
     string Key,
     string Name,
@@ -25,13 +26,26 @@ public sealed record AddonDefinition(
     IReadOnlyList<string>? Requires = null,
     IReadOnlyList<string>? Conflicts = null,
     bool ReinstallAfterUpdate = false,
-    IReadOnlyList<LineEdit>? LineEdits = null)
+    IReadOnlyList<LineEdit>? LineEdits = null,
+    AddonLinuxRun? Linux = null)
 {
     public IReadOnlyList<string> RequiresList => Requires ?? [];
 
     public IReadOnlyList<string> ConflictsList => Conflicts ?? [];
 
     public IReadOnlyList<LineEdit> LineEditList => LineEdits ?? [];
+}
+
+/// <summary>
+/// How a Linux game loads an installed addon, as the addon's own start script would set it up: libraries of the
+/// server's folder put in <c>LD_PRELOAD</c> (BepInEx's <c>doorstop_libs/libdoorstop_x64.so</c>), and variables for them
+/// (<c>DOORSTOP_ENABLED</c>, <c>DOORSTOP_TARGET_ASSEMBLY</c>). Only the agent sets <c>LD_PRELOAD</c>, from these paths.
+/// </summary>
+/// <param name="Preload">Libraries of the server's folder (relative paths), loaded into the game before its own.</param>
+/// <param name="Environment">Plain values (no placeholders), set after the runtime's own variables.</param>
+public sealed record AddonLinuxRun(IReadOnlyList<string>? Preload = null, IReadOnlyDictionary<string, string>? Environment = null)
+{
+    public IReadOnlyList<string> PreloadList => Preload ?? [];
 }
 
 /// <summary>Where an addon's archive comes from: a closed set, like install steps.</summary>
@@ -47,7 +61,16 @@ public abstract record AddonSource;
 /// </summary>
 /// <param name="Repo"><c>owner/name</c>.</param>
 /// <param name="Asset">A regular expression the asset's file name must match (one asset of the release).</param>
-public sealed record GitHubReleaseSource(string Repo, string Asset, string? Tag = null, bool Prerelease = false) : AddonSource;
+/// <param name="LinuxAsset">
+/// The asset a Linux node takes instead (Metamod:Source's <c>-linux.tar.gz</c>): an addon of a manifest that runs on
+/// Linux must name one, since the Windows asset's programs do not run there.
+/// </param>
+public sealed record GitHubReleaseSource(string Repo, string Asset, string? Tag = null, bool Prerelease = false, string? LinuxAsset = null) : AddonSource
+{
+    /// <summary>The source as a node of <paramref name="platform"/> downloads it: its own asset in place of Windows' one.</summary>
+    public GitHubReleaseSource For(string platform) =>
+        platform == ManifestValidator.LinuxX64 && LinuxAsset is { } linux ? this with { Asset = linux, LinuxAsset = null } : this;
+}
 
 /// <summary>
 /// Keeps <see cref="Line"/> right after the first line of <see cref="Path"/> that starts with <see cref="After"/> (both

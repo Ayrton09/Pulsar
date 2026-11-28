@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Tests;
 
@@ -155,6 +156,58 @@ public sealed class MinecraftBedrockInstallerTests : IDisposable
         var error = await Assert.ThrowsAsync<GameProcessException>(() => CheckAsync("latest"));
 
         Assert.StartsWith("bedrock.", error.Code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ALinuxNodeTakesTheLinuxBuildWhichHasNoSignatureToCheck()
+    {
+        const string Linux = "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.52.3.zip";
+        _http.Routes[Linux] = () => Ok(Archive(("bedrock_server", "linux server"), ("server.properties", "server-name=Dedicated Server\n")));
+        File.WriteAllText(Path.Combine(_root, "server.properties"), "server-name=Mine\n");
+        var files = new ExecutableFiles();
+        var installer = new MinecraftBedrockInstaller(files, _http, signatures: null, ManifestValidator.LinuxX64) { StallTimeout = TimeSpan.FromSeconds(5) };
+
+        await installer.InstallAsync(_root, "latest", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal("linux server", File.ReadAllText(Path.Combine(_root, "bedrock_server")));
+        Assert.Equal("server-name=Mine\n", File.ReadAllText(Path.Combine(_root, "server.properties"))); // the server's own settings
+        Assert.Equal(["bedrock_server"], files.Executables);
+        Assert.DoesNotContain(Latest, _http.Requested);
+        Assert.Empty(_signatures.Checked);
+        Assert.Equal(new GameBuild("1.26.52.3", "1.26.52.3", false),
+            await installer.CheckAsync(_root, "latest", TestContext.Current.CancellationToken));
+
+        _http.Requested.Clear();
+        await installer.InstallAsync(_root, "1.26.52.3", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(Linux, _http.Requested); // installed
+    }
+
+    [Fact]
+    public async Task ALinuxBuildFromAnotherAddressOrWithoutItsProgramIsRefused()
+    {
+        _http.Routes[Links] = () => Ok(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            result = new { links = new[] { new { downloadType = "serverBedrockLinux", downloadUrl = "https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-1.26.52.3.zip" } } },
+        }));
+        var installer = new MinecraftBedrockInstaller(new DirectServerFiles(), _http, signatures: null, ManifestValidator.LinuxX64);
+
+        Assert.Equal("bedrock.unexpected_link", (await Assert.ThrowsAsync<GameProcessException>(() =>
+            installer.InstallAsync(_root, "latest", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken))).Code);
+
+        const string Linux = "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.52.3.zip";
+        _http.Routes[Linux] = () => Ok(Archive(("bedrock_server.exe", "windows server")));
+        Assert.Equal("bedrock.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() =>
+            installer.InstallAsync(_root, "1.26.52.3", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken))).Code);
+    }
+
+    [Fact]
+    public async Task AWindowsNodeThatCannotCheckSignaturesInstallsNothing()
+    {
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => new MinecraftBedrockInstaller(new DirectServerFiles(), _http, signatures: null)
+            .InstallAsync(_root, "latest", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("bedrock.untrusted", error.Code);
+        Assert.Empty(_http.Requested);
     }
 
     private Task<GameBuild> CheckAsync(string version) =>

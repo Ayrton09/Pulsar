@@ -15,6 +15,14 @@ public interface ISteamCmdSource
     /// <summary>Path of a <c>steamcmd.exe</c> verified as Valve's, downloaded from Valve the first time.</summary>
     /// <exception cref="GameProcessException">It cannot be downloaded or is not signed by Valve.</exception>
     Task<string> GetAsync(CancellationToken cancellationToken);
+
+    /// <summary>How the node's SteamCMD is laid out and run.</summary>
+    SteamCmdLayout Layout => SteamCmdLayout.Windows;
+
+    /// <summary>The verified bootstrapper's files, which every server's copy starts from.</summary>
+    /// <exception cref="GameProcessException">They cannot be downloaded or are not Valve's.</exception>
+    async Task<IReadOnlyList<SteamCmdFile>> GetFilesAsync(CancellationToken cancellationToken) =>
+        [new SteamCmdFile(Layout.ExecutableName, await GetAsync(cancellationToken), Executable: true)];
 }
 
 public sealed class SteamCmdOptions
@@ -42,9 +50,17 @@ public sealed class SteamCmdOptions
 
 /// <summary>An app to install or update in a server directory.</summary>
 /// <param name="Login">The Steam account to log in with (Phase 13); null: anonymous.</param>
+/// <param name="ForcePlatform">
+/// The platform whose files SteamCMD downloads instead of its own (<c>windows</c> or <c>linux</c>): a Linux node's first
+/// install of an app that lists only Windows until it is installed (<see cref="SteamCmdStep.WindowsFirstOnLinux"/>), and
+/// every run for a game the Linux node runs with Wine (<see cref="RuntimeDefinition.Wine"/>).
+/// </param>
 public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdentity Identity, int AppId, string? Beta, string? BetaPassword, bool Validate,
-    SteamLogin? Login = null)
+    SteamLogin? Login = null, string? ForcePlatform = null)
 {
+    /// <summary>The platforms <see cref="ForcePlatform"/> may name.</summary>
+    public static readonly IReadOnlyList<string> Platforms = ["windows", "linux"];
+
     public override string ToString() => $"SteamCmdJob {{ ServerId = {ServerId}, AppId = {AppId}, Login = {Login?.UserName ?? "anonymous"} }}";
 }
 
@@ -75,15 +91,16 @@ public sealed partial class SteamCmdRunner(
     TimeProvider clock,
     ILogger<SteamCmdRunner> logger) : IDisposable
 {
-    /// <summary>The server's SteamCMD, relative to its directory.</summary>
-    public const string Executable = ".pulsar/steamcmd/steamcmd.exe";
+    /// <summary>Windows' SteamCMD in a server's folder (<see cref="SteamCmdLayout.Windows"/>).</summary>
+    public const string Executable = WorkingDirectory + "/steamcmd.exe";
 
-    /// <summary>Where a Steam account's cached login is while it is lent to the server's SteamCMD, relative to the server's directory.</summary>
+    /// <summary>Windows' lent login (<see cref="SteamCmdLayout.LentLogin"/>); <see cref="SteamCmdLayout.LentLogins"/> has every platform's.</summary>
     public const string LentLogin = WorkingDirectory + "/" + SteamLoginStore.CachedLoginFile;
 
     /// <summary>The server's SteamCMD folder, relative to its directory.</summary>
-    internal const string WorkingDirectory = ".pulsar/steamcmd";
-    private const int SelfUpdateExitCode = 7;
+    internal const string WorkingDirectory = SteamCmdLayout.Folder;
+
+    private readonly SteamCmdLayout _layout = source.Layout;
 
     // Output of app_info_print kept at most: the app's info is tens of kilobytes; SteamCMD's own lines come before it.
     private const int MaxAppInfoLength = 4 * 1024 * 1024;
@@ -218,7 +235,7 @@ public sealed partial class SteamCmdRunner(
     {
         await PrepareCopyAsync(new SteamCmdJob(query.ServerId, query.ServerRoot, query.Identity, query.AppId, null, null, false), cancellationToken);
         // SteamCMD may print the app info it cached instead of asking again (LinuxGSM removes it too).
-        files.Delete(query.ServerRoot, WorkingDirectory + "/appcache/appinfo.vdf");
+        files.Delete(query.ServerRoot, _layout.AppInfoCache);
         string[] arguments =
         [
             "+@ShutdownOnFailedCommand", "1",
@@ -237,7 +254,7 @@ public sealed partial class SteamCmdRunner(
                 return new SteamAppBuilds(build, SteamBuilds.Branches(text, query.AppId));
             }
 
-            if (exitCode == SelfUpdateExitCode && selfUpdates < options.MaxSelfUpdates)
+            if (exitCode == _layout.SelfUpdateExitCode && selfUpdates < options.MaxSelfUpdates)
             {
                 LogSelfUpdated(query.ServerId);
                 continue; // a new copy updated itself first and printed nothing else
@@ -250,7 +267,7 @@ public sealed partial class SteamCmdRunner(
                 LogCheckRetried(query.ServerId, query.AppId, exitCode, tail);
                 await Task.Delay(options.RetryDelays[failures++], clock, cancellationToken);
                 selfUpdates--;
-                files.Delete(query.ServerRoot, WorkingDirectory + "/appcache/appinfo.vdf");
+                files.Delete(query.ServerRoot, _layout.AppInfoCache);
                 continue;
             }
 
@@ -269,8 +286,8 @@ public sealed partial class SteamCmdRunner(
     /// <summary>Runs the server's SteamCMD with <paramref name="arguments"/>; its exit code and what it printed (bounded).</summary>
     private async Task<(int ExitCode, string Text)> PrintAsync(SteamBuildQuery query, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var spec = new ProcessLaunchSpec(query.ServerId, query.ServerRoot, Executable, arguments, WorkingDirectory, new Dictionary<string, string>(),
-            ConsoleMode.Pty, ConsoleEncoding.Utf8, query.Identity);
+        var spec = new ProcessLaunchSpec(query.ServerId, query.ServerRoot, _layout.Executable, arguments, WorkingDirectory, new Dictionary<string, string>(),
+            _layout.ConsoleMode, ConsoleEncoding.Utf8, query.Identity, UserProfile: _layout.Home);
         var process = await processes.StartAsync(spec, cancellationToken);
         var printed = new StringBuilder();
         var lines = new ConsoleLines();
@@ -411,10 +428,19 @@ public sealed partial class SteamCmdRunner(
             // Exit on the first failed command instead of carrying on, and never wait for a password at a prompt.
             "+@ShutdownOnFailedCommand", "1",
             "+@NoPromptForPassword", "1",
-            // Before the login, or SteamCMD ignores it (docs/architecture/06).
-            "+force_install_dir", Path.TrimEndingDirectorySeparator(job.ServerRoot),
-            "+login",
         };
+        if (job.ForcePlatform is { } platform)
+        {
+            if (!SteamCmdJob.Platforms.Contains(platform))
+            {
+                throw new GameProcessException("steamcmd.failed", $"SteamCMD downloads no '{platform}' files.");
+            }
+
+            arguments.AddRange(["+@sSteamCmdForcePlatformType", platform]);
+        }
+
+        // Before the login, or SteamCMD ignores it (docs/architecture/06).
+        arguments.AddRange(["+force_install_dir", Path.TrimEndingDirectorySeparator(job.ServerRoot), "+login"]);
         if (job.Login is not { } login)
         {
             arguments.Add("anonymous");
@@ -507,7 +533,7 @@ public sealed partial class SteamCmdRunner(
     {
         if (job.Login is null)
         {
-            using var existing = files.OpenRead(job.ServerRoot, Executable);
+            using var existing = files.OpenRead(job.ServerRoot, _layout.Executable);
             if (existing is not null)
             {
                 return;
@@ -531,9 +557,21 @@ public sealed partial class SteamCmdRunner(
             LogCopyRebuilt(job.ServerId);
         }
 
-        var bootstrapper = await source.GetAsync(cancellationToken);
-        await using var stream = File.OpenRead(bootstrapper);
-        files.Write(job.ServerRoot, Executable, stream);
+        // The program last: an anonymous run keeps a copy that has it, so it must mean the copy is whole (a full disk can
+        // stop the copy halfway).
+        foreach (var file in (await source.GetFilesAsync(cancellationToken)).OrderBy(f => f.Name == _layout.ExecutableName))
+        {
+            var name = WorkingDirectory + "/" + file.Name;
+            await using (var stream = File.OpenRead(file.Source))
+            {
+                files.Write(job.ServerRoot, name, stream);
+            }
+
+            if (file.Executable)
+            {
+                files.SetExecutable(job.ServerRoot, name);
+            }
+        }
     }
 
     /// <param name="cached">The account's cached login, lent to this run; null signs in with the password (or anonymously).</param>
@@ -593,8 +631,8 @@ public sealed partial class SteamCmdRunner(
     private async Task<RunResult> RunProcessAsync(SteamCmdJob job, bool cachedLogin, Func<string, double?, Task> progress, ServerConsole? console,
         CancellationToken cancellationToken)
     {
-        var spec = new ProcessLaunchSpec(job.ServerId, job.ServerRoot, Executable, Arguments(job, cachedLogin), WorkingDirectory,
-            new Dictionary<string, string>(), ConsoleMode.Pty, ConsoleEncoding.Utf8, job.Identity);
+        var spec = new ProcessLaunchSpec(job.ServerId, job.ServerRoot, _layout.Executable, Arguments(job, cachedLogin), WorkingDirectory,
+            new Dictionary<string, string>(), _layout.ConsoleMode, ConsoleEncoding.Utf8, job.Identity, UserProfile: _layout.Home);
         var process = await processes.StartAsync(spec, cancellationToken);
         using var stall = new CancellationTokenSource(options.StallTimeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
@@ -607,7 +645,7 @@ public sealed partial class SteamCmdRunner(
             var exitCode = await process.Exited.WaitAsync(linked.Token);
             await process.DisposeAsync();
             await pump;
-            return new RunResult(output.Succeeded && exitCode == 0, exitCode == SelfUpdateExitCode && !output.Succeeded, exitCode, output.Error,
+            return new RunResult(output.Succeeded && exitCode == 0, exitCode == _layout.SelfUpdateExitCode && !output.Succeeded, exitCode, output.Error,
                 output.Message, [.. output.Tail], Stalled: false);
         }
         catch (OperationCanceledException)
@@ -629,11 +667,11 @@ public sealed partial class SteamCmdRunner(
     /// <summary>Puts the account's cached login where SteamCMD reads it, or makes sure none is there (a full sign-in).</summary>
     private void Lend(SteamCmdJob job, byte[]? cached)
     {
-        files.Delete(job.ServerRoot, LentLogin);
+        files.Delete(job.ServerRoot, _layout.LentLogin);
         if (cached is not null)
         {
             using var content = new MemoryStream(cached, writable: false);
-            files.Write(job.ServerRoot, LentLogin, content);
+            files.Write(job.ServerRoot, _layout.LentLogin, content);
         }
     }
 
@@ -644,7 +682,7 @@ public sealed partial class SteamCmdRunner(
     private byte[]? TakeBack(SteamCmdJob job)
     {
         byte[]? content = null;
-        using (var stream = files.OpenRead(job.ServerRoot, LentLogin))
+        using (var stream = files.OpenRead(job.ServerRoot, _layout.LentLogin))
         {
             if (stream is not null)
             {
@@ -660,7 +698,7 @@ public sealed partial class SteamCmdRunner(
             }
         }
 
-        files.Delete(job.ServerRoot, LentLogin);
+        files.Delete(job.ServerRoot, _layout.LentLogin);
         return content is { Length: > 0 } ? content : null;
     }
 

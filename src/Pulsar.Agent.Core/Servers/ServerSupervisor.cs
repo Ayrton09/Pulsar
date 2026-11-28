@@ -685,10 +685,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         SetDesired(true);
         request?.Answer(AckStatus.Accepted);
         var plan = _definition.Plan;
-        // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
+        // logfile+rcon games still get a console on Windows: srcds dies without one (spike 0001), even though it writes nothing
+        // to it. On Linux srcds_linux runs with pipes, and only a 'pty' game gets a pseudo terminal.
+        var mode = plan.Console.Mode switch
+        {
+            ManifestConsoleMode.Pipes => ConsoleMode.Pipes,
+            ManifestConsoleMode.Pty => ConsoleMode.Pty,
+            _ => plan.Platform == ManifestValidator.LinuxX64 ? ConsoleMode.Pipes : ConsoleMode.Pty,
+        };
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
-            plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity,
-            _definition.Limits, plan.UserProfile);
+            mode, Encoding(plan.Console.Encoding), _definition.Identity,
+            _definition.Limits, plan.UserProfile, plan.LibraryPath, plan.Preload, plan.Wine);
         IGameProcess process;
         try
         {
@@ -998,7 +1005,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             }
 
             // A Steam login lent to SteamCMD by an agent that stopped before it could take it back: never the game's.
-            _files.Delete(_definition.Directory, Steam.SteamCmdRunner.LentLogin);
+            foreach (var lent in Steam.SteamCmdLayout.LentLogins)
+            {
+                _files.Delete(_definition.Directory, lent);
+            }
 
             _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports,
                 _definition.Identity);
@@ -1323,13 +1333,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return;
         }
 
-        if (plan.Console.Mode == ManifestConsoleMode.Pipes)
+        // Pipes do not echo, and neither does a Linux pseudo terminal (its echo is off): the console shows the command itself.
+        if (plan.Console.Mode == ManifestConsoleMode.Pipes || plan.Platform == ManifestValidator.LinuxX64)
         {
             _console.Write($"> {ConsoleCommandRedaction.Redact(line, plan.Console.SensitiveCommandPrefixes ?? [])}\n", now);
         }
     }
 
-    private static string InputNewline(LaunchPlan plan) => plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
+    /// <summary>A Windows console takes CR LF; a Linux terminal turns CR into a line end of its own, so LF alone there.</summary>
+    private static string InputNewline(LaunchPlan plan) =>
+        plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty && plan.Platform != ManifestValidator.LinuxX64 ? "\r\n" : "\n");
 
     /// <summary>
     /// Writes the console input of one process, in order: a game that stopped reading its input (frozen) keeps a write
@@ -1587,8 +1600,47 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _stopReason = reason;
         Transition(RuntimeState.Stopping, reason);
         PostLater(StopTimeLimit(budget), new StopTimeout(_generation));
-        _mailbox.Writer.TryWrite(new NextStopStep(_generation, 0));
+        _ = CloseConsoleRconThenStopAsync(_generation);
     }
+
+    /// <summary>
+    /// The console's RCON session, kept since its last command, goes before the stop's first step: a game may not quit
+    /// while a client is still connected (V Rising run with Wine faults as it quits then, and never exits). The steps
+    /// start once it is closed, or after two seconds when a console command still holds it.
+    /// </summary>
+    private async Task CloseConsoleRconThenStopAsync(int generation)
+    {
+        try
+        {
+            if (await _rconLock.WaitAsync(s_consoleRconCloseWait, _stopping.Token))
+            {
+                try
+                {
+                    await CloseConsoleRconAsync();
+                }
+                finally
+                {
+                    _rconLock.Release();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // The supervisor is going away.
+        }
+        catch (Exception ex)
+        {
+            // A session that fails as it closes (its socket's error) never holds the stop back.
+            LogStopStepFailed(ServerId, -1, ex.Message);
+        }
+        finally
+        {
+            _mailbox.Writer.TryWrite(new NextStopStep(generation, 0));
+        }
+    }
+
+    /// <summary>How long a stop waits for a console command over RCON to let go of the session before its steps run anyway.</summary>
+    private static readonly TimeSpan s_consoleRconCloseWait = TimeSpan.FromSeconds(2);
 
     /// <summary>How long a stop may take before the tree is killed: the manifest's timeout, within <paramref name="budget"/>.</summary>
     private TimeSpan StopTimeLimit(TimeSpan? budget)

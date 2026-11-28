@@ -24,3 +24,9 @@ They come from AMP's template for the game (and, where noted, other panels' temp
 ## Players (1.0.11)
 
 The Players card kicks (`kickuser`), bans and unbans (`banuser`, `unbanuser`) and makes or unmakes admins (`setaccesslevel "…" admin|none`) by user name. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts the game's own `jre64/bin/java` with the class path and native
+folder of its Linux files (`java/:java/projectzomboid.jar`, `linux64/`) and `linux64`, its folder and `jre64/lib` as
+its library path. Checked for real on a Linux node (Ubuntu 24.04): installed, started ("SERVER STARTED"), `players` from the console answered, stopped with `quit` and deleted.

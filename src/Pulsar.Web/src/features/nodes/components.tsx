@@ -22,8 +22,9 @@ export function NodeStateBadge({ node }: { node: Pick<NodeSummary, 'status' | 'c
 }
 
 /**
- * The one-time enrollment: the node code for PulsarAgentSetup.exe first, the installer script's command as the advanced
- * path (the only one when the panel gave no code). The token is not stored in readable form: neither can be shown again.
+ * The one-time enrollment: the node code for PulsarAgentSetup.exe first, then the command for a Linux machine (which asks
+ * for the same code), the installer script's command as the advanced path (the only one when the panel gave no code). The
+ * token is not stored in readable form: none of them can be shown again.
  */
 export function EnrollmentCommand({ instructions }: { instructions: EnrollmentInstructions }) {
   const { t } = useTranslation();
@@ -74,6 +75,15 @@ export function EnrollmentCommand({ instructions }: { instructions: EnrollmentIn
             <CopyBlock label={t('nodes.enroll.code')} text={code} />
             <p className="text-xs text-muted">{t('nodes.enroll.setupTrust')}</p>
           </section>
+          {instructions.linuxAgentCommand && (
+            <section aria-labelledby="enroll-linux" className="space-y-3">
+              <h3 id="enroll-linux" className="text-sm font-semibold">
+                {t('nodes.enroll.linuxTitle')}
+              </h3>
+              <p className="text-sm">{t('nodes.enroll.linuxSteps')}</p>
+              <CopyBlock label={t('nodes.enroll.linuxCommand')} text={instructions.linuxAgentCommand} />
+            </section>
+          )}
           <div className="space-y-3">
             <Button variant="ghost" size="sm" aria-expanded={showCommand} onClick={() => setShowCommand(!showCommand)}>
               {t('nodes.enroll.advanced')}

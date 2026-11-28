@@ -67,3 +67,8 @@ function comparePreReleases(left: string, right: string): number {
   }
   return Math.sign(leftParts.length - rightParts.length);
 }
+
+/** Whether a template's game runs on a node's platform (`windows-x64`, `linux-x64`): its agent starts only those. */
+export function runsOn(template: { platforms: readonly string[] }, platform: string): boolean {
+  return template.platforms.includes(platform);
+}

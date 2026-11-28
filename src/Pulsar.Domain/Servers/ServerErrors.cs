@@ -118,6 +118,14 @@ public static class ServerErrors
     public static DomainError ExtraArgumentsNotAllowed { get; } =
         new("server.extra_arguments_not_allowed", "This game does not allow extra arguments.");
 
+    /// <summary>The template has no runtime for the node's platform (a Windows-only game on a Linux node, say).</summary>
+    public static DomainError PlatformUnsupported { get; } =
+        new("server.platform_unsupported", "This game does not run on this node's operating system.");
+
+    /// <summary>A server's files are made for its node's platform: moved or copied, they would not run on another one.</summary>
+    public static DomainError OtherPlatform { get; } =
+        new("server.other_platform", "A server can only be moved or copied to a node with the same operating system (Windows or Linux).");
+
     public static DomainError UpdateUnsupported { get; } = new("server.update_unsupported", "This game has no update steps.");
 
     /// <summary>A Steam branch is chosen among those its node's last update check listed (Pulsar 1.0.14).</summary>

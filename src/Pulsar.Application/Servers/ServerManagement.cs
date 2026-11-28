@@ -259,7 +259,13 @@ public sealed partial class ServerManagement(
 
         var server = created.Value;
         var manifest = ServerSpecs.Parse(template);
-        if (!AgentReads(connection, manifest))
+        var platform = await specs.PlatformOfAsync(nodeId, cancellationToken);
+        if (!manifest.RunsOn(platform))
+        {
+            return ServerErrors.PlatformUnsupported;
+        }
+
+        if (!AgentReads(connection, manifest, platform))
         {
             return ServerErrors.TemplateUnsupported;
         }
@@ -314,7 +320,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -519,7 +525,13 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(next);
-        if (!AgentReads(Connection(server.NodeId), manifest))
+        var platform = await specs.PlatformOfAsync(server.NodeId, cancellationToken);
+        if (!manifest.RunsOn(platform))
+        {
+            return ServerErrors.PlatformUnsupported;
+        }
+
+        if (!AgentReads(Connection(server.NodeId), manifest, platform))
         {
             return ServerErrors.TemplateUnsupported;
         }
@@ -558,7 +570,7 @@ public sealed partial class ServerManagement(
             return ports.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         return valid.IsSuccess ? (server, current, next) : valid.Error!;
     }
 
@@ -682,7 +694,7 @@ public sealed partial class ServerManagement(
             return startup.Error!;
         }
 
-        var valid = specs.Check(server, manifest, await specs.AllocationsOf(server, cancellationToken));
+        var valid = await specs.CheckAsync(server, manifest, await specs.AllocationsOf(server, cancellationToken), cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -830,7 +842,7 @@ public sealed partial class ServerManagement(
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;
@@ -908,9 +920,11 @@ public sealed partial class ServerManagement(
     /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8, console commands for the players and Minecraft's
     /// server types 1.0.9, commands for one player 1.0.11, Ctrl+C with pipes, ini sections, user folders, .tar.gz addons, text files, GitHub releases and .NET runtimes 1.0.12, GoldSrc's RCON 1.0.15,
     /// the Steam client's libraries 1.0.25, reserved HTTP URLs and a release's kept files 1.0.35, a game database 1.0.37.
+    /// A game a node of <paramref name="platform"/> runs with Wine needs a node with Wine.
     /// </summary>
-    private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
-        (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
+    private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest, string platform) =>
+        (!ManifestFeatures.UsesWine(manifest, platform) || Announces(connection, AgentCapabilities.Wine))
+        && (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
         && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
         && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock))
         && (!ManifestFeatures.UsesCommands(manifest) || Announces(connection, AgentCapabilities.ManifestCommands))
@@ -1165,11 +1179,11 @@ public sealed partial class ServerManagement(
                     return new ServerVariableView(TemplateCatalog.Variable(definition), definition.Secret ? null : stored?.Value, stored is not null);
                 }),
             ],
-            server.ExtraArguments, manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.AllowExtraArguments == true, server.AutoStart,
+            server.ExtraArguments, manifest.FirstRuntime?.AllowExtraArguments == true, server.AutoStart,
             server.RestartOnCrash, HasRcon(manifest), server.RconPasswordProtected is not null);
     }
 
-    private static bool HasRcon(GameManifest manifest) => manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.Rcon is not null;
+    private static bool HasRcon(GameManifest manifest) => manifest.FirstRuntime?.Console.Rcon is not null;
 
     /// <summary>
     /// Chooses the server's RCON password (1.0.29), or goes back to one its agent makes (null): for programs other than
@@ -1220,7 +1234,7 @@ public sealed partial class ServerManagement(
         {
             var allocations = await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)
                 .ToListAsync(cancellationToken);
-            if (specs.Check(server, manifest, allocations, password) is { IsSuccess: false } unreadable)
+            if (await specs.CheckAsync(server, manifest, allocations, password, cancellationToken: cancellationToken) is { IsSuccess: false } unreadable)
             {
                 return unreadable.Error!;
             }

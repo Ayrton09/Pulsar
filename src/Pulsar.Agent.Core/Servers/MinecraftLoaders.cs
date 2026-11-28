@@ -354,7 +354,8 @@ public sealed partial class MinecraftInstaller
     /// <summary>
     /// Forge's or NeoForge's server: its installer (checked against its Maven SHA-256) run as the server's account, which
     /// downloads Mojang's jar and the libraries its profile lists (it checks them itself) and leaves the Java arguments that
-    /// start the server in <c>win_args.txt</c>, copied to <see cref="MinecraftServerStep.ArgumentsFile"/>.
+    /// start the server in <c>win_args.txt</c> (Linux' <c>unix_args.txt</c>, whose class path parts end with ':'), copied to
+    /// <see cref="MinecraftServerStep.ArgumentsFile"/>.
     /// </summary>
     private async Task RunInstallerAsync(VerifiedDownloader client, string serverDirectory, LoaderTarget target, Func<double, Task> progress,
         CancellationToken cancellationToken)
@@ -379,9 +380,10 @@ public sealed partial class MinecraftInstaller
             }
         }
 
+        var list = platform == ManifestValidator.LinuxX64 ? "unix_args.txt" : "win_args.txt";
         var arguments = target.Type == MinecraftServerStep.Forge
-            ? $"libraries/net/minecraftforge/forge/{target.Version}-{target.Build}/win_args.txt"
-            : $"libraries/net/neoforged/neoforge/{target.Build}/win_args.txt";
+            ? $"libraries/net/minecraftforge/forge/{target.Version}-{target.Build}/{list}"
+            : $"libraries/net/neoforged/neoforge/{target.Build}/{list}";
         using (var content = new MemoryStream())
         {
             await using (var written = files.OpenRead(serverDirectory, arguments))

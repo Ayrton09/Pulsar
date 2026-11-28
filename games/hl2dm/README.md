@@ -20,3 +20,10 @@ through a development panel and agent:
 ## Players
 
 The Players card kicks a player by name (`kick "…"`), as in the other Source games; not run with players on.
+
+## Linux
+
+The template runs on Linux nodes too: the agent's SteamCMD downloads the game's Linux files and starts `srcds_linux` itself
+(Valve's start script is not used), a 32-bit program, with `bin` (as `srcds_run` does) as its library path. Checked for real on a Linux node
+(Ubuntu 24.04): installed, started with the configured map, `status` over RCON, stopped
+with `quit` and deleted. Like every 32-bit Steam server it needs the 32-bit C++ library, which the agent's installer adds.

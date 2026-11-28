@@ -34,6 +34,13 @@ public static class ManifestFeatures
         return manifest.ConfigFileList.Any(f => f.Format is ConfigFileFormat.Json or ConfigFileFormat.Space);
     }
 
+    /// <summary>Whether a node of <paramref name="platform"/> runs the game with Wine (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public static bool UsesWine(GameManifest manifest, string platform)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.RunsWithWine(platform);
+    }
+
     /// <summary>Minecraft: Bedrock Edition's install step (Pulsar 1.0.8).</summary>
     public static bool UsesMinecraftBedrock(GameManifest manifest)
     {
@@ -134,13 +141,14 @@ public static class ManifestFeatures
     public static bool UsesPipesCtrlC(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.Runtime.Values.Any(r => r.Console.Mode == ManifestConsoleMode.Pipes) && manifest.Stop.Steps.OfType<CtrlCStop>().Any();
+        return manifest.Runtime.Values.Any(r => r.Console.Mode == ManifestConsoleMode.Pipes && (r.Stop ?? manifest.Stop).Steps.OfType<CtrlCStop>().Any());
     }
 
     /// <summary>An addon whose asset is a .tar.gz (Pulsar 1.0.12): older agents unpack only zips.</summary>
     public static bool UsesTarAddons(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
+        // The Windows asset only: a Windows agent never downloads the Linux one, and every Linux agent reads .tar.gz.
         return manifest.AddonList.Any(a => a.Source is GitHubReleaseSource github && AddonFormat(github) == "tar.gz");
     }
 

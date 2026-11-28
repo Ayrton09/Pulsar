@@ -188,7 +188,7 @@ public sealed class SchemaTests
     // The validator gives each pattern 200 ms by default, which a busy CI runner can take just to compile the schema's longer ones.
     private static readonly JsonSchemaOptions s_validation = new() { RegexMatchTimeout = TimeSpan.FromSeconds(30) };
 
-    private static ValidationResult Validate(string json) => new JsonValidator(File.ReadAllText(SchemaPath())).Validate(json, s_validation);
+    internal static ValidationResult Validate(string json) => new JsonValidator(File.ReadAllText(SchemaPath())).Validate(json, s_validation);
 
     private static string SchemaPath() => Path.Combine(TestManifests.RepositoryRoot(), "schemas", "manifest.v1.schema.json");
 }

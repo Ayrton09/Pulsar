@@ -20,3 +20,11 @@ Checked on 2026-10-24 on Windows 11 Pro (build 26200), with server v1.1.15.0 (ap
 Version 1.1.0 adds a ruleset (`GameSettingsPreset`), admin slots, autosaves kept and server frame rate (`ServerHostSettings.json`), and 17 custom game rules in `ServerGameSettings.json`: new player PvP protection, player damage, castle heart, siege golem health, who can loot a body, drops, stack size, blood essence yield, day length, blood moon range, player, enemy and boss health and damage. A ruleset or a difficulty overrides the custom game options (AMP's notes), so the descriptions of the older options now say so. The ruleset starts on Custom (an empty `GameSettingsPreset`, the game's own default), which uses the custom options; it is always written, so going back to Custom from a ruleset works.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `VRisingServer.exe` with Wine, in a prefix of the server's own (`.pulsar/wine`), without a
+display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo apt-get install wine64` and a restart of the
+agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0): installed, started (ready once it answered over
+RCON), answered `announce` over RCON, stopped with Ctrl+C (the world saved on exit) and deleted.

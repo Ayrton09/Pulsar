@@ -678,6 +678,8 @@
       "host_not_ended": "Das Spiel des Servers läuft noch in einem Host-Prozess, den der Agent weder beenden noch prüfen konnte. Versuchen Sie es in einem Moment erneut; es wird nie ein zweites Mal daneben gestartet.",
       "extra_arguments_invalid": "Zusätzliche Argumente sind einzelne Zeilen mit höchstens 512 Zeichen (maximal 32).",
       "extra_arguments_not_allowed": "Dieses Spiel erlaubt keine zusätzlichen Argumente.",
+      "platform_unsupported": "Dieses Spiel läuft nicht auf dem Betriebssystem dieses Nodes.",
+      "other_platform": "Ein Server kann nur auf einen Node mit demselben Betriebssystem (Windows oder Linux) verschoben oder kopiert werden.",
       "update_unsupported": "Dieses Spiel kann nicht aktualisiert werden.",
       "no_free_allocation": "Der Node hat keine freie Zuweisung für einen der Ports des Spiels. Fügen Sie dem Node Zuweisungen hinzu.",
       "allocation_unavailable": "Diese Zuweisung ist auf dem Node des Servers nicht frei.",
@@ -1096,7 +1098,7 @@
       "awaiting": "Genehmigung ausstehend"
     },
     "hostname": "Hostname",
-    "os": "Windows",
+    "os": "Betriebssystem",
     "cpu": "CPU",
     "cores_one": "{{count}} logischer Kern",
     "cores_other": "{{count}} logische Kerne",
@@ -1142,6 +1144,9 @@
       "address": "Panel-Adresse",
       "code": "Node-Code",
       "setupTrust": "Der Agent akzeptiert das Zertifikat des Panels nur, wenn es das im Code genannte ist, das er festschreibt: Es wird nichts von Hand kopiert, und die Zertifikatspeicher des Rechners bleiben unverändert. Ein Reverse-Proxy, der kennzeichnet, was er weiterleitet (Forwarded-, X-Forwarded-* oder Via-Header), führt dazu, dass der Code kein Zertifikat nennt: Der Rechner muss dann dem des Proxys bereits vertrauen. Einer, der ohne Kennzeichnung weiterleitet, liefert ein anderes Zertifikat als das im Code, und das Setup weigert sich fortzufahren.",
+      "linuxTitle": "Unter Linux installieren",
+      "linuxSteps": "Führe auf dem Linux-Rechner (x86_64 mit systemd: Debian 12, Ubuntu 24.04 oder neuer) diesen Befehl in einem Terminal aus. Er lädt die Version dieses Panels von GitHub, prüft sie anhand ihres signierten Manifests, installiert den Agenten als Dienst und fragt nach dem Node-Code.",
+      "linuxCommand": "Linux-Befehl",
       "advanced": "Erweitert: mit PowerShell installieren"
     },
     "credentials": {
@@ -1157,7 +1162,8 @@
       "reason": "Grund (optional)",
       "storage": {
         "tpm": "Im TPM gespeichert",
-        "software": "Von Windows verwaltet (Software)"
+        "software": "Von Windows verwaltet (Software)",
+        "file": "In einer Datei gespeichert, die nur root lesen kann (Linux)"
       },
       "states": {
         "active": "Aktiv",

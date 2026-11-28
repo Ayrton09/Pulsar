@@ -26,3 +26,10 @@ The EULA option records that whoever creates the server accepts Mojang's terms; 
 ## Players (1.0.11)
 
 The Players card kicks (`kick "…"`), adds to and takes off the allowlist (`allowlist add|remove "…"`, which applies once `allow-list` is on in the server's settings) and makes operators (`op`/`deop`); gamertags may have spaces. It shows `allowlist.json`. Bedrock has no ban command, and keeps its operators in `permissions.json` by Xbox user id only, so that list is not shown. Bedrock answers no query listing its players, so the card acts by name. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too, with Mojang's Linux build (`bedrock_server`, its folder as its library path, as
+Mojang's guide says) on a terminal of its own. That build has no signature to check: only Mojang's hosts over HTTPS vouch
+for it there. Checked for real on a Linux node (Ubuntu 24.04) with Bedrock 1.26.66.1: installed, started, answered
+`list` from the console, stopped with `stop` and deleted.

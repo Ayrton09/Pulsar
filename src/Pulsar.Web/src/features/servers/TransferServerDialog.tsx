@@ -24,9 +24,15 @@ export function TransferServerDialog({ details, onClose }: { details: ServerDeta
   const me = useCurrentUser();
   const [nodeId, setNodeId] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  // Its files are made for its node's platform: they move only to a node of the same one (the panel refuses others).
+  const platform = nodes.data?.find((node) => node.id === details.server.nodeId)?.platform;
   const others =
     nodes.data?.filter(
-      (node) => node.connected && node.id !== details.server.nodeId && canOnNode(me, node.id, Permission.ServerCreate),
+      (node) =>
+        node.connected &&
+        node.id !== details.server.nodeId &&
+        (platform === undefined || node.platform === platform) &&
+        canOnNode(me, node.id, Permission.ServerCreate),
     ) ?? [];
   const nodeError = others.some((node) => node.id === nodeId) ? null : 'validation.required';
 

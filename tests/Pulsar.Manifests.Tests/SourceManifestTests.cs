@@ -167,7 +167,8 @@ public sealed class SourceManifestTests
         var pipes = TestManifests.Parse(TestManifests.Change("project-zomboid", m => m["stop"]!["steps"] = JsonNode.Parse("""[{"type": "ctrlC"}]""")));
 
         Assert.True(ManifestFeatures.UsesPipesCtrlC(pipes));
-        Assert.False(ManifestFeatures.UsesPipesCtrlC(TestManifests.Load("valheim"))); // Ctrl+C through a pseudo console
+        // Ctrl+C through a pseudo console on Windows (its Linux runtime has pipes, which every Linux agent reads).
+        Assert.False(ManifestFeatures.UsesPipesCtrlC(TestManifests.Parse(TestManifests.Change("valheim", _ => { }))));
         Assert.False(ManifestFeatures.UsesPipesCtrlC(TestManifests.Load("project-zomboid")));
     }
 

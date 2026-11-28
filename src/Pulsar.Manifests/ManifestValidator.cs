@@ -9,6 +9,12 @@ public static partial class ManifestValidator
 {
     public const string WindowsX64 = "windows-x64";
 
+    /// <summary>Linux on x86_64 with systemd (Pulsar's Linux agent).</summary>
+    public const string LinuxX64 = "linux-x64";
+
+    /// <summary>The variable naming a game's Wine prefix, which only the agent sets (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public const string WinePrefixVariable = "WINEPREFIX";
+
     /// <summary>Manifest key of Pulsar's own test game (<c>games/_test</c>); the only one allowed the test server step.</summary>
     public const string TestGameKey = "pulsar-test";
 
@@ -17,18 +23,35 @@ public static partial class ManifestValidator
 
     internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
 
-    private static readonly string[] s_platforms = [WindowsX64];
+    private static readonly string[] s_platforms = [WindowsX64, LinuxX64];
     private static readonly string[] s_newlines = ["\n", "\r\n", "\r"];
     private static readonly HashSet<string> s_noPorts = [];
 
+    /// <summary>Folders a runtime's library path may name.</summary>
+    public const int MaxLibraryFolders = 8;
+
     // Set by the agent itself (docs/architecture/04, "Environment").
+    // Windows' and Linux' alike: a manifest for both platforms names none of either.
     private static readonly HashSet<string> s_reservedEnvironment = new(StringComparer.OrdinalIgnoreCase)
     {
         "PATH", "PATHEXT", "ComSpec", "SystemRoot", "windir", "PSModulePath", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+        "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR",
     };
 
-    // The .NET runtime's own settings (DOTNET_STARTUP_HOOKS, COR_PROFILER_PATH…) can load any DLL into the game's process.
-    private static readonly string[] s_codeLoadingEnvironment = ["DOTNET_", "COR_", "CORECLR_"];
+    // The .NET runtime's own settings (DOTNET_STARTUP_HOOKS, COR_PROFILER_PATH…) can load any DLL into the game's process,
+    // and Linux' dynamic loader takes LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH from anywhere. (XDG_ folders are the agent's.)
+    private static readonly string[] s_codeLoadingEnvironment = ["DOTNET_", "COR_", "CORECLR_", "LD_", "XDG_", "MONO_", "PYTHON", "PERL5", "GLIBC_"];
+
+    // Other runtimes' and the C library's ways to load code or a library chosen by name: Java's agents, Node's
+    // preloads, glibc's character conversion and locale modules, a shell's startup file.
+    private static readonly HashSet<string> s_codeLoadingNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "NODE_OPTIONS", "NODE_PATH", "GCONV_PATH", "LOCPATH", "NLSPATH",
+        "BASH_ENV", "ENV",
+    };
+
+    // Files Linux would start through an interpreter or another program: the agent starts only ELF programs there.
+    private static readonly string[] s_linuxNonPrograms = [".sh", ".bash", ".py", ".pl", ".rb", ".js", ".exe", ".bat", ".cmd", ".ps1", ".jar", ".dll"];
 
     /// <summary>Where a template is used: what it may reference depends on it.</summary>
     private enum TemplateUse
@@ -106,7 +129,8 @@ public static partial class ManifestValidator
             ValidateSteps("update", manifest, update, context);
         }
 
-        RuntimeDefinition? runtime = null;
+        // Each platform's runtime on its own: whether its arguments give the game the RCON password is its own too.
+        var runtimes = new List<(string Platform, RuntimeDefinition Runtime, bool ArgumentsUseRconPassword)>();
         foreach (var platform in manifest.Platforms)
         {
             if (!manifest.Runtime.TryGetValue(platform, out var platformRuntime))
@@ -115,15 +139,25 @@ public static partial class ManifestValidator
                 continue;
             }
 
-            runtime = platformRuntime;
-            ValidateRuntime($"runtime.{platform}", platformRuntime, context);
+            context.UsesRconPassword = false;
+            ValidateRuntime($"runtime.{platform}", platform, platformRuntime, context);
+            runtimes.Add((platform, platformRuntime, context.UsesRconPassword));
         }
 
-        context.HasRcon = runtime?.Console.Rcon is not null;
-        ValidateConfigFiles(manifest.ConfigFileList, context);
-        if (context.HasRcon && !context.UsesRconPassword)
+        ValidateSamePanelFacts(manifest, Error);
+
+        context.HasRcon = runtimes.Any(r => r.Runtime.Console.Rcon is not null);
+        context.UsesRconPassword = false;
+        ValidateConfigFiles(manifest.ConfigFileList, manifest.Platforms, context);
+        var configFilesUseRconPassword = context.UsesRconPassword;
+        foreach (var (platform, platformRuntime, argumentsUseRconPassword) in runtimes)
         {
-            Error("runtime", "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file.");
+            if (platformRuntime.Console.Rcon is not null && !argumentsUseRconPassword && !configFilesUseRconPassword)
+            {
+                Error("runtime", runtimes.Count == 1
+                    ? "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file."
+                    : $"The game must receive the RCON password on {platform}: use {{{{rcon.password}}}} in its arguments or a configuration file.");
+            }
         }
 
         if (manifest.Query is { } query)
@@ -131,8 +165,30 @@ public static partial class ManifestValidator
             ValidateQuery(query, ports, Error);
         }
 
-        ValidateReadiness(manifest.Readiness, runtime?.Console, manifest.Query, Error);
-        ValidateStop(manifest.Stop, runtime?.Console, Error);
+        // Readiness and stop steps must suit the console of every platform the game runs on (a runtime's own stop, its own).
+        // By what the checks read of a console (its mode, whether it has RCON): a record holding lists never equals another.
+        foreach (var console in runtimes.Select(r => r.Runtime.Console).DistinctBy(c => (c.Mode, c.Rcon is null)))
+        {
+            ValidateReadiness(manifest.Readiness, console, manifest.Query, Error);
+        }
+
+        // The manifest's stop once per console it is used with (two runtimes with the same console would say each error
+        // twice), a runtime's own once.
+        foreach (var console in runtimes.Where(r => r.Runtime.Stop is null).Select(r => r.Runtime.Console).DistinctBy(c => (c.Mode, c.Rcon is null)))
+        {
+            ValidateStop(manifest.Stop, console, Error);
+        }
+
+        foreach (var (platform, runtime, _) in runtimes.Where(r => r.Runtime.Stop is not null))
+        {
+            ValidateStop(runtime.Stop!, runtime.Console, Error, $"runtime.{platform}.stop");
+        }
+
+        if (runtimes.Count == 0)
+        {
+            ValidateReadiness(manifest.Readiness, null, manifest.Query, Error);
+            ValidateStop(manifest.Stop, null, Error);
+        }
         if (manifest.Backup is { } backup)
         {
             ValidateGlobs("backup.include", backup.Include ?? [], Error);
@@ -144,6 +200,31 @@ public static partial class ManifestValidator
         }
 
         ValidateAddons(manifest.AddonList, Error);
+        if (manifest.RunsWithWine(LinuxX64))
+        {
+            ValidateWineInstall(manifest, Error);
+        }
+        else if (manifest.Platforms.Contains(LinuxX64))
+        {
+            for (var i = 0; i < manifest.AddonList.Count; i++)
+            {
+                if (manifest.AddonList[i].Source is GitHubReleaseSource { LinuxAsset: null })
+                {
+                    Error($"addons[{i}].source.linuxAsset", "A manifest that runs on linux-x64 names its addon's Linux asset: the Windows one's programs do not run there.");
+                }
+            }
+
+            foreach (var (section, steps) in (IEnumerable<(string, InstallDefinition?)>)[("install", manifest.Install), ("update", manifest.Update)])
+            {
+                for (var i = 0; i < (steps?.Steps.Count ?? 0); i++)
+                {
+                    if (steps!.Steps[i] is GitHubReleaseStep { LinuxAsset: null })
+                    {
+                        Error($"{section}.steps[{i}].linuxAsset", "A manifest that runs on linux-x64 names the release's Linux asset: the Windows one's programs do not run there.");
+                    }
+                }
+            }
+        }
         if (manifest.Commands is { } commands)
         {
             ValidateCommands(commands, Error);
@@ -190,9 +271,9 @@ public static partial class ManifestValidator
             {
                 error(path, "Reserved or invalid environment variable name.");
             }
-            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            else if (LoadsCode(name))
             {
-                error(path, "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+                error(path, "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
             }
             else if (runtimeNames.Contains(name))
             {
@@ -446,6 +527,11 @@ public static partial class ManifestValidator
                 error($"{path}.url", "The addon's home page, over https.");
             }
 
+            if (addon.Linux is { } linux)
+            {
+                ValidateAddonLinuxRun($"{path}.linux", linux, error);
+            }
+
             if (addon.Target.Length > 0)
             {
                 ValidateRelativePath($"{path}.target", addon.Target, error);
@@ -570,14 +656,22 @@ public static partial class ManifestValidator
             error($"{path}.repo", "A GitHub repository, 'owner/name'.");
         }
 
-        if (github.Asset.Length is 0 or > 200 || CompileError(github.Asset) is not null)
+        foreach (var (name, asset) in (IEnumerable<(string, string?)>)[("asset", github.Asset), ("linuxAsset", github.LinuxAsset)])
         {
-            error($"{path}.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
-        }
-        else if (ManifestFeatures.AddonFormat(github) is null)
-        {
-            // What the agent unpacks is known from the manifest: a .tar.gz goes only to agents that read one.
-            error($"{path}.asset", @"Must end with the archive's extension, which the agent unpacks: '\.zip$', '\.tar\.gz$' or '\.tgz$'.");
+            if (asset is null)
+            {
+                continue;
+            }
+
+            if (asset.Length is 0 or > 200 || CompileError(asset) is not null)
+            {
+                error($"{path}.{name}", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
+            }
+            else if (ManifestFeatures.AddonFormat(github with { Asset = asset }) is null)
+            {
+                // What the agent unpacks is known from the manifest: a .tar.gz goes only to agents that read one.
+                error($"{path}.{name}", @"Must end with the archive's extension, which the agent unpacks: '\.zip$', '\.tar\.gz$' or '\.tgz$'.");
+            }
         }
 
         // A tag goes into the API's URL as one segment: '.' and '..' would be read as a path.
@@ -882,6 +976,11 @@ public static partial class ManifestValidator
                         context.Error($"{path}.appId", "A Steam app id.");
                     }
 
+                    if (steam.LinuxAppId is { } linuxApp && (linuxApp <= 0 || !manifest.Platforms.Contains(LinuxX64)))
+                    {
+                        context.Error($"{path}.linuxAppId", "A Steam app id, for a manifest that runs on linux-x64.");
+                    }
+
                     if (steam.Login is not (SteamCmdStep.AnonymousLogin or SteamCmdStep.AccountLogin))
                     {
                         context.Error($"{path}.login", "'anonymous', or 'account' for a server only an account that owns it may download.");
@@ -995,6 +1094,57 @@ public static partial class ManifestValidator
             }
         }
     }
+
+    /// <summary>An addon's Linux run (<see cref="AddonLinuxRun"/>): its preloads are libraries of the server, its variables plain ones.</summary>
+    private static void ValidateAddonLinuxRun(string path, AddonLinuxRun linux, Action<string, string> error)
+    {
+        if (linux.PreloadList.Count > MaxLibraryFolders)
+        {
+            error($"{path}.preload", $"At most {MaxLibraryFolders} libraries.");
+        }
+
+        for (var i = 0; i < linux.PreloadList.Count; i++)
+        {
+            var library = linux.PreloadList[i];
+            // The loader splits LD_PRELOAD on ':' and spaces.
+            if (library.IndexOfAny([':', ' ', ';']) >= 0 || !library.EndsWith(".so", StringComparison.Ordinal))
+            {
+                error($"{path}.preload[{i}]", "A library of the server's folder (a '.so' file), without ':', ';' or spaces.");
+            }
+            else
+            {
+                ValidateRelativePath($"{path}.preload[{i}]", library, error);
+            }
+        }
+
+        var environment = linux.Environment ?? new Dictionary<string, string>();
+        if (environment.Count > 16)
+        {
+            error($"{path}.environment", "At most 16 variables.");
+        }
+
+        foreach (var (name, value) in environment)
+        {
+            if (s_reservedEnvironment.Contains(name) || !EnvironmentNamePattern().IsMatch(name))
+            {
+                error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
+            }
+            else if (LoadsCode(name))
+            {
+                error($"{path}.environment.{name}", "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
+            }
+
+            if (value.Length > 512 || value.Contains("{{", StringComparison.Ordinal) || value.Any(char.IsControl))
+            {
+                error($"{path}.environment.{name}", "A plain value of at most 512 characters, without placeholders or control characters.");
+            }
+        }
+    }
+
+    /// <summary>An environment name that makes a runtime or the system's loader load code (refused on every platform).</summary>
+    private static bool LoadsCode(string name) =>
+        s_codeLoadingNames.Contains(name) || s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
 
     /// <summary>
     /// The game's log: a relative path whose file name may hold one <c>*</c> (Pulsar 1.0.12), for a game that names its
@@ -1111,12 +1261,120 @@ public static partial class ManifestValidator
         context.Variables.TryGetValue(key, out var version) && !version.Secret
         && (version.Type == VariableType.Enum || (version.Type == VariableType.String && version.Pattern is not null));
 
-    private static void ValidateRuntime(string path, RuntimeDefinition runtime, Context context)
+    /// <summary>
+    /// What the panel reads of a runtime is the same on every platform: whether extra arguments are allowed, the RCON and the
+    /// commands kept out of the logs. The panel then reads it from <see cref="GameManifest.FirstRuntime"/>, whatever the node.
+    /// </summary>
+    private static void ValidateSamePanelFacts(GameManifest manifest, Action<string, string> error)
+    {
+        var runtimes = manifest.Platforms.Where(manifest.Runtime.ContainsKey).Select(p => (Platform: p, Runtime: manifest.Runtime[p])).ToList();
+        if (runtimes.Count < 2)
+        {
+            return;
+        }
+
+        var first = runtimes[0].Runtime;
+        foreach (var (platform, runtime) in runtimes.Skip(1))
+        {
+            if (runtime.AllowExtraArguments != first.AllowExtraArguments)
+            {
+                error($"runtime.{platform}.allowExtraArguments", "The same on every platform.");
+            }
+
+            if (runtime.Console.Rcon != first.Console.Rcon)
+            {
+                error($"runtime.{platform}.console.rcon", "The same on every platform.");
+            }
+
+            if (!(runtime.Console.SensitiveCommandPrefixes ?? []).Order(StringComparer.Ordinal)
+                    .SequenceEqual((first.Console.SensitiveCommandPrefixes ?? []).Order(StringComparer.Ordinal), StringComparer.Ordinal))
+            {
+                error($"runtime.{platform}.console.sensitiveCommandPrefixes", "The same on every platform.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A game run with Wine installs its Windows files on Linux too (SteamCMD's Windows depots, ServerHost.SteamRuns): with
+    /// SteamCMD and the file steps only, since the other steps and addons fetch the node's own builds, and nothing only a
+    /// Linux install reads.
+    /// </summary>
+    private static void ValidateWineInstall(GameManifest manifest, Action<string, string> error)
+    {
+        if (manifest.AddonList.Count > 0)
+        {
+            error("addons", "A game run with Wine has no addons: they would be fetched for Linux.");
+        }
+
+        foreach (var (section, steps) in (IEnumerable<(string, InstallDefinition?)>)[("install", manifest.Install), ("update", manifest.Update)])
+        {
+            for (var i = 0; i < (steps?.Steps.Count ?? 0); i++)
+            {
+                switch (steps!.Steps[i])
+                {
+                    case SteamCmdStep { WindowsFirstOnLinux: true }:
+                        error($"{section}.steps[{i}].windowsFirstOnLinux", "A game run with Wine installs its Windows files on Linux too.");
+                        break;
+                    case SteamCmdStep { LinuxAppId: not null }:
+                        error($"{section}.steps[{i}].linuxAppId", "A game run with Wine installs its Windows files on Linux too.");
+                        break;
+                    case SteamCmdStep { SteamClient: not null }:
+                        // Its libraries would come from the node's SteamCMD, a Linux one.
+                        error($"{section}.steps[{i}].steamClient", "A game run with Wine gets no Steam client libraries copied.");
+                        break;
+                    case SteamCmdStep or EnsureDirectoryStep or WriteFileIfMissingStep or CopyFileIfMissingStep:
+                        break;
+                    default:
+                        error($"{section}.steps[{i}]", "A game run with Wine installs with SteamCMD and the file steps only: the other steps fetch Linux builds.");
+                        break;
+                }
+            }
+        }
+    }
+
+    private static void ValidateRuntime(string path, string platform, RuntimeDefinition runtime, Context context)
     {
         ValidateRelativePath($"{path}.executable", runtime.Executable, context.Error);
-        if (IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        if (platform == WindowsX64 && IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
             context.Error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
+        }
+        else if (runtime.Wine)
+        {
+            if (platform != LinuxX64)
+            {
+                context.Error($"{path}.wine", "Only a linux-x64 runtime runs with Wine.");
+            }
+            else if (IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Error($"{path}.executable", "Wine starts the game's Windows program: an .exe file.");
+            }
+
+            if (runtime.LibraryPath is not null)
+            {
+                context.Error($"{path}.libraryPath", "A Windows program run with Wine takes no library path.");
+            }
+
+            if (runtime.UserProfile is not null)
+            {
+                // Wine keeps the user's folders in its prefix (.pulsar/wine), never the server's own.
+                context.Error($"{path}.userProfile", "A game run with Wine keeps its user's folders in its Wine prefix.");
+            }
+
+            if (runtime.Environment?.Keys.FirstOrDefault(name => name.Equals(WinePrefixVariable, StringComparison.Ordinal)) is { } prefix)
+            {
+                context.Error($"{path}.environment.{prefix}", "The agent sets the server's Wine prefix.");
+            }
+        }
+        else if (platform == LinuxX64 && s_linuxNonPrograms.Any(e => runtime.Executable.EndsWith(e, StringComparison.OrdinalIgnoreCase)))
+        {
+            // The agent checks again, on the file itself, that it is an ELF program.
+            context.Error($"{path}.executable", "Only programs can be started (no scripts, installers or interpreters).");
+        }
+
+        if (platform == LinuxX64 && runtime.Console.Encoding != ManifestConsoleEncoding.Utf8)
+        {
+            context.Error($"{path}.console.encoding", "Linux consoles are UTF-8.");
         }
 
         if (runtime.WorkingDirectory is { } workingDirectory)
@@ -1127,6 +1385,32 @@ public static partial class ManifestValidator
         if (runtime.UserProfile is { } userProfile)
         {
             ValidateRelativePath($"{path}.userProfile", userProfile, context.Error);
+        }
+
+        if (runtime.LibraryPath is { } libraryPath)
+        {
+            if (platform != LinuxX64)
+            {
+                context.Error($"{path}.libraryPath", "Only a linux-x64 runtime has a library path.");
+            }
+            else if (libraryPath.Count is 0 or > MaxLibraryFolders)
+            {
+                context.Error($"{path}.libraryPath", $"Between 1 and {MaxLibraryFolders} folders.");
+            }
+
+            for (var i = 0; i < libraryPath.Count; i++)
+            {
+                // The loader splits LD_LIBRARY_PATH on ':' and ';'.
+                if (libraryPath[i].IndexOfAny([':', ';']) >= 0)
+                {
+                    context.Error($"{path}.libraryPath[{i}]", "A folder name without ':' or ';'.");
+                }
+                else if (libraryPath[i] != ".")
+                {
+                    // "." is the server's folder itself (GoldSrc's hlds_run: its engine's libraries are beside it).
+                    ValidateRelativePath($"{path}.libraryPath[{i}]", libraryPath[i], context.Error);
+                }
+            }
         }
 
         var console = runtime.Console;
@@ -1144,9 +1428,9 @@ public static partial class ManifestValidator
             {
                 context.Error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
             }
-            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            else if (LoadsCode(name))
             {
-                context.Error($"{path}.environment.{name}", "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+                context.Error($"{path}.environment.{name}", "Environment variables that make the .NET runtime or the dynamic loader load code are not allowed.");
             }
 
             ValidateTemplate($"{path}.environment.{name}", value, context, TemplateUse.Environment, guardedPorts: s_noPorts);
@@ -1419,7 +1703,7 @@ public static partial class ManifestValidator
         }
     }
 
-    private static void ValidateConfigFiles(IReadOnlyList<ConfigFileDefinition> files, Context context)
+    private static void ValidateConfigFiles(IReadOnlyList<ConfigFileDefinition> files, IReadOnlyList<string> gamePlatforms, Context context)
     {
         if (files.Count > 16)
         {
@@ -1442,6 +1726,11 @@ public static partial class ManifestValidator
             var file = files[i];
             var path = $"configFiles[{i}]";
             ValidateRelativePath($"{path}.path", file.Path, context.Error);
+            if (file.Platforms is { } platforms && (platforms.Count == 0 || platforms.Distinct(StringComparer.Ordinal).Count() != platforms.Count
+                    || platforms.Any(p => !gamePlatforms.Contains(p))))
+            {
+                context.Error($"{path}.platforms", "Some of the platforms the game runs on, each once.");
+            }
             if (file.Set.Count is 0 or > 128)
             {
                 context.Error($"{path}.set", "Between 1 and 128 keys.");
@@ -1672,22 +1961,22 @@ public static partial class ManifestValidator
         }
     }
 
-    private static void ValidateStop(StopDefinition stop, ConsoleDefinition? console, Action<string, string> error)
+    private static void ValidateStop(StopDefinition stop, ConsoleDefinition? console, Action<string, string> error, string at = "stop")
     {
         if (stop.TimeoutSeconds is < 1 or > 3600)
         {
-            error("stop.timeoutSeconds", "Between 1 and 3600.");
+            error($"{at}.timeoutSeconds", "Between 1 and 3600.");
         }
 
         if (stop.Steps.Count > 16)
         {
-            error("stop.steps", "At most 16 steps.");
+            error($"{at}.steps", "At most 16 steps.");
         }
 
         var mode = console?.Mode;
         for (var i = 0; i < stop.Steps.Count; i++)
         {
-            var path = $"stop.steps[{i}]";
+            var path = $"{at}.steps[{i}]";
             switch (stop.Steps[i])
             {
                 case ConsoleCommandStop command:

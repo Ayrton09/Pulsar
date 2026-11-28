@@ -678,6 +678,8 @@
       "host_not_ended": "Le jeu du serveur tourne encore dans un processus hôte que l'agent n'a pas pu terminer ou vérifier. Réessayez dans un instant ; il n'est jamais lancé une seconde fois à côté.",
       "extra_arguments_invalid": "Les arguments supplémentaires tiennent chacun sur une seule ligne de 512 caractères au plus (32 au maximum).",
       "extra_arguments_not_allowed": "Ce jeu n'accepte pas d'arguments supplémentaires.",
+      "platform_unsupported": "Ce jeu ne fonctionne pas sur le système d'exploitation de ce nœud.",
+      "other_platform": "Un serveur ne peut être déplacé ou copié que vers un nœud ayant le même système d'exploitation (Windows ou Linux).",
       "update_unsupported": "Ce jeu ne peut pas être mis à jour.",
       "no_free_allocation": "Le nœud n'a aucune allocation libre pour l'un des ports du jeu. Ajoutez des allocations au nœud.",
       "allocation_unavailable": "Cette allocation n'est pas libre sur le nœud du serveur.",
@@ -1096,7 +1098,7 @@
       "awaiting": "En attente d'approbation"
     },
     "hostname": "Nom d'hôte",
-    "os": "Windows",
+    "os": "Système d'exploitation",
     "cpu": "CPU",
     "cores_one": "{{count}} cœur logique",
     "cores_other": "{{count}} cœurs logiques",
@@ -1142,6 +1144,9 @@
       "address": "Adresse du panneau",
       "code": "Code du nœud",
       "setupTrust": "L'agent n'accepte le certificat du panneau que s'il est celui désigné dans le code, qu'il épingle : rien n'est copié à la main et les magasins de certificats de la machine ne sont pas modifiés. Un proxy inverse qui signale ce qu'il transmet (en-têtes Forwarded, X-Forwarded-* ou Via) fait que le code ne désigne aucun certificat : la machine doit alors déjà faire confiance à celui du proxy. Un proxy qui transmet sans le signaler présente un certificat différent de celui du code, et le programme d'installation refuse de continuer.",
+      "linuxTitle": "Installer sous Linux",
+      "linuxSteps": "Sur la machine Linux (x86_64 avec systemd : Debian 12, Ubuntu 24.04 ou plus récent), lancez cette commande dans un terminal. Elle télécharge la version de ce panneau depuis GitHub, la vérifie avec son manifeste signé, installe l'agent comme service et demande le code du nœud.",
+      "linuxCommand": "Commande Linux",
       "advanced": "Avancé : installer avec PowerShell"
     },
     "credentials": {
@@ -1157,7 +1162,8 @@
       "reason": "Motif (facultatif)",
       "storage": {
         "tpm": "Conservée dans le TPM",
-        "software": "Conservée par Windows (logiciel)"
+        "software": "Conservée par Windows (logiciel)",
+        "file": "Conservée dans un fichier que seul root peut lire (Linux)"
       },
       "states": {
         "active": "Actif",

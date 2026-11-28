@@ -115,10 +115,12 @@ public sealed class UmodApiFactory : PulsarApiFactory
         var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "games", "_test", "manifest.json")))!.AsObject();
         manifest["addons"] = JsonNode.Parse("""
             [ { "key": "oxide", "name": "Oxide (test)", "license": "MIT", "url": "https://umod.org/",
-                "description": "Plugins in C#.", "source": { "type": "githubRelease", "repo": "OxideMod/Oxide.Rust", "asset": "^Oxide\\.Rust\\.zip$" },
+                "description": "Plugins in C#.", "source": { "type": "githubRelease", "repo": "OxideMod/Oxide.Rust", "asset": "^Oxide\\.Rust\\.zip$",
+                    "linuxAsset": "^Oxide\\.Rust-linux\\.zip$" },
                 "conflicts": ["carbon"] },
               { "key": "carbon", "name": "Carbon (test)", "license": "GPL-3.0", "url": "https://carbonmod.gg/",
-                "description": "Plugins in C#.", "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$" },
+                "description": "Plugins in C#.", "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$",
+                    "linuxAsset": "^Carbon\\.Linux\\.Release\\.tar\\.gz$" },
                 "conflicts": ["oxide"] } ]
             """);
         manifest["mods"] = JsonNode.Parse("""

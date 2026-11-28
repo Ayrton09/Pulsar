@@ -60,6 +60,9 @@ public abstract record ProcessIdentity
 /// manager; arguments are already rendered (one element = one argv entry, never split or re-parsed).
 /// </summary>
 /// <param name="UserProfile">A folder of the server the game takes for its user's (USERPROFILE, APPDATA, LOCALAPPDATA); null: its account's.</param>
+/// <param name="LibraryPath">Folders of the server a Linux game loads its own libraries from (<c>LD_LIBRARY_PATH</c>); Linux only.</param>
+/// <param name="Preload">Libraries of the server a Linux game loads before its own (<c>LD_PRELOAD</c>: an addon's loader); Linux only.</param>
+/// <param name="Wine">The executable is a Windows program, run with Wine in the server's own prefix; Linux only.</param>
 public sealed record ProcessLaunchSpec(
     Guid ServerId,
     string ServerRoot,
@@ -71,7 +74,10 @@ public sealed record ProcessLaunchSpec(
     ConsoleEncoding Encoding,
     ProcessIdentity Identity,
     ProcessLimits? Limits = null,
-    string? UserProfile = null)
+    string? UserProfile = null,
+    IReadOnlyList<string>? LibraryPath = null,
+    IReadOnlyList<string>? Preload = null,
+    bool Wine = false)
 {
     // The default would print every argument and environment value: SteamCMD's come with the account's password.
     public override string ToString() => $"ProcessLaunchSpec {{ ServerId = {ServerId}, Executable = {Executable}, Arguments = {Arguments.Count} }}";

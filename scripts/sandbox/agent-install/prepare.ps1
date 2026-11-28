@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force $bundle | Out-Null
 # Self-contained: the sandbox has no .NET runtime.
 dotnet publish (Join-Path $repo 'src\Pulsar.Api') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'panel')
 if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
-dotnet publish (Join-Path $repo 'src\Pulsar.Agent') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'agent')
+dotnet publish (Join-Path $repo 'src\Pulsar.Agent') -f net10.0-windows -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'agent')
 if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
 # The agent MSI (Phase 14): 1.0.0, a second build of 1.0.0 (a new product of the same version, which replaces it), and
 # 1.0.1, which upgrades them while a game runs (and which 1.0.0 must not downgrade).
@@ -28,7 +28,7 @@ foreach ($build in @(@('1.0.0', 'msi'), @('1.0.0', 'msi\rebuild'), @('1.0.1', 'm
     if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
 }
 # The test game server runs as a server account, which has no .NET runtime to find either.
-dotnet publish (Join-Path $repo 'tests\Pulsar.TestGameServer') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'testgame')
+dotnet publish (Join-Path $repo 'tests\Pulsar.TestGameServer') -f net10.0-windows -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'testgame')
 if ($LASTEXITCODE -ne 0) { throw 'publish test game server failed' }
 
 # The PostgreSQL binaries zip relies on the Visual C++ runtime, which a clean sandbox may lack.

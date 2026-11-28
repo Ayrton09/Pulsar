@@ -197,8 +197,20 @@ describe('servers page', () => {
       'GET /api/v1/servers': () => json([]),
       'GET /api/v1/nodes': () =>
         json([
-          { id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
-          { id: '0192f1a0-0000-7000-8000-0000000000a9', name: 'Offline box', connected: false, status: 'active' },
+          {
+            id: installedOffline.nodeId,
+            name: 'Buenos Aires 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
+          {
+            id: '0192f1a0-0000-7000-8000-0000000000a9',
+            name: 'Offline box',
+            connected: false,
+            status: 'active',
+            platform: 'windows-x64',
+          },
         ]),
       'GET /api/v1/templates': () =>
         json([
@@ -210,6 +222,7 @@ describe('servers page', () => {
             description: null,
             isTestGame: true,
             source: 'bundled',
+            platforms: ['windows-x64'],
           },
         ]),
       [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
@@ -222,6 +235,7 @@ describe('servers page', () => {
             description: null,
             isTestGame: true,
             source: 'bundled',
+            platforms: ['windows-x64'],
           },
           minDiskGb: null,
           minMemoryMb: null,
@@ -286,12 +300,21 @@ describe('servers page', () => {
       description: null,
       isTestGame: true,
       source: 'bundled',
+      platforms: ['windows-x64'],
     };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
       'GET /api/v1/nodes': () =>
-        json([{ id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+        json([
+          {
+            id: installedOffline.nodeId,
+            name: 'Buenos Aires 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
+        ]),
       'GET /api/v1/templates': () => json([game]),
       [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
         fail
@@ -334,6 +357,7 @@ describe('servers page', () => {
       description: null,
       isTestGame: false,
       source: 'bundled',
+      platforms: ['windows-x64'],
     };
     const allocation = (id: string, port: number) => ({
       id,
@@ -348,7 +372,15 @@ describe('servers page', () => {
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
       'GET /api/v1/nodes': () =>
-        json([{ id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+        json([
+          {
+            id: installedOffline.nodeId,
+            name: 'Buenos Aires 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
+        ]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
         json({
@@ -880,6 +912,7 @@ describe('server page', () => {
       description: null,
       isTestGame: false,
       source: 'bundled',
+      platforms: ['windows-x64'],
     };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -956,8 +989,20 @@ describe('server page', () => {
       [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
       'GET /api/v1/nodes': () =>
         json([
-          { id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
-          { id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Córdoba 1', connected: true, status: 'active' },
+          {
+            id: installedOffline.nodeId,
+            name: 'Buenos Aires 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
+          {
+            id: '0192f1a0-0000-7000-8000-0000000000a2',
+            name: 'Córdoba 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
         ]),
       [`POST /api/v1/servers/${installedOffline.id}/clone`]: async (request) => {
         body = await request.json();
@@ -1017,8 +1062,20 @@ describe('server page', () => {
         }),
       'GET /api/v1/nodes': () =>
         json([
-          { id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
-          { id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Córdoba 1', connected: true, status: 'active' },
+          {
+            id: installedOffline.nodeId,
+            name: 'Buenos Aires 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
+          {
+            id: '0192f1a0-0000-7000-8000-0000000000a2',
+            name: 'Córdoba 1',
+            connected: true,
+            status: 'active',
+            platform: 'windows-x64',
+          },
         ]),
       [`POST /api/v1/servers/${installedOffline.id}/transfer`]: async (request) => {
         body = await request.json();

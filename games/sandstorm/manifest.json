@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "sandstorm",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Insurgency: Sandstorm",
   "description": "Insurgency: Sandstorm dedicated server, installed anonymously with SteamCMD, with commands over RCON.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 8, "minMemoryMb": 4096 },
 
@@ -294,7 +294,8 @@
 
   "install": { "steps": [
     { "type": "steamcmd", "appId": 581330 },
-    { "type": "ensureDirectory", "path": "Insurgency/Saved/Config/WindowsServer" }
+    { "type": "ensureDirectory", "path": "Insurgency/Saved/Config/WindowsServer" },
+    { "type": "ensureDirectory", "path": "Insurgency/Saved/Config/LinuxServer" }
   ] },
   "update": { "steps": [ { "type": "steamcmd", "appId": 581330 } ] },
 
@@ -317,11 +318,30 @@
         "encoding": "utf-8",
         "rcon": { "protocol": "source", "port": "rcon" }
       }
+    },
+    "linux-x64": {
+      "executable": "Insurgency/Binaries/Linux/InsurgencyServer-Linux-Shipping",
+      "arguments": [
+        { "if": "var.password",
+          "then": ["{{var.scenario.level}}?Scenario={{var.scenario}}?Lighting={{var.lighting}}?MaxPlayers={{var.maxPlayers}}?Password={{var.password}}"],
+          "else": ["{{var.scenario.level}}?Scenario={{var.scenario}}?Lighting={{var.lighting}}?MaxPlayers={{var.maxPlayers}}"] },
+        "-Port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        { "if": "var.name", "then": ["-hostname={{var.name}}"] },
+        "-log",
+        { "if": "var.gslt", "then": ["-GSLTToken={{var.gslt}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" }
+      }
     }
   },
 
   "configFiles": [
-    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "format": "unreal-ini", "mode": "patch",
+    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "platforms": ["windows-x64"], "format": "unreal-ini", "mode": "patch",
       "section": "Rcon",
       "set": {
         "bEnabled": "True",
@@ -330,7 +350,7 @@
         "bUseBroadcastAddress": "False",
         "ListenAddressOverride": "127.0.0.1"
       } },
-    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "format": "unreal-ini", "mode": "patch",
+    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "platforms": ["windows-x64"], "format": "unreal-ini", "mode": "patch",
       "section": "/Script/Insurgency.INSMultiplayerMode",
       "set": {
         "bAllowFriendlyFire": "{{var.friendlyFire}}",
@@ -340,7 +360,36 @@
         "bMapVoting": "{{var.mapVoting}}"
       },
       "keepIfEmpty": ["bAllowFriendlyFire", "FriendlyFireModifier", "bVoiceAllowDeadChat", "bAutoBalanceTeams", "bMapVoting"] },
-    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "format": "unreal-ini", "mode": "patch",
+    { "path": "Insurgency/Saved/Config/WindowsServer/Game.ini", "platforms": ["windows-x64"], "format": "unreal-ini", "mode": "patch",
+      "section": "/Script/Insurgency.INSCoopMode",
+      "set": {
+        "bAllowFriendlyFire": "{{var.friendlyFire}}",
+        "FriendlyFireModifier": "{{var.friendlyFireScale}}",
+        "MinimumEnemies": "{{var.minEnemies}}",
+        "MaximumEnemies": "{{var.maxEnemies}}",
+        "FriendlyBotQuota": "{{var.friendlyBots}}"
+      },
+      "keepIfEmpty": ["bAllowFriendlyFire", "FriendlyFireModifier", "MinimumEnemies", "MaximumEnemies", "FriendlyBotQuota"] },
+    { "path": "Insurgency/Saved/Config/LinuxServer/Game.ini", "platforms": ["linux-x64"], "format": "unreal-ini", "mode": "patch",
+      "section": "Rcon",
+      "set": {
+        "bEnabled": "True",
+        "Password": "{{rcon.password}}",
+        "ListenPort": "{{port.rcon}}",
+        "bUseBroadcastAddress": "False",
+        "ListenAddressOverride": "127.0.0.1"
+      } },
+    { "path": "Insurgency/Saved/Config/LinuxServer/Game.ini", "platforms": ["linux-x64"], "format": "unreal-ini", "mode": "patch",
+      "section": "/Script/Insurgency.INSMultiplayerMode",
+      "set": {
+        "bAllowFriendlyFire": "{{var.friendlyFire}}",
+        "FriendlyFireModifier": "{{var.friendlyFireScale}}",
+        "bVoiceAllowDeadChat": "{{var.deadChat}}",
+        "bAutoBalanceTeams": "{{var.autoBalance}}",
+        "bMapVoting": "{{var.mapVoting}}"
+      },
+      "keepIfEmpty": ["bAllowFriendlyFire", "FriendlyFireModifier", "bVoiceAllowDeadChat", "bAutoBalanceTeams", "bMapVoting"] },
+    { "path": "Insurgency/Saved/Config/LinuxServer/Game.ini", "platforms": ["linux-x64"], "format": "unreal-ini", "mode": "patch",
       "section": "/Script/Insurgency.INSCoopMode",
       "set": {
         "bAllowFriendlyFire": "{{var.friendlyFire}}",

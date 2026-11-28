@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "palworld",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "name": "Palworld",
   "description": "Palworld dedicated server, installed anonymously with SteamCMD (about 4 GB). Pulsar talks to it over RCON; other world settings can be added to PalWorldSettings.ini by hand.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 10, "minMemoryMb": 8192 },
 
@@ -125,11 +125,84 @@
         "rcon": { "protocol": "source", "port": "game" },
         "sensitiveCommandPrefixes": ["AdminPassword"]
       }
+    },
+    "linux-x64": {
+      "executable": "Pal/Binaries/Linux/PalServer-Linux-Shipping",
+      "workingDirectory": "Pal/Binaries/Linux",
+      "arguments": [
+        "Pal",
+        "-port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        "-players={{var.maxPlayers}}",
+        "-logformat=text",
+        { "if": "var.community", "then": ["-publiclobby"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["AdminPassword"]
+      }
     }
   },
 
   "configFiles": [
-    { "path": "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", "format": "unreal-ini", "mode": "patch",
+    { "path": "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", "format": "unreal-ini", "mode": "patch", "platforms": ["windows-x64"],
+      "section": "/Script/Pal.PalGameWorldSettings", "struct": "OptionSettings",
+      "set": {
+        "ServerName": "{{var.name}}",
+        "ServerDescription": "{{var.description}}",
+        "ServerPassword": "{{var.password}}",
+        "ServerPlayerMaxNum": "{{var.maxPlayers}}",
+        "PublicPort": "{{port.game}}",
+        "AdminPassword": "{{rcon.password}}",
+        "RCONEnabled": "True",
+        "RCONPort": "{{port.game}}",
+        "ExpRate": "{{var.expRate}}",
+        "PalCaptureRate": "{{var.captureRate}}",
+        "PalSpawnNumRate": "{{var.spawnRate}}",
+        "CollectionDropRate": "{{var.gatheringRate}}",
+        "EnemyDropItemRate": "{{var.enemyDropRate}}",
+        "WorkSpeedRate": "{{var.workSpeed}}",
+        "DayTimeSpeedRate": "{{var.dayTimeSpeed}}",
+        "NightTimeSpeedRate": "{{var.nightTimeSpeed}}",
+        "PalEggDefaultHatchingTime": "{{var.eggHatchHours}}",
+        "bIsPvP": "{{var.pvp}}",
+        "bEnableFastTravel": "{{var.fastTravel}}",
+        "BaseCampMaxNumInGuild": "{{var.basesPerGuild}}",
+        "BaseCampWorkerMaxNum": "{{var.workersPerBase}}",
+        "GuildPlayerMaxNum": "{{var.guildSize}}",
+        "AutoSaveSpan": "{{var.autoSave}}",
+        "DeathPenalty": "{{var.deathPenalty}}",
+        "RandomizerType": "{{var.randomizer}}",
+        "bEnablePlayerToPlayerDamage": "{{var.pvpDamage}}",
+        "bEnableFriendlyFire": "{{var.friendlyFire}}",
+        "bEnableInvaderEnemy": "{{var.invaders}}",
+        "bHardcore": "{{var.hardcore}}",
+        "bPalLost": "{{var.palLost}}",
+        "PalDamageRateAttack": "{{var.palDamageAttack}}",
+        "PalDamageRateDefense": "{{var.palDamageDefense}}",
+        "PlayerDamageRateAttack": "{{var.playerDamageAttack}}",
+        "PlayerDamageRateDefense": "{{var.playerDamageDefense}}",
+        "PlayerStomachDecreaceRate": "{{var.playerHunger}}",
+        "PlayerStaminaDecreaceRate": "{{var.playerStamina}}",
+        "PalStomachDecreaceRate": "{{var.palHunger}}",
+        "PalStaminaDecreaceRate": "{{var.palStamina}}",
+        "BuildObjectDeteriorationDamageRate": "{{var.buildDecay}}",
+        "ItemWeightRate": "{{var.itemWeight}}",
+        "EquipmentDurabilityDamageRate": "{{var.equipDurability}}",
+        "BaseCampMaxNum": "{{var.baseCamps}}",
+        "MaxBuildingLimitNum": "{{var.buildingLimit}}",
+        "SupplyDropSpan": "{{var.supplyDropMinutes}}",
+        "BlockRespawnTime": "{{var.respawnSeconds}}",
+        "bIsUseBackupSaveData": "{{var.backups}}",
+        "bShowPlayerList": "{{var.showPlayerList}}",
+        "bAllowClientMod": "{{var.allowClientMods}}",
+        "PublicIP": "{{var.publicIp}}"
+      },
+      "keepIfEmpty": ["ServerName", "DeathPenalty", "RandomizerType", "ExpRate", "PalCaptureRate", "PalSpawnNumRate", "CollectionDropRate", "EnemyDropItemRate", "WorkSpeedRate", "DayTimeSpeedRate", "NightTimeSpeedRate", "PalEggDefaultHatchingTime", "bIsPvP", "bEnableFastTravel", "BaseCampMaxNumInGuild", "BaseCampWorkerMaxNum", "GuildPlayerMaxNum", "AutoSaveSpan", "bEnablePlayerToPlayerDamage", "bEnableFriendlyFire", "bEnableInvaderEnemy", "bHardcore", "bPalLost", "PalDamageRateAttack", "PalDamageRateDefense", "PlayerDamageRateAttack", "PlayerDamageRateDefense", "PlayerStomachDecreaceRate", "PlayerStaminaDecreaceRate", "PalStomachDecreaceRate", "PalStaminaDecreaceRate", "BuildObjectDeteriorationDamageRate", "ItemWeightRate", "EquipmentDurabilityDamageRate", "BaseCampMaxNum", "MaxBuildingLimitNum", "SupplyDropSpan", "BlockRespawnTime", "bIsUseBackupSaveData", "bShowPlayerList", "bAllowClientMod", "PublicIP"] },
+    { "path": "Pal/Saved/Config/LinuxServer/PalWorldSettings.ini", "format": "unreal-ini", "mode": "patch", "platforms": ["linux-x64"],
       "section": "/Script/Pal.PalGameWorldSettings", "struct": "OptionSettings",
       "set": {
         "ServerName": "{{var.name}}",
@@ -193,7 +266,7 @@
   },
 
   "backup": {
-    "include": ["Pal/Saved/SaveGames/**", "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini"],
+    "include": ["Pal/Saved/SaveGames/**", "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", "Pal/Saved/Config/LinuxServer/PalWorldSettings.ini"],
     "save": { "commands": ["Save"], "waitSeconds": 5 }
   },
   "commands": { "broadcast": "Broadcast {{message}}", "messageSpaces": "_" }

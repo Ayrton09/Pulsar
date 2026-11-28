@@ -1163,3 +1163,136 @@ public sealed class SteamCmdRunnerTests : IDisposable
         }
     }
 }
+
+/// <summary>A Linux node's SteamCMD (<see cref="SteamCmdLayout.Linux"/>): Valve's 32-bit program run straight, its data in a home of its own.</summary>
+public sealed class LinuxSteamCmdRunnerTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-steamcmd-linux", Guid.NewGuid().ToString("N"));
+    private readonly FakeProcessManager _processes = new();
+    private readonly LinuxSource _source;
+    private readonly SteamLoginStore _logins;
+
+    public LinuxSteamCmdRunnerTests()
+    {
+        Directory.CreateDirectory(_root);
+        _source = new LinuxSource(Path.Combine(_root, "bootstrapper"));
+        _logins = new SteamLoginStore(new AgentPaths(Path.Combine(_root, "agent")), new PlainStateProtector());
+    }
+
+    public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    private string Folder => Path.Combine(_root, "server", ".pulsar", "steamcmd");
+
+    private string CachedLogin => Path.Combine(Folder, "home", "Steam", "config", "config.vdf");
+
+    [Fact]
+    public async Task TheCopyIsValvesFilesAndRunsWithPipesAndAHomeOfItsOwn()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("Success! App '232330' fully installed.\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        var spec = Assert.Single(_processes.Specs);
+        Assert.Equal(".pulsar/steamcmd/linux32/steamcmd", spec.Executable);
+        Assert.Equal(".pulsar/steamcmd", spec.WorkingDirectory);
+        Assert.Equal(ConsoleMode.Pipes, spec.ConsoleMode);
+        Assert.Equal(".pulsar/steamcmd/home", spec.UserProfile);
+        Assert.Equal("program", File.ReadAllText(Path.Combine(Folder, "linux32", "steamcmd")));
+        Assert.Equal("library", File.ReadAllText(Path.Combine(Folder, "linux32", "libstdc++.so.6")));
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.True(File.GetUnixFileMode(Path.Combine(Folder, "linux32", "steamcmd")).HasFlag(UnixFileMode.UserExecute));
+            Assert.False(File.GetUnixFileMode(Path.Combine(Folder, "linux32", "libstdc++.so.6")).HasFlag(UnixFileMode.UserExecute));
+        }
+    }
+
+    [Fact]
+    public async Task ExitCode42IsASelfUpdateAndExitCode7IsNot()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Started.Count <= 2)
+            {
+                process.Print("[----] Update complete, launching...\n");
+                process.Exit(42);
+                return;
+            }
+
+            process.Print("Success! App '232330' fully installed.\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job(), (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, _processes.Started.Count);
+    }
+
+    [Fact]
+    public async Task TheLoginIsLentInItsHomeAndTakenBack()
+    {
+        var account = Guid.NewGuid();
+        var login = new SteamLogin(account, "servers", "hunter2-password");
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, "token");
+            process.Print("Logging in user 'servers' to Steam Public...OK\nSuccess! App '232330' fully installed.\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = login }, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        Assert.False(File.Exists(CachedLogin));
+        Assert.Equal("token", _logins.Load(login) is { } kept ? System.Text.Encoding.UTF8.GetString(kept) : null);
+    }
+
+    [Fact]
+    public void AForcedPlatformComesBeforeTheInstallFolderAndOnlyWindowsOrLinux()
+    {
+        var arguments = SteamCmdRunner.Arguments(Job() with { ForcePlatform = "windows" });
+
+        Assert.Equal(["+@sSteamCmdForcePlatformType", "windows", "+force_install_dir"], arguments.SkipWhile(a => a != "+@sSteamCmdForcePlatformType").Take(3));
+        Assert.DoesNotContain("+@sSteamCmdForcePlatformType", SteamCmdRunner.Arguments(Job()));
+        Assert.Throws<GameProcessException>(() => SteamCmdRunner.Arguments(Job() with { ForcePlatform = "windows +quit" }));
+    }
+
+    [Theory]
+    [InlineData(".pulsar/steamcmd/home")]
+    [InlineData(".pulsar/steamcmd/home/Steam/config/config.vdf")]
+    [InlineData(".PULSAR/SteamCMD/Home/Steam/userdata")]
+    public void ItsHomeIsKeptFromTheFileManager(string path)
+    {
+        Assert.True(FileCommands.IsSteamLogin(path));
+    }
+
+    private SteamCmdRunner Runner() => new(_processes, _source, new DirectServerFiles(), new DirectServerFileManager(), _logins,
+        new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
+
+    private SteamCmdJob Job() => new(Guid.NewGuid(), Path.Combine(_root, "server"), ProcessIdentity.Account("pulsar_abcd2345"), 232330, null, null, false);
+
+    private sealed class LinuxSource(string folder) : ISteamCmdSource
+    {
+        public SteamCmdLayout Layout => SteamCmdLayout.Linux;
+
+        public Task<string> GetAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SteamCmdFile>> GetFilesAsync(CancellationToken cancellationToken)
+        {
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "steamcmd"), "program");
+            File.WriteAllText(Path.Combine(folder, "libstdc"), "library");
+            return Task.FromResult<IReadOnlyList<SteamCmdFile>>(
+            [
+                new SteamCmdFile("linux32/steamcmd", Path.Combine(folder, "steamcmd"), Executable: true),
+                new SteamCmdFile("linux32/libstdc++.so.6", Path.Combine(folder, "libstdc"), Executable: false),
+            ]);
+        }
+    }
+}

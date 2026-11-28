@@ -20,3 +20,11 @@ Checked on 2026-10-26 on Windows 11 Pro (build 26200), with the server of build 
 - It reads no commands from its console: admins log in from the game (`/AdminLogin`), so the template requires an admin
   password (without one, anyone who types `/AdminLogin` would be an admin). Ctrl+C, sent by the server's host to the
   console the game opened (agents of 1.0.12), ends it in about 4 s with code 0.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe` with Wine, in a prefix of the server's
+own (`.pulsar/wine`), without a display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo apt-get
+install wine64` and a restart of the agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0): installed,
+started (ready once its Steam query answered), stopped with Ctrl+C and deleted.

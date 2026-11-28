@@ -45,6 +45,7 @@ public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long 
 /// connected to a panel that records it.
 /// </param>
 /// <param name="AgentCanUseCertificate">Whether its agent can present one and move to the agents' address; null: unknown.</param>
+/// <param name="Platform">What its games run for: <c>windows-x64</c> or <c>linux-x64</c> (its agent's).</param>
 public sealed record NodeSummary(
     Guid Id,
     string Name,
@@ -60,7 +61,8 @@ public sealed record NodeSummary(
     string? EnrollmentTokenName,
     string? CredentialFingerprint,
     bool? ConnectedWithCertificate,
-    bool? AgentCanUseCertificate);
+    bool? AgentCanUseCertificate,
+    string Platform);
 
 /// <summary>Whether the node's agent trusts the panel's active signing key (it may still pin only a retiring one).</summary>
 public enum PanelKeyTrust
@@ -102,6 +104,12 @@ public sealed record EnrollmentInstructions(string Token, DateTimeOffset Expires
 {
     /// <summary>The panel serves <c>PulsarAgentSetup.exe</c> at <c>/downloads/PulsarAgentSetup.exe</c>.</summary>
     public bool AgentSetupAvailable => AgentSetupSha256 is not null;
+
+    /// <summary>
+    /// The command that installs the agent on a Linux machine (docs/guides/install.md, "Linux nodes"), which then asks for
+    /// <see cref="NodeCode"/>; null without a code. It holds no secret.
+    /// </summary>
+    public string? LinuxAgentCommand => NodeCode is null ? null : Updates.LinuxAgentInstall.Command(Updates.PanelUpdates.PanelVersion);
 
     // The token, and the code that carries it, are secrets: they must never reach a log through ToString.
     private bool PrintMembers(System.Text.StringBuilder builder)
@@ -531,7 +539,7 @@ public sealed class NodeManagement(
         var metrics = connection?.LastMetrics is { } m ? NodeMetricsView.From(m) : null;
         return new NodeSummary(node.Id.Value, node.Name, node.Description, node.PublicHost, node.Status, connection is not null,
             node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId),
-            enrollmentTokenName, credentialFingerprint, node.ConnectedWithCertificate, node.AgentCanUseCertificate);
+            enrollmentTokenName, credentialFingerprint, node.ConnectedWithCertificate, node.AgentCanUseCertificate, node.Platform);
     }
 
     private static PanelKeyTrust Trust(IReadOnlyList<string>? pinned, string activeKeyId) => pinned switch

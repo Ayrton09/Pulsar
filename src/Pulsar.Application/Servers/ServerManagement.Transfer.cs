@@ -58,6 +58,12 @@ public sealed partial class ServerManagement
             return ServerErrors.SameNode;
         }
 
+        // Its files (the game's programs among them) are made for its node's platform.
+        if (await specs.PlatformOfAsync(nodeId, cancellationToken) != await specs.PlatformOfAsync(server.NodeId, cancellationToken))
+        {
+            return ServerErrors.OtherPlatform;
+        }
+
         if (server.InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
@@ -80,7 +86,7 @@ public sealed partial class ServerManagement
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
-        if (!AgentReads(target, manifest)
+        if (!AgentReads(target, manifest, await specs.PlatformOfAsync(nodeId, cancellationToken))
             || (template.Key == Manifests.ManifestValidator.TestGameKey && !Announces(target, AgentCapabilities.TestGame)))
         {
             return ServerErrors.TemplateUnsupported;

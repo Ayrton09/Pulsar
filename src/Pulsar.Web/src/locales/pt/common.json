@@ -678,6 +678,8 @@
       "host_not_ended": "O jogo do servidor ainda é executado em um processo host que o agente não conseguiu encerrar nem verificar. Tente novamente em instantes; ele nunca é iniciado uma segunda vez ao lado.",
       "extra_arguments_invalid": "Os argumentos extras são linhas únicas de até 512 caracteres (no máximo 32).",
       "extra_arguments_not_allowed": "Este jogo não permite argumentos extras.",
+      "platform_unsupported": "Este jogo não roda no sistema operacional deste nó.",
+      "other_platform": "Um servidor só pode ser movido ou copiado para um nó com o mesmo sistema operacional (Windows ou Linux).",
       "update_unsupported": "Este jogo não pode ser atualizado.",
       "no_free_allocation": "O nó não tem alocação livre para uma das portas do jogo. Adicione alocações ao nó.",
       "allocation_unavailable": "Essa alocação não está livre no nó do servidor.",
@@ -1096,7 +1098,7 @@
       "awaiting": "Aguardando aprovação"
     },
     "hostname": "Nome do host",
-    "os": "Windows",
+    "os": "Sistema operacional",
     "cpu": "CPU",
     "cores_one": "{{count}} núcleo lógico",
     "cores_other": "{{count}} núcleos lógicos",
@@ -1142,6 +1144,9 @@
       "address": "Endereço do painel",
       "code": "Código do nó",
       "setupTrust": "O agente só aceita o certificado do painel quando é o citado no código, que ele fixa: nada é copiado manualmente e os repositórios de certificados da máquina não são alterados. Um proxy reverso que marca o que encaminha (cabeçalhos Forwarded, X-Forwarded-* ou Via) faz o código não citar nenhum certificado: a máquina deve então já confiar no do proxy. Um que encaminha sem avisar serve um certificado diferente do código, e o instalador se recusa a continuar.",
+      "linuxTitle": "Instalar no Linux",
+      "linuxSteps": "Na máquina Linux (x86_64 com systemd: Debian 12, Ubuntu 24.04 ou mais recente), execute este comando em um terminal. Ele baixa a versão deste painel do GitHub, confere-a com seu manifesto assinado, instala o agente como serviço e pede o código do nó.",
+      "linuxCommand": "Comando para Linux",
       "advanced": "Avançado: instalar com PowerShell"
     },
     "credentials": {
@@ -1157,7 +1162,8 @@
       "reason": "Motivo (opcional)",
       "storage": {
         "tpm": "Guardada no TPM",
-        "software": "Guardada pelo Windows (software)"
+        "software": "Guardada pelo Windows (software)",
+        "file": "Guardada em um arquivo que só o root pode ler (Linux)"
       },
       "states": {
         "active": "Ativa",

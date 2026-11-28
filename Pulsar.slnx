@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Pulsar.Agent.Core/Pulsar.Agent.Core.csproj" />
+    <Project Path="src/Pulsar.Agent.Linux/Pulsar.Agent.Linux.csproj" />
     <Project Path="src/Pulsar.Agent.Windows/Pulsar.Agent.Windows.csproj" />
     <Project Path="src/Pulsar.Agent/Pulsar.Agent.csproj" />
     <Project Path="src/Pulsar.Api/Pulsar.Api.csproj" />
@@ -12,6 +13,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pulsar.Agent.Core.Tests/Pulsar.Agent.Core.Tests.csproj" />
+    <Project Path="tests/Pulsar.Agent.Linux.Tests/Pulsar.Agent.Linux.Tests.csproj" />
     <Project Path="tests/Pulsar.Agent.Tests/Pulsar.Agent.Tests.csproj" />
     <Project Path="tests/Pulsar.Agent.Windows.Tests/Pulsar.Agent.Windows.Tests.csproj" />
     <Project Path="tests/Pulsar.Api.Tests/Pulsar.Api.Tests.csproj" />

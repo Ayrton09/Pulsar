@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "sotf",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "name": "Sons of the Forest",
   "description": "Sons of the Forest dedicated server, installed anonymously with SteamCMD. Its settings, saves and admin list live in the userdata folder of the server.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 10, "minMemoryMb": 8192 },
 
@@ -93,6 +93,12 @@
       "arguments": ["-userdatapath", "{{server.dir}}/userdata"],
       "allowExtraArguments": true,
       "console": { "mode": "pty", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "SonsOfTheForestDS.exe", "wine": true,
+      "arguments": ["-userdatapath", "{{server.dir}}/userdata"],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
     }
   },
 

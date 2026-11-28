@@ -177,6 +177,7 @@ describe('node usage history', () => {
     credentialFingerprint: null,
     connectedWithCertificate: null,
     agentCanUseCertificate: null,
+    platform: 'windows-x64',
   };
   const nodeViewer = { ...adminUser, permissions: ['node.view'] };
 

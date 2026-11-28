@@ -17346,6 +17346,7 @@ export interface components {
             nodeCode: null | string;
             agentSetupSha256: null | string;
             agentSetupAvailable?: boolean;
+            linuxAgentCommand?: null | string;
         };
         EnrollmentTokenView: {
             /** Format: uuid */
@@ -17655,7 +17656,7 @@ export interface components {
             protocolVersion: number;
         };
         /** @enum {unknown} */
-        NodeKeyStorage: "tpm" | "software";
+        NodeKeyStorage: "tpm" | "software" | "file";
         NodeMetricHistory: {
             range: components["schemas"]["MetricRange"];
             /** Format: date-time */
@@ -17718,6 +17719,7 @@ export interface components {
             credentialFingerprint: null | string;
             connectedWithCertificate: null | boolean;
             agentCanUseCertificate: null | boolean;
+            platform: string;
         };
         NodeUpdateStatusView: {
             status: string;
@@ -18653,6 +18655,7 @@ export interface components {
             description: null | string;
             isTestGame: boolean;
             source: components["schemas"]["TemplateSource"];
+            platforms: string[];
         };
         TemplateWorkshop: {
             /** Format: int64 */

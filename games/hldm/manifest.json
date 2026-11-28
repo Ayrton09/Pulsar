@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "hldm",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "name": "Half-Life Deathmatch",
   "description": "Half-Life Deathmatch dedicated server (hlds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 2, "minMemoryMb": 512 },
 
@@ -60,6 +60,29 @@
       "arguments": [
         "-console", "-game", "valve",
         "-condebug", "-nocrashdialog",
+        "+ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "qconsole.log",
+        "rcon": { "protocol": "goldsrc", "port": "game" },
+        "privatePaths": ["valve/logs"],
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "hlds_linux",
+      "libraryPath": ["."],
+      "arguments": [
+        "-console", "-game", "valve",
+        "-condebug",
         "+ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
         "+maxplayers", "{{var.maxPlayers}}",

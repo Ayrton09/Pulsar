@@ -46,7 +46,7 @@ public sealed class ConsoleCommands(
         }
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
-        var prefixes = ServerSpecs.Parse(template).Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.SensitiveCommandPrefixes ?? [];
+        var prefixes = ServerSpecs.Parse(template).FirstRuntime?.Console.SensitiveCommandPrefixes ?? [];
         // Once sent, the node's answer is waited for (it has its own timeout) even if the request goes away: what the
         // node did must still be audited.
         var ack = await connections.SendAsync(server.NodeId, new SendConsoleInputCommand(id.Value, line), request.UserId, CancellationToken.None);

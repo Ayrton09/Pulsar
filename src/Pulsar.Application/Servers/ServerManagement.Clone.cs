@@ -61,6 +61,12 @@ public sealed partial class ServerManagement
             mayChooseAccount = granted.Has(Permissions.Server.LimitsEdit, AccessTarget.ForNode(nodeId));
         }
 
+        // The copy's files (the game's programs among them) are made for the source node's platform.
+        if (await specs.PlatformOfAsync(nodeId, cancellationToken) != await specs.PlatformOfAsync(source.NodeId, cancellationToken))
+        {
+            return ServerErrors.OtherPlatform;
+        }
+
         if (source.InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
@@ -85,7 +91,7 @@ public sealed partial class ServerManagement
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == source.TemplateId, cancellationToken);
         var manifest = ServerSpecs.Parse(template);
-        if (!AgentReads(target, manifest)
+        if (!AgentReads(target, manifest, await specs.PlatformOfAsync(nodeId, cancellationToken))
             || (template.Key == Manifests.ManifestValidator.TestGameKey && !Announces(target, AgentCapabilities.TestGame)))
         {
             return ServerErrors.TemplateUnsupported;
@@ -171,7 +177,7 @@ public sealed partial class ServerManagement
             return assigned.Error!;
         }
 
-        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)]);
+        var valid = await specs.CheckAsync(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id && a.NodeId == server.NodeId)], cancellationToken: cancellationToken);
         if (!valid.IsSuccess)
         {
             return valid.Error!;

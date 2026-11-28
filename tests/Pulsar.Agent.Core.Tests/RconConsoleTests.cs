@@ -745,6 +745,63 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheConsolesRconSessionGoesBeforeTheStopsFirstStep()
+    {
+        // V Rising run with Wine never exits while a client is still connected: the session kept since the last console
+        // command is closed first, and the stop's own command comes on a session of its own.
+        var supervisor = Supervisor(new RconReadiness(60));
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        _rcon.Listening = true;
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
+        await EventuallyAsync(() => _rcon.Commands.Contains("status") && _rcon.Open == 1);
+        var openAtQuit = -1;
+        _rcon.OnCommand = command =>
+        {
+            if (command == "quit")
+            {
+                openAtQuit = _rcon.Open;
+                _processes.Last.Exit(0);
+            }
+        };
+
+        await supervisor.StopAsync();
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Requested);
+
+        Assert.Equal(1, openAtQuit); // the stop's own
+        Assert.Equal(["status", "quit"], _rcon.Commands);
+    }
+
+    [Fact]
+    public async Task AConsoleSessionThatFailsAsItClosesDoesNotHoldTheStopBack()
+    {
+        var supervisor = Supervisor(new RconReadiness(60));
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        _rcon.Listening = true;
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
+        await EventuallyAsync(() => _rcon.Commands.Contains("status"));
+        _rcon.FailOnClose = true;
+        _rcon.OnCommand = command =>
+        {
+            if (command == "quit")
+            {
+                _processes.Last.Exit(0);
+            }
+        };
+
+        await supervisor.StopAsync();
+
+        // The stop's command still goes at once (the clock never reaches the stop's timeout).
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Requested);
+        Assert.Equal(["status", "quit"], _rcon.Commands);
+    }
+
+    [Fact]
     public async Task ALogPatternIsLookedForInTheLogFile()
     {
         var supervisor = Supervisor(new LogPatternReadiness("^Server is hibernating", 60));
@@ -1131,6 +1188,14 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
         public int Connections { get; private set; }
 
+        private int _open;
+
+        /// <summary>Sessions connected and not disposed yet.</summary>
+        public int Open => Volatile.Read(ref _open);
+
+        /// <summary>A session's socket fails as it closes.</summary>
+        public volatile bool FailOnClose;
+
         public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
         {
             if (!Listening)
@@ -1145,6 +1210,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
             LastPassword = endpoint.Password;
             Connections++;
+            Interlocked.Increment(ref _open);
             return Task.FromResult<IRconSession>(new Session(this));
         }
 
@@ -1166,7 +1232,11 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
                 return Task.FromResult(owner.Answer(command));
             }
 
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+            public ValueTask DisposeAsync()
+            {
+                Interlocked.Decrement(ref owner._open);
+                return owner.FailOnClose ? ValueTask.FromException(new IOException("Connection reset by peer")) : ValueTask.CompletedTask;
+            }
         }
     }
 }

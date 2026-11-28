@@ -48,6 +48,39 @@ public sealed class AgentUpdaterTests : IDisposable
     }
 
     [Fact]
+    public async Task OnLinuxTheReleasesTarballIsUnpackedAndItsAgentScriptStarted()
+    {
+        _platform.Linux = true;
+        var release = Release(linux: true);
+        using var updater = Updater(release.Handler);
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256)).Status);
+
+        Assert.Equal(UpdateStatuses.Installing, (await _ended.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken)).Status);
+        var (script, folder) = Assert.Single(_platform.Started);
+        Assert.Equal(Path.Combine(folder, "install-pulsar-agent.sh"), script);
+        Assert.True(File.Exists(Path.Combine(folder, "agent", "PulsarAgent")));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(folder)!, "*.tar.gz"));
+        Assert.Contains(release.Handler.Requested, uri => uri.AbsolutePath.EndsWith("/pulsar-1.0.1-linux-x64.tar.gz", StringComparison.Ordinal));
+        Assert.DoesNotContain(release.Handler.Requested, uri => uri.AbsolutePath.EndsWith(".zip", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OnLinuxAReleaseWithoutATarballInstallsNothing()
+    {
+        _platform.Linux = true;
+        var release = Release();
+        using var updater = Updater(release.Handler);
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256)).Status);
+
+        var ended = await _ended.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal(UpdateStatuses.Failed, ended.Status);
+        Assert.Contains("has no pulsar-1.0.1-linux-x64.tar.gz for this machine", ended.Error, StringComparison.Ordinal);
+        Assert.Empty(_platform.Started);
+    }
+
+    [Fact]
     public async Task ARefusedRetryNamesTheUpdateActuallyRunning()
     {
         var release = Release();
@@ -386,13 +419,17 @@ public sealed class AgentUpdaterTests : IDisposable
 
     /// <summary>A release on a fake GitHub: its files redirect to the release storage, as GitHub's do.</summary>
     private FakeRelease Release(string version = Version, string minimum = "1.0.0", ECDsa? signer = null, string? zipSha = null,
-        string storage = "https://release-assets.githubusercontent.com", string[]? entries = null, string? zipVersion = null)
+        string storage = "https://release-assets.githubusercontent.com", string[]? entries = null, string? zipVersion = null, bool linux = false)
     {
         Assert.True(UpdateVersion.TryParse(version, out var parsed));
         var zip = Zip(entries ?? ["Install-Pulsar.ps1", "release.json", @"panel\Pulsar.Api.dll", @"agent\PulsarAgent.dll"], zipVersion ?? version);
         var zipName = UpdateRelease.ZipName(parsed);
+        var tarball = linux ? UpdateTarballTests.Tarball(UpdateRelease.LinuxFolder(parsed), ("release.json", $$"""{"version":"{{version}}"}"""),
+            ("install-pulsar-agent.sh", "#!/bin/sh"), ("agent/PulsarAgent", "program")) : null;
+        var tarballName = UpdateRelease.LinuxTarballName(parsed);
         var manifest = ProtocolJson.Serialize(new UpdateManifest("pulsar", version, minimum, DateTimeOffset.UtcNow, "Notes.",
-            [new UpdateFile(zipName, zip.Length, zipSha ?? Convert.ToHexStringLower(SHA256.HashData(zip)))]));
+            [new UpdateFile(zipName, zip.Length, zipSha ?? Convert.ToHexStringLower(SHA256.HashData(zip))),
+             .. tarball is null ? [] : new[] { new UpdateFile(tarballName, tarball.Length, Convert.ToHexStringLower(SHA256.HashData(tarball))) }]));
         var key = signer ?? _key;
         var signature = ProtocolJson.Serialize(new UpdateSignature(ProtocolCrypto.Fingerprint(key.ExportSubjectPublicKeyInfo()),
             Convert.ToBase64String(ProtocolCrypto.Sign(key, ProtocolCrypto.SignedData(UpdateRelease.SignaturePurpose, manifest)))));
@@ -402,6 +439,11 @@ public sealed class AgentUpdaterTests : IDisposable
             [UpdateRelease.SignatureName] = signature,
             [zipName] = zip,
         };
+        if (tarball is not null)
+        {
+            files[tarballName] = tarball;
+        }
+
         return new FakeRelease(new FakeGitHub(version, files, storage), Convert.ToHexStringLower(SHA256.HashData(manifest)));
     }
 
@@ -452,6 +494,25 @@ public sealed class AgentUpdaterTests : IDisposable
     private sealed class FakePlatform : IUpdatePlatform
     {
         public (string Code, string Message)? Cannot { get; set; }
+
+        /// <summary>A Linux agent's: the release's tarball and install-pulsar-agent.sh.</summary>
+        public bool Linux { get; set; }
+
+        public string ArchiveName(UpdateVersion version) => Linux ? UpdateRelease.LinuxTarballName(version) : UpdateRelease.ZipName(version);
+
+        public string InstallerName => Linux ? "install-pulsar-agent.sh" : "Install-Pulsar.ps1";
+
+        public void Extract(string archive, string destination, UpdateVersion version)
+        {
+            if (Linux)
+            {
+                UpdateTarball.Extract(archive, destination, UpdateRelease.LinuxFolder(version));
+            }
+            else
+            {
+                UpdateArchive.Extract(archive, destination);
+            }
+        }
 
         public List<(string Script, string Folder)> Started { get; } = [];
 

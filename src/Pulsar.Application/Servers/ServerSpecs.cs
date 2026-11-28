@@ -22,8 +22,6 @@ public sealed record PortNumberAllocations(IReadOnlyDictionary<string, Guid?> Po
 /// </summary>
 public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protector, IDatabaseSecretProtector databaseSecrets)
 {
-    private const string Platform = ManifestValidator.WindowsX64;
-
     /// <summary>
     /// The stored template's manifest. One this panel's checks refuse is not used anyway (a stricter rule may be a
     /// security one): <see cref="DomainErrorException"/> with <see cref="ServerErrors.TemplateNoLongerValid"/>.
@@ -38,15 +36,19 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
                 $"Template {template.Key} {template.Version} is not valid anymore: {string.Join("; ", result.Errors)}");
     }
 
-    /// <summary>The spec the agent renders the server from: manifest text, values (secrets decrypted) and ports.</summary>
+    /// <summary>
+    /// The spec the agent renders the server from: manifest text (as the node's platform reads it, <see cref="ManifestPlatforms"/>),
+    /// values (secrets decrypted) and ports.
+    /// </summary>
     public async Task<ServerRuntimeSpec> BuildAsync(Server server, GameTemplate template, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(template);
         var allocations = await AllocationsOf(server, cancellationToken);
         var addons = await ServerAddons.InstalledKeysAsync(db, server.Id, cancellationToken);
+        var manifest = ManifestPlatforms.For(template.Content, await PlatformOfAsync(server.NodeId, cancellationToken));
         // A suspended server is started by nobody (1.0.24): neither with its node nor after a crash.
-        return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
+        return new ServerRuntimeSpec(server.ShortId, manifest, Values(server), server.ExtraArguments, server.AutoStart && !server.IsSuspended,
             server.RestartOnCrash && !server.IsSuspended,
             allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null,
             server.SteamBranch, server.RconPasswordProtected is { } rcon ? protector.Unprotect(rcon) : null,
@@ -449,14 +451,38 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         return Result.Success();
     }
 
-    /// <summary>The whole server renders: values, ports and extra arguments together (the agent checks again).</summary>
+    /// <summary>The platform of the server's node now (its <see cref="Server.NodeId"/>): Windows for one that never said.</summary>
+    public async Task<string> PlatformOfAsync(NodeId nodeId, CancellationToken cancellationToken)
+    {
+        var node = db.Nodes.Local.FirstOrDefault(n => n.Id == nodeId)
+            ?? await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
+        return node?.Platform ?? NodePlatforms.Windows;
+    }
+
+    /// <summary><see cref="Check"/> on the platform of the server's node.</summary>
+    public async Task<Result> CheckAsync(Server server, GameManifest manifest, IReadOnlyCollection<NodeAllocation> allocations, string? rconPassword = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        return Check(server, manifest, await PlatformOfAsync(server.NodeId, cancellationToken), allocations, rconPassword);
+    }
+
+    /// <summary>
+    /// The whole server renders on <paramref name="platform"/> (its node's): values, ports and extra arguments together
+    /// (the agent checks again). A game without a runtime for it is refused (<see cref="ServerErrors.PlatformUnsupported"/>).
+    /// </summary>
     /// <param name="rconPassword">An RCON password about to be chosen; otherwise the one chosen for it, if any (a stand-in for none).</param>
-    public Result Check(Server server, GameManifest manifest, IReadOnlyCollection<NodeAllocation> allocations, string? rconPassword = null)
+    public Result Check(Server server, GameManifest manifest, string platform, IReadOnlyCollection<NodeAllocation> allocations, string? rconPassword = null)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(allocations);
-        if (server.ExtraArguments.Count > 0 && manifest.Runtime.GetValueOrDefault(Platform)?.AllowExtraArguments != true)
+        if (!manifest.RunsOn(platform))
+        {
+            return ServerErrors.PlatformUnsupported;
+        }
+
+        if (server.ExtraArguments.Count > 0 && manifest.Runtime[platform].AllowExtraArguments != true)
         {
             return ServerErrors.ExtraArgumentsNotAllowed;
         }
@@ -465,7 +491,7 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         var binding = new ServerBinding(server.ShortId, Values(server),
             allocations.ToDictionary(a => a.PortName!, a => new PortAssignment(a.IpAddress, a.Port)), server.ExtraArguments,
             rconPassword ?? (server.RconPasswordProtected is { } chosen ? protector.Unprotect(chosen) : null));
-        return LaunchPlanRenderer.Check(manifest, Platform, binding) is { } error
+        return LaunchPlanRenderer.Check(manifest, platform, binding) is { } error
             ? ServerErrors.InvalidSettings(Describe(manifest, error))
             : Result.Success();
     }

@@ -568,6 +568,10 @@ function Get-PulsarAssemblies([string] $project) {
         if ($custom.Count -gt 0) { $assembly = $custom[0] }
         $assemblies[$path] = $assembly
         foreach ($reference in @($xml.SelectNodes('//ProjectReference'))) {
+            # A reference of another target's build only (the agent's Linux layer, in its net10.0 build) is not in these
+            # Windows programs.
+            $condition = "$($reference.ParentNode.GetAttribute('Condition')) $($reference.GetAttribute('Condition'))"
+            if ($condition -match "'\$\(TargetFramework\)'\s*==\s*'(?<framework>[^']+)'" -and $Matches['framework'] -cne 'net10.0-windows') { continue }
             $pending.Enqueue([IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $path) $reference.GetAttribute('Include'))))
         }
     }
@@ -1034,14 +1038,17 @@ try {
     $zipOptions = $common + @('--no-self-contained', '-p:TargetLatestRuntimePatch=true')
     dotnet publish (Join-Path $repo 'src\Pulsar.Api') @zipOptions -o (Join-Path $staging 'panel')
     if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
-    dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @zipOptions -o (Join-Path $staging 'agent')
+    dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @zipOptions -f net10.0-windows -o (Join-Path $staging 'agent')
     if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
     # The MSI's agent carries its own runtime: Windows Installer runs it as is, with nothing to install .NET first.
-    dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @common --self-contained -o $msiAgent
+    dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @common --self-contained -f net10.0-windows -o $msiAgent
     if ($LASTEXITCODE -ne 0) { throw 'publish agent for the MSI failed' }
     $linuxOptions = @($common | ForEach-Object { if ($_ -ceq 'win-x64') { 'linux-x64' } else { $_ } }) + @('--self-contained')
     dotnet publish (Join-Path $repo 'src\Pulsar.Api') @linuxOptions -o (Join-Path $linuxStaging 'panel')
     if ($LASTEXITCODE -ne 0) { throw 'publish panel for Linux failed' }
+    # The Linux agent (install-pulsar-agent.sh), self-contained too.
+    dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @linuxOptions -f net10.0 -o (Join-Path $linuxStaging 'agent')
+    if ($LASTEXITCODE -ne 0) { throw 'publish agent for Linux failed' }
     if ($Signing) {
         dotnet build-server shutdown
         if ($LASTEXITCODE -ne 0) { throw 'dotnet build-server shutdown failed' }
@@ -1141,14 +1148,16 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
         Copy-Item -LiteralPath $agentSetup -Destination (Join-Path $linuxDownloads.FullName 'PulsarAgentSetup.exe')
     }
 @"
-Pulsar $Version for Linux (x64): the panel
+Pulsar $Version for Linux (x64): the panel and the agent
 
-Install it as root from this folder, which must be one only root can change:
+Install the panel as root from this folder, which must be one only root can change:
     sudo ./install-pulsar.sh
 or from the internet in one command, checked against the release's signature:
     curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash
-docs/install.md, "Linux", says what it does. The panel's nodes (the machines that run game servers) are Windows
-machines with the agent, added from the panel (Nodes > Add node).
+A machine that runs game servers (a node) gets the agent instead, with the node code of the panel's Nodes > Add node:
+    sudo ./install-pulsar-agent.sh
+    curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --agent
+docs/install.md, "Linux" and "Linux nodes", says what they do.
 Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas under MIT.
 "@.Replace("`r`n", "`n") | Set-Content (Join-Path $linuxStaging 'README.txt') -Encoding ASCII -NoNewline
     $packer = Build-ReleasePacker $repo (Join-Path $Work 'release-packer')

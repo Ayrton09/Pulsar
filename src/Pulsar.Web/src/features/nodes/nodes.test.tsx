@@ -53,6 +53,7 @@ const online: Schemas['NodeSummary'] = {
   credentialFingerprint: 'sha256:node-key-fingerprint',
   connectedWithCertificate: false,
   agentCanUseCertificate: true,
+  platform: 'windows-x64',
 };
 const offline = { ...online, id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false };
 const pending: Schemas['NodeSummary'] = {
@@ -304,6 +305,8 @@ describe('nodes page', () => {
   it('offers the node code for PulsarAgentSetup.exe first, and the command as the advanced path', async () => {
     const code = 'pulsar-node-1.eyJ1cmwiOiJodHRwczovL3BhbmVsLmV4YW1wbGUuY29tIn0';
     const setupHash = '9f2b5c'.padEnd(64, '0');
+    const linuxCommand =
+      'curl -fsSL https://github.com/Ayrton09/Pulsar/releases/download/v1.2.3/install.sh | sudo bash -s -- --agent --version 1.2.3';
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/nodes': () => json([]),
@@ -318,6 +321,7 @@ describe('nodes page', () => {
               nodeCode: code,
               agentSetupSha256: setupHash,
               agentSetupAvailable: true,
+              linuxAgentCommand: linuxCommand,
             },
           },
           201,
@@ -345,6 +349,12 @@ describe('nodes page', () => {
     await user.click(within(setup).getByRole('button', { name: 'Copy Node code' }));
     expect(writeText).toHaveBeenCalledWith(code);
     expect(within(setup).getByRole('status')).toHaveTextContent('Copied to the clipboard.');
+
+    // A Linux machine runs the panel's command, which asks for the same code.
+    const linux = screen.getByRole('region', { name: 'Install on Linux' });
+    expect(within(linux).getByLabelText('Linux command')).toHaveTextContent(linuxCommand);
+    await user.click(within(linux).getByRole('button', { name: 'Copy Linux command' }));
+    expect(writeText).toHaveBeenCalledWith(linuxCommand);
 
     // The installer script's command stays one click away.
     const advanced = screen.getByRole('button', { name: 'Advanced: install with PowerShell' });

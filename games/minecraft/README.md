@@ -50,3 +50,10 @@ The Players card kicks, bans and unbans (`pardon`), adds to and takes off the wh
 ## Backups of a running server (1.0.11)
 
 Newer versions print the save's confirmation as `System chat: Saved the game`: the template takes both forms (still not a player's chat line), so a backup goes on as soon as the game saved instead of waiting its two minutes. Read live (no snapshot), a backup or a zip leaves out `world/session.lock`, which the game keeps locked. Checked on 2026-10-26 with a Mojang 26.3 server and the dev agent (no snapshot): the save was confirmed, 31 files backed up and 1 left out, in a third of a second; the world zipped from the file manager while the server ran (25 files, `session.lock` left out) and unzipped into another folder.
+
+## Linux
+
+The template runs on Linux nodes too: the agent installs Adoptium's Linux Java runtime (its `.tar.gz`, programs
+executable) and starts `java/bin/java` with the same arguments; Forge and NeoForge start from their `unix_args.txt`.
+Checked for real on a Linux node (Ubuntu 24.04) with Minecraft 26.3: a Mojang server and a Forge one installed,
+started, answered `list` from the console, stopped and were deleted.

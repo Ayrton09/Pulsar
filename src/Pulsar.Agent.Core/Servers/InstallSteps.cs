@@ -5,6 +5,9 @@ namespace Pulsar.Agent.Core.Servers;
 
 public sealed class InstallOptions
 {
+    /// <summary>The node's platform: what the steps download is its build (a release's Linux asset, Linux' runtimes).</summary>
+    public string Platform { get; init; } = ManifestValidator.WindowsX64;
+
     /// <summary>
     /// Build output of Pulsar's test game server. Only set in development and CI: it enables the <c>pulsar-test</c>
     /// manifest (its <c>testGameServer</c> step copies these files into the server directory).
@@ -26,6 +29,9 @@ public sealed class InstallOptions
     /// install what only a signature vouches for (<see cref="MinecraftBedrockStep"/>).
     /// </summary>
     public ICodeSignatures? CodeSignatures { get; init; }
+
+    /// <summary>A Linux node whose machine has Wine (its program found when the agent started): it runs games with it (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool Wine { get; init; }
 
     /// <summary>An installer the agent runs (Forge's, NeoForge's) that prints nothing for this long is stopped.</summary>
     public TimeSpan InstallerStallTimeout { get; init; } = TimeSpan.FromMinutes(5);
@@ -75,16 +81,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         ArgumentNullException.ThrowIfNull(progress);
         if (step is MinecraftServerStep minecraft)
         {
-            return await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory))
+            return await new MinecraftInstaller(files, options.HttpHandler, JavaFor(context, serverDirectory), options.Platform)
                 .InstallAsync(serverDirectory, Choice(minecraft, variables), progress, cancellationToken);
         }
 
         if (step is MinecraftBedrockStep bedrock)
         {
             var version = bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null;
-            var signatures = options.CodeSignatures
-                ?? throw new GameProcessException("bedrock.untrusted", "This agent cannot check code signatures, so it does not install the Bedrock server.");
-            await new MinecraftBedrockInstaller(files, options.HttpHandler, signatures).InstallAsync(serverDirectory, version, progress, cancellationToken);
+            await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures, options.Platform)
+                .InstallAsync(serverDirectory, version, progress, cancellationToken);
             return null;
         }
 
@@ -107,7 +112,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 
         if (step is DotnetRuntimeStep dotnet)
         {
-            await new DotnetRuntimeInstaller(files, options.HttpHandler).InstallAsync(serverDirectory, dotnet.Channel, progress, cancellationToken);
+            await new DotnetRuntimeInstaller(files, options.HttpHandler, options.Platform).InstallAsync(serverDirectory, dotnet.Channel, progress, cancellationToken);
             return null;
         }
 
@@ -124,7 +129,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         step is SteamCmdStep or MinecraftServerStep or MinecraftBedrockStep or GitHubReleaseStep or DotnetRuntimeStep;
 
     /// <summary>Installs <see cref="GitHubReleaseStep"/>s as addons are installed, recorded apart from the addons.</summary>
-    private AddonInstaller Releases => new(files, options.HttpHandler, GitHubReleaseStep.RecordDirectory);
+    private AddonInstaller Releases => new(files, options.HttpHandler, GitHubReleaseStep.RecordDirectory, options.Platform);
 
     /// <summary>A release step as the addon the installer takes: its repository names it in messages.</summary>
     private static AddonDefinition AsAddon(GitHubReleaseStep step) =>
@@ -144,13 +149,13 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         ArgumentNullException.ThrowIfNull(variables);
         return step switch
         {
-            MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler)
+            MinecraftServerStep minecraft => await new MinecraftInstaller(files, options.HttpHandler, platform: options.Platform)
                 .CheckAsync(serverDirectory, Choice(minecraft, variables), cancellationToken),
             // A check downloads nothing, so it has no signature to verify.
-            MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures ?? Unsigned.Instance)
+            MinecraftBedrockStep bedrock => await new MinecraftBedrockInstaller(files, options.HttpHandler, options.CodeSignatures, options.Platform)
                 .CheckAsync(serverDirectory, bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null, cancellationToken),
             GitHubReleaseStep release => await Releases.CheckAsync(serverDirectory, release.RecordKey, release.Source, cancellationToken),
-            DotnetRuntimeStep dotnet => await new DotnetRuntimeInstaller(files, options.HttpHandler).CheckAsync(serverDirectory, dotnet.Channel, cancellationToken),
+            DotnetRuntimeStep dotnet => await new DotnetRuntimeInstaller(files, options.HttpHandler, options.Platform).CheckAsync(serverDirectory, dotnet.Channel, cancellationToken),
             _ => null,
         };
     }
@@ -212,7 +217,7 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
     /// prints goes to the console; one that stalls or runs too long is stopped.
     /// </summary>
     private Task RunJavaAsync(InstallContext context, string serverDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
-        RunAsServerAsync(context, serverDirectory, "java/bin/java.exe", "", arguments, ConsoleMode.Pipes, "minecraft.installer", "The installer",
+        RunAsServerAsync(context, serverDirectory, $"{MinecraftInstaller.JavaDirectory}/{MinecraftInstaller.JavaProgram(options.Platform)}", "", arguments, ConsoleMode.Pipes, "minecraft.installer", "The installer",
             cancellationToken);
 
     /// <summary>
@@ -422,6 +427,38 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         }
     }
 
+    /// <summary>
+    /// The Steam client's libraries of the server's Linux SteamCMD and where Steam for Linux keeps them in its user's home
+    /// (<c>~/.steam/sdk64</c>, <c>~/.steam/sdk32</c>), where a Linux game server looks for them (Counter-Strike 2).
+    /// </summary>
+    public static readonly IReadOnlyList<(string Source, string Destination)> LinuxSteamClientFiles =
+    [
+        ("linux64/steamclient.so", ".steam/sdk64/steamclient.so"),
+        ("linux32/steamclient.so", ".steam/sdk32/steamclient.so"),
+    ];
+
+    /// <summary>
+    /// <see cref="SteamCmdStep.SteamClient"/> on Linux: the server's SteamCMD's <c>steamclient.so</c> files are copied
+    /// into the game's home (<paramref name="home"/>: the server's folder, or its runtime's user profile), every run, as
+    /// SteamCMD updates them. Linux libraries carry no signature to check; both ends are the server's own (its SteamCMD
+    /// copy, its home), read and written as its user, and only its own game loads them, so nothing crosses to another
+    /// account.
+    /// </summary>
+    public void CopyLinuxSteamClient(string serverDirectory, string? home)
+    {
+        foreach (var (source, destination) in LinuxSteamClientFiles)
+        {
+            using var stream = files.OpenRead(serverDirectory, $"{Steam.SteamCmdRunner.WorkingDirectory}/{source}")
+                ?? throw new GameProcessException("steamclient.missing", $"SteamCMD has no {source} to copy.");
+            if (stream.CanSeek && stream.Length > MaxSteamClientFileSize)
+            {
+                throw new GameProcessException("steamclient.too_large", $"SteamCMD's {source} is larger than {MaxSteamClientFileSize / 1024 / 1024} MiB.");
+            }
+
+            files.Write(serverDirectory, home is { Length: > 0 } ? $"{home}/{destination}" : destination, stream);
+        }
+    }
+
     /// <summary>A path inside the server directory whose existing components are real directories, never links.</summary>
     public static string Resolve(string serverDirectory, string relativePath)
     {
@@ -456,8 +493,16 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(source, file).Replace(Path.DirectorySeparatorChar, '/');
-            using var content = File.OpenRead(file);
-            files.Write(serverDirectory, $"{destination}/{relative}", content);
+            using (var content = File.OpenRead(file))
+            {
+                files.Write(serverDirectory, $"{destination}/{relative}", content);
+            }
+
+            // Linux runs a program by its execute bits, which a copy does not keep.
+            if (!OperatingSystem.IsWindows() && File.GetUnixFileMode(file).HasFlag(UnixFileMode.UserExecute))
+            {
+                files.SetExecutable(serverDirectory, $"{destination}/{relative}");
+            }
         }
     }
 }
@@ -467,11 +512,3 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files, IGa
 /// <param name="Latest">What the step would install now.</param>
 /// <param name="Available">The step would install something the server does not have.</param>
 public sealed record GameBuild(string? Installed, string Latest, bool Available);
-
-/// <summary>Vouches for nothing: for code that downloads no executable.</summary>
-internal sealed class Unsigned : ICodeSignatures
-{
-    public static Unsigned Instance { get; } = new();
-
-    public bool IsSignedBy(string path, string organization) => false;
-}

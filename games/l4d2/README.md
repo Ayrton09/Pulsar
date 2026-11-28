@@ -22,3 +22,12 @@ None was tried on a real server: as with `sv_alltalk`, a cvar this server does n
 ## Players (1.0.11)
 
 The Players card kicks a player by name (`kick "…"`). Source's bans take a user id or a Steam ID, which the server's query does not list, so the template has none. From the game's and hosting providers' documentation; not run on a server yet.
+
+## Linux
+
+The template runs on Linux nodes too, with the game's 32-bit `srcds_linux` and the server's folder and `bin` as its
+library path. Steam lists the dedicated server for Windows only until it is installed (a Linux install answers
+"Invalid platform"), so a Linux node's first install downloads its Windows files and then its Linux ones over them
+(`windowsFirstOnLinux`); later updates are plain Linux ones. Checked for real on a
+Linux node (Ubuntu 24.04): installed, started on c1m1_hotel ("Linux Dedicated", secure, VAC on), `status` over RCON,
+stopped with `quit` and deleted.

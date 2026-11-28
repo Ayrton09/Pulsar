@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Tests;
 
@@ -439,6 +440,58 @@ public sealed class MinecraftInstallerTests : IDisposable
     private Task<GameBuild> CheckAsync(MinecraftChoice choice) =>
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.CheckAsync(_root, choice,
             TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task ALinuxNodeTakesAdoptiumsLinuxTarballWithItsProgramsExecutable()
+    {
+        const string LinuxAssets = "https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=x64&image_type=jre&os=linux&vendor=eclipse";
+        const string LinuxRelease = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25/jre.tar.gz";
+        var tarball = TestTars.TarGz(TestTars.Folder("jdk-25.0.4.1+1-jre"), TestTars.File("jdk-25.0.4.1+1-jre/bin/java", "java", TestTars.Program),
+            TestTars.File("jdk-25.0.4.1+1-jre/lib/jspawnhelper", "helper", TestTars.Program), TestTars.File("jdk-25.0.4.1+1-jre/lib/server/libjvm.so", "jvm"),
+            TestTars.File("jdk-25.0.4.1+1-jre/legal/java.base/LICENSE", "GPL"),
+            new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.SymbolicLink, "jdk-25.0.4.1+1-jre/legal/java.sql/LICENSE") { LinkName = "../java.base/LICENSE" });
+        _http.Routes[LinuxAssets] = () => Ok(Json(new[]
+        {
+            // A Windows-shaped link first: a Linux node takes only a tarball.
+            new { release_name = "jdk-25.0.4.1+1", binary = new { package = new { link = Release, checksum = Hex(SHA256.HashData(tarball)), size = 1 } } },
+            new { release_name = "jdk-25.0.4.1+1", binary = new { package = new { link = LinuxRelease, checksum = Hex(SHA256.HashData(tarball)), size = tarball.Length } } },
+        }));
+        _http.Routes[LinuxRelease] = () => Ok(tarball);
+        var files = new ExecutableFiles();
+
+        Assert.Equal("26.3", await new MinecraftInstaller(files, _http, platform: ManifestValidator.LinuxX64) { StallTimeout = TimeSpan.FromSeconds(5) }
+            .InstallAsync(_root, "26.3", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("java", File.ReadAllText(Path.Combine(_root, "java", "bin", "java")));
+        Assert.Equal(["java/bin/java", "java/lib/jspawnhelper"], files.Executables);
+        Assert.DoesNotContain(Release, _http.Requested);
+        Assert.Equal("java/bin/java", $"{MinecraftInstaller.JavaDirectory}/{MinecraftInstaller.JavaProgram(ManifestValidator.LinuxX64)}");
+        Assert.Equal("GPL", File.ReadAllText(Path.Combine(_root, "java", "legal", "java.base", "LICENSE")));
+        Assert.False(File.Exists(Path.Combine(_root, "java", "legal", "java.sql", "LICENSE"))); // its license link is left out
+    }
+
+    [Theory]
+    [InlineData("jdk-25.0.4.1+1-jre/lib/libjvm.so")]
+    [InlineData("jdk-25.0.4.1+1-jre/legal/java.sql/nested/LICENSE")]
+    [InlineData("jdk-25.0.4.1+1-jre/bin/java")]
+    public async Task ALinkOutsideTheRuntimesLicenseTextsFailsItsLinuxTarball(string link)
+    {
+        const string LinuxAssets = "https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=x64&image_type=jre&os=linux&vendor=eclipse";
+        const string LinuxRelease = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25/jre.tar.gz";
+        var tarball = TestTars.TarGz(TestTars.File("jdk-25.0.4.1+1-jre/bin/java", "java", TestTars.Program),
+            new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.SymbolicLink, link) { LinkName = "/etc/shadow" });
+        _http.Routes[LinuxAssets] = () => Ok(Json(new[]
+        {
+            new { release_name = "jdk-25.0.4.1+1", binary = new { package = new { link = LinuxRelease, checksum = Hex(SHA256.HashData(tarball)), size = tarball.Length } } },
+        }));
+        _http.Routes[LinuxRelease] = () => Ok(tarball);
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => new MinecraftInstaller(new DirectServerFiles(), _http, platform: ManifestValidator.LinuxX64)
+            .InstallAsync(_root, "26.3", (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal("minecraft.bad_archive", error.Code);
+        Assert.False(File.Exists(Path.Combine(_root, "java", "bin", "java")));
+    }
 
     private Task<string> InstallAsync(MinecraftChoice choice) =>
         new MinecraftInstaller(new DirectServerFiles(), _http) { StallTimeout = TimeSpan.FromSeconds(5) }.InstallAsync(_root, choice,

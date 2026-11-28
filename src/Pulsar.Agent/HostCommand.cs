@@ -1,8 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Processes;
-using Pulsar.Agent.Windows.Processes;
-using Pulsar.Agent.Windows.Servers;
+using Pulsar.Agent.Platform;
 using Serilog;
 using Serilog.Extensions.Logging;
 
@@ -42,20 +41,7 @@ internal static class HostCommand
         using var loggers = new SerilogLoggerFactory(log, dispose: true);
         try
         {
-            // Before the game's console host starts with this process's token (docs/architecture/08): never stops a start.
-            try
-            {
-                log.Information("Removed the privileges a host never uses: {Privileges}", string.Join(", ", HostPrivileges.RemoveFromProcess()));
-            }
-            catch (System.ComponentModel.Win32Exception ex)
-            {
-                log.Warning(ex, "The privileges a host never uses could not be removed");
-            }
-
-            // The agent's own lock files: its logons of the server's account and this host's never overlap.
-            var accounts = new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>(), paths.LogonLocksDirectory);
-            var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>(),
-                allowCurrentUser: line.Has("dev"), hostsOneGame: true); // only a development agent starts hosts with --dev
+            var processes = AgentPlatform.Current.HostProcesses(paths, loggers, development: line.Has("dev"), log);
             using var service = new GameHostService(processes, serverId, pipe, new GameHostOptions(), TimeProvider.System,
                 loggers.CreateLogger<GameHostService>());
             return await service.RunAsync(CancellationToken.None);

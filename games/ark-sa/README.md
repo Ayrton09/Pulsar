@@ -27,3 +27,12 @@ Checked on 2026-10-05 on Windows 11 Pro (build 26200), with the Steam build of t
 Version 1.2.0 adds 19 options: hardcore, player and wild creature damage and resistance, structure resistance, item stack size, resource respawn period, harvest health, player food and water drain, creature food drain, offline raid protection and its delay, max tamed creatures per tribe, max structures in range, hit markers (`GameUserSettings.ini`), players per tribe and no friendly fire in PvP (`Game.ini`).
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `ShooterGame/Binaries/Win64/ArkAscendedServer.exe` with Wine, in a prefix of the server's own
+(`.pulsar/wine`), without a display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo apt-get install
+wine64` and a restart of the agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0): installed, started
+(ready once it was advertising for join, after about two minutes), answered over RCON, stopped with `SaveWorld` and
+`DoExit` (the world saved) and deleted.

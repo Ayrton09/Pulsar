@@ -15,14 +15,22 @@ namespace Pulsar.Agent.Core.Servers;
 /// form Mojang uses, and installs <c>bedrock_server.exe</c> only with a valid Authenticode signature of Microsoft's,
 /// checked on a copy in the agent's own temporary folder before it is put in the server's. An update leaves the
 /// server's settings files (<see cref="MinecraftBedrockStep.KeptFiles"/>) and its worlds as they are, and a version
-/// already installed is not downloaded again.
+/// already installed is not downloaded again. A Linux node takes Mojang's Linux build, whose <c>bedrock_server</c> has
+/// no signature to check: only Mojang's hosts over HTTPS and the form of its address vouch for it there
+/// (docs/architecture/08).
 /// </summary>
-public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMessageHandler handler, ICodeSignatures signatures)
+/// <param name="signatures">Checks the Windows build's signature; a Windows node without one installs nothing.</param>
+/// <param name="platform">The node's platform, whose build is installed.</param>
+public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMessageHandler handler, ICodeSignatures? signatures,
+    string platform = ManifestValidator.WindowsX64)
 {
     /// <summary>Mojang's list of the current downloads (what minecraft.net's download page reads).</summary>
     public static readonly Uri LinksUrl = new("https://net-secondary.web.minecraft-services.net/api/v1.0/download/links");
 
     public const string Executable = "bedrock_server.exe";
+
+    /// <summary>The server's program on Linux.</summary>
+    public const string LinuxExecutable = "bedrock_server";
 
     /// <summary>The organization that signs <see cref="Executable"/>.</summary>
     public const string Signer = "Microsoft Corporation";
@@ -34,6 +42,7 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
     private const long MaximumExtracted = 4L * 1024 * 1024 * 1024;
     private const int MaximumEntries = 20_000;
     private const string WindowsDownload = "serverBedrockWindows";
+    private const string LinuxDownload = "serverBedrockLinux";
 
     private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -49,16 +58,23 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
     public async Task InstallAsync(string serverDirectory, string? version, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(progress);
+        var linux = platform == ManifestValidator.LinuxX64;
+        if (!linux && signatures is null)
+        {
+            throw Failed("bedrock.untrusted", "This agent cannot check code signatures, so it does not install the Bedrock server.");
+        }
+
+        var program = linux ? LinuxExecutable : Executable;
         using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
         var client = new VerifiedDownloader(http, s_hosts, "bedrock", "the Minecraft Bedrock server") { StallTimeout = StallTimeout };
         try
         {
             await progress(InstallStages.Preparing, null);
             var download = string.IsNullOrEmpty(version) || version == MinecraftBedrockStep.Latest
-                ? await LatestAsync(client, cancellationToken)
-                : AddressOf(version);
-            var id = VersionOf(download) ?? throw Failed("bedrock.unexpected_link", "Mojang listed a Bedrock server download Pulsar does not recognize.");
-            if (ReadMarker(serverDirectory) == id && files.OpenRead(serverDirectory, Executable) is { } installed)
+                ? await LatestAsync(client, platform, cancellationToken)
+                : AddressOf(version, platform);
+            var id = VersionOf(download, platform) ?? throw Failed("bedrock.unexpected_link", "Mojang listed a Bedrock server download Pulsar does not recognize.");
+            if (ReadMarker(serverDirectory) == id && files.OpenRead(serverDirectory, program) is { } installed)
             {
                 installed.Dispose();
                 return; // already this version: nothing to download
@@ -67,7 +83,16 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
             await using var archiveFile = await client.DownloadAsync(download, null, null, percent => progress(InstallStages.Downloading, percent),
                 cancellationToken, MaximumDownload);
             using var archive = new ZipArchive(archiveFile, ZipArchiveMode.Read);
-            var entries = Entries(archive);
+            var entries = Entries(archive, program);
+            if (linux)
+            {
+                await progress(InstallStages.Installing, null);
+                Install(serverDirectory, entries, program, checkedCopy: null);
+                using var linuxMarker = new MemoryStream(Encoding.UTF8.GetBytes(id));
+                files.Write(serverDirectory, VersionMarker, linuxMarker);
+                return;
+            }
+
             var executable = entries.Single(e => e.Relative == Executable).Entry;
 
             await progress(InstallStages.Verifying, null);
@@ -80,31 +105,13 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
                     await content.CopyToAsync(copy, cancellationToken);
                 }
 
-                if (!signatures.IsSignedBy(verified, Signer))
+                if (!signatures!.IsSignedBy(verified, Signer))
                 {
                     throw Failed("bedrock.untrusted", $"The downloaded {Executable} is not signed by {Signer}; it was not installed.");
                 }
 
                 await progress(InstallStages.Installing, null);
-                foreach (var (entry, relative) in entries)
-                {
-                    if (relative == Executable)
-                    {
-                        await using var checkedCopy = File.OpenRead(verified);
-                        files.Write(serverDirectory, relative, checkedCopy);
-                        continue;
-                    }
-
-                    if (MinecraftBedrockStep.KeptFiles.Contains(relative, StringComparer.OrdinalIgnoreCase)
-                        && files.OpenRead(serverDirectory, relative) is { } existing)
-                    {
-                        existing.Dispose();
-                        continue; // the server's own settings
-                    }
-
-                    await using var content = BoundedEntryStream.Open(entry);
-                    files.Write(serverDirectory, relative, content);
-                }
+                Install(serverDirectory, entries, program, verified);
             }
             finally
             {
@@ -122,6 +129,41 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
     }
 
     /// <summary>
+    /// Writes the archive's files into the server's folder: the program from <paramref name="checkedCopy"/> when there is
+    /// one (the copy whose signature was checked), executable on Linux; its settings files only while they are missing.
+    /// </summary>
+    private void Install(string serverDirectory, List<(ZipArchiveEntry Entry, string Relative)> entries, string program, string? checkedCopy)
+    {
+        foreach (var (entry, relative) in entries)
+        {
+            if (relative == program)
+            {
+                using (var content = checkedCopy is null ? BoundedEntryStream.Open(entry) : File.OpenRead(checkedCopy))
+                {
+                    files.Write(serverDirectory, relative, content);
+                }
+
+                if (platform == ManifestValidator.LinuxX64)
+                {
+                    files.SetExecutable(serverDirectory, relative);
+                }
+
+                continue;
+            }
+
+            if (MinecraftBedrockStep.KeptFiles.Contains(relative, StringComparer.OrdinalIgnoreCase)
+                && files.OpenRead(serverDirectory, relative) is { } existing)
+            {
+                existing.Dispose();
+                continue; // the server's own settings
+            }
+
+            using var file = BoundedEntryStream.Open(entry);
+            files.Write(serverDirectory, relative, file);
+        }
+    }
+
+    /// <summary>
     /// Whether an update would install another version (an update check, Pulsar 1.0.9): the version the server follows
     /// (Mojang's latest, or the one chosen) against the one this installer recorded.
     /// </summary>
@@ -133,8 +175,8 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
         try
         {
             var latest = string.IsNullOrEmpty(version) || version == MinecraftBedrockStep.Latest
-                ? VersionOf(await LatestAsync(client, cancellationToken))!
-                : VersionOf(AddressOf(version))!;
+                ? VersionOf(await LatestAsync(client, platform, cancellationToken), platform)!
+                : VersionOf(AddressOf(version, platform), platform)!;
             var installed = ReadMarker(serverDirectory);
             return new GameBuild(installed, latest, installed != latest);
         }
@@ -145,25 +187,26 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
         }
     }
 
-    /// <summary>Where Mojang serves a version's Windows build.</summary>
-    public static Uri AddressOf(string version) => VersionPattern().IsMatch(version)
-        ? new Uri($"https://www.minecraft.net/bedrockdedicatedserver/bin-win/bedrock-server-{version}.zip")
+    /// <summary>Where Mojang serves a version's build for <paramref name="platform"/> (Windows' by default).</summary>
+    public static Uri AddressOf(string version, string platform = ManifestValidator.WindowsX64) => VersionPattern().IsMatch(version)
+        ? new Uri($"https://www.minecraft.net/bedrockdedicatedserver/{(platform == ManifestValidator.LinuxX64 ? "bin-linux" : "bin-win")}/bedrock-server-{version}.zip")
         : throw Failed("bedrock.unknown_version", $"'{version}' is not a Minecraft Bedrock version.");
 
-    /// <summary>The version in an address of Mojang's Windows builds; null for any other address.</summary>
-    public static string? VersionOf(Uri address)
+    /// <summary>The version in an address of Mojang's builds for <paramref name="platform"/>; null for any other address.</summary>
+    public static string? VersionOf(Uri address, string platform = ManifestValidator.WindowsX64)
     {
         ArgumentNullException.ThrowIfNull(address);
-        var match = DownloadPattern().Match(address.AbsoluteUri);
+        var match = (platform == ManifestValidator.LinuxX64 ? LinuxDownloadPattern() : DownloadPattern()).Match(address.AbsoluteUri);
         return match.Success ? match.Groups["version"].Value : null;
     }
 
-    private static async Task<Uri> LatestAsync(VerifiedDownloader client, CancellationToken cancellationToken)
+    private static async Task<Uri> LatestAsync(VerifiedDownloader client, string platform, CancellationToken cancellationToken)
     {
+        var linux = platform == ManifestValidator.LinuxX64;
         var links = await client.GetJsonAsync<LinksAnswer>(LinksUrl, sha1: null, cancellationToken);
-        var url = links.Result?.Links?.FirstOrDefault(l => l.DownloadType == WindowsDownload)?.DownloadUrl
-            ?? throw Failed("bedrock.unexpected_link", "Mojang lists no Bedrock server for Windows.");
-        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && VersionOf(uri) is not null
+        var url = links.Result?.Links?.FirstOrDefault(l => l.DownloadType == (linux ? LinuxDownload : WindowsDownload))?.DownloadUrl
+            ?? throw Failed("bedrock.unexpected_link", $"Mojang lists no Bedrock server for {(linux ? "Linux" : "Windows")}.");
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && VersionOf(uri, platform) is not null
             ? uri
             : throw Failed("bedrock.unexpected_link", "Mojang listed a Bedrock server download Pulsar does not recognize.");
     }
@@ -173,7 +216,7 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
     /// folder (by its name or a short name), no name twice (Windows names ignore case: a second "Bedrock_Server.exe" would
     /// replace the checked one), bounded.
     /// </summary>
-    private static List<(ZipArchiveEntry Entry, string Relative)> Entries(ZipArchive archive)
+    private static List<(ZipArchiveEntry Entry, string Relative)> Entries(ZipArchive archive, string program)
     {
         var entries = new List<(ZipArchiveEntry, string)>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -202,9 +245,9 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
             entries.Add((entry, name));
         }
 
-        return entries.Count(e => e.Item2 == Executable) == 1
+        return entries.Count(e => e.Item2 == program) == 1
             ? entries
-            : throw Failed("bedrock.bad_archive", $"The Bedrock server archive does not contain {Executable}.");
+            : throw Failed("bedrock.bad_archive", $"The Bedrock server archive does not contain {program}.");
     }
 
     private string? ReadMarker(string serverDirectory)
@@ -235,6 +278,10 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
     [GeneratedRegex(@"\Ahttps://www\.minecraft\.net/bedrockdedicatedserver/bin-win/bedrock-server-(?<version>[0-9]{1,4}(\.[0-9]{1,4}){2,3})\.zip\z",
         RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DownloadPattern();
+
+    [GeneratedRegex(@"\Ahttps://www\.minecraft\.net/bedrockdedicatedserver/bin-linux/bedrock-server-(?<version>[0-9]{1,4}(\.[0-9]{1,4}){2,3})\.zip\z",
+        RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LinuxDownloadPattern();
 
     private sealed record LinksAnswer(LinksResult? Result);
 

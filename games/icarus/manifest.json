@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "icarus",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "name": "Icarus",
   "description": "Icarus dedicated server, installed anonymously with SteamCMD. Players launch and resume prospects from its lobby; its prospects and settings live in the server's folder.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
 
@@ -39,6 +39,17 @@
   "runtime": {
     "windows-x64": {
       "executable": "Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe",
+      "arguments": [
+        "-Log",
+        { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },
+        "-PORT={{port.game}}",
+        "-QueryPort={{port.query}}"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "Icarus/Binaries/Win64/IcarusServer-Win64-Shipping.exe", "wine": true,
       "arguments": [
         "-Log",
         { "if": "var.name", "then": ["-SteamServerName={{var.name}}"] },

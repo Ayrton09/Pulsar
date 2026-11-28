@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 85, "minMemoryMb": 4096 },
 
@@ -84,6 +84,35 @@
     "windows-x64": {
       "executable": "game/bin/win64/cs2.exe",
       "workingDirectory": "game/bin/win64",
+      "arguments": [
+        "-dedicated", "-condebug", "-usercon",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "-maxplayers", "{{var.maxPlayers}}",
+        "+game_type", "{{var.gameMode.gameType}}",
+        "+game_mode", "{{var.gameMode.gameMode}}",
+        { "if": "var.mapGroup", "then": ["+mapgroup", "{{var.mapGroup}}"] },
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        { "if": "var.gslt", "then": ["+sv_setsteamaccount", "{{var.gslt}}"] },
+        { "if": "var.workshopMap", "then": ["+host_workshop_map", "{{var.workshopMap}}"] },
+        { "if": "var.workshopCollection", "then": ["+host_workshop_collection", "{{var.workshopCollection}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "game/csgo/console.log",
+        "otherLogFiles": ["game/csgo/addons/metamod/console.log"],
+        "rcon": { "protocol": "source", "port": "game", "logsCommands": true },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password", "sv_setsteamaccount"]
+      }
+    },
+    "linux-x64": {
+      "executable": "game/bin/linuxsteamrt64/cs2",
+      "libraryPath": ["game/bin/linuxsteamrt64"],
+      "workingDirectory": "game",
+      "environment": { "ENABLE_PATHMATCH": "1" },
       "arguments": [
         "-dedicated", "-condebug", "-usercon",
         "-ip", "{{port.game.ip}}",
@@ -250,12 +279,14 @@
   "addons": [
     { "key": "metamod", "name": "Metamod:Source", "license": "zlib", "url": "https://www.metamodsource.net/",
       "description": "Plugin loader the other server plugins run on. Its development builds are the only ones for Counter-Strike 2.",
-      "source": { "type": "githubRelease", "repo": "alliedmodders/metamod-source", "asset": "^mmsource-2\\.0\\.0-git[0-9]+-windows\\.zip$", "prerelease": true },
+      "source": { "type": "githubRelease", "repo": "alliedmodders/metamod-source", "asset": "^mmsource-2\\.0\\.0-git[0-9]+-windows\\.zip$",
+        "linuxAsset": "^mmsource-2\\.0\\.0-git[0-9]+-linux\\.tar\\.gz$", "prerelease": true },
       "target": "game/csgo",
       "lineEdits": [ { "path": "game/csgo/gameinfo.gi", "after": "Game_LowViolence csgo_lv", "line": "Game\tcsgo/addons/metamod" } ] },
     { "key": "counterstrikesharp", "name": "CounterStrikeSharp", "license": "GPL-3.0", "url": "https://docs.cssharp.dev/",
       "description": "Server plugins written in C#, with the .NET runtime they need. Plugins go in game/csgo/addons/counterstrikesharp/plugins.",
-      "source": { "type": "githubRelease", "repo": "roflmuffin/CounterStrikeSharp", "asset": "^counterstrikesharp-with-runtime-windows-.*\\.zip$" },
+      "source": { "type": "githubRelease", "repo": "roflmuffin/CounterStrikeSharp", "asset": "^counterstrikesharp-with-runtime-windows-.*\\.zip$",
+        "linuxAsset": "^counterstrikesharp-with-runtime-linux-.*\\.zip$" },
       "target": "game/csgo",
       "requires": ["metamod"] }
   ],

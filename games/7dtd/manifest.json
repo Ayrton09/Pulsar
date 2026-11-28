@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "7dtd",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "name": "7 Days to Die",
   "description": "7 Days to Die dedicated server, installed anonymously with SteamCMD (about 17 GB). Its settings live in pulsar-serverconfig.xml, a copy of the game's own serverconfig.xml that its updates leave alone.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 30, "minMemoryMb": 8192 },
 
@@ -103,6 +103,18 @@
   "runtime": {
     "windows-x64": {
       "executable": "7DaysToDieServer.exe",
+      "arguments": ["-logfile", "-", "-quit", "-batchmode", "-nographics", "-configfile=pulsar-serverconfig.xml", "-dedicated"],
+      "environment": { "SteamAppId": "251570", "SteamGameId": "251570" },
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "telnet", "port": "telnet", "logsCommands": true },
+        "sensitiveCommandPrefixes": ["admin"]
+      }
+    },
+    "linux-x64": {
+      "executable": "7DaysToDieServer.x86_64",
+      "libraryPath": ["."],
       "arguments": ["-logfile", "-", "-quit", "-batchmode", "-nographics", "-configfile=pulsar-serverconfig.xml", "-dedicated"],
       "environment": { "SteamAppId": "251570", "SteamGameId": "251570" },
       "console": {

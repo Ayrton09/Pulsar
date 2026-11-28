@@ -115,21 +115,59 @@ public sealed class DotnetRuntimeInstallerTests : IDisposable
         Assert.Equal("dotnet.no_runtime", failure.Code);
     }
 
+    [Fact]
+    public async Task ALinuxNodeTakesTheLinuxTarballAndItsProgramsAreExecutable()
+    {
+        var tarball = TestTars.TarGz(TestTars.File("./dotnet", "muxer", TestTars.Program), TestTars.Folder("./host"),
+            TestTars.File("./host/fxr/9.0.21/libhostfxr.so", "fxr"), TestTars.File("./shared/Microsoft.NETCore.App/9.0.21/createdump", "dump", TestTars.Program),
+            TestTars.File("./shared/Microsoft.NETCore.App/9.0.21/System.Private.CoreLib.dll", "corelib"));
+        const string Linux = "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.21/dotnet-runtime-9.0.21-linux-x64.tar.gz";
+        Publish("9.0.21", Runtime("9.0.21"), linux: (Linux, tarball));
+        var files = new ExecutableFiles();
+        var installer = new DotnetRuntimeInstaller(files, _http, ManifestValidator.LinuxX64);
+
+        Assert.Equal("9.0.21", await installer.InstallAsync(_root, "9.0", (_, _) => Task.CompletedTask, CancellationToken.None));
+
+        Assert.Equal("muxer", File.ReadAllText(Path.Combine(_root, "dotnet", "dotnet")));
+        Assert.False(File.Exists(Path.Combine(_root, "dotnet", "dotnet.exe")));
+        Assert.Equal(["dotnet/dotnet", "dotnet/shared/Microsoft.NETCore.App/9.0.21/createdump"], files.Executables);
+        Assert.Contains(Linux, _http.Requested);
+        Assert.DoesNotContain(_http.Requested, r => r.EndsWith(".zip", StringComparison.Ordinal));
+
+        _http.Requested.Clear();
+        await installer.InstallAsync(_root, "9.0", (_, _) => Task.CompletedTask, CancellationToken.None);
+        Assert.DoesNotContain(Linux, _http.Requested); // installed: found by its Linux muxer
+    }
+
+    [Fact]
+    public async Task ALinuxTarballWithoutTheMuxerIsRefused()
+    {
+        const string Linux = "https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.21/dotnet-runtime-9.0.21-linux-x64.tar.gz";
+        Publish("9.0.21", Runtime("9.0.21"), linux: (Linux, TestTars.TarGz(TestTars.File("dotnet.exe", "muxer"))));
+
+        var failure = await Assert.ThrowsAsync<GameProcessException>(() =>
+            new DotnetRuntimeInstaller(new DirectServerFiles(), _http, ManifestValidator.LinuxX64).InstallAsync(_root, "9.0", (_, _) => Task.CompletedTask, CancellationToken.None));
+
+        Assert.Equal("dotnet.bad_archive", failure.Code);
+    }
+
     private DotnetRuntimeInstaller Installer() => new(new DirectServerFiles(), _http);
 
     private Task<string> InstallAsync() => Installer().InstallAsync(_root, "9.0", (_, _) => Task.CompletedTask, CancellationToken.None);
 
     /// <summary>Microsoft's metadata naming <paramref name="version"/> the latest, with its Windows x64 zip.</summary>
-    private void Publish(string version, byte[] zip, string? hash = null, string? url = null)
+    private void Publish(string version, byte[] zip, string? hash = null, string? url = null, (string Url, byte[] Tarball)? linux = null)
     {
         var download = url ?? $"https://builds.dotnet.microsoft.com/dotnet/Runtime/{version}/dotnet-runtime-{version}-win-x64.zip";
+        var linuxUrl = linux?.Url ?? "https://builds.dotnet.microsoft.com/x.tar.gz";
+        var linuxHash = linux is { } tarball ? Convert.ToHexString(SHA512.HashData(tarball.Tarball)) : new string('0', 128);
         var metadata = $$"""
             {
               "channel-version": "9.0",
               "latest-runtime": {{JsonSerializer.Serialize(version)}},
               "releases": [
                 { "release-version": {{JsonSerializer.Serialize(version)}}, "runtime": { "version": {{JsonSerializer.Serialize(version)}}, "files": [
-                  { "name": "dotnet-runtime-linux-x64.tar.gz", "rid": "linux-x64", "url": "https://builds.dotnet.microsoft.com/x.tar.gz", "hash": "{{new string('0', 128)}}" },
+                  { "name": "dotnet-runtime-linux-x64.tar.gz", "rid": "linux-x64", "url": {{JsonSerializer.Serialize(linuxUrl)}}, "hash": "{{linuxHash}}" },
                   { "name": "dotnet-runtime-win-x64.zip", "rid": "win-x64", "url": {{JsonSerializer.Serialize(download)}}, "hash": "{{hash ?? Convert.ToHexString(SHA512.HashData(zip))}}" }
                 ] } }
               ]
@@ -138,6 +176,10 @@ public sealed class DotnetRuntimeInstallerTests : IDisposable
         // Microsoft's file starts with a byte order mark.
         _http.Routes[Metadata] = () => Ok([.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes(metadata)]);
         _http.Routes[download] = () => Ok(zip);
+        if (linux is { } served)
+        {
+            _http.Routes[served.Url] = () => Ok(served.Tarball);
+        }
     }
 
     private static byte[] Runtime(string version) =>

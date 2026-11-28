@@ -17,3 +17,11 @@ Checked on 2026-10-26 on Windows 11 Pro (build 26200), with the server of build 
 - It reads no commands. Ctrl+C, sent by the server's host to the console the game opened (agents of 1.0.12), ends it in
   about 2 s with code 0 (`Engine exit requested (reason: ConsoleCtrl RequestExit)`). The game saves its world every
   few minutes by itself, not when it stops: a stop loses what happened since the last save.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe` with Wine, in a prefix of
+the server's own (`.pulsar/wine`), without a display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo
+apt-get install wine64` and a restart of the agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0):
+installed, started (ready once its Steam query answered), stopped with Ctrl+C and deleted.

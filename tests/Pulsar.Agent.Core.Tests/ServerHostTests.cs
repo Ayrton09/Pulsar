@@ -109,6 +109,51 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public void AWindowsFirstAppGetsItsWindowsFilesFirstOnlyUntilItIsInstalled()
+    {
+        var job = new Steam.SteamCmdJob(Guid.NewGuid(), _root, Processes.ProcessIdentity.CurrentUser, 222860, null, null, Validate: false);
+
+        // A first install: Windows' files, then Linux' ones, every file checked.
+        Assert.Equal([("windows", false), (null, true)], ServerHost.SteamRuns(job, windowsFirst: true, () => false, () => false)
+            .Select(r => (r.ForcePlatform, r.Validate)));
+        // Cut off between the two runs: SteamCMD counts the Windows build as installed, so Linux' files come with every file checked.
+        Assert.Equal([(null, true)], ServerHost.SteamRuns(job, windowsFirst: true, () => true, () => false).Select(r => (r.ForcePlatform, r.Validate)));
+        // Installed for Linux: a plain update.
+        Assert.Equal([job], ServerHost.SteamRuns(job, windowsFirst: true, () => true, () => true));
+        // Any other step, and Windows nodes, never look.
+        Assert.Equal([job], ServerHost.SteamRuns(job, windowsFirst: false, () => throw new InvalidOperationException(), () => throw new InvalidOperationException()));
+    }
+
+    [Fact]
+    public void AGameRunWithWineGetsItsWindowsFilesOnEveryRun()
+    {
+        var job = new Steam.SteamCmdJob(Guid.NewGuid(), _root, Processes.ProcessIdentity.CurrentUser, 1829350, null, null, Validate: true);
+
+        var runs = ServerHost.SteamRuns(job, windowsFirst: false, () => throw new InvalidOperationException(), () => throw new InvalidOperationException(), wine: true);
+
+        Assert.Equal([job with { ForcePlatform = "windows" }], runs);
+    }
+
+    [Fact]
+    public void ALinuxAgentRunsGamesWithWineOnlyWhereWineIsInstalled()
+    {
+        var linux = new ServerHostOptions { ConsoleLog = null, Platform = Pulsar.Manifests.ManifestValidator.LinuxX64 };
+
+        Assert.Contains(AgentCapabilities.Wine, Host(options: linux, install: new InstallOptions { Platform = linux.Platform, Wine = true }).Capabilities);
+        Assert.DoesNotContain(AgentCapabilities.Wine, Host(options: linux, install: new InstallOptions { Platform = linux.Platform }).Capabilities);
+        Assert.DoesNotContain(AgentCapabilities.Wine, Host(install: new InstallOptions { Wine = true }).Capabilities);
+    }
+
+    [Fact]
+    public void ALinuxAgentCopiesSteamsClientLibrariesWithoutCheckingSignatures()
+    {
+        Assert.Contains(AgentCapabilities.SteamClient,
+            Host(options: new ServerHostOptions { ConsoleLog = null, Platform = Pulsar.Manifests.ManifestValidator.LinuxX64 }).Capabilities);
+        // A Windows agent that cannot check Valve's signature still does not offer it.
+        Assert.DoesNotContain(AgentCapabilities.SteamClient, Host().Capabilities);
+    }
+
+    [Fact]
     public async Task ASteamLoginLeftInAServersFolderIsDeletedWhenTheAgentStarts()
     {
         // The agent stopped while SteamCMD had it: the game must not find it at its next start.
@@ -1270,7 +1315,7 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     private ServerHost Host(bool hosted = false, ServerHostOptions? options = null, IVolumeSnapshots? snapshots = null,
-        IServerFirewall? firewall = null, PanelBlockKeeper? panelBlock = null)
+        IServerFirewall? firewall = null, PanelBlockKeeper? panelBlock = null, InstallOptions? install = null)
     {
         var channel = new PanelChannel();
         var files = new DirectServerFiles();
@@ -1282,7 +1327,7 @@ public sealed class ServerHostTests : IAsyncDisposable
             hosts = new GameHostManager(_games, _launcher, TestLog.For<GameHostManager>());
         }
 
-        var install = new InstallOptions();
+        install ??= new InstallOptions();
         _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new DirectServerFileManager(), new SteamLoginStore(_configs.Paths, new PlainStateProtector()), new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),

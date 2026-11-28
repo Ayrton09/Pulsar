@@ -19,3 +19,11 @@ through a development panel and agent:
 Version 1.1.0 adds 28 options: voice chat range, player mana, body heat and diving time, food buff duration, time in the Shroud, what is lost on death, glider turbulences, weather, fishing, plant growth, workstation speed, weapon upgrade cost, rune return, mining and exploration XP, enemy amount, simultaneous attackers, enemy stamina, perception and attack frequency, boss health and damage, taming failure, Shroud curse, and the lengths of day, night and the hungry state (the game stores them in nanoseconds; the options are fixed choices inside the range AMP documents, 2 to 60 minutes for day and night). Like the older ones, the `gameSettings` options apply only with the `Custom` difficulty.
 
 They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
+
+## Linux
+
+The template runs on Linux nodes with Wine: its dedicated server is only for Windows, so a Linux node installs its
+Windows files and runs `enshrouded_server.exe` with Wine, in a prefix of the server's own (`.pulsar/wine`), without a
+display. The node needs Wine (`install-pulsar-agent.sh --wine`, or `sudo apt-get install wine64` and a restart of the
+agent). Checked for real on a Linux node (Ubuntu 24.04, Wine 9.0): installed, started (ready once it said
+`HostOnline`), answered the Steam query, stopped with Ctrl+C and deleted.

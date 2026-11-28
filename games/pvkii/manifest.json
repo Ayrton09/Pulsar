@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "pvkii",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "name": "Pirates, Vikings, and Knights II",
   "description": "Pirates, Vikings, and Knights II dedicated server (srcds, 64-bit), installed anonymously with SteamCMD (about 6 GB).",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
 
@@ -64,6 +64,29 @@
       "arguments": [
         "-game", "pvkii",
         "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "pvkii/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    },
+    "linux-x64": {
+      "executable": "srcds_linux32",
+      "libraryPath": [".", "bin"],
+      "arguments": [
+        "-game", "pvkii",
+        "-console", "-condebug",
         "-ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
         { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },

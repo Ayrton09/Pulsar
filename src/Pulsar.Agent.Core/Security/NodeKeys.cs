@@ -19,6 +19,9 @@ public static class NodeKeyStorage
 
     /// <summary>Non-exportable key in the software key storage provider.</summary>
     public const string Software = "software";
+
+    /// <summary>A key file only root can read (Linux).</summary>
+    public const string File = "file";
 }
 
 /// <summary>How to find a node key again: it is identified by name, scope and the provider that holds it.</summary>

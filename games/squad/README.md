@@ -20,3 +20,9 @@ v10.6.3, about 14 GB), through a development panel and agent:
 - Ctrl+C, sent by the server's host to the console the game opened (agents of 1.0.12), ends it with code 0 in 4 to 10 s.
   Stopped while it was still loading its map, it hung after `PreExit Game` and was killed at the stop's timeout: it keeps
   no world, so nothing is lost.
+
+## Linux
+
+The template runs on Linux nodes too: the agent starts `SquadGame/Binaries/Linux/SquadGameServer` with the project's
+name first, as `SquadGameServer.sh` does. Checked for real on a Linux node (Ubuntu 24.04): installed, started, answered
+`ListPlayers` over RCON, stopped with Ctrl+C and deleted.

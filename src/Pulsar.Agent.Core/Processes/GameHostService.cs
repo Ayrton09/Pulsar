@@ -695,6 +695,16 @@ public sealed partial class GameHostService(
 public static class GameHostPipes
 {
     /// <summary>
+    /// Where the pipes are on Linux, whose pipes are Unix sockets (the Linux agent's <c>/run/pulsar-agent</c>, which
+    /// nothing empties while the machine runs); null: .NET's own place, the temporary folder (tests, development).
+    /// </summary>
+    public static string? SocketDirectory { get; set; }
+
+    /// <summary>The name .NET opens: on Linux a socket's full path in <see cref="SocketDirectory"/> when there is one.</summary>
+    internal static string Address(string name) =>
+        !OperatingSystem.IsWindows() && SocketDirectory is { } directory ? Path.Combine(directory, name) : name;
+
+    /// <summary>
     /// The host's end: open only to the account the host runs as (SYSTEM for the agent's service, the developer in
     /// development), and refused when the name exists already, so nobody can serve it first.
     /// </summary>
@@ -702,7 +712,7 @@ public static class GameHostPipes
     {
         if (!OperatingSystem.IsWindows())
         {
-            return new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            return new NamedPipeServerStream(Address(name), PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
         }
 
@@ -721,7 +731,7 @@ public static class GameHostPipes
     /// group); <see cref="IGameHostLauncher.Serves"/> then checks that the process serving it is the host it started.
     /// </summary>
     public static NamedPipeClientStream CreateClient(string name) =>
-        new(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        new(".", Address(name), PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
     /// <summary>
     /// Readies the host's end for the next connection, whatever state the last one left it in: also after a client that

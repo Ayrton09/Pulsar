@@ -19,6 +19,10 @@ public enum NodeStatus
 }
 
 /// <summary>Inventory reported by the agent at enrollment and on every connection.</summary>
+/// <param name="Platform">
+/// The platform its games run for, as manifests name them (<see cref="NodePlatforms"/>); <c>windows-x64</c> for agents
+/// that send none (before the Linux agent).
+/// </param>
 public sealed record NodeInventorySnapshot(
     string Hostname,
     string OsDescription,
@@ -28,9 +32,19 @@ public sealed record NodeInventorySnapshot(
     long MemoryTotalBytes,
     string? ServersRoot,
     string AgentVersion,
-    int ProtocolVersion);
+    int ProtocolVersion,
+    string Platform = NodePlatforms.Windows);
 
-/// <summary>A Windows machine running the Pulsar agent (docs/architecture/02).</summary>
+/// <summary>The platforms nodes run games for, named as game manifests name them.</summary>
+public static class NodePlatforms
+{
+    public const string Windows = "windows-x64";
+    public const string Linux = "linux-x64";
+
+    public const int MaxLength = 32;
+}
+
+/// <summary>A Windows or Linux machine running the Pulsar agent (docs/architecture/02).</summary>
 public sealed class Node
 {
     public const int MaxNameLength = 64;
@@ -70,6 +84,9 @@ public sealed class Node
     public string? PublicHost { get; private set; }
 
     public NodeInventorySnapshot? Inventory { get; private set; }
+
+    /// <summary>The platform its games run for: Windows until its agent says otherwise.</summary>
+    public string Platform => Inventory?.Platform ?? NodePlatforms.Windows;
 
     public DateTimeOffset? LastSeenAt { get; private set; }
 

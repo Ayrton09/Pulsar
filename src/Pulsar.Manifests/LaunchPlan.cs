@@ -49,6 +49,18 @@ public sealed record LaunchPlan(
     /// <summary>The folder of the server the game takes for its user's (<see cref="RuntimeDefinition.UserProfile"/>); null: its account's.</summary>
     public string? UserProfile { get; init; }
 
+    /// <summary>The server's folders a Linux game loads its own libraries from (<see cref="RuntimeDefinition.LibraryPath"/>).</summary>
+    public IReadOnlyList<string> LibraryPath { get; init; } = [];
+
+    /// <summary>Libraries of the server's folder a Linux game loads first: its installed addons' (<see cref="AddonLinuxRun.Preload"/>).</summary>
+    public IReadOnlyList<string> Preload { get; init; } = [];
+
+    /// <summary>The executable is a Windows program the Linux agent runs with Wine (<see cref="RuntimeDefinition.Wine"/>).</summary>
+    public bool Wine { get; init; }
+
+    /// <summary>The platform the plan was rendered for (<see cref="ManifestValidator.WindowsX64"/> when not said).</summary>
+    public string Platform { get; init; } = ManifestValidator.WindowsX64;
+
     // The default would print every argument and environment value, secrets among them (the RCON and database passwords).
     public override string ToString() => $"LaunchPlan {{ Executable = {Executable}, Arguments = {Arguments.Count} }}";
 }
@@ -450,6 +462,15 @@ public static partial class LaunchPlanRenderer
         var environment = (runtime.Environment ?? new Dictionary<string, string>())
             .ToDictionary(e => e.Key, e => Placeholders.Replace(e.Value, Placeholder), StringComparer.OrdinalIgnoreCase);
 
+        // On Linux, an installed addon's own loader (BepInEx's doorstop): its variables after the runtime's, its libraries preloaded.
+        var addonRuns = platform == ManifestValidator.LinuxX64
+            ? manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true && a.Linux is not null).Select(a => a.Linux!).ToList()
+            : [];
+        foreach (var (variable, value) in addonRuns.SelectMany(r => r.Environment ?? new Dictionary<string, string>()))
+        {
+            environment[variable] = value;
+        }
+
         // The .NET runtime the install put in the server's folder (Pulsar 1.0.12): the game's .NET programs run on it, not
         // on what the node has installed. Only the agent sets these: a manifest's environment cannot name DOTNET_ variables.
         if ((manifest.Install?.Steps ?? []).OfType<DotnetRuntimeStep>().Any())
@@ -492,7 +513,7 @@ public static partial class LaunchPlanRenderer
                 : null;
 
         // A key kept when empty (an option left unset) is not written at all: its line stays as the file has it.
-        var configFiles = manifest.ConfigFileList.Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
+        var configFiles = manifest.ConfigFileList.Where(file => file.WrittenOn(platform)).Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
         [
             .. file.Set.Where(entry => file.KeepIfEmpty?.Contains(entry.Key, StringComparer.OrdinalIgnoreCase) != true
                     || Setting(entry.Value).Length > 0 || Former(entry.Value) is not null)
@@ -530,7 +551,7 @@ public static partial class LaunchPlanRenderer
             })],
         }).ToList();
 
-        return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
+        return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, runtime.Stop ?? manifest.Stop)
         {
             // Internal ports (a console only the agent uses) are never opened in the firewall.
             Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name) && !p.Internal).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols, p.Http))],
@@ -539,6 +560,10 @@ public static partial class LaunchPlanRenderer
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,
             LineEdits = [.. manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true).SelectMany(a => a.LineEditList)],
             UserProfile = runtime.UserProfile,
+            LibraryPath = runtime.LibraryPath ?? [],
+            Preload = [.. addonRuns.SelectMany(r => r.PreloadList).Distinct(StringComparer.Ordinal)],
+            Wine = runtime.Wine,
+            Platform = platform,
             Secrets = [.. manifest.VariableList.Where(v => v.Secret).Select(v => resolved.GetValueOrDefault(v.Key)).Append(rcon?.Password)
                 .Append(database?.Password).OfType<string>().Where(s => s.Length >= LaunchPlan.MinimumSecretLength).Distinct(StringComparer.Ordinal)],
         };

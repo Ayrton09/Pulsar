@@ -26,8 +26,15 @@ export function CloneServerDialog({ details, onClose }: { details: ServerDetails
   const [name, setName] = useState(t('servers.clone.defaultName', { name: details.server.name }).slice(0, 64));
   const [nodeId, setNodeId] = useState(details.server.nodeId);
   const [showErrors, setShowErrors] = useState(false);
+  // The copy's files are made for its node's platform: only nodes of the same one take it (the panel refuses others).
+  const platform = nodes.data?.find((node) => node.id === details.server.nodeId)?.platform;
   const connected =
-    nodes.data?.filter((node) => node.connected && canOnNode(me, node.id, Permission.ServerCreate)) ?? [];
+    nodes.data?.filter(
+      (node) =>
+        node.connected &&
+        (platform === undefined || node.platform === platform) &&
+        canOnNode(me, node.id, Permission.ServerCreate),
+    ) ?? [];
   const nameError = name.trim() === '' ? 'validation.required' : name.trim().length > 64 ? 'validation.tooLong' : null;
   const nodeError = connected.some((node) => node.id === nodeId) ? null : 'validation.required';
 

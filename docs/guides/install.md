@@ -173,8 +173,9 @@ them to unenroll.
 
 The panel also runs on Linux: x86_64 with systemd, on Debian 12 or later or Ubuntu 24.04 or later (whose packages
 have PostgreSQL 15 or later), or on another distribution with PostgreSQL 15 or later installed already. Its nodes are
-Windows machines with the agent: add them from the panel as on Windows (**Nodes → Add node**). The panel carries its
-own .NET runtime, so nothing is installed from Microsoft.
+Windows or Linux machines with the agent, this one too: add them from the panel (**Nodes → Add node**,
+[Linux nodes](#linux-nodes) for a Linux one). The panel carries its own .NET runtime, so nothing is installed from
+Microsoft.
 
 ### With one command
 
@@ -275,15 +276,16 @@ back. Each run writes a log, without secrets, in `/var/log/pulsar/setup`.
 | Data Protection keys, key ring certificate, HTTPS certificate (`tls/panel.cer` to trust) | `/var/lib/pulsar/panel` |
 | Update backups and the version before the last update | `/var/lib/pulsar/updates` |
 | Logs | `journalctl -u pulsar-panel`, and `/var/log/pulsar/panel`; the installer's in `/var/log/pulsar/setup` |
+| The agent, on a node ([Linux nodes](#linux-nodes)) | `/opt/pulsar/agent`, its state in `/var/lib/pulsar/agent`, the servers in `/var/lib/pulsar/servers`, `journalctl -u pulsar-agent` |
 
 ### Updating, renewing the certificate, removing
 
 - **Update**: `curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --update`,
   or the new tarball's `install-pulsar.sh --update`. It backs up the panel, replaces the programs, prepares the
   database and checks the panel answers; if the new version does not, it puts the previous one back, and the database
-  too when the update changed it (exit code `7`). See [update.md](update.md). The panel's Updates page shows this
-  command when there is a newer release: no node runs on a Linux panel's machine, so its one-click update does not
-  reach it.
+  too when the update changed it (exit code `7`). See [update.md](update.md). With the agent on the same machine
+  ([Linux nodes](#linux-nodes)), the Updates page updates both with one click; without it, the page shows this command
+  when there is a newer release.
 - **The machine's address or name changed**: `sudo /opt/pulsar/install-pulsar.sh --renew-certificate` makes a new
   self-signed certificate for the addresses it has now (and the names given before, plus any new `--host-name`), keeps
   the old one until the new one works, and says both fingerprints. Nodes added with a node code pinned the old one:
@@ -299,6 +301,60 @@ sudo -u postgres psql -c 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)' -c 'DROP 
 sudo rm -rf /var/lib/pulsar /var/log/pulsar /etc/pulsar
 sudo userdel pulsar
 ```
+
+### Linux nodes
+
+A Linux machine runs game servers as a node of a panel (on Windows or on Linux, that machine too) with the agent:
+x86_64 with systemd and cgroups v2, on Debian 12 or later or Ubuntu 24.04 or later. In the panel, **Nodes → Add
+node** gives the node code and, under **Install on Linux**, the command to run on the machine, as root:
+
+```bash
+curl -fsSL https://github.com/Ayrton09/Pulsar/releases/download/v<version>/install.sh | sudo bash -s -- --agent --version <version>
+```
+
+It installs the panel's own version, checked as for the panel's install (the signed manifest, the tarball's size and
+SHA-256), and runs the tarball's `install-pulsar-agent.sh`, which asks for the node code on the terminal (paste it:
+it is not shown). The code carries the single-use enrollment token, so it never goes on a command line, which other
+users can read; `--secrets-file FILE` (JSON `{"nodeCode": "..."}`, only root may read it) or `PULSAR_NODE_CODE`
+(`sudo --preserve-env=PULSAR_NODE_CODE ...`) give it without asking. The agent pins the panel's certificate the code
+names, as on Windows. From an extracted tarball (as [above](#from-the-tarball)):
+`sudo /root/pulsar-release/pulsar-<version>-linux-x64/install-pulsar-agent.sh`.
+
+What it does: installs `jq`, the libraries .NET needs and the 32-bit ones SteamCMD and the older Steam servers need
+(`lib32gcc-s1`, `lib32stdc++6`) when they are missing (`apt-get`), puts the agent in
+`/opt/pulsar/agent` and enrolls the machine, which writes and starts the `pulsar-agent` systemd service (as root: it
+makes a system user for each game server, with no password or shell, and runs the server's game as it). The node shows
+in the panel as a Linux one, and only games that run on Linux can be created on it: today Counter-Strike 2,
+Counter-Strike: Source, Team Fortress 2, Left 4 Dead 2, Half-Life 2: Deathmatch, Pirates, Vikings and Knights II,
+Counter-Strike 1.6, Half-Life Deathmatch, Rust, Valheim, 7 Days to Die, Project Zomboid, Palworld, Unturned,
+Don't Starve Together, Arma Reforger, SCP: Secret Laboratory, Killing Floor 2, Squad, Insurgency: Sandstorm and
+Soulmask, each downloaded by its own SteamCMD, and Minecraft (Java and Bedrock) and Terraria.
+
+Games whose dedicated server is only for Windows (V Rising, Enshrouded, Abiotic Factor, Icarus, Sons of the Forest,
+Conan Exiles, ARK: Survival Ascended) run on a Linux node with Wine, when the node has it: `--wine` installs it (Debian's and Ubuntu's
+`wine64`). Installed later by hand, the agent finds it once it restarts (`sudo systemctl restart pulsar-agent`).
+
+| Option | What it does |
+|---|---|
+| `--servers-root DIR` | Where the game servers' folders go (default `/var/lib/pulsar/servers`); not in `/tmp` or `/var/tmp`, which each game server has of its own. |
+| `--backups-root DIR` | Where their backups go (default the agent's state folder). |
+| `--secrets-file FILE` | The node code as JSON (`nodeCode`), in a file only root can read. |
+| `--unattended` | Asks for nothing: a missing node code is an error. |
+| `--wine` | Installs Wine too, for the games only for Windows. |
+| `--update` | Replaces the agent's programs with this release's (the game servers keep running). |
+| `--uninstall` | Removes the agent from Pulsar (below). |
+
+- **Update**: from the panel's Updates page, like any node (the agent downloads the release, checks it and runs its
+  `install-pulsar-agent.sh --update`; on a machine with the panel too, it updates both), or by hand with
+  `curl -fsSL https://github.com/Ayrton09/Pulsar/releases/latest/download/install.sh | sudo bash -s -- --agent --update`.
+  Game servers keep running. When the new agent does not start, or a step fails once the agent was stopped, the
+  previous one is put back (exit code `7`); the result is in `/var/lib/pulsar/updates/last-update.json`. An update cut
+  off half way (the machine lost power) is rolled back by the next `--update`, which then updates.
+- **Remove**: `sudo /opt/pulsar/install-pulsar-agent.sh --uninstall` unenrolls the machine (its service, game servers,
+  their users, the node key and the agent's settings) and removes the programs; the servers' folders, backups and logs
+  are kept. Delete the node in the panel too.
+- **Firewall**: the agent opens no ports on Linux: allow the game servers' ports in ufw or firewalld yourself.
+- The exit codes are `install-pulsar.sh`'s, and each run writes a log, without the code, in `/var/log/pulsar/setup`.
 
 ### Moving a panel from Windows to Linux
 

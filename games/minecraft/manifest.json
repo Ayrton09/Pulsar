@@ -2,11 +2,11 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "name": "Minecraft: Java Edition",
   "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang (or Paper, Purpur, Fabric, Forge or NeoForge from their publishers), with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version, and the same mods on Fabric, Forge or NeoForge.",
   "authors": ["Pulsar contributors"],
-  "platforms": ["windows-x64"],
+  "platforms": ["windows-x64", "linux-x64"],
 
   "requirements": { "minDiskGb": 3, "minMemoryMb": 4096 },
 
@@ -106,6 +106,17 @@
   "runtime": {
     "windows-x64": {
       "executable": "java/bin/java.exe",
+      "arguments": [
+        "-Xmx{{var.memoryMb}}M",
+        "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
+        { "if": "var.serverType.argfile", "then": ["@{{var.serverType.argfile}}"], "else": ["-jar", "{{var.serverType.jar}}"] },
+        "--nogui"
+      ],
+      "allowExtraArguments": false,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    },
+    "linux-x64": {
+      "executable": "java/bin/java",
       "arguments": [
         "-Xmx{{var.memoryMb}}M",
         "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",

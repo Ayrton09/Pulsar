@@ -8,9 +8,7 @@ using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
-using Pulsar.Agent.Windows;
-using Pulsar.Agent.Windows.Processes;
-using Pulsar.Agent.Windows.Servers;
+using Pulsar.Agent.Platform;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent;
@@ -18,11 +16,18 @@ namespace Pulsar.Agent;
 /// <summary>The administrator-facing commands: enroll, status, service.</summary>
 internal static class AgentCommands
 {
+    private static IAgentPlatform Platform => AgentPlatform.Current;
+
+    private static IAgentService Service => Platform.Service;
+
     public static IReadOnlySet<string> Flags { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dev", "no-service", "check", "stop-servers" };
 
     /// <summary>Where <c>enroll</c> also takes its token from (the process list shows command lines, not environments).</summary>
     public const string TokenVariable = "PULSAR_ENROLLMENT_TOKEN";
+
+    /// <summary>Where <c>enroll</c> also takes a node code from, for the same reason.</summary>
+    public const string CodeVariable = "PULSAR_NODE_CODE";
 
     /// <summary>How long unenroll waits for a service still stopping once the games it was waiting for are ended.</summary>
     private static readonly TimeSpan s_stoppedAfterEndingHosts = TimeSpan.FromSeconds(30);
@@ -39,8 +44,11 @@ internal static class AgentCommands
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
                                  [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
                                  [--log-file <file>] [--panel-certificate <sha256>]
+              PulsarAgent enroll --code -|<code> [--servers-root <dir>] [--backups-root <dir>] [...]
+                  The node code (Nodes > Add node) instead of the panel, token, key and certificate: pass
+                  --code - and paste it, or set {CodeVariable}, to keep it out of the process list.
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
-                  starts the PulsarAgent service. Run it from an elevated prompt. To keep the token out of
+                  starts the PulsarAgent service. Run it {Platform.ElevatedPrompt}. To keep the token out of
                   the process list, pass --token - and paste it, or set {TokenVariable} instead. A reusable
                   token (pulsar_enroll_...) enrolls each machine as a new node. --log-file also writes what it
                   prints to a file (the agent MSI does).
@@ -52,7 +60,7 @@ internal static class AgentCommands
               PulsarAgent service install|uninstall|start|stop [--stop-servers] [--data-dir <dir>]
                   Game servers keep running while the service stops, restarts or is updated (each runs in a
                   host process of its own); --stop-servers stops them with it (or, when the service is not
-                  running, ends those it left running). Windows shutting down stops them.
+                  running, ends those it left running). The machine shutting down stops them.
               PulsarAgent unenroll [--data-dir <dir>] [--log-file <file>]
                   Removes this machine from Pulsar: stops its game servers, removes the service, the node key,
                   the configuration, the servers' accounts, firewall rules and saved secrets, and the cached Steam
@@ -65,7 +73,7 @@ internal static class AgentCommands
               --data-dir   State directory (default: {AgentPaths.DefaultRoot}).
               --backups-root
                            Where backups go (default: the backups folder of the state directory); only
-                           SYSTEM and Administrators can open it.
+                           {Platform.ServiceAccount} and administrators can open it.
               --panel-certificate
                            The SHA-256 (64 lowercase hexadecimal digits) of the panel's own TLS certificate,
                            as a node code carries it: the agent accepts that certificate and no other,
@@ -77,7 +85,7 @@ internal static class AgentCommands
 
     public static async Task<int> EnrollAsync(CommandLine line)
     {
-        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file", "panel-certificate");
+        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file", "panel-certificate", "code");
         return await LoggedAsync(line, "enroll", () => EnrollCoreAsync(line));
     }
 
@@ -90,18 +98,26 @@ internal static class AgentCommands
             await Console.Error.WriteAsync("Enrollment token: ");
         }
 
-        var request = new EnrollmentRequest(line.Required("panel"),
-            EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
-            DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"), line.Value("panel-certificate"));
+        if (line.Value("code") == "-" && !Console.IsInputRedirected)
+        {
+            await Console.Error.WriteAsync("Node code: ");
+        }
+
+        var request = Code(line, Environment.GetEnvironmentVariable(CodeVariable), Console.In) is { } nodeCode
+            ? new EnrollmentRequest(nodeCode.Url, nodeCode.Token, nodeCode.PanelKey, DirectoryOption(line, "servers-root"), development,
+                DirectoryOption(line, "backups-root"), nodeCode.CertificateSha256)
+            : new EnrollmentRequest(line.Required("panel"),
+                EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
+                DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"), line.Value("panel-certificate"));
         if (request.PanelCertificate is { } pin && !NodeCode.IsCertificateHash(pin))
         {
             await Console.Error.WriteLineAsync("--panel-certificate must be the SHA-256 of the panel's certificate in 64 lowercase hexadecimal digits, as the node code carries it.");
             return 1;
         }
 
-        if (!development && !WindowsDirectorySecurity.IsElevated())
+        if (!development && !Platform.IsElevated())
         {
-            await Console.Error.WriteLineAsync("Enrollment creates a machine key and a protected state directory: run it from an elevated prompt (Run as administrator).");
+            await Console.Error.WriteLineAsync($"Enrollment creates a machine key and a protected state directory: run it {Platform.ElevatedPrompt}.");
             return 1;
         }
 
@@ -113,11 +129,11 @@ internal static class AgentCommands
 
         var paths = Paths(line);
         var restartService = false;
-        if (installService && AgentService.QueryState() is AgentServiceState.Running or AgentServiceState.StartPending)
+        if (installService && Service.QueryState() is AgentServiceStatus.Running or AgentServiceStatus.StartPending)
         {
             // Re-enrollment: the running agent would keep using the credential the panel is about to revoke.
             Console.WriteLine("Stopping the running PulsarAgent service...");
-            if (!await StopForReEnrollmentAsync(AgentService.Stop, Console.Error))
+            if (!await StopForReEnrollmentAsync(Service.Stop, Console.Error))
             {
                 return 1;
             }
@@ -144,9 +160,9 @@ internal static class AgentCommands
     /// <returns>The exit code, and whether the service was installed and started with the new enrollment.</returns>
     private static async Task<(int Code, bool Installed)> EnrollStoppedAsync(EnrollmentRequest request, AgentPaths paths, bool development, bool installService)
     {
-        var keys = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
-        var enrollment = new AgentEnrollment(new AgentConfigStore(paths), keys, new WindowsNodeSystem(TimeProvider.System),
-            new WindowsDirectorySecurity(), new PanelTransport(), TimeProvider.System)
+        var keys = Platform.Keys(paths);
+        var enrollment = new AgentEnrollment(new AgentConfigStore(paths), keys, Platform.NodeSystem(),
+            Platform.DirectorySecurity(), new PanelTransport(), TimeProvider.System)
         {
             Waiting = wait => Console.Error.WriteLine($"The panel takes no more enrollments from this address for now; trying again in {wait.TotalSeconds:0} s."),
             Warning = Console.Error.WriteLine,
@@ -166,7 +182,7 @@ internal static class AgentCommands
         {
             Console.WriteLine($"""
                 Enrolled with {PanelAddress.Origin(config.Panel)} as node {config.NodeId}.
-                  Node key:   {ProtocolCrypto.Fingerprint(key.PublicKey)} ({Storage(config.Key.Storage)})
+                  Node key:   {ProtocolCrypto.Fingerprint(key.PublicKey)} ({Platform.DescribeKeyStorage(config.Key.Storage)})
                   Panel key:  {request.PanelKeyFingerprint} (pinned)
                   Panel TLS:  {(config.PanelCertificate is { } pinned ? $"certificate SHA-256 {pinned} (pinned)" : "this machine's trusted roots")}
                   State:      {paths.Root}
@@ -184,18 +200,18 @@ internal static class AgentCommands
         }
         else if (installService)
         {
-            AgentService.Install(Environment.ProcessPath!, ServiceArguments(paths));
-            switch (AgentService.StartAndWait(s_serviceStartTimeout))
+            Service.Install(Environment.ProcessPath!, ServiceArguments(paths));
+            switch (Service.StartAndWait(s_serviceStartTimeout))
             {
-                case AgentServiceState.Running:
-                    Console.WriteLine($"The {AgentService.Name} service is installed and running.");
+                case AgentServiceStatus.Running:
+                    Console.WriteLine($"The {Service.Name} service is installed and running.");
                     break;
-                case AgentServiceState.Stopped:
-                    Console.Error.WriteLine($"The {AgentService.Name} service is installed but stopped as it started: its log in " +
+                case AgentServiceStatus.Stopped:
+                    Console.Error.WriteLine($"The {Service.Name} service is installed but stopped as it started: its log in " +
                         $"{paths.LogsDirectory} says why; then start it with 'PulsarAgent service start'.");
                     return (1, true);
                 default:
-                    Console.WriteLine($"The {AgentService.Name} service is installed and still starting: 'PulsarAgent status' says when it runs.");
+                    Console.WriteLine($"The {Service.Name} service is installed and still starting: 'PulsarAgent status' says when it runs.");
                     break;
             }
 
@@ -230,16 +246,16 @@ internal static class AgentCommands
     {
         try
         {
-            Console.WriteLine(AgentService.StartAndWait(s_serviceStartTimeout) switch
+            Console.WriteLine(Service.StartAndWait(s_serviceStartTimeout) switch
             {
-                AgentServiceState.Running => $"The {AgentService.Name} service is started again.",
-                AgentServiceState.Stopped => $"The {AgentService.Name} service stopped as it started again: its log says why.",
-                _ => $"The {AgentService.Name} service is starting again.",
+                AgentServiceStatus.Running => $"The {Service.Name} service is started again.",
+                AgentServiceStatus.Stopped => $"The {Service.Name} service stopped as it started again: its log says why.",
+                _ => $"The {Service.Name} service is starting again.",
             });
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            Console.Error.WriteLine($"The {AgentService.Name} service could not be started again ({ex.Message}): start it with 'PulsarAgent service start'.");
+            Console.Error.WriteLine($"The {Service.Name} service could not be started again ({ex.Message}): start it with 'PulsarAgent service start'.");
         }
     }
 
@@ -258,6 +274,34 @@ internal static class AgentCommands
         return token is { Length: > 0 }
             ? token
             : throw new UsageException($"--token is required (or pass '--token -' and type it, or set {TokenVariable}).");
+    }
+
+    /// <summary>
+    /// The node code (<c>--code &lt;code&gt;</c>, <c>--code -</c> read from standard input, or <see cref="CodeVariable"/>),
+    /// which gives the panel, the token, the panel key and its certificate together; null when none is given. Given with
+    /// any of those options, it is refused: one of them would be ignored.
+    /// </summary>
+    internal static NodeCode? Code(CommandLine line, string? environment, TextReader input)
+    {
+        var text = line.Value("code") switch
+        {
+            "-" => input.ReadLine()?.Trim(),
+            { } value => value.Trim(),
+            null => string.IsNullOrWhiteSpace(environment) ? null : environment.Trim(),
+        };
+        if (text is null)
+        {
+            return null;
+        }
+
+        if (line.Value("panel") is not null || line.Value("token") is not null || line.Value("panel-key") is not null || line.Value("panel-certificate") is not null)
+        {
+            throw new UsageException("A node code gives the panel, the token, the panel key and its certificate: leave out --panel, --token, --panel-key and --panel-certificate.");
+        }
+
+        return NodeCode.TryParse(text, out var code)
+            ? code
+            : throw new UsageException("That is not a node code: copy it again from Nodes > Add node (it starts with " + NodeCode.Prefix + ").");
     }
 
     /// <summary>
@@ -287,7 +331,7 @@ internal static class AgentCommands
         }
         catch (UnauthorizedAccessException)
         {
-            await Console.Error.WriteLineAsync($"{paths.Root} is readable only by administrators: run this from an elevated prompt.");
+            await Console.Error.WriteLineAsync($"{paths.Root} is readable only by administrators: run this {Platform.ElevatedPrompt}.");
             return 1;
         }
 
@@ -299,7 +343,7 @@ internal static class AgentCommands
             return 1;
         }
 
-        var keys = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
+        var keys = Platform.Keys(paths);
         string fingerprint;
         try
         {
@@ -314,7 +358,7 @@ internal static class AgentCommands
         Console.WriteLine($"""
               Panel:      {PanelAddress.Origin(config.Panel)}
               Node:       {config.NodeId} (credential {config.CredentialId}, enrolled {config.EnrolledAt:u})
-              Node key:   {fingerprint} ({Storage(config.Key.Storage)}{(config.Development ? ", development" : string.Empty)})
+              Node key:   {fingerprint} ({Platform.DescribeKeyStorage(config.Key.Storage)}{(config.Development ? ", development" : string.Empty)})
               Key age:    {(DateTimeOffset.UtcNow - config.CurrentKeyCreatedAt).Days} days (replaced automatically after {new AgentConnectionOptions().KeyRotationInterval.Days}){(config.PendingRotation is null ? string.Empty : "; a rotation is pending: the agent completes it when it next connects")}
               Panel keys: {string.Join(", ", config.PanelKeys.Select(k => k.KeyId))}
               Panel TLS:  {(config.PanelCertificate is { } pinned ? $"certificate SHA-256 {pinned} (pinned)" : "this machine's trusted roots")}
@@ -363,7 +407,7 @@ internal static class AgentCommands
         }
         catch (UnauthorizedAccessException)
         {
-            await Console.Error.WriteLineAsync($"{paths.Root} is readable only by administrators: run this from an elevated prompt.");
+            await Console.Error.WriteLineAsync($"{paths.Root} is readable only by administrators: run this {Platform.ElevatedPrompt}.");
             return 1;
         }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException or NotSupportedException)
@@ -388,29 +432,29 @@ internal static class AgentCommands
             }
 
             // Deleted by hand, say: the service and the games it left would otherwise outlive the program.
-            Console.WriteLine($"This agent is not enrolled ({paths.ConfigFile} not found), but the {AgentService.Name} service runs with {paths.Root}: " +
+            Console.WriteLine($"This agent is not enrolled ({paths.ConfigFile} not found), but the {Service.Name} service runs with {paths.Root}: " +
                 "removing it and the game servers it left.");
         }
 
         if (service)
         {
-            if (!WindowsDirectorySecurity.IsElevated())
+            if (!Platform.IsElevated())
             {
-                await Console.Error.WriteLineAsync("Removing the service and the machine key needs an elevated prompt (Run as administrator).");
+                await Console.Error.WriteLineAsync($"Removing the service and the machine key needs to be run {Platform.ElevatedPrompt}.");
                 return 1;
             }
 
             // The service stops its game servers on the way out instead of leaving them running in their hosts.
-            Console.WriteLine($"Stopping the {AgentService.Name} service and its game servers...");
-            if (AgentService.QueryState() is AgentServiceState.Running or AgentServiceState.StartPending)
+            Console.WriteLine($"Stopping the {Service.Name} service and its game servers...");
+            if (Service.QueryState() is AgentServiceStatus.Running or AgentServiceStatus.StartPending)
             {
                 AskToStopServers(paths);
             }
 
-            if (!AgentService.Uninstall())
+            if (!Service.Uninstall())
             {
                 // Removing the rest must not stop halfway: the service goes once it has stopped.
-                await Console.Error.WriteLineAsync($"The {AgentService.Name} service did not stop within {AgentService.StopTimeout.TotalSeconds:0} s " +
+                await Console.Error.WriteLineAsync($"The {Service.Name} service did not stop within {Service.StopTimeout.TotalSeconds:0} s " +
                     "(its game servers were still stopping). It is removed once it stops; the game servers still running are ended now.");
                 serviceStillStopping = true;
             }
@@ -427,7 +471,7 @@ internal static class AgentCommands
         {
             try
             {
-                AgentService.Stop(s_stoppedAfterEndingHosts);
+                Service.Stop(s_stoppedAfterEndingHosts);
                 serviceStillStopping = false;
             }
             catch (TimeoutException)
@@ -450,18 +494,12 @@ internal static class AgentCommands
             await Console.Error.WriteLineAsync($"{paths.HostProgramsDirectory} could not be deleted ({ex.Message}); delete it by hand.");
         }
 
-        // Server accounts exist outside development; deleting them needs the elevation a production agent's removal has.
-        var accounts = config is { Development: true } || !WindowsDirectorySecurity.IsElevated()
-            ? null
-            : new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance, paths.LogonLocksDirectory);
+        var removal = Platform.ServerRemoval(paths, development: config is { Development: true });
         RemoveServers(paths, config?.ServersRootOrDefault(paths) ?? (service ? AgentConfig.DefaultServersRoot(paths, development: false) : null),
-            config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
-            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping,
-            () => new HttpUrlReservations(new HttpServiceUrlAcls(), HttpServiceUrlAcls.SidOf, paths.HttpUrlsFile,
-                NullLogger<HttpUrlReservations>.Instance).RemoveAll(),
-            accounts is null ? null : WindowsGameProcessManager.EndProcessesOf, new WindowsServerFiles());
+            config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, Platform.StateProtector(paths), removal, Console.Out, Console.Error,
+            serviceStillStopping);
 
-        return FinishUnenrollment(paths, config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, service, Console.Out, Console.Error);
+        return FinishUnenrollment(paths, config, Platform.Keys(paths).Delete, service, Console.Out, Console.Error);
     }
 
     /// <summary>
@@ -525,20 +563,25 @@ internal static class AgentCommands
     /// folders, backups and logs are kept, and said so.
     /// </summary>
     /// <param name="serversRoot">Null when it is not known (an unreadable configuration): the server records name the servers then.</param>
-    /// <param name="deleteAccount">Deletes a server account (false: there was none); null when there are none to delete (a development agent's servers run as the current user).</param>
-    /// <param name="removeFirewallRules">Removes every rule of the agent's own group (whether or not a record or folder names its server); returns how many.</param>
+    /// <param name="removal">
+    /// The platform's ways to remove what the servers leave (<see cref="ServerRemoval"/>): their accounts (none to delete
+    /// for a development agent, whose servers run as the current user), processes still running as them, the firewall rules
+    /// of the agent's own group, the HTTP URLs reserved for the accounts (Pulsar 1.0.35), and the agent's access to server
+    /// folders, to take back a Steam login lent to a server's SteamCMD by an agent that never ran again.
+    /// </param>
     /// <param name="serviceStillStopping">The service has not stopped yet: the accounts and the state are kept, and said so.</param>
-    /// <param name="removeHttpUrls">Releases the HTTP URLs reserved for the servers' accounts (Pulsar 1.0.35); returns how many.</param>
-    /// <param name="endProcesses">Ends the processes still running as a server account, before it is deleted; returns how many could not be ended (that account is kept).</param>
-    /// <param name="files">The agent's access to server folders, to take back a Steam login lent to a server's SteamCMD by an agent that never ran again.</param>
-    internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
-        Func<string, bool>? deleteAccount, Func<int> removeFirewallRules, TextWriter output, TextWriter errors,
-        bool serviceStillStopping = false, Func<int>? removeHttpUrls = null, Func<string, int>? endProcesses = null, IServerFiles? files = null)
+    internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector, ServerRemoval removal,
+        TextWriter output, TextWriter errors, bool serviceStillStopping = false)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        ArgumentNullException.ThrowIfNull(removeFirewallRules);
+        ArgumentNullException.ThrowIfNull(removal);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(errors);
+        var deleteAccount = removal.DeleteAccount;
+        var endProcesses = removal.EndProcesses;
+        var files = removal.Files;
+        var hints = removal.Hints;
+        var removeFirewallRules = removal.RemoveFirewallRules;
 
         // A server is named by its record or, if that is gone or unreadable, by its folder.
         var shortIds = new SortedSet<string>(StringComparer.Ordinal);
@@ -558,11 +601,11 @@ internal static class AgentCommands
         // A service still stopping may yet save a server record (secrets included) or log on as a server account: those
         // stay, said so, rather than come back after this said they were removed.
         var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
-        var accountNames = deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName).ToList();
+        var accountNames = deleteAccount is null ? [] : shortIds.Select(removal.AccountName).ToList();
         // Before the state goes: it records which reservations are the agent's.
         try
         {
-            var urls = removeHttpUrls?.Invoke() ?? 0;
+            var urls = removal.RemoveHttpUrls?.Invoke() ?? 0;
             if (urls > 0)
             {
                 output.WriteLine($"Released {urls} HTTP URL reservation(s) of the game servers.");
@@ -570,18 +613,17 @@ internal static class AgentCommands
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            errors.WriteLine($"The HTTP URL reservations of the game servers could not be released ({ex.Message}); " +
-                "list them with netsh http show urlacl and remove those of the servers' accounts from an elevated prompt.");
+            errors.WriteLine($"The HTTP URL reservations of the game servers could not be released ({ex.Message}); {hints.RemoveHttpUrls}");
         }
 
         if (serviceStillStopping)
         {
-            var rulesRemoved = RemoveFirewallRules(removeFirewallRules, errors);
+            var rulesRemoved = RemoveFirewallRules(removeFirewallRules, hints, errors);
             output.WriteLine($"Removed {rulesRemoved} firewall rule(s).");
             var keptAccounts = accountNames.Count > 0 ? $"the server accounts ({string.Join(", ", accountNames)}) and " : string.Empty;
-            errors.WriteLine($"The {AgentService.Name} service was still stopping, so {keptAccounts}{state} (the servers' passwords and the " +
-                "cached Steam logins) are kept. Once the service no longer shows in services.msc, delete them by hand" +
-                (accountNames.Count > 0 ? " (the accounts in Computer Management, Local Users and Groups)." : "."));
+            errors.WriteLine($"The {Service.Name} service was still stopping, so {keptAccounts}{state} (the servers' passwords and the " +
+                $"cached Steam logins) are kept. {hints.ServiceGone}" +
+                (accountNames.Count > 0 ? $" ({hints.DeleteAccounts})." : "."));
             WriteKept(paths, serversRoot, backupsRoot, output);
             return;
         }
@@ -604,8 +646,7 @@ internal static class AgentCommands
                 // Before the account goes: a process of a deleted account would keep running unnoticed (docs/architecture/08, T20).
                 if (endProcesses?.Invoke(account) is > 0 and var left)
                 {
-                    errors.WriteLine($"The account {account} was kept: {left} process(es) running as it could not be ended. End them (Task Manager, " +
-                        "Details tab, User name column) and delete the account in Computer Management (Local Users and Groups).");
+                    errors.WriteLine($"The account {account} was kept: {left} process(es) running as it could not be ended. {hints.EndProcesses}");
                     continue;
                 }
 
@@ -613,11 +654,11 @@ internal static class AgentCommands
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or System.Security.Principal.IdentityNotMappedException)
             {
-                errors.WriteLine($"The account {account} could not be deleted ({ex.Message}); delete it in Computer Management (Local Users and Groups).");
+                errors.WriteLine($"The account {account} could not be deleted ({ex.Message}); {hints.DeleteAccount}");
             }
         }
 
-        var rules = RemoveFirewallRules(removeFirewallRules, errors);
+        var rules = RemoveFirewallRules(removeFirewallRules, hints, errors);
 
         // Nothing reads the agent's state once the node is gone, and it holds secrets.
         try
@@ -637,7 +678,22 @@ internal static class AgentCommands
     }
 
     /// <summary>
-    /// Takes back the Steam login a server's SteamCMD may still hold (<see cref="SteamCmdRunner.LentLogin"/>), and its folder
+    /// <see cref="RemoveServers(AgentPaths, string?, string?, IStateProtector, ServerRemoval, TextWriter, TextWriter, bool)"/>
+    /// with each way given on its own, the platform's names and words for the rest (tests).
+    /// </summary>
+    internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
+        Func<string, bool>? deleteAccount, Func<int> removeFirewallRules, TextWriter output, TextWriter errors,
+        bool serviceStillStopping = false, Func<int>? removeHttpUrls = null, Func<string, int>? endProcesses = null, IServerFiles? files = null)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var platform = Platform.ServerRemoval(paths, development: true);
+        RemoveServers(paths, serversRoot, backupsRoot, protector,
+            new ServerRemoval(platform.AccountName, deleteAccount, endProcesses, removeFirewallRules, removeHttpUrls, files, platform.Hints),
+            output, errors, serviceStillStopping);
+    }
+
+    /// <summary>
+    /// Takes back the Steam login a server's SteamCMD may still hold (<see cref="SteamCmdLayout.LentLogins"/>), and its folder
     /// once empty: through the agent's own file access, which never follows a link out of the server's folder.
     /// </summary>
     private static void DeleteLentSteamLogin(IServerFiles files, string serverDirectory, string shortId, TextWriter errors)
@@ -647,22 +703,25 @@ internal static class AgentCommands
             return;
         }
 
-        try
+        foreach (var layout in (SteamCmdLayout[])[SteamCmdLayout.Windows, SteamCmdLayout.Linux])
         {
-            files.Delete(serverDirectory, SteamCmdRunner.LentLogin);
-            files.DeleteEmptyDirectory(serverDirectory, ServerFileRules.SteamLoginFolder);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // Never ran SteamCMD with a login (most games): nothing was lent.
-        }
-        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
-        {
-            errors.WriteLine($"The Steam login lent to server {shortId} could not be deleted ({ex.Message}); delete {SteamCmdRunner.LentLogin} in {serverDirectory} by hand.");
+            try
+            {
+                files.Delete(serverDirectory, layout.LentLogin);
+                files.DeleteEmptyDirectory(serverDirectory, layout.LoginFolder);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Never ran SteamCMD with a login (most games): nothing was lent.
+            }
+            catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+            {
+                errors.WriteLine($"The Steam login lent to server {shortId} could not be deleted ({ex.Message}); delete {layout.LentLogin} in {serverDirectory} by hand.");
+            }
         }
     }
 
-    private static int RemoveFirewallRules(Func<int> removeFirewallRules, TextWriter errors)
+    private static int RemoveFirewallRules(Func<int> removeFirewallRules, RemovalHints hints, TextWriter errors)
     {
         try
         {
@@ -670,8 +729,8 @@ internal static class AgentCommands
         }
         catch (Exception ex) when (ex is GameProcessException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
         {
-            errors.WriteLine($"The firewall rules of the game servers (group '{WindowsServerFirewall.Grouping}') could not be removed ({ex.Message}); " +
-                "remove them in Windows Defender Firewall from an elevated prompt.");
+            errors.WriteLine($"The firewall rules of the game servers (group '{hints.FirewallGroup}') could not be removed ({ex.Message}); " +
+                hints.RemoveFirewallRules);
             return 0;
         }
     }
@@ -712,7 +771,7 @@ internal static class AgentCommands
     }
 
     /// <summary>Whether the PulsarAgent service runs with this state directory.</summary>
-    private static bool ServiceRunsFrom(AgentPaths paths) => AgentService.CommandLine() is { } commandLine
+    private static bool ServiceRunsFrom(AgentPaths paths) => Service.CommandLine() is { } commandLine
         && string.Equals(Path.TrimEndingDirectorySeparator(ServiceDataDirectory(commandLine)), Path.TrimEndingDirectorySeparator(paths.Root),
             StringComparison.OrdinalIgnoreCase);
 
@@ -748,9 +807,9 @@ internal static class AgentCommands
     public static async Task<int> ServiceAsync(CommandLine line)
     {
         line.Allow("data-dir", "stop-servers");
-        if (!WindowsDirectorySecurity.IsElevated())
+        if (!Platform.IsElevated())
         {
-            await Console.Error.WriteLineAsync("Managing the service needs an elevated prompt (Run as administrator).");
+            await Console.Error.WriteLineAsync($"Managing the service needs to be run {Platform.ElevatedPrompt}.");
             return 1;
         }
 
@@ -762,13 +821,13 @@ internal static class AgentCommands
                     return 1;
                 }
 
-                AgentService.Install(Environment.ProcessPath!, ServiceArguments(Paths(line)));
-                Console.WriteLine($"The {AgentService.Name} service is installed (automatic start). Start it with 'PulsarAgent service start'.");
+                Service.Install(Environment.ProcessPath!, ServiceArguments(Paths(line)));
+                Console.WriteLine($"The {Service.Name} service is installed (automatic start). Start it with 'PulsarAgent service start'.");
                 return 0;
             case "uninstall":
-                Console.WriteLine(AgentService.Uninstall()
-                    ? $"The {AgentService.Name} service is removed. The enrollment and the node key are kept."
-                    : $"The {AgentService.Name} service is still stopping: it is removed once it stops. The enrollment and the node key are kept.");
+                Console.WriteLine(Service.Uninstall()
+                    ? $"The {Service.Name} service is removed. The enrollment and the node key are kept."
+                    : $"The {Service.Name} service is still stopping: it is removed once it stops. The enrollment and the node key are kept.");
                 return 0;
             case "start":
                 // Checked again (rights change after an install); the service itself checks its executable when it runs.
@@ -777,8 +836,8 @@ internal static class AgentCommands
                     return 1;
                 }
 
-                AgentService.Start();
-                Console.WriteLine($"The {AgentService.Name} service is starting.");
+                Service.Start();
+                Console.WriteLine($"The {Service.Name} service is starting.");
                 return 0;
             case "stop":
                 return line.Has("stop-servers") ? await StopWithServersAsync(Paths(line)) : await StopAsync();
@@ -791,7 +850,7 @@ internal static class AgentCommands
     {
         try
         {
-            AgentService.Stop(AgentService.StopTimeout);
+            Service.Stop(Service.StopTimeout);
         }
         catch (TimeoutException ex)
         {
@@ -799,7 +858,7 @@ internal static class AgentCommands
             return 1;
         }
 
-        Console.WriteLine($"The {AgentService.Name} service is stopped; its game servers keep running and it takes them over when it starts.");
+        Console.WriteLine($"The {Service.Name} service is stopped; its game servers keep running and it takes them over when it starts.");
         return 0;
     }
 
@@ -809,11 +868,11 @@ internal static class AgentCommands
     /// </summary>
     private static async Task<int> StopWithServersAsync(AgentPaths paths)
     {
-        if (AgentService.QueryState() is not (AgentServiceState.Running or AgentServiceState.StartPending))
+        if (Service.QueryState() is not (AgentServiceStatus.Running or AgentServiceStatus.StartPending))
         {
             try
             {
-                AgentService.Stop(AgentService.StopTimeout); // a stop already under way finishes first
+                Service.Stop(Service.StopTimeout); // a stop already under way finishes first
             }
             catch (TimeoutException ex)
             {
@@ -823,15 +882,15 @@ internal static class AgentCommands
 
             var ended = EndHosts(paths);
             Console.WriteLine(ended > 0
-                ? $"The {AgentService.Name} service was not running; ended the {ended} game server(s) it had left running."
-                : $"The {AgentService.Name} service was not running, and no game server was left running.");
+                ? $"The {Service.Name} service was not running; ended the {ended} game server(s) it had left running."
+                : $"The {Service.Name} service was not running, and no game server was left running.");
             return 0;
         }
 
         AskToStopServers(paths);
         try
         {
-            AgentService.Stop(AgentService.StopTimeout);
+            Service.Stop(Service.StopTimeout);
         }
         catch (TimeoutException ex)
         {
@@ -843,8 +902,8 @@ internal static class AgentCommands
         var left = EndHosts(paths);
         DeleteStopServersMarker(paths);
         Console.WriteLine(left > 0
-            ? $"The {AgentService.Name} service and its game servers are stopped ({left} ended after the service stopped)."
-            : $"The {AgentService.Name} service and its game servers are stopped.");
+            ? $"The {Service.Name} service and its game servers are stopped ({left} ended after the service stopped)."
+            : $"The {Service.Name} service and its game servers are stopped.");
         return 0;
     }
 
@@ -867,8 +926,8 @@ internal static class AgentCommands
     /// <summary>Ends the host processes of games the agent is not there to stop; their games end with them.</summary>
     internal static int EndHosts(AgentPaths paths)
     {
-        var store = new ServerStore(paths, new DpapiStateProtector());
-        var launcher = new WindowsGameHostLauncher(Environment.ProcessPath!, paths.Root, null, NullLogger<WindowsGameHostLauncher>.Instance);
+        var store = new ServerStore(paths, Platform.StateProtector(paths));
+        var launcher = Platform.HostLauncher(paths);
         var ended = 0;
         foreach (var record in store.LoadHosts())
         {
@@ -901,10 +960,10 @@ internal static class AgentCommands
         return ended;
     }
 
-    /// <summary>The service runs this executable as SYSTEM: refuse when anyone else could replace it.</summary>
+    /// <summary>The service runs this executable as its own account: refuse when anyone else could replace it.</summary>
     private static async Task<bool> CanHostServiceAsync()
     {
-        if (ServiceChecks.ExecutableRefusal(Environment.ProcessPath!) is not { } refusal)
+        if (Platform.ExecutableRefusal(Environment.ProcessPath!) is not { } refusal)
         {
             return true;
         }
@@ -943,13 +1002,13 @@ internal static class AgentCommands
     {
         try
         {
-            return AgentService.QueryState() switch
+            return Service.QueryState() switch
             {
-                AgentServiceState.NotInstalled => "not installed",
-                AgentServiceState.Running => "running",
-                AgentServiceState.Stopped => "stopped",
-                AgentServiceState.StartPending => "starting",
-                AgentServiceState.StopPending => "stopping",
+                AgentServiceStatus.NotInstalled => "not installed",
+                AgentServiceStatus.Running => "running",
+                AgentServiceStatus.Stopped => "stopped",
+                AgentServiceStatus.StartPending => "starting",
+                AgentServiceStatus.StopPending => "stopping",
                 _ => "unknown state",
             };
         }
@@ -958,8 +1017,6 @@ internal static class AgentCommands
             return $"unknown ({ex.Message})";
         }
     }
-
-    private static string Storage(string storage) => storage == Core.Security.NodeKeyStorage.Tpm ? "TPM" : "software key storage";
 
     private static string Describe(Exception ex) => ex switch
     {
